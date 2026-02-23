@@ -1,0 +1,429 @@
+@import "tailwindcss";
+
+/* Tailwind v4: Configure dark mode to use class selector */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ===== Modern Design System ===== */
+:root {
+  /* Primary Colors - Modern Blue Gradient */
+  --primary-50: #eff6ff;
+  --primary-100: #dbeafe;
+  --primary-200: #bfdbfe;
+  --primary-300: #93c5fd;
+  --primary-400: #60a5fa;
+  --primary-500: #3b82f6;
+  --primary-600: #2563eb;
+  --primary-700: #1d4ed8;
+
+  /* Accent - Vibrant Purple */
+  --accent-500: #8b5cf6;
+  --accent-600: #7c3aed;
+
+  /* Success Green */
+  --success-500: #10b981;
+  --success-600: #059669;
+
+  /* Warning Orange */
+  --warning-500: #f59e0b;
+  --warning-600: #d97706;
+
+  /* Error Red */
+  --error-500: #ef4444;
+  --error-600: #dc2626;
+
+  /* Neutral Colors */
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* Border Radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ===== Base Styles ===== */
+body {
+  background: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 100%);
+  color: var(--foreground);
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+  min-height: 100vh;
+}
+
+/* ===== Typography ===== */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+/* Main Content Text - Use CSS specificity that doesn't override Tailwind utility classes */
+/* Removed aggressive selectors to allow component-level styling control */
+
+/* ===== Cards & Surfaces ===== */
+.card {
+  background: white;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* ===== Form Elements ===== */
+input,
+select,
+textarea {
+  color: #0f172a !important;
+  background-color: white !important;
+  border: 2px solid #e5e7eb;
+  border-radius: var(--radius-lg);
+  padding: 0.75rem 1rem;
+  transition: all 0.2s ease;
+  font-size: 0.95rem;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  outline: none;
+  background-color: white !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af !important;
+}
+
+select option {
+  color: #0f172a;
+  background: white;
+  padding: 0.5rem;
+}
+
+/* ===== Buttons ===== */
+button {
+  font-weight: 600;
+  border-radius: var(--radius-lg);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+/* Primary Button */
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+  color: white;
+  padding: 0.75rem 1.5rem;
+  box-shadow: 0 4px 14px 0 rgba(59, 130, 246, 0.35);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, var(--primary-600), var(--primary-700));
+  box-shadow: 0 6px 20px 0 rgba(59, 130, 246, 0.45);
+}
+
+/* Success Button */
+.btn-success {
+  background: linear-gradient(135deg, var(--success-500), var(--success-600));
+  color: white;
+  box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.35);
+}
+
+/* ===== Tables ===== */
+main table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+main thead {
+  background: linear-gradient(135deg, var(--gray-50), var(--gray-100));
+}
+
+main th {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  color: var(--gray-600);
+  padding: 1rem;
+  border-bottom: 2px solid var(--gray-200);
+}
+
+main td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--gray-100);
+  vertical-align: middle;
+}
+
+main tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+main tbody tr:hover {
+  background-color: rgba(59, 130, 246, 0.04);
+}
+
+/* ===== Badges & Tags ===== */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 9999px;
+}
+
+.badge-success {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.15));
+  color: var(--success-600);
+}
+
+.badge-warning {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(217, 119, 6, 0.15));
+  color: var(--warning-600);
+}
+
+.badge-error {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.15));
+  color: var(--error-600);
+}
+
+/* ===== Stats Cards ===== */
+.stat-card {
+  background: white;
+  border-radius: var(--radius-xl);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--primary-500), var(--accent-500));
+}
+
+/* ===== Gradient Backgrounds ===== */
+.gradient-primary {
+  background: linear-gradient(135deg, var(--primary-500), var(--primary-700));
+}
+
+.gradient-success {
+  background: linear-gradient(135deg, var(--success-500), var(--success-600));
+}
+
+.gradient-warning {
+  background: linear-gradient(135deg, var(--warning-500), var(--warning-600));
+}
+
+.gradient-purple {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+}
+
+/* ===== Animations ===== */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-soft {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease forwards;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gray-100);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gray-300);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-400);
+}
+
+/* ===== Glass Effect ===== */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* ===== Dark Mode ===== */
+.dark {
+  --background: #0f172a;
+  --foreground: #f1f5f9;
+}
+
+.dark body {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+}
+
+/* Dark mode for all white backgrounds - DISABLED to allow custom white theme */
+/* .dark .bg-white,
+.dark .card,
+.dark .stat-card,
+.dark [class*="bg-white"] {
+  background-color: #1e293b !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+} */
+
+/* Dark mode text colors - DISABLED to allow custom themes */
+/* .dark main p,
+.dark main span,
+.dark main div,
+.dark main h1,
+.dark main h2,
+.dark main h3,
+.dark main h4,
+.dark main h5,
+.dark main h6,
+.dark main label,
+.dark main a,
+.dark main li {
+  color: #f1f5f9;
+} */
+
+/* Dark mode form inputs */
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #374151 !important;
+  border-color: #4b5563 !important;
+  color: #f1f5f9 !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Dark mode table */
+.dark main th {
+  background: #1e293b;
+  color: #94a3b8;
+  border-color: #374151;
+}
+
+.dark main td {
+  color: #e2e8f0;
+  border-color: #374151;
+}
+
+.dark main tbody tr:hover {
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* Dark mode borders */
+.dark .border,
+.dark .border-b,
+.dark .border-t,
+.dark .border-gray-200 {
+  border-color: #374151 !important;
+}
+
+/* Dark mode gray backgrounds - DISABLED */
+/* .dark .bg-gray-50,
+.dark .bg-gray-100 {
+  background-color: #1e293b !important;
+} */
+
+/* ===== Print Styles ===== */
+@media print {
+  body {
+    background: white !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

@@ -1,0 +1,32 @@
+services:
+  # Web Service (Next.js App)
+  - type: web
+    name: stock-movement-app
+    env: node
+    region: singapore
+    plan: free
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stock-movement-db
+          property: connectionString
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: NEXTAUTH_URL
+        value: https://stock-movement-app.onrender.com
+      - key: AUTH_TRUST_HOST
+        value: "true"
+      - key: NODE_ENV
+        value: production
+
+databases:
+  # MySQL Database
+  - name: stock-movement-db
+    databaseName: stock_db
+    user: stock_user
+    plan: free
+    region: singapore

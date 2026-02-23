@@ -1,0 +1,338 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { UserCog, Plus, Edit2, Trash2, Phone, Mail, X, Search } from 'lucide-react';
+import Link from 'next/link';
+import {
+    getTechnicians,
+    createTechnician,
+    updateTechnician,
+    deleteTechnician
+} from '@/actions/technicianActions';
+
+interface Technician {
+    tech_id: number;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    line_user_id: string | null;
+    specialty: string | null;
+    status: string;
+    notes: string | null;
+    created_at: Date;
+}
+
+export default function TechniciansClient() {
+    const [technicians, setTechnicians] = useState<Technician[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [showForm, setShowForm] = useState(false);
+    const [editingTech, setEditingTech] = useState<Technician | null>(null);
+    const [searchText, setSearchText] = useState('');
+
+    const [formData, setFormData] = useState({
+        name: '',
+        phone: '',
+        email: '',
+        line_user_id: '',
+        specialty: '',
+        status: 'active',
+        notes: ''
+    });
+
+    const loadData = useCallback(async () => {
+        setLoading(true);
+        const result = await getTechnicians();
+        if (result.success) {
+            setTechnicians(result.data as Technician[]);
+        }
+        setLoading(false);
+    }, []);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
+
+    function openForm(tech?: Technician) {
+        if (tech) {
+            setEditingTech(tech);
+            setFormData({
+                name: tech.name,
+                phone: tech.phone || '',
+                email: tech.email || '',
+                line_user_id: tech.line_user_id || '',
+                specialty: tech.specialty || '',
+                status: tech.status,
+                notes: tech.notes || ''
+            });
+        } else {
+            setEditingTech(null);
+            setFormData({ name: '', phone: '', email: '', line_user_id: '', specialty: '', status: 'active', notes: '' });
+        }
+        setShowForm(true);
+    }
+
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        if (!formData.name) {
+            alert('กรุณากรอกชื่อช่าง');
+            return;
+        }
+
+        let result;
+        if (editingTech) {
+            result = await updateTechnician(editingTech.tech_id, formData);
+        } else {
+            result = await createTechnician(formData);
+        }
+
+        if (result.success) {
+            setShowForm(false);
+            loadData();
+        } else {
+            alert('เกิดข้อผิดพลาด: ' + result.error);
+        }
+    }
+
+    async function handleDelete(tech_id: number) {
+        if (!confirm('ต้องการลบช่างคนนี้หรือไม่?')) return;
+        const result = await deleteTechnician(tech_id);
+        if (result.success) {
+            loadData();
+        } else {
+            alert('เกิดข้อผิดพลาด: ' + result.error);
+        }
+    }
+
+    const filteredTechnicians = technicians.filter(tech => {
+        if (!searchText) return true;
+        const search = searchText.toLowerCase();
+        return (
+            tech.name.toLowerCase().includes(search) ||
+            tech.phone?.toLowerCase().includes(search) ||
+            tech.specialty?.toLowerCase().includes(search)
+        );
+    });
+
+    const activeCount = technicians.filter(t => t.status === 'active').length;
+
+    return (
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <UserCog className="text-blue-500" /> จัดการช่างซ่อม
+                    </h1>
+                    <p className="text-gray-600 dark:text-gray-400">เพิ่ม แก้ไข และจัดการข้อมูลช่าง</p>
+                </div>
+                <div className="flex gap-2">
+                    <Link href="/maintenance" className="px-4 py-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700">
+                        กลับหน้าแจ้งซ่อม
+                    </Link>
+                    <button
+                        onClick={() => openForm()}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                    >
+                        <Plus size={18} /> เพิ่มช่าง
+                    </button>
+                </div>
+            </div>
+
+            {/* Summary */}
+            <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
+                    <div className="text-2xl font-bold text-gray-900 dark:text-white">{technicians.length}</div>
+                    <div className="text-gray-600 dark:text-gray-400 text-sm">ช่างทั้งหมด</div>
+                </div>
+                <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4">
+                    <div className="text-2xl font-bold text-green-600">{activeCount}</div>
+                    <div className="text-green-600 text-sm">พร้อมปฏิบัติงาน</div>
+                </div>
+            </div>
+
+            {/* Search */}
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
+                <div className="relative">
+                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="ค้นหาชื่อ, เบอร์โทร, ความเชี่ยวชาญ..."
+                        value={searchText}
+                        onChange={(e) => setSearchText(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600"
+                        aria-label="ค้นหาช่าง"
+                    />
+                </div>
+            </div>
+
+            {/* List */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {loading ? (
+                    <div className="col-span-full text-center text-gray-500 py-8">กำลังโหลด...</div>
+                ) : filteredTechnicians.length === 0 ? (
+                    <div className="col-span-full text-center text-gray-500 py-8">ไม่พบข้อมูลช่าง</div>
+                ) : (
+                    filteredTechnicians.map(tech => (
+                        <div key={tech.tech_id} className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
+                            <div className="flex justify-between items-start">
+                                <div className="flex items-center gap-3">
+                                    <div className={`h-12 w-12 rounded-full flex items-center justify-center text-xl font-bold text-white ${tech.status === 'active' ? 'bg-blue-500' : 'bg-gray-400'}`}>
+                                        {tech.name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-gray-900 dark:text-white">{tech.name}</div>
+                                        {tech.specialty && (
+                                            <div className="text-sm text-gray-500">{tech.specialty}</div>
+                                        )}
+                                    </div>
+                                </div>
+                                <span className={`px-2 py-1 rounded text-xs ${tech.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                    {tech.status === 'active' ? 'พร้อมงาน' : 'ไม่พร้อม'}
+                                </span>
+                            </div>
+
+                            <div className="mt-4 space-y-2 text-sm">
+                                {tech.phone && (
+                                    <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                        <Phone size={14} /> {tech.phone}
+                                    </div>
+                                )}
+                                {tech.email && (
+                                    <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                        <Mail size={14} /> {tech.email}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mt-4 pt-3 border-t flex gap-2">
+                                <button
+                                    onClick={() => openForm(tech)}
+                                    className="flex-1 text-sm py-1.5 border rounded hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center justify-center gap-1"
+                                >
+                                    <Edit2 size={14} /> แก้ไข
+                                </button>
+                                <button
+                                    onClick={() => handleDelete(tech.tech_id)}
+                                    className="text-sm py-1.5 px-3 border border-red-200 text-red-600 rounded hover:bg-red-50 flex items-center gap-1"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+
+            {/* Form Modal */}
+            {showForm && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 w-full max-w-md mx-4">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold">
+                                {editingTech ? 'แก้ไขข้อมูลช่าง' : 'เพิ่มช่างใหม่'}
+                            </h2>
+                            <button onClick={() => setShowForm(false)} className="text-gray-500 hover:text-gray-700" aria-label="ปิด">
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">ชื่อ-นามสกุล *</label>
+                                <input
+                                    type="text"
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                    placeholder="ชื่อช่าง"
+                                    required
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">เบอร์โทร</label>
+                                    <input
+                                        type="tel"
+                                        value={formData.phone}
+                                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                        className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                        placeholder="08X-XXX-XXXX"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">อีเมล</label>
+                                    <input
+                                        type="email"
+                                        value={formData.email}
+                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                        className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                        placeholder="email@example.com"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">LINE User ID</label>
+                                <input
+                                    type="text"
+                                    value={formData.line_user_id}
+                                    onChange={(e) => setFormData({ ...formData, line_user_id: e.target.value })}
+                                    className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                    placeholder="U1234567890abcdef"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">สำหรับแจ้งเตือนผ่าน LINE</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">ความเชี่ยวชาญ</label>
+                                <input
+                                    type="text"
+                                    value={formData.specialty}
+                                    onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
+                                    className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                    placeholder="เช่น แอร์, ไฟฟ้า, ประปา"
+                                />
+                            </div>
+                            {editingTech && (
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">สถานะ</label>
+                                    <select
+                                        value={formData.status}
+                                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                                        className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                        aria-label="สถานะช่าง"
+                                    >
+                                        <option value="active">พร้อมปฏิบัติงาน</option>
+                                        <option value="inactive">ไม่พร้อม/พักงาน</option>
+                                    </select>
+                                </div>
+                            )}
+                            <div>
+                                <label className="block text-sm font-medium mb-1">หมายเหตุ</label>
+                                <textarea
+                                    value={formData.notes}
+                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                    className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                    rows={2}
+                                    placeholder="บันทึกเพิ่มเติม"
+                                />
+                            </div>
+                            <div className="flex gap-2 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowForm(false)}
+                                    className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700"
+                                >
+                                    ยกเลิก
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                >
+                                    {editingTech ? 'บันทึก' : 'เพิ่ม'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}

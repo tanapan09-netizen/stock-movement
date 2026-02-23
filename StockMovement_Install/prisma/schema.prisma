@@ -1,0 +1,634 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model audit_log {
+  id         Int      @id @default(autoincrement())
+  p_id       String   @db.VarChar(50)
+  action     String   @db.VarChar(50)
+  username   String   @db.VarChar(100)
+  details    String?  @db.Text
+  created_at DateTime @default(now()) @db.Timestamp(0)
+}
+
+model audit_logs {
+  id            Int       @id @default(autoincrement())
+  actor_user_id Int?
+  action_type   String    @db.VarChar(100)
+  object_type   String    @db.VarChar(50)
+  object_id     Int?
+  data          String?   @db.LongText
+  created_at    DateTime? @default(now()) @db.DateTime(0)
+}
+
+model borrow_items {
+  id                Int             @id @default(autoincrement())
+  borrow_request_id Int
+  p_id              String          @db.VarChar(50)
+  qty               Int
+  unit              String?         @db.VarChar(50)
+  returned_at       DateTime?       @db.DateTime(0)
+  returned_qty      Int             @default(0)
+  borrow_requests   borrow_requests @relation(fields: [borrow_request_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "borrow_items_ibfk_1")
+
+  @@index([borrow_request_id], map: "borrow_request_id")
+  @@index([p_id], map: "p_id")
+}
+
+model borrow_requests {
+  id            Int                    @id @default(autoincrement())
+  borrower_name String
+  borrower_id   String?                @db.VarChar(100)
+  note          String?                @db.Text
+  status        borrow_requests_status @default(pending)
+  created_at    DateTime?              @default(now()) @db.DateTime(0)
+  updated_at    DateTime?              @default(now()) @db.DateTime(0)
+  returned_at   DateTime?              @db.DateTime(0)
+  borrow_items  borrow_items[]
+}
+
+model logout_logs {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  logout_time DateTime @default(now()) @db.DateTime(0)
+}
+
+model tbl_action_log {
+  id            Int           @id @default(autoincrement())
+  username      String        @db.VarChar(50)
+  action        String        @db.Text
+  p_id          String?       @db.VarChar(50)
+  log_time      DateTime?     @default(now()) @db.DateTime(0)
+  ip_address    String?       @default("unknown") @db.VarChar(45)
+  description   String?       @db.Text
+  log_date      DateTime      @default(now()) @db.Timestamp(0)
+  created_at    DateTime      @default(now()) @db.DateTime(0)
+  borrow_status Boolean       @default(false)
+  quantity      Int
+  remarks       String?       @db.Text
+  details       String?       @db.Text
+  tbl_products  tbl_products? @relation(fields: [p_id], references: [p_id], onDelete: Restrict, onUpdate: Restrict, map: "fk_action_log_products")
+
+  @@index([p_id], map: "fk_action_log_products")
+}
+
+model tbl_admin_log {
+  id             Int       @id @default(autoincrement())
+  admin_username String    @db.VarChar(50)
+  action         String    @db.Text
+  log_time       DateTime? @default(now()) @db.DateTime(0)
+}
+
+model tbl_api_keys {
+  key_id      Int       @id @default(autoincrement())
+  key_name    String    @db.VarChar(100)
+  api_key     String    @unique(map: "api_key") @db.VarChar(64)
+  description String?   @db.Text
+  permissions String?   @db.LongText
+  active      Boolean?  @default(true)
+  usage_count Int?      @default(0)
+  last_used   DateTime? @db.Timestamp(0)
+  expires_at  DateTime? @db.Timestamp(0)
+  created_by  String?   @db.VarChar(50)
+  created_at  DateTime  @default(now()) @db.Timestamp(0)
+}
+
+model tbl_asset_history {
+  history_id   Int        @id @default(autoincrement())
+  asset_id     Int
+  action_type  String     @db.VarChar(50)
+  description  String?    @db.Text
+  cost         Decimal?   @default(0.00) @db.Decimal(10, 2)
+  performed_by String?    @db.VarChar(100)
+  action_date  DateTime   @default(now()) @db.Timestamp(0)
+  tbl_assets   tbl_assets @relation(fields: [asset_id], references: [asset_id], onDelete: Cascade)
+
+  @@index([asset_id], map: "fk_asset_history_asset")
+}
+
+model tbl_assets {
+  asset_id          Int                 @id @default(autoincrement())
+  asset_code        String              @unique(map: "asset_code") @db.VarChar(50)
+  asset_name        String              @db.VarChar(255)
+  description       String?             @db.Text
+  category          String              @db.VarChar(100)
+  purchase_date     DateTime            @db.Date
+  purchase_price    Decimal             @db.Decimal(10, 2)
+  useful_life_years Int
+  salvage_value     Decimal             @default(1.00) @db.Decimal(10, 2)
+  location          String?             @db.VarChar(100)
+  status            String              @default("Active") @db.VarChar(50)
+  image_url         String?             @db.VarChar(255)
+  vendor            String?             @db.VarChar(255)
+  brand             String?             @db.VarChar(100)
+  model             String?             @db.VarChar(100)
+  serial_number     String?             @db.VarChar(100)
+  created_at        DateTime            @default(now()) @db.Timestamp(0)
+  updated_at        DateTime            @default(now()) @db.Timestamp(0)
+  tbl_asset_history tbl_asset_history[]
+}
+
+model tbl_audit_items {
+  item_id              Int                  @id @default(autoincrement())
+  audit_id             Int
+  p_id                 String               @db.VarChar(50)
+  system_qty           Int                  @default(0)
+  counted_qty          Int?
+  discrepancy          Int?
+  notes                String?              @db.VarChar(255)
+  counted_at           DateTime?            @db.Timestamp(0)
+  tbl_inventory_audits tbl_inventory_audits @relation(fields: [audit_id], references: [audit_id], onDelete: Cascade, onUpdate: Restrict, map: "tbl_audit_items_ibfk_1")
+
+  @@index([audit_id], map: "audit_id")
+  @@index([p_id], map: "p_id")
+}
+
+model tbl_borrow_items {
+  item_id       Int                             @id @default(autoincrement())
+  borrow_id     Int
+  p_id          String                          @db.VarChar(50)
+  quantity      Int                             @default(1)
+  returned_qty  Int?                            @default(0)
+  condition_out tbl_borrow_items_condition_out? @default(GOOD)
+  condition_in  tbl_borrow_items_condition_in?
+  notes         String?                         @db.VarChar(255)
+}
+
+model tbl_borrow_requests {
+  borrow_id            Int                         @id @default(autoincrement())
+  borrow_number        String                      @unique(map: "borrow_number") @db.VarChar(50)
+  borrower_name        String                      @db.VarChar(100)
+  department           String?                     @db.VarChar(100)
+  purpose              String?                     @db.Text
+  borrow_date          DateTime                    @db.Date
+  expected_return_date DateTime?                   @db.Date
+  actual_return_date   DateTime?                   @db.Date
+  status               tbl_borrow_requests_status? @default(pending)
+  notes                String?                     @db.Text
+  created_by           String?                     @db.VarChar(50)
+  approved_by          String?                     @db.VarChar(50)
+  created_at           DateTime                    @default(now()) @db.Timestamp(0)
+  updated_at           DateTime                    @default(now()) @db.Timestamp(0)
+}
+
+model tbl_categories {
+  cat_id       Int            @id @default(autoincrement())
+  cat_name     String         @db.VarChar(255)
+  cat_desc     String?        @db.Text
+  tbl_products tbl_products[]
+}
+
+model tbl_inventory_audits {
+  audit_id          Int                          @id @default(autoincrement())
+  audit_number      String?                      @unique(map: "audit_number") @db.VarChar(50)
+  audit_date        DateTime?                    @db.Date
+  warehouse_id      Int?
+  status            tbl_inventory_audits_status? @default(draft)
+  notes             String?                      @db.Text
+  total_items       Int?                         @default(0)
+  total_discrepancy Int?                         @default(0)
+  created_by        String?                      @db.VarChar(50)
+  completed_by      String?                      @db.VarChar(50)
+  completed_at      DateTime?                    @db.Timestamp(0)
+  created_at        DateTime                     @default(now()) @db.Timestamp(0)
+  tbl_audit_items   tbl_audit_items[]
+}
+
+model tbl_maintenance_history {
+  history_id               Int                      @id @default(autoincrement())
+  request_id               Int
+  action                   String                   @db.VarChar(100)
+  old_value                String?                  @db.Text
+  new_value                String?                  @db.Text
+  changed_by               String                   @db.VarChar(100)
+  changed_at               DateTime                 @default(now()) @db.Timestamp(0)
+  tbl_maintenance_requests tbl_maintenance_requests @relation(fields: [request_id], references: [request_id], onDelete: Cascade)
+
+  @@index([request_id])
+}
+
+model tbl_maintenance_parts {
+  part_id                  Int                      @id @default(autoincrement())
+  request_id               Int
+  p_id                     String                   @db.VarChar(50)
+  quantity                 Int
+  unit                     String?                  @db.VarChar(50)
+  status                   String                   @default("withdrawn") @db.VarChar(20)
+  withdrawn_at             DateTime                 @default(now()) @db.Timestamp(0)
+  used_at                  DateTime?                @db.Timestamp(0)
+  returned_at              DateTime?                @db.Timestamp(0)
+  returned_qty             Int                      @default(0)
+  withdrawn_by             String                   @db.VarChar(100)
+  notes                    String?                  @db.Text
+  tbl_products             tbl_products             @relation(fields: [p_id], references: [p_id])
+  tbl_maintenance_requests tbl_maintenance_requests @relation(fields: [request_id], references: [request_id], onDelete: Cascade)
+
+  @@index([p_id])
+  @@index([request_id])
+  @@index([status])
+}
+
+model tbl_maintenance_requests {
+  request_id              Int                       @id @default(autoincrement())
+  request_number          String                    @unique @db.VarChar(50)
+  room_id                 Int
+  title                   String                    @db.VarChar(255)
+  description             String?                   @db.Text
+  priority                String                    @default("normal") @db.VarChar(20)
+  status                  String                    @default("pending") @db.VarChar(20)
+  reported_by             String                    @db.VarChar(100)
+  assigned_to             String?                   @db.VarChar(100)
+  completed_at            DateTime?                 @db.Timestamp(0)
+  notes                   String?                   @db.Text
+  created_at              DateTime                  @default(now()) @db.Timestamp(0)
+  updated_at              DateTime                  @default(now()) @db.Timestamp(0)
+  actual_cost             Decimal?                  @default(0.00) @db.Decimal(10, 2)
+  estimated_cost          Decimal?                  @default(0.00) @db.Decimal(10, 2)
+  image_url               String?                   @db.VarChar(500)
+  scheduled_date          DateTime?                 @db.Date
+  category                String?                   @db.VarChar(50)
+  department              String?                   @db.VarChar(100)
+  contact_info            String?                   @db.VarChar(100)
+  tags                    String?                   @db.VarChar(255)
+  tbl_maintenance_history tbl_maintenance_history[]
+  tbl_maintenance_parts   tbl_maintenance_parts[]
+  tbl_rooms               tbl_rooms                 @relation(fields: [room_id], references: [room_id])
+  tbl_part_requests       tbl_part_requests[]
+
+  @@index([room_id])
+  @@index([status])
+}
+
+model tbl_part_requests {
+  request_id               Int                       @id @default(autoincrement())
+  maintenance_id           Int?
+  item_name                String                    @db.VarChar(255)
+  description              String?                   @db.Text
+  quantity                 Int                       @default(1)
+  status                   String                    @default("pending") @db.VarChar(20)
+  requested_by             String                    @db.VarChar(100)
+  department               String?                   @db.VarChar(255)
+  date_needed              DateTime?                 @db.Date
+  priority                 String                    @default("normal") @db.VarChar(50)
+  estimated_price          Decimal?                  @db.Decimal(10, 2)
+  supplier                 String?                   @db.VarChar(255)
+  quotation_file           String?                   @db.VarChar(500)
+  quotation_link           String?                   @db.VarChar(500)
+  approval_notes           String?                   @db.Text
+  created_at               DateTime                  @default(now()) @db.Timestamp(0)
+  updated_at               DateTime                  @default(now()) @db.Timestamp(0)
+  tbl_maintenance_requests tbl_maintenance_requests? @relation(fields: [maintenance_id], references: [request_id])
+
+  @@index([maintenance_id])
+  @@index([status])
+  @@index([date_needed], map: "idx_date_needed")
+  @@index([priority], map: "idx_priority")
+}
+
+model tbl_pm_plans {
+  pm_id          Int       @id @default(autoincrement())
+  title          String    @db.VarChar(255)
+  description    String?   @db.Text
+  room_id        Int
+  frequency_type String    @db.VarChar(20)
+  interval       Int       @default(1)
+  next_run_date  DateTime  @db.Date
+  assigned_to    String?   @db.VarChar(100)
+  active         Boolean   @default(true)
+  last_generated DateTime? @db.Timestamp(0)
+  created_at     DateTime  @default(now()) @db.Timestamp(0)
+  updated_at     DateTime  @default(now()) @db.Timestamp(0)
+  tbl_rooms      tbl_rooms @relation(fields: [room_id], references: [room_id])
+
+  @@index([room_id])
+}
+
+model tbl_po_items {
+  item_id      Int      @id @default(autoincrement())
+  po_id        Int
+  p_id         String   @db.VarChar(50)
+  quantity     Int      @default(0)
+  unit_price   Decimal? @default(0.00) @db.Decimal(10, 2)
+  line_total   Decimal? @default(0.00) @db.Decimal(12, 2)
+  received_qty Int?     @default(0)
+  notes        String?  @db.VarChar(255)
+}
+
+model tbl_product_movements {
+  movement_id   Int          @id @default(autoincrement())
+  warehouse_id  Int?
+  p_id          String       @db.VarChar(50)
+  username      String       @db.VarChar(100)
+  movement_type String       @db.VarChar(50)
+  quantity      Int
+  remarks       String?      @db.Text
+  movement_time DateTime     @db.DateTime(0)
+  tbl_products  tbl_products @relation(fields: [p_id], references: [p_id], onDelete: Cascade, map: "fk_product_movements_products")
+
+  @@index([movement_time], map: "idx_pm_movement_time")
+  @@index([movement_type], map: "idx_pm_movement_type")
+  @@index([p_id], map: "idx_pm_p_id")
+  @@index([p_id], map: "p_id")
+}
+
+model tbl_products {
+  p_id                  String                  @id @db.VarChar(50)
+  type_name             String?                 @db.VarChar(100)
+  cat_id                Int?
+  main_category         String?                 @db.VarChar(50)
+  p_name                String                  @unique(map: "p_name") @db.VarChar(255)
+  p_desc                String?                 @db.Text
+  supplier              String?                 @db.VarChar(255)
+  p_sku                 String?                 @db.VarChar(50)
+  p_unit                String?                 @default("ชิ้น") @db.VarChar(20)
+  p_count               Int
+  expiry_date           DateTime?               @db.Date
+  batch_number          String?                 @db.VarChar(50)
+  price_unit            Decimal?                @default(0.00) @db.Decimal(10, 2)
+  safety_stock          Int
+  p_image               String?                 @db.VarChar(255)
+  active                Boolean?                @default(true)
+  is_luxury             Boolean?                @default(false)
+  order_number          Int?
+  created_at            DateTime?               @default(now()) @db.DateTime(0)
+  tbl_action_log        tbl_action_log[]
+  tbl_maintenance_parts tbl_maintenance_parts[]
+  tbl_product_movements tbl_product_movements[]
+  tbl_categories        tbl_categories?         @relation(fields: [cat_id], references: [cat_id], onDelete: Restrict, onUpdate: Restrict, map: "fk_products_category")
+  tbl_stock_movements   tbl_stock_movements[]
+
+  @@index([cat_id], map: "fk_products_category")
+  @@index([p_id], map: "idx_p_p_id")
+  @@index([p_name], map: "idx_p_p_name")
+}
+
+model tbl_purchase_orders {
+  po_id         Int                         @id @default(autoincrement())
+  po_number     String                      @unique(map: "po_number") @db.VarChar(50)
+  supplier_id   Int?
+  status        tbl_purchase_orders_status? @default(draft)
+  order_date    DateTime?                   @db.Date
+  expected_date DateTime?                   @db.Date
+  received_date DateTime?                   @db.Date
+  subtotal      Decimal?                    @default(0.00) @db.Decimal(12, 2)
+  tax_amount    Decimal?                    @default(0.00) @db.Decimal(12, 2)
+  total_amount  Decimal?                    @default(0.00) @db.Decimal(12, 2)
+  notes         String?                     @db.Text
+  created_by    String?                     @db.VarChar(50)
+  approved_by   String?                     @db.VarChar(50)
+  created_at    DateTime                    @default(now()) @db.Timestamp(0)
+  updated_at    DateTime                    @default(now()) @db.Timestamp(0)
+}
+
+model tbl_roles {
+  role_id          Int      @id @default(autoincrement())
+  role_name        String   @unique(map: "role_name") @db.VarChar(50)
+  role_description String?  @db.VarChar(255)
+  permissions      String?  @db.LongText
+  is_system        Boolean? @default(false)
+  created_at       DateTime @default(now()) @db.Timestamp(0)
+}
+
+model tbl_rooms {
+  room_id                  Int                        @id @default(autoincrement())
+  room_code                String                     @unique @db.VarChar(20)
+  room_name                String                     @db.VarChar(100)
+  building                 String?                    @db.VarChar(100)
+  floor                    String?                    @db.VarChar(20)
+  active                   Boolean                    @default(true)
+  created_at               DateTime                   @default(now()) @db.Timestamp(0)
+  tbl_maintenance_requests tbl_maintenance_requests[]
+  tbl_pm_plans             tbl_pm_plans[]
+}
+
+model tbl_stock_movements {
+  id            Int          @id @default(autoincrement())
+  p_id          String       @db.VarChar(50)
+  username      String       @db.VarChar(100)
+  movement_type String       @db.VarChar(50)
+  quantity      Int
+  remarks       String?      @db.Text
+  movement_time DateTime?    @default(now()) @db.DateTime(0)
+  tbl_products  tbl_products @relation(fields: [p_id], references: [p_id], onUpdate: Restrict, map: "tbl_stock_movements_ibfk_1")
+
+  @@index([p_id], map: "p_id")
+}
+
+model tbl_stock_transfers {
+  transfer_id                                                          Int                         @id @default(autoincrement())
+  transfer_number                                                      String?                     @unique(map: "transfer_number") @db.VarChar(50)
+  from_warehouse_id                                                    Int
+  to_warehouse_id                                                      Int
+  status                                                               tbl_stock_transfers_status? @default(pending)
+  transfer_date                                                        DateTime?                   @db.Date
+  received_date                                                        DateTime?                   @db.Date
+  notes                                                                String?                     @db.Text
+  created_by                                                           String?                     @db.VarChar(50)
+  received_by                                                          String?                     @db.VarChar(50)
+  created_at                                                           DateTime                    @default(now()) @db.Timestamp(0)
+  tbl_warehouses_tbl_stock_transfers_from_warehouse_idTotbl_warehouses tbl_warehouses              @relation("tbl_stock_transfers_from_warehouse_idTotbl_warehouses", fields: [from_warehouse_id], references: [warehouse_id], onUpdate: Restrict, map: "tbl_stock_transfers_ibfk_1")
+  tbl_warehouses_tbl_stock_transfers_to_warehouse_idTotbl_warehouses   tbl_warehouses              @relation("tbl_stock_transfers_to_warehouse_idTotbl_warehouses", fields: [to_warehouse_id], references: [warehouse_id], onUpdate: Restrict, map: "tbl_stock_transfers_ibfk_2")
+  tbl_transfer_items                                                   tbl_transfer_items[]
+
+  @@index([from_warehouse_id], map: "from_warehouse_id")
+  @@index([to_warehouse_id], map: "to_warehouse_id")
+}
+
+model tbl_suppliers {
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(255)
+  contact_name String?  @db.VarChar(255)
+  phone        String?  @db.VarChar(50)
+  email        String?  @db.VarChar(100)
+  address      String?  @db.Text
+  created_at   DateTime @default(now()) @db.Timestamp(0)
+  tax_id       String?  @db.VarChar(20)
+}
+
+
+model tbl_system_logs {
+  id         Int      @id @default(autoincrement())
+  action     String   @db.VarChar(50)
+  entity     String?  @db.VarChar(50)
+  entity_id  String?  @db.VarChar(50)
+  details    String?  @db.Text
+  user_id    Int?     // Changed from String? to Int?
+  username   String?  @db.VarChar(100)
+  ip_address String?  @db.VarChar(45)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  
+  tbl_users  tbl_users? @relation(fields: [user_id], references: [p_id], onDelete: SetNull)
+
+  @@index([action])
+  @@index([entity])
+  @@index([username])
+  @@index([user_id])
+}
+
+
+model tbl_system_settings {
+  setting_key   String   @id @db.VarChar(100)
+  setting_value String   @db.LongText
+  description   String?  @db.Text
+  updated_at    DateTime @default(now()) @db.Timestamp(0)
+}
+
+model tbl_technicians {
+  tech_id      Int      @id @default(autoincrement())
+  name         String   @db.VarChar(100)
+  phone        String?  @db.VarChar(20)
+  email        String?  @db.VarChar(100)
+  specialty    String?  @db.VarChar(100)
+  status       String   @default("active") @db.VarChar(20)
+  notes        String?  @db.Text
+  created_at   DateTime @default(now()) @db.Timestamp(0)
+  updated_at   DateTime @default(now()) @db.Timestamp(0)
+  line_user_id String?  @db.VarChar(100)
+
+  @@index([status])
+}
+
+model tbl_transfer_items {
+  item_id             Int                 @id @default(autoincrement())
+  transfer_id         Int
+  p_id                String              @db.VarChar(50)
+  quantity            Int
+  received_qty        Int?                @default(0)
+  tbl_stock_transfers tbl_stock_transfers @relation(fields: [transfer_id], references: [transfer_id], onDelete: Cascade, onUpdate: Restrict, map: "tbl_transfer_items_ibfk_1")
+
+  @@index([p_id], map: "p_id")
+  @@index([transfer_id], map: "transfer_id")
+}
+
+model tbl_users {
+  p_id         Int      @id @default(autoincrement())
+  username     String   @unique(map: "username") @db.VarChar(50)
+  role_id      Int?     @default(3)
+  password     String   @db.VarChar(255)
+  role         String   @default("employee") @db.VarChar(50)
+  created_at   DateTime @default(now()) @db.DateTime(0)
+  line_user_id     String?           @db.VarChar(100)
+  failed_attempts  Int               @default(0)
+  locked_until     DateTime?         @db.DateTime(0)
+  tbl_system_logs  tbl_system_logs[]
+}
+
+
+model tbl_warehouse_stock {
+  id             Int            @id @default(autoincrement())
+  warehouse_id   Int
+  p_id           String         @db.VarChar(50)
+  quantity       Int?           @default(0)
+  min_stock      Int?           @default(0)
+  last_updated   DateTime       @default(now()) @db.Timestamp(0)
+  tbl_warehouses tbl_warehouses @relation(fields: [warehouse_id], references: [warehouse_id], onDelete: Cascade, onUpdate: Restrict, map: "tbl_warehouse_stock_ibfk_1")
+
+  @@unique([warehouse_id, p_id], map: "unique_warehouse_product")
+  @@index([p_id], map: "p_id")
+}
+
+model tbl_warehouses {
+  warehouse_id                                                              Int                   @id @default(autoincrement())
+  warehouse_code                                                            String?               @unique(map: "warehouse_code") @db.VarChar(20)
+  warehouse_name                                                            String                @db.VarChar(100)
+  location                                                                  String?               @db.VarChar(255)
+  manager                                                                   String?               @db.VarChar(100)
+  phone                                                                     String?               @db.VarChar(20)
+  is_default                                                                Boolean?              @default(false)
+  active                                                                    Boolean?              @default(true)
+  created_at                                                                DateTime              @default(now()) @db.Timestamp(0)
+  tbl_stock_transfers_tbl_stock_transfers_from_warehouse_idTotbl_warehouses tbl_stock_transfers[] @relation("tbl_stock_transfers_from_warehouse_idTotbl_warehouses")
+  tbl_stock_transfers_tbl_stock_transfers_to_warehouse_idTotbl_warehouses   tbl_stock_transfers[] @relation("tbl_stock_transfers_to_warehouse_idTotbl_warehouses")
+  tbl_warehouse_stock                                                       tbl_warehouse_stock[]
+}
+
+model app_settings {
+  k          String   @id @db.VarChar(100)
+  v          String   @db.LongText
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  updated_at DateTime @default(now()) @db.Timestamp(0)
+}
+
+model tbl_admin {
+  admin_id Int    @id @default(autoincrement())
+  username String @db.VarChar(100)
+  password String @db.VarChar(255)
+}
+
+enum tbl_purchase_orders_status {
+  draft
+  pending
+  approved
+  ordered
+  partial
+  received
+  cancelled
+}
+
+enum borrow_requests_status {
+  pending
+  approved
+  returned
+  cancelled
+}
+
+enum tbl_inventory_audits_status {
+  draft
+  in_progress
+  completed
+  cancelled
+}
+
+enum tbl_stock_transfers_status {
+  pending
+  in_transit
+  received
+  cancelled
+}
+
+
+model tbl_line_users {
+  id               Int       @id @default(autoincrement())
+  user_id          Int?
+  line_user_id     String    @unique @db.VarChar(255)
+  display_name     String?   @db.VarChar(255)
+  picture_url      String?   @db.VarChar(500)
+  is_approver      Boolean   @default(false)
+  is_active        Boolean   @default(true)
+  last_interaction DateTime? @db.DateTime(0)
+  created_at       DateTime  @default(now()) @db.Timestamp(0)
+  updated_at       DateTime  @default(now()) @updatedAt @db.Timestamp(0)
+
+  @@index([line_user_id], map: "idx_line_user_id")
+  @@index([is_approver], map: "idx_is_approver")
+  @@index([is_active], map: "idx_is_active")
+  @@index([user_id], map: "idx_user_id")
+}
+
+enum tbl_borrow_items_condition_out {
+  GOOD @map("ดี")
+  FAIR @map("พอใช้")
+  POOR @map("ชำรุด")
+}
+
+enum tbl_borrow_items_condition_in {
+  GOOD @map("ดี")
+  FAIR @map("พอใช้")
+  POOR @map("ชำรุด")
+  LOST @map("สูญหาย")
+}
+
+enum tbl_borrow_requests_status {
+  pending
+  approved
+  borrowed
+  partial_return
+  returned
+  overdue
+  cancelled
+}

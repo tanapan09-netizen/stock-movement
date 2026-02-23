@@ -1,0 +1,47 @@
+
+services:
+  app:
+    container_name: stock-movement-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      # Database connection string for XAMPP (Host Machine)
+      # We override the .env 'localhost' with 'host.docker.internal' here
+      - DATABASE_URL=mysql://root:@host.docker.internal:3306/stock_db
+      
+      # NextAuth / Auth.js v5 Variables
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_URL=${AUTH_URL}
+      - AUTH_TRUST_HOST=true
+      
+      # Legacy NextAuth v4 (Keep for compatibility if needed, though v5 uses AUTH_*)
+      - NEXTAUTH_SECRET=${AUTH_SECRET}
+      - NEXTAUTH_URL=${AUTH_URL}
+
+      # LINE Notification
+      - LINE_NOTIFY_TOKEN=${LINE_NOTIFY_TOKEN}
+      - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN}
+      - NEXT_PUBLIC_LINE_NOTIFY_TOKEN=${NEXT_PUBLIC_LINE_NOTIFY_TOKEN}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./public/uploads:/app/public/uploads
+
+  # db:
+  #   image: mysql:8.0
+  #   container_name: stock-movement-db
+  #   restart: always
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: password
+  #     MYSQL_DATABASE: stock_db
+  #   ports:
+  #     - "3307:3306"
+  #   volumes:
+  #     - db_data:/var/lib/mysql
+
+# volumes:
+#   db_data:

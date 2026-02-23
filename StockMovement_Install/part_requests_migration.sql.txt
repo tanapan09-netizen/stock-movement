@@ -1,0 +1,19 @@
+-- Migration: Add Enhanced Fields to tbl_part_requests
+-- Created: 2026-02-07
+
+ALTER TABLE `tbl_part_requests` 
+ADD COLUMN `department` VARCHAR(255) NULL AFTER `requested_by`,
+ADD COLUMN `date_needed` DATE NULL AFTER `department`,
+ADD COLUMN `priority` VARCHAR(50) DEFAULT 'normal' NOT NULL AFTER `date_needed`,
+ADD COLUMN `estimated_price` DECIMAL(10,2) NULL AFTER `priority`,
+ADD COLUMN `supplier` VARCHAR(255) NULL AFTER `estimated_price`,
+ADD COLUMN `quotation_file` VARCHAR(500) NULL AFTER `supplier`,
+ADD COLUMN `quotation_link` VARCHAR(500) NULL AFTER `quotation_file`,
+ADD COLUMN `approval_notes` TEXT NULL AFTER `quotation_link`;
+
+-- Add index for priority filtering
+CREATE INDEX `idx_priority` ON `tbl_part_requests`(`priority`);
+
+-- Add index for date_needed sorting
+CREATE INDEX `idx_date_needed` ON `tbl_part_requests`(`date_needed`);
+

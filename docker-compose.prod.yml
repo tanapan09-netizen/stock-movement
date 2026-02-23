@@ -1,0 +1,70 @@
+services:
+  app:
+    container_name: stock-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3002:3000"
+    environment:
+      # Connect to the 'db' service defined below
+      - DATABASE_URL=mysql://root:stockpassword@db:3306/stock_db?ssl-mode=DISABLED
+
+      # NextAuth
+      - AUTH_SECRET=my-super-secret-key-change-in-production-12345
+      - NEXTAUTH_SECRET=my-super-secret-key-change-in-production-12345
+      - NEXTAUTH_URL=http://localhost:3002
+      - AUTH_URL=http://localhost:3002/api/auth
+      - AUTH_TRUST_HOST=true
+      - CSRF_COOKIE_SECURE=false # Allow insecure cookies for HTTP (local server)
+
+      # Application URL (for notifications and links)
+      - NEXT_PUBLIC_APP_URL=http://localhost:3002
+
+      # LINE Notifications (Phase 2)
+      - LINE_ADMIN_ID=U66936d74f38893ecd650169ce57c0500
+      - LINE_CHANNEL_ACCESS_TOKEN=qElmbJbA6w4cd6iJ6PKRnHES1XUyEDVmR1iPrLa7KlloRSs6BlODpva3uC1/I+ut4P/lWaR3sW7H/NT7UKIrizLi7vNm5l4RelcyjM6TmtAkqC+1bgCOfGCjuiPbeWocheYRxkskI2OiodXFJSpx2QdB04t89/1O/w1cDnyilFU=
+      - LINE_CHANNEL_SECRET=c882705e2610d996f7a39d761acb89c5
+      - LINE_MESSAGING_ENABLED=true
+
+      # Email Notifications (Optional)
+      - EMAIL_ENABLED=true
+      - APPROVER_EMAILS=admin@example.com
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USER=tanapan09@gmail.com
+      - SMTP_PASS=fwfz gioj fwim ughv
+      - SMTP_FROM=noreply@stock-app.com
+
+      # Cron Job Secret (for auto-escalation API)
+      - CRON_SECRET=your_cron_secret_token_change_in_production
+      # GCS (Optional - if set, uses GCS. If not, uses local public/uploads volume)
+      # - GCP_PROJECT_ID=...
+      # - GCP_BUCKET_NAME=...
+
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./public/uploads:/app/public/uploads
+
+  db:
+    image: mysql:8.0
+    container_name: stock-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: stockpassword
+      MYSQL_DATABASE: stock_db
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pstockpassword" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:
