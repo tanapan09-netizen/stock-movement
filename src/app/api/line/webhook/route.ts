@@ -9,10 +9,10 @@ import { prisma } from '@/lib/prisma';
 import { getUserProfile } from '@/lib/notifications/lineMessaging';
 import crypto from 'crypto';
 
-const channelSecret = process.env.LINE_CHANNEL_SECRET || '';
-
 export async function POST(request: NextRequest) {
     try {
+        const channelSecret = process.env.LINE_CHANNEL_SECRET || '';
+
         // Get signature from headers
         const signature = request.headers.get('x-line-signature');
         if (!signature) {
