@@ -25,7 +25,7 @@ services:
       # LINE Notifications (Phase 2)
       - LINE_ADMIN_ID=U66936d74f38893ecd650169ce57c0500
       - LINE_CHANNEL_ACCESS_TOKEN=qElmbJbA6w4cd6iJ6PKRnHES1XUyEDVmR1iPrLa7KlloRSs6BlODpva3uC1/I+ut4P/lWaR3sW7H/NT7UKIrizLi7vNm5l4RelcyjM6TmtAkqC+1bgCOfGCjuiPbeWocheYRxkskI2OiodXFJSpx2QdB04t89/1O/w1cDnyilFU=
-      - LINE_CHANNEL_SECRET=c882705e2610d996f7a39d761acb89c5
+      - LINE_CHANNEL_SECRET=0b16e520632e86c73b75d5927164ce4a
       - LINE_MESSAGING_ENABLED=true
 
       # Email Notifications (Optional)
