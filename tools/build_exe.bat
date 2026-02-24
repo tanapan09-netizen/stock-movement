@@ -6,10 +6,10 @@ echo ===========================================
 cd /d "%~dp0"
 
 echo [1/3] Checking PyInstaller...
-pip install pyinstaller
+pip install pyinstaller customtkinter packaging
 
 echo [2/3] Building Executable...
-pyinstaller --noconfirm --onefile --windowed --name "StockDeploy" deploy_tool.py
+python -m PyInstaller --noconfirm --onefile --windowed --name "StockDeploy" --collect-all customtkinter deploy_tool.py
 
 echo [3/3] Cleaning up...
 rmdir /s /q build

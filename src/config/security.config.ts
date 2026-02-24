@@ -17,7 +17,8 @@ export const securityConfig = {
             '/api/auth',           // NextAuth handles its own CSRF
             '/api/health',         // Health check endpoint
             '/api/security/csrf',  // CSRF token endpoint itself
-            '/api/borrow/return', // Borrow return endpoint
+            '/api/borrow/return',  // Borrow return endpoint
+            '/api/line/webhook',   // LINE Webhook endpoint
         ],
     },
 

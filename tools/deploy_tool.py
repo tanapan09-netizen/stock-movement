@@ -1,154 +1,133 @@
+import customtkinter as ctk
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import scrolledtext, messagebox
 import subprocess
 import threading
 import os
 import sys
 import datetime
 
-class DeployTool:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("StockMovement Deploy Tool v1.0")
-        self.root.geometry("800x600")
+# --- Setup CustomTkinter ---
+ctk.set_appearance_mode("Dark")
+ctk.set_default_color_theme("blue")
+
+class DeployTool(ctk.CTk):
+    def __init__(self):
+        super().__init__()
         
-        # Style
-        self.style = ttk.Style()
-        self.style.theme_use('clam')
+        self.title("StockMovement Deployment Manager")
+        self.geometry("1000x700")
+        
+        # Configure layout
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
         
         # Variables
-        self.db_push_var = tk.BooleanVar(value=True)
-        self.status_var = tk.StringVar(value="Ready")
+        self.db_push_var = ctk.StringVar(value="on")
+        self.status_var = ctk.StringVar(value="Ready")
         
         self.setup_ui()
         self.check_docker_status()
 
     def setup_ui(self):
-        # Header
-        header_frame = ttk.Frame(self.root, padding="10")
-        header_frame.pack(fill=tk.X)
+        # --- Sidebar ---
+        self.sidebar_frame = ctk.CTkFrame(self, width=250, corner_radius=0)
+        self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
+        self.sidebar_frame.grid_rowconfigure(7, weight=1)
         
-        ttk.Label(header_frame, text="StockMovement Deployment Manager", font=("Segoe UI", 16, "bold")).pack(side=tk.LEFT)
-        self.status_label = ttk.Label(header_frame, textvariable=self.status_var, font=("Segoe UI", 10))
-        self.status_label.pack(side=tk.RIGHT)
+        self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="Stock Pro", font=ctk.CTkFont(size=24, weight="bold"))
+        self.logo_label.grid(row=0, column=0, padx=20, pady=(30, 5))
+        self.subtitle_label = ctk.CTkLabel(self.sidebar_frame, text="Docker Deploy Tool", font=ctk.CTkFont(size=13), text_color="gray")
+        self.subtitle_label.grid(row=1, column=0, padx=20, pady=(0, 30))
         
-        # Controls
-        control_frame = ttk.LabelFrame(self.root, text="Actions", padding="10")
-        control_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.btn_update = ctk.CTkButton(self.sidebar_frame, text="🔍 Check for Updates", command=self.check_updates, 
+                                        fg_color="#3B82F6", hover_color="#2563EB", height=40, font=ctk.CTkFont(size=14))
+        self.btn_update.grid(row=2, column=0, padx=20, pady=10)
         
-        # Top Row Buttons
-        btn_frame1 = ttk.Frame(control_frame)
-        btn_frame1.pack(fill=tk.X, pady=2)
+        self.btn_git = ctk.CTkButton(self.sidebar_frame, text="☁️ Upload to Git", command=self.upload_git, 
+                                     fg_color="#6366F1", hover_color="#4F46E5", height=40, font=ctk.CTkFont(size=14))
+        self.btn_git.grid(row=3, column=0, padx=20, pady=10)
         
-        ttk.Button(btn_frame1, text="🔍 Check for Updates", command=self.check_updates, width=20).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame1, text="🚀 Deploy to Docker", command=self.start_deploy, width=20).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame1, text="🔄 Refresh Docker Status", command=self.check_docker_status, width=20).pack(side=tk.LEFT, padx=5)
+        self.btn_deploy = ctk.CTkButton(self.sidebar_frame, text="🚀 Deploy to Docker", command=self.start_deploy, 
+                                        fg_color="#10B981", hover_color="#059669", height=40, font=ctk.CTkFont(size=14, weight="bold"))
+        self.btn_deploy.grid(row=4, column=0, padx=20, pady=10)
         
-        # Bottom Row Buttons
-        btn_frame2 = ttk.Frame(control_frame)
-        btn_frame2.pack(fill=tk.X, pady=2)
-        
-        ttk.Button(btn_frame2, text="💾 Backup Database", command=self.backup_database, width=20).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame2, text="☁️ Upload to Git", command=self.upload_git, width=20).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Checkbutton(btn_frame2, text="Run DB Push (Prisma)", variable=self.db_push_var).pack(side=tk.LEFT, padx=20)
+        self.btn_backup = ctk.CTkButton(self.sidebar_frame, text="💾 Backup Database", command=self.backup_database, 
+                                        fg_color="#F59E0B", hover_color="#D97706", height=40, font=ctk.CTkFont(size=14))
+        self.btn_backup.grid(row=5, column=0, padx=20, pady=10)
 
-        # Docker Status Area
-        status_frame = ttk.LabelFrame(self.root, text="Docker Containers", padding="10")
-        status_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.btn_registry = ctk.CTkButton(self.sidebar_frame, text="🐳 Push to Registry", command=self.upload_registry, 
+                                        fg_color="#0EA5E9", hover_color="#0284C7", height=40, font=ctk.CTkFont(size=14))
+        self.btn_registry.grid(row=6, column=0, padx=20, pady=10)
         
-        self.container_list = tk.Listbox(status_frame, height=5, font=("Consolas", 9))
-        self.container_list.pack(fill=tk.X)
+        self.db_push_check = ctk.CTkCheckBox(self.sidebar_frame, text="Run DB Push (Prisma)", variable=self.db_push_var, onvalue="on", offvalue="off")
+        self.db_push_check.grid(row=7, column=0, padx=20, pady=20)
+        
+        self.appearance_mode_label = ctk.CTkLabel(self.sidebar_frame, text="Theme:", anchor="w")
+        self.appearance_mode_label.grid(row=8, column=0, padx=20, pady=(10, 0))
+        self.appearance_mode_optionmenu = ctk.CTkOptionMenu(self.sidebar_frame, values=["Dark", "Light"],
+                                                               command=self.change_appearance_mode_event)
+        self.appearance_mode_optionmenu.grid(row=9, column=0, padx=20, pady=(10, 20))
 
-        # Logs
-        log_frame = ttk.LabelFrame(self.root, text="Deployment Logs", padding="10")
-        log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        # --- Main Area ---
+        self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_frame.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+        self.main_frame.grid_rowconfigure(2, weight=1)
+        self.main_frame.grid_columnconfigure(0, weight=1)
         
-        self.log_area = scrolledtext.ScrolledText(log_frame, font=("Consolas", 9), state='disabled')
-        self.log_area.pack(fill=tk.BOTH, expand=True)
+        # Status Bar
+        self.status_frame = ctk.CTkFrame(self.main_frame, height=50, corner_radius=10)
+        self.status_frame.grid(row=0, column=0, sticky="ew", pady=(0, 20))
+        self.status_frame.grid_columnconfigure(0, weight=1)
         
-        # Tags for coloring
-        self.log_area.tag_config('info', foreground='black')
-        self.log_area.tag_config('error', foreground='red')
-        self.log_area.tag_config('success', foreground='green')
-        self.log_area.tag_config('cmd', foreground='blue')
+        self.status_label = ctk.CTkLabel(self.status_frame, textvariable=self.status_var, font=ctk.CTkFont(size=14, weight="bold"))
+        self.status_label.grid(row=0, column=0, padx=20, pady=15, sticky="w")
+        
+        self.btn_refresh = ctk.CTkButton(self.status_frame, text="🔄 Refresh Status", width=120, command=self.check_docker_status, fg_color="#4B5563", hover_color="#374151")
+        self.btn_refresh.grid(row=0, column=1, padx=20, pady=10, sticky="e")
+        
+        # Docker Containers View
+        self.containers_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        self.containers_frame.grid(row=1, column=0, sticky="ew", pady=(0, 20))
+        
+        self.containers_label = ctk.CTkLabel(self.containers_frame, text="📦 Docker Containers", font=ctk.CTkFont(weight="bold", size=14))
+        self.containers_label.pack(anchor="w", padx=15, pady=(10, 0))
+        
+        self.container_list = tk.Listbox(self.containers_frame, height=4, font=("Consolas", 10), bg="#2B2B2B", fg="#FFFFFF", selectbackground="#1F538D", borderwidth=0, highlightthickness=0)
+        self.container_list.pack(fill="x", padx=15, pady=10)
+        
+        # Logs View
+        self.logs_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
+        self.logs_frame.grid(row=2, column=0, sticky="nsew")
+        
+        self.logs_label = ctk.CTkLabel(self.logs_frame, text="📝 Deployment Logs", font=ctk.CTkFont(weight="bold", size=14))
+        self.logs_label.pack(anchor="w", padx=15, pady=(10, 0))
+        
+        self.log_area = scrolledtext.ScrolledText(self.logs_frame, font=("Consolas", 10), state='disabled', bg="#1E1E1E", fg="#CCCCCC", borderwidth=0, highlightthickness=0)
+        self.log_area.pack(fill="both", expand=True, padx=15, pady=10)
+        
+        # Tags for log coloring
+        self.log_area.tag_config('info', foreground='#CCCCCC')
+        self.log_area.tag_config('error', foreground='#EF4444')
+        self.log_area.tag_config('success', foreground='#10B981')
+        self.log_area.tag_config('cmd', foreground='#3B82F6')
+
+    def change_appearance_mode_event(self, new_appearance_mode: str):
+        ctk.set_appearance_mode(new_appearance_mode)
+        if new_appearance_mode.lower() == "light":
+            self.container_list.config(bg="#FFFFFF", fg="#000000")
+            self.log_area.config(bg="#F3F4F6", fg="#000000")
+            self.log_area.tag_config('info', foreground='#000000')
+        else:
+            self.container_list.config(bg="#2B2B2B", fg="#FFFFFF")
+            self.log_area.config(bg="#1E1E1E", fg="#CCCCCC")
+            self.log_area.tag_config('info', foreground='#CCCCCC')
 
     def log(self, message, tag='info'):
         self.log_area.config(state='normal')
         self.log_area.insert(tk.END, message + "\n", tag)
         self.log_area.see(tk.END)
         self.log_area.config(state='disabled')
-
-    def run_command(self, command, cwd=None):
-        """Run command and yield output lines"""
-        try:
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                shell=True,
-                cwd=cwd if cwd else os.getcwd(),
-                text=True,
-                bufsize=1,
-                encoding='utf-8',
-                errors='replace'
-            )
-            
-            for line in process.stdout:
-                yield line.strip()
-                
-            process.wait()
-            return process.returncode
-        except Exception as e:
-            yield f"Error running command: {str(e)}"
-            return 1
-
-    def check_docker_status(self):
-        def _target():
-            self.root.after(0, lambda: self.container_list.delete(0, tk.END))
-            cmd = "docker ps --format \"table {{.Names}}\t{{.Status}}\t{{.Ports}}\""
-            self.root.after(0, lambda: self.log(f"> {cmd}", 'cmd'))
-            
-            try:
-                output = subprocess.check_output(cmd, shell=True, text=True).strip().split('\n')
-                for line in output:
-                     self.root.after(0, lambda l=line: self.container_list.insert(tk.END, l))
-            except Exception as e:
-                 self.root.after(0, lambda: self.log(f"Failed to check docker status: {e}", 'error'))
-
-        threading.Thread(target=_target, daemon=True).start()
-
-    def check_updates(self):
-        def _target():
-            self.status_var.set("Checking for updates...")
-            self.log("-" * 50)
-            self.log("Checking for updates...", 'info')
-            
-            # Fetch
-            cmd_fetch = "git fetch"
-            self.log(f"> {cmd_fetch}", 'cmd')
-            if self.run_command_process(cmd_fetch) != 0:
-                self.log("Failed to fetch updates", 'error')
-                self.status_var.set("Update Check Failed")
-                return
-
-            # Compare
-            cmd_log = "git log HEAD..origin/main --oneline"
-            self.log(f"> {cmd_log}", 'cmd')
-            try:
-                output = subprocess.check_output(cmd_log, shell=True, text=True).strip()
-                if output:
-                    self.log(f"New updates available:\n{output}", 'success')
-                    self.status_var.set("Updates Available")
-                    self.root.after(0, lambda: messagebox.showinfo("Updates Available", f"Found new commits:\n{output}"))
-                else:
-                    self.log("System is up to date.", 'success')
-                    self.status_var.set("Up to Date")
-            except Exception as e:
-                self.log(f"Error checking git log: {e}", 'error')
-                self.status_var.set("Error")
-
-        threading.Thread(target=_target, daemon=True).start()
 
     def run_command_process(self, command):
         """Helper to run command and pipe output to log_area"""
@@ -160,23 +139,65 @@ class DeployTool:
                 stderr=subprocess.STDOUT,
                 shell=True,
                 text=True,
-                bufsize=1, # Line buffered
+                bufsize=1,
                 encoding='utf-8',
                 errors='replace'
             )
-            
             for line in process.stdout:
                 line = line.strip()
                 if line:
-                    self.root.after(0, lambda l=line: self.log(l))
-            
+                    self.after(0, lambda l=line: self.log(l))
             process.wait()
             return_code = process.returncode
         except Exception as e:
-            self.root.after(0, lambda: self.log(f"Execution failed: {str(e)}", 'error'))
+            self.after(0, lambda: self.log(f"Execution failed: {str(e)}", 'error'))
             return_code = 1
-            
         return return_code
+
+    def check_docker_status(self):
+        def _target():
+            self.after(0, lambda: self.container_list.delete(0, tk.END))
+            cmd = "docker ps --format \"table {{.Names}}\t{{.Status}}\t{{.Ports}}\""
+            self.after(0, lambda: self.log(f"> {cmd}", 'cmd'))
+            
+            try:
+                output = subprocess.check_output(cmd, shell=True, text=True).strip().split('\n')
+                for line in output:
+                     self.after(0, lambda l=line: self.container_list.insert(tk.END, l))
+            except Exception as e:
+                 self.after(0, lambda: self.log(f"Failed to check docker status: {e}", 'error'))
+
+        threading.Thread(target=_target, daemon=True).start()
+
+    def check_updates(self):
+        def _target():
+            self.status_var.set("Checking for updates...")
+            self.log("-" * 50)
+            self.log("Checking for updates...", 'info')
+            
+            cmd_fetch = "git fetch"
+            self.log(f"> {cmd_fetch}", 'cmd')
+            if self.run_command_process(cmd_fetch) != 0:
+                self.log("Failed to fetch updates", 'error')
+                self.status_var.set("Update Check Failed")
+                return
+
+            cmd_log = "git log HEAD..origin/main --oneline"
+            self.log(f"> {cmd_log}", 'cmd')
+            try:
+                output = subprocess.check_output(cmd_log, shell=True, text=True).strip()
+                if output:
+                    self.log(f"New updates available:\n{output}", 'success')
+                    self.status_var.set("Updates Available")
+                    self.after(0, lambda: messagebox.showinfo("Updates Available", f"Found new commits:\n{output}"))
+                else:
+                    self.log("System is up to date.", 'success')
+                    self.status_var.set("Up to Date")
+            except Exception as e:
+                self.log(f"Error checking git log: {e}", 'error')
+                self.status_var.set("Error")
+
+        threading.Thread(target=_target, daemon=True).start()
 
     def backup_database(self):
         if not messagebox.askyesno("Confirm Backup", "This will create a new database backup. Continue?"):
@@ -193,13 +214,13 @@ class DeployTool:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             backup_file = f"backups/backup_{timestamp}.sql"
             
-            cmd = f'docker-compose -f docker-compose.prod.yml exec -T db mysqldump --skip-ssl -u root -pstockpassword stock_db > "{backup_file}"'
+            cmd = f'docker-compose -f docker-compose.prod.yml exec -T db mysqldump -u root -pstockpassword stock_db > "{backup_file}"'
             self.log(f"> {cmd}", 'cmd')
             
             if self.run_command_process(cmd) == 0:
                 self.log(f"Backup created successfully: {backup_file}", 'success')
                 self.status_var.set("Backup Complete")
-                self.root.after(0, lambda: messagebox.showinfo("Success", f"Database backed up to:\n{backup_file}"))
+                self.after(0, lambda: messagebox.showinfo("Success", f"Database backed up to:\n{backup_file}"))
             else:
                 self.log("Backup failed. Check logs.", 'error')
                 self.status_var.set("Backup Failed")
@@ -238,7 +259,46 @@ class DeployTool:
                 
             self.log("\nUpload Complete!", 'success')
             self.status_var.set("Upload Complete")
-            self.root.after(0, lambda: messagebox.showinfo("Success", "Successfully uploaded to Git!"))
+            self.after(0, lambda: messagebox.showinfo("Success", "Successfully uploaded to Git!"))
+            
+        threading.Thread(target=_target, daemon=True).start()
+
+    def upload_registry(self):
+        if not messagebox.askyesno("Confirm Registry Push", "This will build and push the Docker image to registry.sugoidev.com. Continue?"):
+            return
+            
+        def _target():
+            self.status_var.set("Pushing to Registry...")
+            self.log("=" * 50)
+            self.log("Starting Registry Push Process...", 'info')
+                
+            self.log("\n[Step 1] Building Docker Image...", 'info')
+            build_cmd = "docker build . --tag stock-movement:latest"
+            self.log(f"> {build_cmd}", 'cmd')
+            if self.run_command_process(build_cmd) != 0:
+                self.log("Docker build failed.", 'error')
+                self.status_var.set("Push Failed")
+                return
+                
+            self.log("\n[Step 2] Tagging Image...", 'info')
+            tag_cmd = "docker tag stock-movement:latest registry.sugoidev.com/nong/stock-movement:latest"
+            self.log(f"> {tag_cmd}", 'cmd')
+            if self.run_command_process(tag_cmd) != 0:
+                self.log("Docker tag failed.", 'error')
+                self.status_var.set("Push Failed")
+                return
+                
+            self.log("\n[Step 3] Pushing to Remote Registry...", 'info')
+            push_cmd = "docker push registry.sugoidev.com/nong/stock-movement:latest"
+            self.log(f"> {push_cmd}", 'cmd')
+            if self.run_command_process(push_cmd) != 0:
+                self.log("Docker push failed. Did you run 'docker login registry.sugoidev.com' in terminal?", 'error')
+                self.status_var.set("Push Failed")
+                return
+                
+            self.log("\nRegistry Push Complete!", 'success')
+            self.status_var.set("Push Complete")
+            self.after(0, lambda: messagebox.showinfo("Success", "Successfully pushed image to Sugoidev Registry!"))
             
         threading.Thread(target=_target, daemon=True).start()
 
@@ -253,24 +313,19 @@ class DeployTool:
         self.log("=" * 50)
         self.log("Starting Deployment Process...", 'info')
 
-        # 1. Pull
         self.log("\n[Step 1] Pulling latest code...", 'info')
         if self.run_command_process("git pull") != 0:
             self.log("Git pull failed. Aborting.", 'error')
             self.status_var.set("Deploy Failed")
             return
 
-        # 2. Build
         self.log("\n[Step 2] Building Docker Image...", 'info')
-        # Use --no-cache to ensure fresh build if needed, or normal build
-        # Plan says: docker-compose -f docker-compose.prod.yml build --no-cache app
         build_cmd = "docker-compose -f docker-compose.prod.yml build app" 
         if self.run_command_process(build_cmd) != 0:
             self.log("Build failed. Aborting.", 'error')
             self.status_var.set("Deploy Failed")
             return
 
-        # 3. Up
         self.log("\n[Step 3] Restarting Containers...", 'info')
         up_cmd = "docker-compose -f docker-compose.prod.yml up -d"
         if self.run_command_process(up_cmd) != 0:
@@ -278,16 +333,10 @@ class DeployTool:
              self.status_var.set("Deploy Failed")
              return
 
-        # 4. DB Push (Optional)
-        if self.db_push_var.get():
+        if self.db_push_var.get() == "on":
              self.log("\n[Step 4] Pushing Database Schema...", 'info')
-             # Need to set DATABASE_URL correctly. 
-             # Assuming running on host, we might need localhost port if exposed
-             # Or run inside container. 'docker-compose exec app npx prisma db push' might be better
-             
-             # Plan says: Prisma DB push
-             # Let's try running it inside the container to avoid environment issues
-             db_cmd = "docker-compose -f docker-compose.prod.yml exec -T app npx prisma db push"
+             db_url = "mysql://root:stockpassword@db:3306/stock_db?ssl-mode=DISABLED"
+             db_cmd = f"docker-compose -f docker-compose.prod.yml exec -T app sh -c \"export DATABASE_URL={db_url} && npx prisma db push\""
              
              if self.run_command_process(db_cmd) != 0:
                  self.log("DB Push failed (It might be okay if no schema changes).", 'error')
@@ -297,10 +346,9 @@ class DeployTool:
         self.log("\nDeployment Complete!", 'success')
         self.status_var.set("Deployed Successfully")
         self.check_docker_status()
-        self.root.after(0, lambda: messagebox.showinfo("Success", "Deployment Completed Successfully!"))
+        self.after(0, lambda: messagebox.showinfo("Success", "Deployment Completed Successfully!"))
 
 if __name__ == "__main__":
-    # Change to project root dynamically based on whether it's a script or frozen exe
     if getattr(sys, 'frozen', False):
         app_dir = os.path.dirname(sys.executable)
     else:
@@ -311,6 +359,5 @@ if __name__ == "__main__":
     elif os.path.basename(app_dir) == 'tools':
         os.chdir(os.path.join(app_dir, '..'))
         
-    root = tk.Tk()
-    app = DeployTool(root)
-    root.mainloop()
+    app = DeployTool()
+    app.mainloop()

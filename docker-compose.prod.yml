@@ -14,13 +14,13 @@ services:
       # NextAuth
       - AUTH_SECRET=my-super-secret-key-change-in-production-12345
       - NEXTAUTH_SECRET=my-super-secret-key-change-in-production-12345
-      - NEXTAUTH_URL=http://localhost:3002
-      - AUTH_URL=http://localhost:3002/api/auth
+      - NEXTAUTH_URL=https://mpstock.sugoidev.com
+      - AUTH_URL=https://mpstock.sugoidev.com/api/auth
       - AUTH_TRUST_HOST=true
       - CSRF_COOKIE_SECURE=false # Allow insecure cookies for HTTP (local server)
 
       # Application URL (for notifications and links)
-      - NEXT_PUBLIC_APP_URL=http://localhost:3002
+      - NEXT_PUBLIC_APP_URL=https://mpstock.sugoidev.com
 
       # LINE Notifications (Phase 2)
       - LINE_ADMIN_ID=U66936d74f38893ecd650169ce57c0500
