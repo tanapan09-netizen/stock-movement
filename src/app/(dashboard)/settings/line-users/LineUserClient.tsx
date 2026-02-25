@@ -19,6 +19,8 @@ export default function LineUserClient() {
     const [users, setUsers] = useState<LineUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [showQRCode, setShowQRCode] = useState(false);
+    const [uploadingQR, setUploadingQR] = useState(false);
+    const [qrTimestamp, setQrTimestamp] = useState(Date.now());
 
     async function loadUsers() {
         setLoading(true);
@@ -32,6 +34,33 @@ export default function LineUserClient() {
     useEffect(() => {
         loadUsers();
     }, []);
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploadingQR(true);
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/api/upload/qr', {
+                method: 'POST',
+                body: formData,
+            });
+            if (response.ok) {
+                setQrTimestamp(Date.now());
+                alert('QR Code uploaded successfully!');
+            } else {
+                alert('Failed to upload QR Code');
+            }
+        } catch (error) {
+            console.error(error);
+            alert('Error uploading file');
+        } finally {
+            setUploadingQR(false);
+        }
+    };
 
     const handleToggleApprover = async (id: number, currentStatus: boolean) => {
         const result = await toggleApprover(id, !currentStatus);
@@ -74,10 +103,40 @@ export default function LineUserClient() {
             {showQRCode && (
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-green-100 flex flex-col items-center justify-center space-y-4 animate-in fade-in slide-in-from-top-4">
                     <h3 className="font-semibold text-lg text-gray-800 dark:text-white">Scan to Add Official Account</h3>
-                    {/* Placeholder for QR Code - User needs to add their own or we fetch from API if possible */}
-                    <div className="w-48 h-48 bg-gray-100 dark:bg-slate-700 rounded-lg flex items-center justify-center text-gray-400">
-                        QR Code Here
+
+                    <div className="relative group">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src={`/uploads/line-qr.png?t=${qrTimestamp}`}
+                            alt="LINE Official Account QR Code"
+                            className="w-48 h-48 object-cover rounded-lg border border-gray-200"
+                            onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                document.getElementById('qr-placeholder')?.classList.remove('hidden');
+                            }}
+                            onLoad={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'block';
+                                document.getElementById('qr-placeholder')?.classList.add('hidden');
+                            }}
+                        />
+                        <div id="qr-placeholder" className="w-48 h-48 bg-gray-100 dark:bg-slate-700 rounded-lg flex items-center justify-center text-gray-400 hidden">
+                            <span className="text-sm">No QR Code</span>
+                        </div>
                     </div>
+
+                    <div className="flex justify-center">
+                        <label className={`cursor-pointer bg-[#06C755] hover:bg-[#05b34c] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors ${uploadingQR ? 'opacity-50 pointer-events-none' : ''}`}>
+                            {uploadingQR ? 'Uploading...' : 'Upload QR Image'}
+                            <input
+                                type="file"
+                                className="hidden"
+                                accept="image/png, image/jpeg, image/jpg"
+                                onChange={handleFileUpload}
+                                disabled={uploadingQR}
+                            />
+                        </label>
+                    </div>
+
                     <p className="text-sm text-gray-500 text-center max-w-md">
                         Scan this QR code with your LINE app to add the bot as a friend.
                         Once added, you will appear in the list below.
@@ -127,8 +186,8 @@ export default function LineUserClient() {
                                             <button
                                                 onClick={() => handleToggleApprover(user.id, user.is_approver)}
                                                 className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${user.is_approver
-                                                        ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200'
-                                                        : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                                    ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200'
+                                                    : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
                                                     }`}
                                             >
                                                 {user.is_approver ? 'Approver' : 'User'}
@@ -138,8 +197,8 @@ export default function LineUserClient() {
                                             <button
                                                 onClick={() => handleToggleActive(user.id, user.is_active)}
                                                 className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors ${user.is_active
-                                                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                                        : 'bg-red-100 text-red-700 hover:bg-red-200'
+                                                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                                    : 'bg-red-100 text-red-700 hover:bg-red-200'
                                                     }`}
                                             >
                                                 {user.is_active ? <UserCheck size={14} /> : <UserX size={14} />}
