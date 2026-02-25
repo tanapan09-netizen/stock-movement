@@ -362,12 +362,32 @@ export default function SettingsClient() {
                         <div className="font-medium flex items-center gap-2">
                             LINE Messaging API Users <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700 border border-green-200">New</span>
                         </div>
-                        <div className="text-sm text-gray-500">จัดการผู้ใช้ LINE และตั้งค่าผู้อนุมัติ (Approvers)</div>
+                        <div className="text-sm text-gray-500">จัดการผู้ใช้ LINE และตั้งค่าผู้อนุมัติ (Approvers) และแผนก</div>
                     </div>
                     <div className="text-blue-600 text-sm font-medium">Manage &rarr;</div>
                 </div>
 
-                <div className="p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">
+                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">
+                    <div className="flex-1 mr-4">
+                        <div className="font-medium mb-1">สิทธิ์การอนุมัติ (Manager Approval Limit)</div>
+                        <div className="text-sm text-gray-500 mb-2">กำหนดยอดขอเบิกขั้นต่ำที่ต้องให้ตำแหน่ง Manager (ผู้จัดการ) เป็นคนอนุมัติ (ถ้าต่ำกว่านี้ หัวหน้าช่างอนุมัติได้)</div>
+                        <div className="flex max-w-xs items-center">
+                            <input
+                                type="number"
+                                className="w-full px-3 py-2 border rounded-l-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-800 dark:border-slate-600"
+                                value={settings['manager_approval_limit'] || '5000'}
+                                onChange={(e) => setSettings({ ...settings, manager_approval_limit: e.target.value })}
+                                onBlur={(e) => handleSave('manager_approval_limit', e.target.value)}
+                                placeholder="5000"
+                            />
+                            <div className="bg-gray-100 border border-l-0 dark:border-slate-600 dark:bg-slate-600 px-3 py-2 rounded-r-lg text-sm text-gray-600 dark:text-gray-300">
+                                THB
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4 bg-gray-50 dark:bg-slate-700 rounded-lg mt-4">
                     <div className="font-medium mb-3">ทดสอบส่งอีเมล (Test Email Connection)</div>
                     <div className="flex gap-2">
                         <input

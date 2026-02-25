@@ -7,7 +7,7 @@ services:
     restart: always
     ports:
       - "3002:3000"
-        environment:
+    environment:
       # Database connection (External sg.sugoidev.com)
       - DATABASE_URL=mysql://root:ks6EexfddKHmjdJoc4y36S1a4Vxwj43G@sg.sugoidev.com:5012/stock_db?ssl-mode=DISABLED
 
@@ -36,7 +36,6 @@ services:
       - SMTP_USER=tanapan09@gmail.com
       - SMTP_PASS=fwfz gioj fwim ughv
       - SMTP_FROM=noreply@stock-app.com
-
 
       # Cron Job Secret (for auto-escalation API)
       - CRON_SECRET=your_cron_secret_token_change_in_production

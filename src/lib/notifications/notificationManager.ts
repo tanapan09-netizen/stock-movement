@@ -31,8 +31,9 @@ export async function notifyNewPartRequest(request: PartRequestData): Promise<vo
         // LINE Messaging API
         (async () => {
             if (process.env.LINE_MESSAGING_ENABLED !== 'false') {
-                const { getApproverLineIds } = await import('@/actions/lineUserActions');
-                const lineIds = await getApproverLineIds();
+                const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
+                // Target: Purchasing and Manager for part requests
+                const lineIds = await getLineIdsByRoles(['purchasing', 'manager']);
 
                 if (lineIds.length > 0) {
                     const flexMessage = createPartRequestFlexMessage(request);
@@ -43,7 +44,7 @@ export async function notifyNewPartRequest(request: PartRequestData): Promise<vo
                         console.warn('[Notification] LINE messaging failed:', result.error);
                     }
                 } else {
-                    console.log('[Notification] No LINE approvers configured');
+                    console.log('[Notification] No relevant LINE approvers found for part request');
                 }
             }
         })(),
@@ -86,8 +87,10 @@ export async function notifyStatusChange(
         // LINE Messaging API
         (async () => {
             if (process.env.LINE_MESSAGING_ENABLED !== 'false') {
-                const { getApproverLineIds } = await import('@/actions/lineUserActions');
-                const lineIds = await getApproverLineIds();
+                const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
+                // Target: Purchasing and Manager (Assuming status change relates to Part Request mostly)
+                // TODO: Differentiate status changes (maybe send to requester if available)
+                const lineIds = await getLineIdsByRoles(['purchasing', 'manager']);
 
                 if (lineIds.length > 0) {
                     const flexMessage = createStatusChangeFlexMessage(request, oldStatus, newStatus);
@@ -210,13 +213,33 @@ export async function notifyNewMaintenanceRequest(request: {
     console.log('[Notification] Sending notifications for new maintenance request:', request.request_number);
 
     const results = await Promise.allSettled([
-        // LINE Messaging API (To Admin/Approvers)
+        // LINE Messaging API (To Admin/Manager/Technician)
         (async () => {
             if (process.env.LINE_MESSAGING_ENABLED !== 'false') {
-                // Note: You might need a specific Flex Message for Maintenance Request similar to Part Request
-                // For now, skipping or assuming you implement createMaintenanceRequestFlexMessage later
-                // Or send to admin group?
-                // Current implementation focuses on Email as requested.
+                const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
+                // Target: Technician and Manager for new maintenance requests
+                const lineIds = await getLineIdsByRoles(['technician', 'manager']);
+
+                if (lineIds.length > 0) {
+                    const { createMaintenanceRequestFlexMessage } = await import('./lineMessaging');
+                    // Ensure the flex message exists, otherwise fallback to text
+                    try {
+                        const flexMessage = createMaintenanceRequestFlexMessage(request);
+                        const result = await sendMulticastMessage(lineIds, flexMessage);
+                        if (result.success) {
+                            console.log('[Notification] New Maintenance Request LINE sent to', lineIds.length, 'users');
+                        } else {
+                            console.warn('[Notification] New Maintenance Request LINE messaging failed:', result.error);
+                        }
+                    } catch (err) {
+                        // Fallback simple message if flex template not implemented
+                        const fallbackMsg = {
+                            type: 'text' as const,
+                            text: `🛠️ แจ้งซ่อมใหม่: ${request.request_number}\n📍 สถานที่: ${request.room_code} - ${request.room_name}\n🔧 เรื่อง: ${request.title}\n👤 ผู้แจ้ง: ${request.reported_by}`
+                        };
+                        await sendMulticastMessage(lineIds, fallbackMsg);
+                    }
+                }
             }
         })(),
 

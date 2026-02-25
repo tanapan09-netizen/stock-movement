@@ -336,7 +336,7 @@ class DeployTool(ctk.CTk):
         if self.db_push_var.get() == "on":
              self.log("\n[Step 4] Pushing Database Schema...", 'info')
              db_url = "mysql://root:stockpassword@db:3306/stock_db?ssl-mode=DISABLED"
-             db_cmd = f"docker-compose -f docker-compose.prod.yml exec -T app sh -c \"export DATABASE_URL={db_url} && npx prisma db push\""
+             db_cmd = f"docker-compose -f docker-compose.prod.yml exec -T app sh -c \"export DATABASE_URL={db_url} && npx prisma@5.22.0 db push\""
              
              if self.run_command_process(db_cmd) != 0:
                  self.log("DB Push failed (It might be okay if no schema changes).", 'error')

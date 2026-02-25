@@ -288,7 +288,7 @@ export async function approvePartRequest(
         } else {
             // Approve Logic based on Stage
             // Stage 0: Supervisor -> 1
-            // Stage 1: Accounting -> 2
+            // Stage 1: Accounting -> 2 (or 3 if under limit)
             // Stage 2: Manager -> 3 (Approved)
 
             if (currentStage === 0) {
@@ -297,10 +297,31 @@ export async function approvePartRequest(
                 data.supervisor_approved_at = new Date();
                 data.approval_notes = notes ? (request.approval_notes ? `${request.approval_notes}\nSupervisor: ${notes}` : `Supervisor: ${notes}`) : request.approval_notes;
             } else if (currentStage === 1) {
-                data.current_stage = 2;
                 data.accounting_approved_by = user_name;
                 data.accounting_approved_at = new Date();
                 data.approval_notes = notes ? (request.approval_notes ? `${request.approval_notes}\nAccounting: ${notes}` : `Accounting: ${notes}`) : request.approval_notes;
+
+                // Check limit to see if we can bypass Manager
+                const { getSystemSettings } = await import('@/actions/settingActions');
+                const settingsRes = await getSystemSettings();
+                const limit = settingsRes.success && settingsRes.data?.manager_approval_limit
+                    ? parseFloat(settingsRes.data.manager_approval_limit)
+                    : 5000;
+
+                const price = request.estimated_price ? Number(request.estimated_price) : 0;
+
+                if (price < limit) {
+                    // Bypass Manager
+                    data.current_stage = 3;
+                    data.status = 'approved';
+                    data.manager_approved_by = 'System (Under limit)';
+                    data.manager_approved_at = new Date();
+                    data.approval_notes = data.approval_notes
+                        ? `${data.approval_notes}\nSystem: Auto-approved (Amount < ${limit})`
+                        : `System: Auto-approved (Amount < ${limit})`;
+                } else {
+                    data.current_stage = 2;
+                }
             } else if (currentStage === 2) {
                 data.current_stage = 3;
                 data.status = 'approved';

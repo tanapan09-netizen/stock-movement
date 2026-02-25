@@ -52,6 +52,28 @@ export async function getApproverLineIds(): Promise<string[]> {
 }
 
 /**
+ * Get LINE user IDs by specific roles
+ */
+export async function getLineIdsByRoles(roles: string[]): Promise<string[]> {
+    try {
+        const users = await prisma.tbl_line_users.findMany({
+            where: {
+                role: { in: roles },
+                is_active: true,
+            },
+            select: {
+                line_user_id: true,
+            },
+        });
+
+        return users.map(u => u.line_user_id);
+    } catch (error) {
+        console.error('Error fetching LINE IDs by roles:', error);
+        return [];
+    }
+}
+
+/**
  * Toggle approver status
  */
 export async function toggleApprover(id: number, isApprover: boolean) {

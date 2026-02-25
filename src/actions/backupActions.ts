@@ -115,7 +115,8 @@ export async function performBackup(): Promise<{ success: boolean; message: stri
         } else {
             // Linux/Docker: Use mysqldump from PATH
             // Add --skip-ssl to avoid "self-signed certificate" errors
-            cmd = `mysqldump --skip-ssl -u ${user}`;
+            // Add --default-auth=mysql_native_password to fix "caching_sha2_password" error from MariaDB clients connecting to MySQL 8
+            cmd = `mysqldump --skip-ssl --default-auth=mysql_native_password -u ${user}`;
             if (password) cmd += ` -p${password}`;
             cmd += ` -h ${host} -P ${port} ${database} > "${backupPath}"`;
         }

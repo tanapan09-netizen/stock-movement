@@ -351,6 +351,172 @@ export function createPartRequestFlexMessage(request: {
 }
 
 /**
+ * Create Flex Message for New Maintenance Request
+ */
+export function createMaintenanceRequestFlexMessage(request: {
+    request_number: string;
+    title: string;
+    description?: string | null;
+    priority: string;
+    room_code: string;
+    room_name: string;
+    reported_by: string;
+}): FlexMessage {
+    const priorityColor = {
+        normal: '#3b82f6',
+        urgent: '#f59e0b',
+        critical: '#ef4444',
+    }[request.priority] || '#6b7280';
+
+    const priorityLabel = {
+        normal: 'ปกติ',
+        urgent: 'เร่งด่วน',
+        critical: 'วิกฤต',
+    }[request.priority] || request.priority;
+
+    return {
+        type: 'flex',
+        altText: `🛠️ แจ้งซ่อมใหม่: ${request.title}`,
+        contents: {
+            type: 'bubble',
+            header: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'text',
+                        text: '🛠️ รายการแจ้งซ่อมใหม่',
+                        weight: 'bold',
+                        color: '#ffffff',
+                        size: 'lg',
+                    },
+                ],
+                backgroundColor: '#ef4444',
+                paddingAll: '20px',
+            },
+            body: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'text',
+                        text: request.title,
+                        weight: 'bold',
+                        size: 'md',
+                        margin: 'md',
+                        wrap: true,
+                    },
+                    {
+                        type: 'text',
+                        text: `#${request.request_number}`,
+                        size: 'xs',
+                        color: '#9ca3af',
+                        margin: 'xs',
+                    },
+                    {
+                        type: 'separator',
+                        margin: 'lg',
+                    },
+                    {
+                        type: 'box',
+                        layout: 'vertical',
+                        margin: 'lg',
+                        spacing: 'sm',
+                        contents: [
+                            {
+                                type: 'box',
+                                layout: 'baseline',
+                                spacing: 'sm',
+                                contents: [
+                                    {
+                                        type: 'text',
+                                        text: '📍 สถานที่',
+                                        color: '#6b7280',
+                                        size: 'sm',
+                                        flex: 2,
+                                    },
+                                    {
+                                        type: 'text',
+                                        text: `${request.room_name} (${request.room_code})`,
+                                        wrap: true,
+                                        color: '#111827',
+                                        size: 'sm',
+                                        flex: 5,
+                                    },
+                                ],
+                            },
+                            {
+                                type: 'box',
+                                layout: 'baseline',
+                                spacing: 'sm',
+                                contents: [
+                                    {
+                                        type: 'text',
+                                        text: '⚡ ความเร่งด่วน',
+                                        color: '#6b7280',
+                                        size: 'sm',
+                                        flex: 2,
+                                    },
+                                    {
+                                        type: 'text',
+                                        text: priorityLabel,
+                                        wrap: true,
+                                        color: priorityColor,
+                                        size: 'sm',
+                                        flex: 5,
+                                        weight: 'bold',
+                                    },
+                                ],
+                            },
+                            {
+                                type: 'box',
+                                layout: 'baseline',
+                                spacing: 'sm',
+                                contents: [
+                                    {
+                                        type: 'text',
+                                        text: '👤 ผู้แจ้ง',
+                                        color: '#6b7280',
+                                        size: 'sm',
+                                        flex: 2,
+                                    },
+                                    {
+                                        type: 'text',
+                                        text: request.reported_by,
+                                        wrap: true,
+                                        color: '#111827',
+                                        size: 'sm',
+                                        flex: 5,
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+            footer: {
+                type: 'box',
+                layout: 'vertical',
+                spacing: 'sm',
+                contents: [
+                    {
+                        type: 'button',
+                        style: 'primary',
+                        height: 'sm',
+                        action: {
+                            type: 'uri',
+                            label: 'ดูรายละเอียด',
+                            uri: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/maintenance/${request.request_number}`,
+                        },
+                    },
+                ],
+                flex: 0,
+            },
+        },
+    };
+}
+
+/**
  * Create Flex Message for Status Change
  */
 export function createStatusChangeFlexMessage(
