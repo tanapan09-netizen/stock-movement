@@ -7,26 +7,26 @@ services:
     restart: always
     ports:
       - "3002:3000"
-    environment:
-      # Connect to the 'db' service defined below
-      - DATABASE_URL=mysql://root:stockpassword@db:3306/stock_db?ssl-mode=DISABLED
+        environment:
+      # Database connection (External sg.sugoidev.com)
+      - DATABASE_URL=mysql://root:ks6EexfddKHmjdJoc4y36S1a4Vxwj43G@sg.sugoidev.com:5012/stock_db?ssl-mode=DISABLED
 
       # NextAuth
-      - AUTH_SECRET=my-super-secret-key-change-in-production-12345
-      - NEXTAUTH_SECRET=my-super-secret-key-change-in-production-12345
+      - AUTH_SECRET=secure-secret-key-123
+      - NEXTAUTH_SECRET=secure-secret-key-123
       - NEXTAUTH_URL=https://mpstock.sugoidev.com
       - AUTH_URL=https://mpstock.sugoidev.com/api/auth
       - AUTH_TRUST_HOST=true
-      - CSRF_COOKIE_SECURE=false # Allow insecure cookies for HTTP (local server)
+      - CSRF_COOKIE_SECURE=false
 
       # Application URL (for notifications and links)
       - NEXT_PUBLIC_APP_URL=https://mpstock.sugoidev.com
 
       # LINE Notifications (Phase 2)
-      - LINE_ADMIN_ID=U66936d74f38893ecd650169ce57c0500
-      - LINE_CHANNEL_ACCESS_TOKEN=LqtCttYrj7jfXeFJg1wz88Sno0jTW3HblTf4sqeKeE9U9saODwHv8MW7bAtrLbQUso3V4jOX8M85m/EVlF01l+OzZ38XsSFR4w5297nDPn3RR6ZQ14SlAeE4OkIvm0w9LeUqlmZ8uMT+c41g/v6p8AdB04t89/1O/w1cDnyilFU=
-      - LINE_CHANNEL_SECRET=0b16e520632e86c73b75d5927164ce4a
       - LINE_MESSAGING_ENABLED=true
+      - LINE_ADMIN_ID=U66936d74f38893ecd650169ce57c0500
+      - LINE_CHANNEL_SECRET=0b16e520632e86c73b75d5927164ce4a
+      - LINE_CHANNEL_ACCESS_TOKEN=LqtCttYrj7jfXeFJg1wz88Sno0jTW3HblTf4sqeKeE9U9saODwHv8MW7bAtrLbQUso3V4jOX8M85m/EVlF01l+OzZ38XsSFR4w5297nDPn3RR6ZQ14SlAeE4OkIvm0w9LeUqlmZ8uMT+c41g/v6p8AdB04t89/1O/w1cDnyilFU=
 
       # Email Notifications (Optional)
       - EMAIL_ENABLED=true
@@ -36,6 +36,7 @@ services:
       - SMTP_USER=tanapan09@gmail.com
       - SMTP_PASS=fwfz gioj fwim ughv
       - SMTP_FROM=noreply@stock-app.com
+
 
       # Cron Job Secret (for auto-escalation API)
       - CRON_SECRET=your_cron_secret_token_change_in_production
