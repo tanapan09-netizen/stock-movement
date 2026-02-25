@@ -150,11 +150,20 @@ async function handleUnfollowEvent(event: WebhookEvent) {
     }
 }
 
+export const dynamic = 'force-dynamic';
+
 // Note: For development/testing, you can add a GET endpoint
 export async function GET() {
+    const secret = process.env.LINE_CHANNEL_SECRET || '';
+
     return NextResponse.json({
         message: 'LINE Webhook endpoint',
         status: 'active',
+        debug: {
+            has_secret: secret.length > 0,
+            secret_length: secret.length,
+            secret_starts_with: secret ? secret.substring(0, 4) + '...' : 'none',
+        },
         webhook_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/line/webhook`,
     });
 }
