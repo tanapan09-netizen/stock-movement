@@ -107,7 +107,7 @@ export default function LineUserClient() {
                     <div className="relative group">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                            src={`/uploads/line-qr.png?t=${qrTimestamp}`}
+                            src={`/api/images/qr?t=${qrTimestamp}`}
                             alt="LINE Official Account QR Code"
                             className="w-48 h-48 object-cover rounded-lg border border-gray-200"
                             onError={(e) => {
