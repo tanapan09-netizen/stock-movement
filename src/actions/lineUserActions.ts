@@ -120,6 +120,40 @@ export async function toggleLineUserActive(id: number, isActive: boolean) {
 }
 
 /**
+ * Update LINE user role
+ */
+export async function updateLineUserRole(id: number, role: string) {
+    try {
+        const session = await auth();
+        if (!session || !session.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        await prisma.tbl_line_users.update({
+            where: { id },
+            data: { role },
+        });
+
+        revalidatePath('/settings/line-users');
+
+        await logSystemAction(
+            'UPDATE',
+            'LineUser',
+            id,
+            `Updated role to ${role}`,
+            parseInt(session.user.id || '0'),
+            session.user.name || 'System',
+            'unknown'
+        );
+
+        return { success: true };
+    } catch (error) {
+        console.error('Error updating role:', error);
+        return { success: false, error: 'Failed to update role' };
+    }
+}
+
+/**
  * Delete LINE user
  */
 export async function deleteLineUser(id: number) {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Trash2, UserCheck, UserX, Plus } from 'lucide-react';
-import { getLineUsers, toggleApprover, toggleLineUserActive, deleteLineUser } from '@/actions/lineUserActions';
+import { getLineUsers, toggleApprover, toggleLineUserActive, deleteLineUser, updateLineUserRole } from '@/actions/lineUserActions';
 
 interface LineUser {
     id: number;
@@ -10,6 +10,7 @@ interface LineUser {
     display_name: string | null;
     picture_url: string | null;
     is_approver: boolean;
+    role: string;
     is_active: boolean;
     last_interaction: Date | null;
     created_at: Date;
@@ -73,6 +74,15 @@ export default function LineUserClient() {
         const result = await toggleLineUserActive(id, !currentStatus);
         if (result.success) {
             setUsers(prev => prev.map(u => u.id === id ? { ...u, is_active: !currentStatus } : u));
+        }
+    };
+
+    const handleUpdateRole = async (id: number, role: string) => {
+        const result = await updateLineUserRole(id, role);
+        if (result.success) {
+            setUsers(prev => prev.map(u => u.id === id ? { ...u, role } : u));
+        } else {
+            alert('Failed to update role');
         }
     };
 
@@ -150,7 +160,8 @@ export default function LineUserClient() {
                         <thead className="bg-gray-50 dark:bg-slate-700">
                             <tr>
                                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">User</th>
-                                <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">Role</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">Department Role</th>
+                                <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">Approve Limit</th>
                                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">Status</th>
                                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">Last Active</th>
                                 <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">Actions</th>
@@ -159,7 +170,7 @@ export default function LineUserClient() {
                         <tbody className="divide-y divide-gray-100 dark:divide-slate-600">
                             {users.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="p-8 text-center text-gray-500">
+                                    <td colSpan={6} className="p-8 text-center text-gray-500">
                                         No LINE users found. Scan the QR code to add the bot.
                                     </td>
                                 </tr>
@@ -181,6 +192,21 @@ export default function LineUserClient() {
                                                     </div>
                                                 </div>
                                             </div>
+                                        </td>
+                                        <td className="p-4">
+                                            <select
+                                                value={user.role || 'general'}
+                                                onChange={(e) => handleUpdateRole(user.id, e.target.value)}
+                                                className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2 dark:text-white"
+                                            >
+                                                <option value="general">General (ทั่วไป)</option>
+                                                <option value="technician">Technician (ช่างซ่อมบำรุง)</option>
+                                                <option value="maid">Maid (แม่บ้าน)</option>
+                                                <option value="driver">Driver (คนขับรถ)</option>
+                                                <option value="purchasing">Purchasing (จัดซื้อ)</option>
+                                                <option value="accounting">Accounting (บัญชี)</option>
+                                                <option value="admin">Admin (ผู้ดูแลระบบ)</option>
+                                            </select>
                                         </td>
                                         <td className="p-4">
                                             <button
