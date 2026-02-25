@@ -19,6 +19,7 @@ export const securityConfig = {
             '/api/security/csrf',  // CSRF token endpoint itself
             '/api/borrow/return',  // Borrow return endpoint
             '/api/line/webhook',   // LINE Webhook endpoint
+            '/api/upload/qr',      // QR Code upload endpoint
         ],
     },
 
