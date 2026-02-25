@@ -43,8 +43,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Install OpenSSL for Prisma and mariadb-client for backup/restore
-RUN apk add --no-cache openssl mariadb-client
+# Install OpenSSL for Prisma and mariadb-client/connector for backup/restore
+RUN apk add --no-cache openssl mariadb-client mariadb-connector-c
 
 # Copy necessary files
 COPY --from=builder /app/public ./public
