@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/components/ToastProvider';
 import Link from 'next/link';
 import {
-    Wrench, Plus, Search, Filter, X, History, User, DollarSign, Printer, Clock, CheckCircle, XCircle, Image as ImageIcon, ShoppingCart, Package, AlertTriangle
+    Wrench, Plus, Search, Filter, X, History, User, DollarSign, Printer, Clock, CheckCircle, XCircle, Image as ImageIcon, ShoppingCart, Package, AlertTriangle, Bell
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import {
@@ -20,11 +20,13 @@ import {
     getMaintenanceParts,
     confirmPartsUsed,
     storeVerifyParts,
-    reopenMaintenanceRequest
+    reopenMaintenanceRequest,
+    resendMaintenanceNotification
 } from '@/actions/maintenanceActions';
 import { searchAssets } from '@/actions/assetActions';
 import { createPartRequest } from '@/actions/partRequestActions';
 import { getActiveTechnicians } from '@/actions/technicianActions';
+import { getLineUsers } from '@/actions/lineUserActions';
 
 interface Room {
     room_id: number;
@@ -155,6 +157,7 @@ export default function MaintenanceClient() {
 
     // Dynamic technicians list from database
     const [technicians, setTechnicians] = useState<Technician[]>([]);
+    const [lineTechnicians, setLineTechnicians] = useState<any[]>([]);
 
     // Parts Verification State
     const [parts, setParts] = useState<MaintenancePart[]>([]);
@@ -206,14 +209,15 @@ export default function MaintenanceClient() {
     async function loadData() {
         setLoading(true);
         try {
-            const [reqResult, roomResult, summaryResult, techResult] = await Promise.all([
+            const [reqResult, roomResult, summaryResult, techResult, lineUserResult] = await Promise.all([
                 getMaintenanceRequests({
                     status: filterStatus !== 'all' ? filterStatus : undefined,
                     room_id: filterRoom || undefined
                 }),
                 getRooms(),
                 getMaintenanceSummary(),
-                getActiveTechnicians()
+                getActiveTechnicians(),
+                getLineUsers()
             ]);
 
             if (reqResult.success) {
@@ -225,6 +229,10 @@ export default function MaintenanceClient() {
             if (roomResult.success) setRooms(roomResult.data as Room[]);
             if (summaryResult.success) setSummary(summaryResult.data as typeof summary);
             if (techResult.success) setTechnicians(techResult.data as Technician[]);
+            if (lineUserResult.success) {
+                const lineTechs = (lineUserResult.data as any[]).filter(u => u.role === 'technician' && u.display_name && u.is_active);
+                setLineTechnicians(lineTechs);
+            }
         } catch (error) {
             console.error('Error loading data:', error);
         }
@@ -242,14 +250,31 @@ export default function MaintenanceClient() {
             if (targetReq) {
                 openDetailModal(targetReq);
                 setHasOpenedFromUrl(true);
-
                 // Clear the query param silently from URL
                 const url = new URL(window.location.href);
                 url.searchParams.delete('req');
                 window.history.replaceState({}, '', url.toString());
+                setHasOpenedFromUrl(true);
             }
         }
-    }, [reqQueryParam, requests, hasOpenedFromUrl]);
+    }, [reqQueryParam, hasOpenedFromUrl, loading, requests]);
+
+    async function handleResendNotification(requestId: number) {
+        if (!confirm('คุณต้องการส่งแจ้งเตือนซ้ำสำหรับรายการนี้ใช่หรือไม่?')) return;
+
+        try {
+            const result = await resendMaintenanceNotification(requestId);
+            if (result.success) {
+                showToast('ส่งแจ้งเตือนซ้ำสำเร็จ', 'success');
+                loadData();
+            } else {
+                showToast(result.error || 'ส่งแจ้งเตือนซ้ำไม่สำเร็จ', 'error');
+            }
+        } catch (error) {
+            console.error('Error resending notification:', error);
+            showToast('เกิดข้อผิดพลาดในการส่งแจ้งเตือนซ้ำ', 'error');
+        }
+    }
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -763,6 +788,14 @@ export default function MaintenanceClient() {
                                                             >
                                                                 <Wrench size={14} />
                                                                 เริ่มซ่อม
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleResendNotification(req.request_id)}
+                                                                className="px-3 py-1.5 text-xs font-medium bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition flex items-center gap-1"
+                                                                title="ส่งแจ้งซ่อมซ้ำเดี๋ยวนี้"
+                                                            >
+                                                                <Bell size={14} />
+                                                                แจ้งซ้ำ
                                                             </button>
                                                             <button
                                                                 onClick={() => handleSimpleStatusChange(req.request_id, 'cancelled')}
@@ -1289,13 +1322,22 @@ export default function MaintenanceClient() {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium mb-1">ผู้รับผิดชอบ/ช่าง</label>
-                                        <input
-                                            type="text"
-                                            value={editData.assigned_to}
+                                        <select
+                                            value={editData.assigned_to || ''}
                                             onChange={(e) => setEditData({ ...editData, assigned_to: e.target.value })}
                                             className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                            placeholder="ชื่อช่าง"
-                                        />
+                                        >
+                                            <option value="">-- ไม่ระบุ --</option>
+                                            {Array.from(new Set([
+                                                ...technicians.map(t => t.name),
+                                                ...lineTechnicians.map(u => u.display_name)
+                                            ])).filter(Boolean).sort().map(name => (
+                                                <option key={name} value={name}>{name}</option>
+                                            ))}
+                                            {editData.assigned_to && !Array.from(new Set([...technicians.map(t => t.name), ...lineTechnicians.map(u => u.display_name)])).includes(editData.assigned_to) && (
+                                                <option value={editData.assigned_to}>{editData.assigned_to}</option>
+                                            )}
+                                        </select>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium mb-1">วันที่นัดซ่อม</label>
@@ -1613,9 +1655,15 @@ export default function MaintenanceClient() {
                                                 title="เลือกช่าง"
                                             >
                                                 <option value="">-- เลือกช่าง --</option>
-                                                {technicians.map(tech => (
-                                                    <option key={tech.tech_id} value={tech.name}>{tech.name}</option>
+                                                {Array.from(new Set([
+                                                    ...technicians.map(t => t.name),
+                                                    ...lineTechnicians.map(u => u.display_name)
+                                                ])).filter(Boolean).sort().map(name => (
+                                                    <option key={name} value={name}>{name}</option>
                                                 ))}
+                                                {statusChangeData.technician && !Array.from(new Set([...technicians.map(t => t.name), ...lineTechnicians.map(u => u.display_name)])).includes(statusChangeData.technician) && (
+                                                    <option value={statusChangeData.technician}>{statusChangeData.technician}</option>
+                                                )}
                                             </select>
                                         </div>
                                         <div>

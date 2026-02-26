@@ -328,23 +328,47 @@ export default function SettingsClient() {
                     <h2 className="text-xl font-semibold">การแจ้งเตือน (Notifications)</h2>
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">
-                    <div>
-                        <div className="font-medium">แจ้งเตือนงานล่าช้า (Overdue Alerts)</div>
-                        <div className="text-sm text-gray-500">เปิด/ปิด การแจ้งเตือนเมื่อมีงานซ่อมเกินกำหนด</div>
+                <div className="p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">
+                    <div className="flex items-center justify-between mb-4">
+                        <div>
+                            <div className="font-medium">แจ้งเตือนงานล่าช้า (Overdue Alerts)</div>
+                            <div className="text-sm text-gray-500">เปิด/ปิด การแจ้งเตือนเมื่อมีงานซ่อมเกินกำหนด</div>
+                        </div>
+                        <div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    aria-label="Toggle overdue alerts"
+                                    className="sr-only peer"
+                                    checked={settings['overdue_alerts_enabled'] === 'true'}
+                                    onChange={(e) => handleSave('overdue_alerts_enabled', e.target.checked ? 'true' : 'false')}
+                                />
+                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                            </label>
+                        </div>
                     </div>
-                    <div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                                type="checkbox"
-                                aria-label="Toggle overdue alerts"
-                                className="sr-only peer"
-                                checked={settings['overdue_alerts_enabled'] === 'true'}
-                                onChange={(e) => handleSave('overdue_alerts_enabled', e.target.checked ? 'true' : 'false')}
-                            />
-                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                        </label>
-                    </div>
+                    {settings['overdue_alerts_enabled'] === 'true' && (
+                        <div className="flex items-center justify-between pt-4 border-t dark:border-slate-600">
+                            <div>
+                                <div className="font-medium text-sm">ระยะเวลา Cooldown แจ้งซ้ำ (นาที)</div>
+                                <div className="text-xs text-gray-500">จำนวนนาทีขั้นต่ำก่อนที่จะสามารถกดส่งแจ้งเตือนซ้ำได้อีกครั้ง (ค่าเริ่มต้น 30 นาที)</div>
+                            </div>
+                            <div className="flex max-w-[120px] items-center">
+                                <input
+                                    type="number"
+                                    min="1"
+                                    className="w-full px-3 py-1.5 border rounded-l-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-800 dark:border-slate-600 text-sm"
+                                    value={settings['overdue_alerts_cooldown_minutes'] || '30'}
+                                    onChange={(e) => setSettings({ ...settings, overdue_alerts_cooldown_minutes: e.target.value })}
+                                    onBlur={(e) => handleSave('overdue_alerts_cooldown_minutes', e.target.value)}
+                                    placeholder="30"
+                                />
+                                <div className="bg-gray-100 border border-l-0 dark:border-slate-600 dark:bg-slate-600 px-2 py-1.5 rounded-r-lg text-sm text-gray-600 dark:text-gray-300">
+                                    นาที
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">

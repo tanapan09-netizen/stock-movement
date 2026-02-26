@@ -382,6 +382,108 @@ export async function createMaintenanceRequest(formData: FormData) {
     }
 }
 
+export async function resendMaintenanceNotification(request_id: number) {
+    try {
+        const session = await auth();
+
+        // Check settings
+        const settings = await prisma.tbl_system_settings.findMany({
+            where: {
+                setting_key: {
+                    in: ['overdue_alerts_enabled', 'overdue_alerts_cooldown_minutes']
+                }
+            }
+        });
+
+        const enabledSetting = settings.find((s: { setting_key: string; setting_value: string }) => s.setting_key === 'overdue_alerts_enabled');
+        const cooldownSetting = settings.find((s: { setting_key: string; setting_value: string }) => s.setting_key === 'overdue_alerts_cooldown_minutes');
+
+        if (enabledSetting?.setting_value !== 'true') {
+            return { success: false, error: 'ระบบแจ้งเตือนซ้ำถูกปิดการใช้งาน กรุณาเปิดใช้งานในการตั้งค่า' };
+        }
+
+        const cooldownMinutes = parseInt(cooldownSetting?.setting_value || '30');
+
+        // Get the latest resend action for this request
+        const lastResend = await prisma.tbl_maintenance_history.findFirst({
+            where: {
+                request_id,
+                action: 'ส่งแจ้งเตือนซ้ำ'
+            },
+            orderBy: {
+                changed_at: 'desc'
+            }
+        });
+
+        if (lastResend) {
+            const now = new Date();
+            const lastSent = new Date(lastResend.changed_at);
+            const diffMinutes = Math.floor((now.getTime() - lastSent.getTime()) / (1000 * 60));
+
+            if (diffMinutes < cooldownMinutes) {
+                const remaining = cooldownMinutes - diffMinutes;
+                return { success: false, error: `ระบบตั้งเวลา Cooldown ไว้ โปรดรออีก ${remaining} นาทีก่อนกดแจ้งซ้ำอีกครั้ง` };
+            }
+        }
+
+        const request = await prisma.tbl_maintenance_requests.findUnique({
+            where: { request_id },
+            include: { tbl_rooms: true }
+        });
+
+        if (!request) return { success: false, error: 'Request not found' };
+
+        if (request.status !== 'pending') {
+            return { success: false, error: 'สามารถส่งซ้ำได้เฉพาะรายการที่ "รอดำเนินการ" เท่านั้น' };
+        }
+
+        try {
+            // 1. Notify Technicians via LINE (Broadcast)
+            const { notifyTechniciansViaLine } = await import('@/lib/lineNotify');
+            await notifyTechniciansViaLine(
+                `[แจ้งเตือนซ้ำ] ${request.title}`,
+                request.tbl_rooms?.room_code || '',
+                request.tbl_rooms?.room_name || '',
+                request.priority || 'normal',
+                request.reported_by
+            );
+
+            // 2. Notify Admin/Approvers via Email
+            const { notifyNewMaintenanceRequest } = await import('@/lib/notifications/notificationManager');
+            notifyNewMaintenanceRequest({
+                request_number: request.request_number,
+                title: `[แจ้งเตือนซ้ำ] ${request.title}`,
+                description: request.description,
+                priority: request.priority,
+                room_code: request.tbl_rooms?.room_code || 'N/A',
+                room_name: request.tbl_rooms?.room_name || 'N/A',
+                reported_by: request.reported_by,
+                created_at: request.created_at,
+                image_url: request.image_url ? JSON.parse(request.image_url)[0] : null
+            });
+
+        } catch (notifyError) {
+            console.error('Notification failed:', notifyError);
+            return { success: false, error: 'ส่งข้อความแจ้งเตือนไม่สำเร็จ' };
+        }
+
+        // Log history
+        await prisma.tbl_maintenance_history.create({
+            data: {
+                request_id: request.request_id,
+                action: 'ส่งแจ้งเตือนซ้ำ',
+                new_value: `กดแจ้งเตือนซ้ำ`,
+                changed_by: session?.user?.name || 'System'
+            }
+        });
+
+        return { success: true };
+    } catch (error) {
+        console.error('Error resending notification:', error);
+        return { success: false, error: 'เกิดข้อผิดพลาดในการส่งแจ้งเตือนซ้ำ' };
+    }
+}
+
 export async function updateMaintenanceRequest(
     request_id: number,
     data: {
