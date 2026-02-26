@@ -11,6 +11,22 @@ import { revalidatePath } from 'next/cache';
 import { logSystemAction } from '@/lib/logger';
 
 /**
+ * Get LINE user ID by username
+ */
+export async function getLineIdByUsername(username: string): Promise<string | null> {
+    try {
+        const user = await prisma.tbl_users.findUnique({
+            where: { username },
+            select: { line_user_id: true }
+        });
+        return user?.line_user_id || null;
+    } catch (error) {
+        console.error('Error fetching LINE ID by username:', error);
+        return null;
+    }
+}
+
+/**
  * Get all LINE users
  */
 export async function getLineUsers() {

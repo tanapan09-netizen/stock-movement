@@ -3,7 +3,7 @@
  * Centralized service to send notifications via multiple channels (LINE, Email)
  */
 
-import { sendMulticastMessage, createPartRequestFlexMessage, createStatusChangeFlexMessage } from './lineMessaging';
+import { sendMulticastMessage, createPartRequestFlexMessage, createStatusChangeFlexMessage, createPettyCashFlexMessage } from './lineMessaging';
 import { sendEmail, generatePartRequestEmail, generateStatusChangeEmail, generateMaintenanceRequestEmail, generateJobAssignmentEmail, generateMaintenanceStatusChangeEmail } from './emailService';
 
 export interface PartRequestData {
@@ -349,4 +349,63 @@ export async function sendTestNotification(): Promise<{
         line: lineResult.status === 'fulfilled' ? lineResult.value : { success: false, error: 'Promise rejected' },
         email: emailResult.status === 'fulfilled' ? emailResult.value : { success: false, error: 'Promise rejected' },
     };
+}
+
+/**
+ * Send notifications for Petty Cash events
+ */
+export async function notifyPettyCashEvent(
+    data: {
+        eventType: 'request' | 'dispense' | 'clear' | 'reconcile';
+        request_number: string;
+        requested_by: string;
+        purpose: string;
+        amount: number;
+        notes?: string;
+    }
+): Promise<void> {
+    console.log('[Notification] Petty Cash Event:', data.eventType, data.request_number);
+
+    try {
+        if (process.env.LINE_MESSAGING_ENABLED !== 'false') {
+            const { getLineIdsByRoles, getLineIdByUsername } = await import('@/actions/lineUserActions');
+
+            let targetRoles: string[] = [];
+            let targetUsers: string[] = [];
+            let lineIds: string[] = [];
+
+            if (data.eventType === 'request') {
+                targetRoles = ['manager', 'accounting', 'admin'];
+            } else if (data.eventType === 'dispense' || data.eventType === 'reconcile') {
+                targetUsers.push(data.requested_by);
+            } else if (data.eventType === 'clear') {
+                targetRoles = ['manager', 'accounting', 'admin'];
+            }
+
+            if (targetRoles.length > 0) {
+                const roleIds = await getLineIdsByRoles(targetRoles);
+                lineIds = [...lineIds, ...roleIds];
+            }
+            if (targetUsers.length > 0) {
+                const userLineIds = await Promise.all(targetUsers.map(u => getLineIdByUsername(u)));
+                lineIds = [...lineIds, ...userLineIds.filter(Boolean) as string[]];
+            }
+
+            lineIds = [...new Set(lineIds)];
+
+            if (lineIds.length > 0) {
+                const flexMessage = createPettyCashFlexMessage(data);
+                const result = await sendMulticastMessage(lineIds, flexMessage);
+                if (result.success) {
+                    console.log(`[Notification] Petty Cash ${data.eventType} sent to`, lineIds.length, 'users');
+                } else {
+                    console.warn(`[Notification] Petty Cash ${data.eventType} failed:`, result.error);
+                }
+            } else {
+                console.log('[Notification] No relevant LINE users found for Petty Cash event');
+            }
+        }
+    } catch (err) {
+        console.error('[Notification] Petty Cash event failed:', err);
+    }
 }

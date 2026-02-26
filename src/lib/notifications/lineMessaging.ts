@@ -98,6 +98,112 @@ export function createTextMessage(text: string): TextMessage {
 }
 
 /**
+ * Create Flex Message for Petty Cash 
+ */
+export function createPettyCashFlexMessage(data: {
+    eventType: 'request' | 'dispense' | 'clear' | 'reconcile';
+    request_number: string;
+    requested_by: string;
+    purpose: string;
+    amount: number;
+    notes?: string;
+}): FlexMessage {
+    const titles = {
+        request: '💵 เบิกเงินสดย่อยใหม่',
+        dispense: '💸 จ่ายเงินสดย่อยแล้ว',
+        clear: '🧾 คืนเงิน/ส่งใบเสร็จแล้ว',
+        reconcile: '✅ ปิดยอดเงินสดย่อยแล้ว'
+    };
+    const colors = {
+        request: '#3b82f6',  // Blue
+        dispense: '#f59e0b', // Amber
+        clear: '#8b5cf6',    // Purple
+        reconcile: '#10b981' // Green
+    };
+
+    const title = titles[data.eventType];
+    const color = colors[data.eventType];
+
+    return {
+        type: 'flex',
+        altText: title,
+        contents: {
+            type: 'bubble',
+            header: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'text',
+                        text: title,
+                        weight: 'bold',
+                        color: '#ffffff',
+                        size: 'lg'
+                    }
+                ],
+                backgroundColor: color,
+                paddingAll: '20px'
+            },
+            body: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        spacing: 'sm',
+                        contents: [
+                            { type: 'text', text: 'เลขที่:', color: '#aaaaaa', size: 'sm', flex: 2 },
+                            { type: 'text', text: data.request_number, wrap: true, color: '#666666', size: 'sm', flex: 5 }
+                        ]
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        spacing: 'sm',
+                        contents: [
+                            { type: 'text', text: 'ผู้เบิก:', color: '#aaaaaa', size: 'sm', flex: 2 },
+                            { type: 'text', text: data.requested_by, wrap: true, color: '#666666', size: 'sm', flex: 5 }
+                        ],
+                        margin: 'sm'
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        spacing: 'sm',
+                        contents: [
+                            { type: 'text', text: 'รายการ:', color: '#aaaaaa', size: 'sm', flex: 2 },
+                            { type: 'text', text: data.purpose, wrap: true, color: '#666666', size: 'sm', flex: 5 }
+                        ],
+                        margin: 'sm'
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        spacing: 'sm',
+                        contents: [
+                            { type: 'text', text: 'จำนวนเงิน:', color: '#aaaaaa', size: 'sm', flex: 2 },
+                            { type: 'text', text: `฿${data.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, wrap: true, color: '#ef4444', weight: 'bold', size: 'md', flex: 5 }
+                        ],
+                        margin: 'md'
+                    },
+                    ...(data.notes ? [{
+                        type: 'box' as const,
+                        layout: 'baseline' as const,
+                        spacing: 'sm',
+                        contents: [
+                            { type: 'text' as const, text: 'หมายเหตุ:', color: '#aaaaaa', size: 'sm', flex: 2 },
+                            { type: 'text' as const, text: data.notes, wrap: true, color: '#666666', size: 'sm', flex: 5 }
+                        ],
+                        margin: 'md'
+                    }] : [])
+                ]
+            }
+        }
+    };
+}
+
+/**
  * Create Flex Message for Part Request
  */
 export function createPartRequestFlexMessage(request: {

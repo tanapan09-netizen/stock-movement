@@ -60,14 +60,30 @@ class DeployTool(ctk.CTk):
                                         fg_color="#0EA5E9", hover_color="#0284C7", height=40, font=ctk.CTkFont(size=14))
         self.btn_registry.grid(row=6, column=0, padx=20, pady=10)
         
+        # --- Server Controls ---
+        self.control_label = ctk.CTkLabel(self.sidebar_frame, text="Server Controls:", font=ctk.CTkFont(size=12, weight="bold"))
+        self.control_label.grid(row=7, column=0, padx=20, pady=(10, 0), sticky="w")
+        
+        self.control_frame = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent")
+        self.control_frame.grid(row=8, column=0, padx=20, pady=5, sticky="ew")
+        
+        self.btn_start = ctk.CTkButton(self.control_frame, text="▶️ Start", command=self.start_server, fg_color="#10B981", hover_color="#059669", width=60)
+        self.btn_start.pack(side="left", padx=(0, 5), expand=True, fill="x")
+        
+        self.btn_stop = ctk.CTkButton(self.control_frame, text="⏹️ Stop", command=self.stop_server, fg_color="#EF4444", hover_color="#DC2626", width=60)
+        self.btn_stop.pack(side="left", padx=5, expand=True, fill="x")
+        
+        self.btn_restart = ctk.CTkButton(self.control_frame, text="🔄 Restart", command=self.restart_server, fg_color="#F59E0B", hover_color="#D97706", width=60)
+        self.btn_restart.pack(side="left", padx=(5, 0), expand=True, fill="x")
+
         self.db_push_check = ctk.CTkCheckBox(self.sidebar_frame, text="Run DB Push (Prisma)", variable=self.db_push_var, onvalue="on", offvalue="off")
-        self.db_push_check.grid(row=7, column=0, padx=20, pady=20)
+        self.db_push_check.grid(row=9, column=0, padx=20, pady=20)
         
         self.appearance_mode_label = ctk.CTkLabel(self.sidebar_frame, text="Theme:", anchor="w")
-        self.appearance_mode_label.grid(row=8, column=0, padx=20, pady=(10, 0))
+        self.appearance_mode_label.grid(row=10, column=0, padx=20, pady=(10, 0))
         self.appearance_mode_optionmenu = ctk.CTkOptionMenu(self.sidebar_frame, values=["Dark", "Light"],
                                                                command=self.change_appearance_mode_event)
-        self.appearance_mode_optionmenu.grid(row=9, column=0, padx=20, pady=(10, 20))
+        self.appearance_mode_optionmenu.grid(row=11, column=0, padx=20, pady=(10, 20))
 
         # --- Main Area ---
         self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -300,6 +316,60 @@ class DeployTool(ctk.CTk):
             self.status_var.set("Push Complete")
             self.after(0, lambda: messagebox.showinfo("Success", "Successfully pushed image to Sugoidev Registry!"))
             
+        threading.Thread(target=_target, daemon=True).start()
+
+    def start_server(self):
+        if not messagebox.askyesno("Confirm Start", "Start the server containers?"):
+            return
+        def _target():
+            self.status_var.set("Starting Server...")
+            self.log("=" * 50)
+            self.log("Starting Server...", 'info')
+            cmd = "docker-compose -f docker-compose.prod.yml up -d"
+            self.log(f"> {cmd}", 'cmd')
+            if self.run_command_process(cmd) == 0:
+                self.log("Server started successfully!", 'success')
+                self.status_var.set("Server Running")
+                self.check_docker_status()
+            else:
+                self.log("Failed to start server.", 'error')
+                self.status_var.set("Error")
+        threading.Thread(target=_target, daemon=True).start()
+
+    def stop_server(self):
+        if not messagebox.askyesno("Confirm Stop", "Stop the server? This will bring down the containers."):
+            return
+        def _target():
+            self.status_var.set("Stopping Server...")
+            self.log("=" * 50)
+            self.log("Stopping Server...", 'info')
+            cmd = "docker-compose -f docker-compose.prod.yml down"
+            self.log(f"> {cmd}", 'cmd')
+            if self.run_command_process(cmd) == 0:
+                self.log("Server stopped successfully!", 'success')
+                self.status_var.set("Server Stopped")
+                self.check_docker_status()
+            else:
+                self.log("Failed to stop server.", 'error')
+                self.status_var.set("Error")
+        threading.Thread(target=_target, daemon=True).start()
+
+    def restart_server(self):
+        if not messagebox.askyesno("Confirm Restart", "Restart the server containers?"):
+            return
+        def _target():
+            self.status_var.set("Restarting Server...")
+            self.log("=" * 50)
+            self.log("Restarting Server...", 'info')
+            cmd = "docker-compose -f docker-compose.prod.yml restart"
+            self.log(f"> {cmd}", 'cmd')
+            if self.run_command_process(cmd) == 0:
+                self.log("Server restarted successfully!", 'success')
+                self.status_var.set("Server Running")
+                self.check_docker_status()
+            else:
+                self.log("Failed to restart server.", 'error')
+                self.status_var.set("Error")
         threading.Thread(target=_target, daemon=True).start()
 
     def start_deploy(self):
