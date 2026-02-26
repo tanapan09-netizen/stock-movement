@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { getMaintenanceRequestById } from '@/actions/maintenanceActions';
+import { getSystemSettings } from '@/actions/settingActions';
 import { Printer, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
@@ -21,13 +22,20 @@ const formatDate = (date: Date | string | null) => {
 export default function JobSheetPage() {
     const params = useParams();
     const [request, setRequest] = useState<any>(null);
+    const [settings, setSettings] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (params.id) {
-            getMaintenanceRequestById(Number(params.id)).then(result => {
-                if (result.success) {
-                    setRequest(result.data);
+            Promise.all([
+                getMaintenanceRequestById(Number(params.id)),
+                getSystemSettings()
+            ]).then(([requestResult, settingsResult]) => {
+                if (requestResult.success) {
+                    setRequest(requestResult.data);
+                }
+                if (settingsResult.success && settingsResult.data) {
+                    setSettings(settingsResult.data);
                 }
                 setLoading(false);
             });
@@ -63,8 +71,8 @@ export default function JobSheetPage() {
                         </div>
                         <div>
                             <h1 className="text-2xl font-bold text-gray-900">ใบแจ้งซ่อม / Job Sheet</h1>
-                            <p className="text-sm text-gray-600">วิทยาลัยการอาชีพนวมินทราชูทิศ</p>
-                            <p className="text-sm text-gray-600">ระบบบริหารจัดการงานซ่อมบำรุงและพัสดุ</p>
+                            <p className="text-sm text-gray-800 font-semibold">{settings.company_name || 'ชื่อบริษัท/หน่วยงาน'}</p>
+                            <p className="text-sm text-gray-600">{settings.company_address || 'ที่อยู่บริษัท/หน่วยงาน'}</p>
                         </div>
                     </div>
                     <div className="text-right">
@@ -87,8 +95,8 @@ export default function JobSheetPage() {
                         <div className="grid grid-cols-3">
                             <span className="text-gray-600">สถานที่:</span>
                             <span className="col-span-2 font-medium">
-                                {request.room?.room_code} - {request.room?.room_name}
-                                {request.room?.building ? ` (อาคาร ${request.room.building})` : ''}
+                                {request.tbl_rooms?.room_code} - {request.tbl_rooms?.room_name}
+                                {request.tbl_rooms?.building ? ` (อาคาร ${request.tbl_rooms.building})` : ''}
                             </span>
                         </div>
                         <div className="grid grid-cols-3">
@@ -126,8 +134,8 @@ export default function JobSheetPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {request.parts && request.parts.length > 0 ? (
-                                request.parts.map((part: any, index: number) => (
+                            {request.tbl_maintenance_parts && request.tbl_maintenance_parts.length > 0 ? (
+                                request.tbl_maintenance_parts.map((part: any, index: number) => (
                                     <tr key={index}>
                                         <td className="border border-gray-300 px-3 py-2">
                                             {part.tbl_products?.p_name || part.p_id}

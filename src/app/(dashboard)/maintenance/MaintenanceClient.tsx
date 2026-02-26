@@ -1370,15 +1370,7 @@ export default function MaintenanceClient() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="mt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPartRequestModal(true)}
-                                    className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                                >
-                                    <ShoppingCart size={14} /> ขอเบิก/ซื้ออะไหล่เพิ่ม (ที่ไม่มีในสต็อก)
-                                </button>
-                            </div>
+
 
                             {/* Parts Usage Section */}
                             {parts.length > 0 && (

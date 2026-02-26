@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { Trash2, UserCheck, UserX, Plus } from 'lucide-react';
-import { getLineUsers, toggleApprover, toggleLineUserActive, deleteLineUser, updateLineUserRole } from '@/actions/lineUserActions';
+import { getLineUsers, toggleApprover, toggleLineUserActive, deleteLineUser, updateLineUserRole, updateLineUserFullName } from '@/actions/lineUserActions';
 
 interface LineUser {
     id: number;
     line_user_id: string;
     display_name: string | null;
+    full_name: string | null;
     picture_url: string | null;
     is_approver: boolean;
     role: string;
@@ -27,7 +28,8 @@ export default function LineUserClient() {
         setLoading(true);
         const result = await getLineUsers();
         if (result.success && result.data) {
-            setUsers(result.data);
+            // @ts-ignore - Ignore type errors for full_name and role missing from generated types
+            setUsers(result.data as any);
         }
         setLoading(false);
     }
@@ -83,6 +85,15 @@ export default function LineUserClient() {
             setUsers(prev => prev.map(u => u.id === id ? { ...u, role } : u));
         } else {
             alert('Failed to update role');
+        }
+    };
+
+    const handleUpdateFullName = async (id: number, fullName: string) => {
+        const result = await updateLineUserFullName(id, fullName);
+        if (result.success) {
+            setUsers(prev => prev.map(u => u.id === id ? { ...u, full_name: fullName } : u));
+        } else {
+            alert('Failed to update name');
         }
     };
 
@@ -186,8 +197,23 @@ export default function LineUserClient() {
                                                     <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-slate-600 flex items-center justify-center text-gray-500 text-xs">NO IMG</div>
                                                 )}
                                                 <div>
-                                                    <div className="font-medium text-gray-900 dark:text-white">{user.display_name || 'Unknown User'}</div>
-                                                    <div className="text-xs text-gray-400 font-mono truncate max-w-[150px]" title={user.line_user_id}>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="ชื่อ-นามสกุล (แทน LINE)"
+                                                        defaultValue={user.full_name || ''}
+                                                        onBlur={(e) => {
+                                                            if (e.target.value !== (user.full_name || '')) {
+                                                                handleUpdateFullName(user.id, e.target.value);
+                                                            }
+                                                        }}
+                                                        className="font-medium text-gray-900 dark:text-white bg-transparent border-b border-dashed border-gray-300 focus:border-blue-500 focus:outline-none w-full min-w-[150px]"
+                                                    />
+                                                    {user.display_name && (
+                                                        <div className="text-xs text-gray-500 mt-0.5">
+                                                            LINE: {user.display_name}
+                                                        </div>
+                                                    )}
+                                                    <div className="text-xs text-gray-400 font-mono truncate max-w-[150px] mt-0.5" title={user.line_user_id}>
                                                         {user.line_user_id}
                                                     </div>
                                                 </div>

@@ -625,6 +625,7 @@ model tbl_line_users {
   user_id          Int?
   line_user_id     String    @unique @db.VarChar(255)
   display_name     String?   @db.VarChar(255)
+  full_name        String?   @db.VarChar(255)
   picture_url      String?   @db.VarChar(500)
   is_approver      Boolean   @default(false)
   role             String    @default("general") @db.VarChar(50)

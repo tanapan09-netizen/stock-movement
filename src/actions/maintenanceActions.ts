@@ -1020,6 +1020,21 @@ export async function getProducts() {
             }
         });
 
+        // Get WH-01 stock for each product
+        const mainWarehouse = await prisma.tbl_warehouses.findFirst({
+            where: { warehouse_code: 'WH-01' }
+        });
+
+        let wh01StockMap = new Map<string, number>();
+        if (mainWarehouse) {
+            const stocks = await prisma.tbl_warehouse_stock.findMany({
+                where: { warehouse_id: mainWarehouse.warehouse_id }
+            });
+            stocks.forEach(stock => {
+                wh01StockMap.set(stock.p_id, stock.quantity || 0);
+            });
+        }
+
         // Calculate reserved stock for each product
         const reservedCounts = await prisma.tbl_maintenance_parts.groupBy({
             by: ['p_id'],
@@ -1029,15 +1044,20 @@ export async function getProducts() {
 
         const reservedMap = new Map<string, number>();
         reservedCounts.forEach(item => {
+            // Only count currently withdrawn quantity minus any returned
             reservedMap.set(item.p_id, item._sum.quantity || 0);
         });
 
         const productsWithAvailability = products.map(p => {
-            const reserved = reservedMap.get(p.p_id) || 0;
+            // Important: Use WH-01 stock as base, not total p_count
+            const wh01Qty = wh01StockMap.get(p.p_id) || 0;
+            // The reserved logic in WH-03 is already physically moved from WH-01 during withdrawal,
+            // so we don't need to subtract `reserved` from `wh01Qty` again!
+            // When withdrawing, we just check against wh01Qty.
             return {
                 ...p,
-                reserved,
-                available: Math.max(0, p.p_count - reserved)
+                reserved: reservedMap.get(p.p_id) || 0,
+                available_stock: wh01Qty
             };
         });
 

@@ -192,6 +192,40 @@ export async function updateLineUserRole(id: number, role: string) {
 }
 
 /**
+ * Update LINE user full name
+ */
+export async function updateLineUserFullName(id: number, fullName: string) {
+    try {
+        const session = await auth();
+        if (!session || !session.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        await prisma.tbl_line_users.update({
+            where: { id },
+            data: { full_name: fullName || null },
+        });
+
+        revalidatePath('/settings/line-users');
+
+        await logSystemAction(
+            'UPDATE',
+            'LineUser',
+            id,
+            `Updated full name to ${fullName}`,
+            parseInt(session.user.id || '0'),
+            session.user.name || 'System',
+            'unknown'
+        );
+
+        return { success: true };
+    } catch (error) {
+        console.error('Error updating full name:', error);
+        return { success: false, error: 'Failed to update full name' };
+    }
+}
+
+/**
  * Delete LINE user
  */
 export async function deleteLineUser(id: number) {
