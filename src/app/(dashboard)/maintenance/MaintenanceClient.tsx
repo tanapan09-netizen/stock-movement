@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/components/ToastProvider';
 import Link from 'next/link';
 import {
@@ -105,6 +106,9 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
 
 export default function MaintenanceClient() {
     const { data: session } = useSession();
+    const searchParams = useSearchParams();
+    const reqQueryParam = searchParams.get('req');
+    const [hasOpenedFromUrl, setHasOpenedFromUrl] = useState(false);
     const { showToast } = useToast();
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
     const [rooms, setRooms] = useState<Room[]>([]);
@@ -231,6 +235,21 @@ export default function MaintenanceClient() {
         loadData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filterStatus, filterRoom]);
+
+    useEffect(() => {
+        if (reqQueryParam && requests.length > 0 && !hasOpenedFromUrl) {
+            const targetReq = requests.find(r => r.request_number === reqQueryParam);
+            if (targetReq) {
+                openDetailModal(targetReq);
+                setHasOpenedFromUrl(true);
+
+                // Clear the query param silently from URL
+                const url = new URL(window.location.href);
+                url.searchParams.delete('req');
+                window.history.replaceState({}, '', url.toString());
+            }
+        }
+    }, [reqQueryParam, requests, hasOpenedFromUrl]);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();

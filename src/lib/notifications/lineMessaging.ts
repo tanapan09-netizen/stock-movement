@@ -612,7 +612,7 @@ export function createMaintenanceRequestFlexMessage(request: {
                         action: {
                             type: 'uri',
                             label: 'ดูรายละเอียด',
-                            uri: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/maintenance/${request.request_number}`,
+                            uri: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/maintenance?req=${request.request_number}`,
                         },
                     },
                 ],
@@ -973,7 +973,7 @@ export function createJobAssignmentFlexMessage(request: {
                         action: {
                             type: 'uri',
                             label: 'รับงาน / ดูรายละเอียด',
-                            uri: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/maintenance/${request.request_number}`,
+                            uri: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/maintenance?req=${request.request_number}`,
                         },
                     },
                 ],
