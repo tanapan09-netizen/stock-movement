@@ -245,23 +245,25 @@ export default function Sidebar(props: SidebarProps) {
                         )}
 
                         {/* ─── การเงิน & เบิกจ่าย ─── */}
-                        {!collapsed && (
+                        {can(PERMISSIONS.PETTY_CASH) && !collapsed && (
                             <div className="pt-5 pb-1.5 px-3">
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">💰 การเงิน & เบิกจ่าย</p>
                             </div>
                         )}
-                        {collapsed && (
+                        {can(PERMISSIONS.PETTY_CASH) && collapsed && (
                             <div className="my-2 h-px bg-gray-700/60" />
                         )}
 
-                        <Link
-                            href="/petty-cash"
-                            className={`flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all ${isActive('/petty-cash') ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-gray-300 hover:bg-white/5 hover:text-white'}`}
-                            title={collapsed ? 'เบิกเงินสดย่อย' : undefined}
-                        >
-                            <DollarSign className={collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} />
-                            {!collapsed && 'เบิกเงินสดย่อย (Petty Cash)'}
-                        </Link>
+                        {can(PERMISSIONS.PETTY_CASH) && (
+                            <Link
+                                href="/petty-cash"
+                                className={`flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all ${isActive('/petty-cash') ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-gray-300 hover:bg-white/5 hover:text-white'}`}
+                                title={collapsed ? 'เบิกเงินสดย่อย' : undefined}
+                            >
+                                <DollarSign className={collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} />
+                                {!collapsed && 'เบิกเงินสดย่อย (Petty Cash)'}
+                            </Link>
+                        )}
 
                         {/* ─── การจัดการ (Admin) ─── */}
                         {(can(PERMISSIONS.ADMIN_PO) || can(PERMISSIONS.ADMIN_SUPPLIERS) || can(PERMISSIONS.ADMIN_WAREHOUSES) || can(PERMISSIONS.ADMIN_CATEGORIES)) && !collapsed && (

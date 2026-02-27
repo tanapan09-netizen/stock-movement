@@ -99,6 +99,33 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon?: React
     cancelled: { label: 'ยกเลิก', color: 'bg-gray-100 text-gray-800', icon: XCircle }
 };
 
+const formatAcceptedTime = (req: MaintenanceRequestItem): Date | null => {
+    if (!req.tbl_maintenance_history || req.tbl_maintenance_history.length === 0) {
+        return null;
+    }
+    // Find the latest history item where status was changed to 'in_progress'
+    const acceptedEvent = req.tbl_maintenance_history.find(h =>
+        (h.action === 'เปลี่ยนสถานะ' || h.action === 'status_change') &&
+        h.new_value === 'in_progress'
+    );
+    return acceptedEvent ? new Date(acceptedEvent.changed_at) : null;
+};
+
+const getElapsedTime = (startDate: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - startDate.getTime();
+    if (diffMs < 0) return 'เพิ่งรับงาน';
+
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays > 0) return `${diffDays} วัน ${diffHours % 24} ชม.`;
+    if (diffHours > 0) return `${diffHours} ชม. ${diffMins % 60} นาที`;
+    if (diffMins === 0) return `ไม่ถึง 1 นาที`;
+    return `${diffMins} นาที`;
+};
+
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
     low: { label: 'ต่ำ', color: 'bg-gray-100 text-gray-600' },
     normal: { label: 'ปกติ', color: 'bg-blue-100 text-blue-600' },
@@ -728,7 +755,7 @@ export default function MaintenanceClient() {
                                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">ห้อง</th>
                                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">รายละเอียด</th>
                                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">ผู้รับผิดชอบ</th>
-                                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">กำหนดซ่อม</th>
+                                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">เวลารับงาน (ผ่านไป)</th>
                                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">สถานะ</th>
                                     <th className="px-4 py-3 text-right text-sm font-medium text-gray-600 dark:text-gray-300">จัดการ</th>
                                 </tr>
@@ -768,7 +795,41 @@ export default function MaintenanceClient() {
                                                 {req.assigned_to || <span className="text-gray-400">-</span>}
                                             </td>
                                             <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                                                {req.scheduled_date ? new Date(req.scheduled_date).toLocaleDateString('th-TH') : <span className="text-gray-400">-</span>}
+                                                {(() => {
+                                                    const acceptedTime = formatAcceptedTime(req);
+
+                                                    // If accepted or completed, show accepted time
+                                                    if (req.status === 'in_progress' || req.status === 'completed') {
+                                                        if (!acceptedTime) return <span className="text-gray-400">-</span>;
+                                                        return (
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-xs text-gray-500">รับงานเมื่อ:</span>
+                                                                <span>{acceptedTime.toLocaleDateString('th-TH')} {acceptedTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                                {req.status === 'in_progress' && (
+                                                                    <span className="text-xs text-orange-600 bg-orange-50 dark:bg-orange-500/10 px-1.5 py-0.5 rounded w-fit flex items-center gap-1">
+                                                                        <Clock size={12} />
+                                                                        {getElapsedTime(acceptedTime)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    // If pending or cancelled, show reported time
+                                                    const createdTime = new Date(req.created_at);
+                                                    return (
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className="text-xs text-gray-500">แจ้งเมื่อ:</span>
+                                                            <span>{createdTime.toLocaleDateString('th-TH')} {createdTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                            {req.status === 'pending' && (
+                                                                <span className="text-xs text-yellow-600 bg-yellow-50 dark:bg-yellow-500/10 px-1.5 py-0.5 rounded w-fit flex items-center gap-1">
+                                                                    <Clock size={12} />
+                                                                    รอหาช่างมาแล้ว {getElapsedTime(createdTime)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </td>
                                             <td className="px-4 py-3">
                                                 <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 w-fit ${status.color}`}>

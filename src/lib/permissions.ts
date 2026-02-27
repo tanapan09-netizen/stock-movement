@@ -11,6 +11,7 @@ export const PERMISSIONS = {
     MAINTENANCE_PARTS: 'maintenance_parts',
     MAINTENANCE_REQUESTS: 'maintenance_requests',
     MAINTENANCE_REPORTS: 'maintenance_reports',
+    PETTY_CASH: 'petty_cash',
     ADMIN_ROLES: 'admin_roles',
     ADMIN_PO: 'admin_po',
     ADMIN_SUPPLIERS: 'admin_suppliers',
@@ -46,6 +47,7 @@ export const PERMISSION_LIST: PermissionItem[] = [
     { key: PERMISSIONS.BORROW, label: 'ยืม-คืน', description: 'จัดการการยืมและคืนของ', category: 'Core' },
     { key: PERMISSIONS.ASSETS, label: 'ทรัพย์สิน', description: 'ทะเบียนทรัพย์สินถาวร', category: 'Core' },
     { key: PERMISSIONS.MAINTENANCE, label: 'แจ้งซ่อม', description: 'สิทธิ์ในการส่งใบแจ้งซ่อม', category: 'Core' },
+    { key: PERMISSIONS.PETTY_CASH, label: 'เงินสดย่อย', description: 'จัดการระบบเบิกจ่ายเงินสดย่อย', category: 'Core' },
 
     // Maintenance
     { key: PERMISSIONS.MAINTENANCE_DASHBOARD, label: 'Dashboard งานซ่อม', description: 'ดูภาพรวมงานซ่อมทั้งหมด', category: 'Maintenance' },
