@@ -99,6 +99,46 @@ export async function createPettyCashRequest(formData: FormData) {
     }
 }
 
+export async function approvePettyCash(id: number) {
+    try {
+        const session = await auth();
+        if (!session || !session.user) return { success: false, error: 'Unauthorized' };
+
+        const role = (session.user as any).role?.toLowerCase() || '';
+        const isApprover = (session.user as any).is_approver === true;
+        if (!['admin', 'manager', 'accounting'].includes(role) && !isApprover) {
+            return { success: false, error: 'Permission denied: Requires Approver status' };
+        }
+
+        const request = await prisma.tbl_petty_cash.update({
+            where: { id, status: 'pending' },
+            data: { status: 'approved' }
+        });
+
+        revalidatePath('/petty-cash');
+
+        try {
+            const { notifyPettyCashEvent } = await import('@/lib/notifications/notificationManager');
+            // Assuming we reuse the dispense notification type or create an approve one, using 'request' for now as a fallback or adding it
+            await notifyPettyCashEvent({
+                eventType: 'dispense', // Notify Accounting it's ready to dispense
+                request_number: request.request_number,
+                requested_by: request.requested_by,
+                purpose: request.purpose,
+                amount: Number(request.requested_amount),
+                notes: `Approved by ${session.user.name}`
+            });
+        } catch (err) {
+            console.error('[Petty Cash] Notification failed:', err);
+        }
+
+        return { success: true, data: request };
+    } catch (error) {
+        console.error('Error approving petty cash:', error);
+        return { success: false, error: 'Failed to approve cash request' };
+    }
+}
+
 export async function dispensePettyCash(id: number, dispensed_amount: number, notes?: string) {
     try {
         const session = await auth();
@@ -109,7 +149,7 @@ export async function dispensePettyCash(id: number, dispensed_amount: number, no
         if (!isAdminOrAccounting) return { success: false, error: 'Permission denied' };
 
         const request = await prisma.tbl_petty_cash.update({
-            where: { id },
+            where: { id, status: { in: ['pending', 'approved'] } },
             data: {
                 status: 'dispensed',
                 dispensed_amount,

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import {
     getPettyCashRequests,
     createPettyCashRequest,
+    approvePettyCash,
     dispensePettyCash,
     submitClearance,
     reconcilePettyCash,
@@ -11,8 +12,9 @@ import {
     deletePettyCashRequest
 } from '@/actions/pettyCashActions';
 import { getSession } from 'next-auth/react';
+import Link from 'next/link';
 import {
-    Plus, DollarSign, CheckCircle, Clock, Search, ExternalLink, Trash2, XCircle, FileText
+    Plus, DollarSign, CheckCircle, Search, ExternalLink, Trash2, XCircle, FileText
 } from 'lucide-react';
 import { useToast } from '@/components/ToastProvider';
 
@@ -45,7 +47,6 @@ export default function PettyCashClient() {
     const { showToast } = useToast();
 
     // Modals
-    const [showRequestModal, setShowRequestModal] = useState(false);
     const [showDispenseModal, setShowDispenseModal] = useState(false);
     const [showClearModal, setShowClearModal] = useState(false);
     const [showReconcileModal, setShowReconcileModal] = useState(false);
@@ -58,15 +59,6 @@ export default function PettyCashClient() {
         dispensed_amount: '',
         actual_spent: '',
         notes: ''
-    });
-
-    // Detailed fields for new request
-    const [requestForm, setRequestForm] = useState({
-        department: '',
-        items: '',
-        reason: '',
-        payee: '',
-        amount: ''
     });
 
     const [files, setFiles] = useState<FileList | null>(null);
@@ -105,31 +97,6 @@ export default function PettyCashClient() {
     });
 
     // Handlers
-    const handleRequestCash = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-
-        const combinedPurpose = `แผนก/โครงการ: ${requestForm.department}
-รายการ: ${requestForm.items}
-เหตุผล: ${requestForm.reason}
-ผู้รับเงิน: ${requestForm.payee}`;
-
-        const fd = new FormData();
-        fd.append('purpose', combinedPurpose);
-        fd.append('requested_amount', requestForm.amount);
-
-        const res = await createPettyCashRequest(fd);
-        if (res.success) {
-            showToast('ส่งคำขอเบิกเงินสำเร็จ', 'success');
-            setShowRequestModal(false);
-            setRequestForm({ department: '', items: '', reason: '', payee: '', amount: '' });
-            loadData();
-        } else {
-            showToast(res.error || 'ส่งคำขอล้มเหลว', 'error');
-        }
-        setIsSubmitting(false);
-    };
-
     const handleDispense = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedRequest) return;
@@ -141,6 +108,19 @@ export default function PettyCashClient() {
             loadData();
         } else {
             showToast(res.error || 'การจ่ายเงินล้มเหลว', 'error');
+        }
+        setIsSubmitting(false);
+    };
+
+    const handleApprove = async (id: number) => {
+        if (!confirm('ยืนยันนุมัติคำขอนี้ใช่หรือไม่?')) return;
+        setIsSubmitting(true);
+        const res = await approvePettyCash(id);
+        if (res.success) {
+            showToast('อนุมัติคำขอสำเร็จ', 'success');
+            loadData();
+        } else {
+            showToast(res.error || 'การอนุมัติล้มเหลว', 'error');
         }
         setIsSubmitting(false);
     };
@@ -215,6 +195,7 @@ export default function PettyCashClient() {
     const getStatusBadge = (status: string) => {
         const styles = {
             pending: { class: 'bg-yellow-100 text-yellow-800', label: 'รออนุมัติ' },
+            approved: { class: 'bg-emerald-100 text-emerald-800', label: 'อนุมัติแล้ว' },
             dispensed: { class: 'bg-blue-100 text-blue-800', label: 'จ่ายเงินแล้ว' },
             clearing: { class: 'bg-indigo-100 text-indigo-800', label: 'รอตรวจเคลียร์' },
             reconciled: { class: 'bg-green-100 text-green-800', label: 'ปิดยอดแล้ว' },
@@ -231,12 +212,12 @@ export default function PettyCashClient() {
                     <h1 className="text-2xl font-bold text-gray-900">เงินสดย่อย (Petty Cash)</h1>
                     <p className="text-sm text-gray-500">จัดการการเบิกเงินสดสำรองจ่ายและเคลียร์เงิน</p>
                 </div>
-                <button
-                    onClick={() => setShowRequestModal(true)}
-                    className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                <Link
+                    href="/petty-cash/new"
+                    className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
                 >
                     <Plus className="w-5 h-5 mr-2" /> เบิกเงินสดย่อย
-                </button>
+                </Link>
             </div>
 
             {/* Tabs */}
@@ -306,7 +287,10 @@ export default function PettyCashClient() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             {/* Action Buttons Logic */}
-                                            {req.status === 'pending' && isAccountingOrAdmin && (
+                                            {req.status === 'pending' && (isApprover || userRole === 'admin' || userRole === 'manager') && (
+                                                <button onClick={() => handleApprove(req.id)} className="text-emerald-600 hover:text-emerald-900 mr-3">อนุมัติ</button>
+                                            )}
+                                            {['pending', 'approved'].includes(req.status) && isAccountingOrAdmin && (
                                                 <button onClick={() => { setSelectedRequest(req); setFormData({ ...formData, dispensed_amount: String(req.requested_amount) }); setShowDispenseModal(true); }} className="text-blue-600 hover:text-blue-900 mr-3">จ่ายเงิน</button>
                                             )}
                                             {req.status === 'dispensed' && (userName === req.requested_by || isAccountingOrAdmin) && (
@@ -329,112 +313,6 @@ export default function PettyCashClient() {
                     </table>
                 </div>
             </div>
-
-            {/* Request Modal */}
-            {showRequestModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
-                        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                                <DollarSign className="w-5 h-5 text-blue-600" />
-                                แบบฟอร์มขอเบิกเงินสดย่อย
-                            </h2>
-                            <button onClick={() => setShowRequestModal(false)} className="text-gray-400 hover:text-gray-600">
-                                <XCircle className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <div className="p-6 overflow-y-auto">
-                            <form onSubmit={handleRequestCash}>
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-700 mb-1">จำนวนเงิน (บาท) <span className="text-red-500">*</span></label>
-                                            <div className="relative">
-                                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                                    <span className="text-gray-500 sm:text-sm">฿</span>
-                                                </div>
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    required
-                                                    placeholder=" "
-                                                    value={requestForm.amount}
-                                                    onChange={e => setRequestForm({ ...requestForm, amount: e.target.value })}
-                                                    className="pl-8 block w-full border border-gray-300 rounded-lg shadow-sm p-2.5 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-700 mb-1">ผู้รับเงินไป <span className="text-red-500">*</span></label>
-                                            <input
-                                                type="text"
-                                                required
-                                                placeholder=" "
-                                                value={requestForm.payee}
-                                                onChange={e => setRequestForm({ ...requestForm, payee: e.target.value })}
-                                                className="block w-full border border-gray-300 rounded-lg shadow-sm p-2.5 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-1">แผนก / โครงการที่ใช้งาน <span className="text-red-500">*</span></label>
-                                        <input
-                                            type="text"
-                                            required
-                                            placeholder=" "
-                                            value={requestForm.department}
-                                            onChange={e => setRequestForm({ ...requestForm, department: e.target.value })}
-                                            className="block w-full border border-gray-300 rounded-lg shadow-sm p-2.5 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-1">รายการสิ่งของที่จะซื้อ <span className="text-red-500">*</span></label>
-                                        <textarea
-                                            required
-                                            rows={2}
-                                            placeholder=" "
-                                            value={requestForm.items}
-                                            onChange={e => setRequestForm({ ...requestForm, items: e.target.value })}
-                                            className="block w-full border border-gray-300 rounded-lg shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 resize-none transition-colors text-sm"
-                                        ></textarea>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-1">เหตุผลความจำเป็น <span className="text-red-500">*</span></label>
-                                        <textarea
-                                            required
-                                            rows={2}
-                                            placeholder=" "
-                                            value={requestForm.reason}
-                                            onChange={e => setRequestForm({ ...requestForm, reason: e.target.value })}
-                                            className="block w-full border border-gray-300 rounded-lg shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 resize-none transition-colors text-sm"
-                                        ></textarea>
-                                    </div>
-                                </div>
-                                <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-gray-100 shrink-0">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowRequestModal(false)}
-                                        className="px-5 py-2.5 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
-                                    >
-                                        ยกเลิก
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={isSubmitting}
-                                        className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 focus:ring-4 focus:ring-blue-200 disabled:opacity-50 transition-all flex items-center gap-2"
-                                    >
-                                        <FileText className="w-4 h-4" />
-                                        ส่งคำขอเบิกเงิน
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Dispense Modal */}
             {showDispenseModal && selectedRequest && (
