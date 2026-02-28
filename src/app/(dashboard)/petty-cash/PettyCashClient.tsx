@@ -266,6 +266,20 @@ export default function PettyCashClient() {
         setIsSubmitting(false);
     };
 
+    const handleDirectReject = async (id: number) => {
+        const ok = await openConfirm('ไม่อนุมัติคำขอ', 'คุณต้องการไม่อนุมัติ (ตีตก) คำขอเบิกเงินสดย่อยนี้ใช่หรือไม่?', 'ไม่อนุมัติ', 'red');
+        if (!ok) return;
+        setIsSubmitting(true);
+        const res = await rejectPettyCash(id, 'ไม่อนุมัติโดยผู้จัดการ');
+        if (res.success) {
+            showToast('ไม่อนุมัติคำขอแล้ว', 'success');
+            loadData();
+        } else {
+            showToast(res.error || 'การดำเนินการล้มเหลว', 'error');
+        }
+        setIsSubmitting(false);
+    };
+
     const handleDelete = async (id: number) => {
         const ok = await openConfirm('ลบคำขอ', 'ลบคำขอนี้อย่างถาวรหรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้', 'ลบถาวร', 'red');
         if (!ok) return;
@@ -395,7 +409,10 @@ export default function PettyCashClient() {
                                                 <ExternalLink className="w-4 h-4 inline" />
                                             </button>
                                             {req.status === 'pending' && (isApprover || userRole === 'admin' || userRole === 'manager') && (
-                                                <button onClick={() => handleApprove(req.id)} className="text-emerald-600 hover:text-emerald-900 mr-3">อนุมัติ</button>
+                                                <>
+                                                    <button onClick={() => handleApprove(req.id)} className="text-emerald-600 hover:text-emerald-900 mr-3">อนุมัติ</button>
+                                                    <button onClick={() => handleDirectReject(req.id)} className="text-orange-600 hover:text-orange-900 mr-3">ไม่อนุมัติ</button>
+                                                </>
                                             )}
                                             {['pending', 'approved'].includes(req.status) && isAccountingOrAdmin && (
                                                 <button onClick={() => { setSelectedRequest(req); setFormData({ ...formData, dispensed_amount: String(req.requested_amount) }); setShowDispenseModal(true); }} className="text-blue-600 hover:text-blue-900 mr-3">จ่ายเงิน</button>
@@ -409,7 +426,7 @@ export default function PettyCashClient() {
                                             {req.status === 'pending' && userName === req.requested_by && !isAccountingOrAdmin && (
                                                 <button onClick={() => handleDelete(req.id)} className="text-red-600 hover:text-red-900 mr-3">ยกเลิก</button>
                                             )}
-                                            {(isApprover || userRole === 'admin' || userRole === 'manager') && ['pending', 'dispensed', 'clearing', 'reconciled'].includes(req.status) && (
+                                            {userRole === 'admin' && (
                                                 <button onClick={() => handleDelete(req.id)} className="text-red-600 hover:text-red-900" title="ลบถาวร"><Trash2 className="w-4 h-4 inline" /></button>
                                             )}
                                         </td>
