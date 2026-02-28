@@ -168,7 +168,7 @@ export default function PettyCashClient() {
         setLoading(false);
     };
 
-    const isAccountingOrAdmin = ['admin', 'manager', 'accounting'].includes(userRole);
+    const isAccountingOrAdmin = ['admin', 'accounting'].includes(userRole);
 
     const filteredRequests = requests.filter(req => {
         if (currentTab === 'active') {
