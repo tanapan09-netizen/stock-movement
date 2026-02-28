@@ -22,6 +22,10 @@ services:
       # Application URL (for notifications and links)
       - NEXT_PUBLIC_APP_URL=https://mpstock.sugoidev.com
 
+      # LINE Login
+      - AUTH_LINE_ID=2009265965
+      - AUTH_LINE_SECRET=2af2043594a8653da078b0fd7a819155
+
       # LINE Notifications (Phase 2)
       - LINE_MESSAGING_ENABLED=true
       - LINE_ADMIN_ID=U66936d74f38893ecd650169ce57c0500
