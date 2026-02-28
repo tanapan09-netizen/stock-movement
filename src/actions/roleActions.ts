@@ -11,15 +11,12 @@ import { auth } from '@/auth';
  */
 export async function getRoles() {
     try {
+        // Ensure all default roles exist (upsert won't modify existing ones)
+        await seedDefaultRoles();
+
         const roles = await prisma.tbl_roles.findMany({
             orderBy: { role_id: 'asc' }
         });
-
-        // Ensure default roles exist if table is empty
-        if (roles.length === 0) {
-            await seedDefaultRoles();
-            return await getRoles(); // Retry
-        }
 
         return { success: true, data: roles };
     } catch (error) {
@@ -94,29 +91,37 @@ export async function updateRolePermissions(roleId: number, permissions: RolePer
 }
 
 /**
- * Seed default roles if table is empty
+ * Seed default roles if they don't exist yet
  */
 async function seedDefaultRoles() {
-    // console.log('Seeding default roles...');
     const roles = [
         { name: 'admin', desc: 'Administrator - Full Access', is_system: true },
         { name: 'manager', desc: 'Manager - Manage Operations', is_system: true },
         { name: 'technician', desc: 'Technician - Maintenance Tasks', is_system: true },
         { name: 'operation', desc: 'Operation - Warehouse Tasks', is_system: true },
         { name: 'employee', desc: 'Employee - Basic Access', is_system: true },
+        { name: 'general', desc: 'General - ทั่วไป', is_system: false },
+        { name: 'maid', desc: 'Maid - แม่บ้าน', is_system: false },
+        { name: 'driver', desc: 'Driver - คนขับรถ', is_system: false },
+        { name: 'purchasing', desc: 'Purchasing - จัดซื้อ', is_system: false },
+        { name: 'accounting', desc: 'Accounting - บัญชี', is_system: false },
     ];
 
     for (const r of roles) {
-        const defaultPerms = DEFAULT_PERMISSIONS[r.name] || {};
-        await prisma.tbl_roles.upsert({
-            where: { role_name: r.name },
-            update: {}, // Do nothing if exists
-            create: {
-                role_name: r.name,
-                role_description: r.desc,
-                is_system: r.is_system,
-                permissions: JSON.stringify(defaultPerms)
-            }
-        });
+        try {
+            const defaultPerms = DEFAULT_PERMISSIONS[r.name] || {};
+            await prisma.tbl_roles.upsert({
+                where: { role_name: r.name },
+                update: {},
+                create: {
+                    role_name: r.name,
+                    role_description: r.desc,
+                    is_system: r.is_system,
+                    permissions: JSON.stringify(defaultPerms)
+                }
+            });
+        } catch (err) {
+            console.error(`[seedDefaultRoles] Failed to upsert role "${r.name}":`, err);
+        }
     }
 }

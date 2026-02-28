@@ -1,28 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Menu, X } from 'lucide-react';
+import { useSidebar } from '@/contexts/SidebarContext';
 
 interface MobileSidebarToggleProps {
     children: React.ReactNode;
 }
 
 export default function MobileSidebarWrapper({ children }: MobileSidebarToggleProps) {
-    const [isOpen, setIsOpen] = useState(false);
-    const [isMobile, setIsMobile] = useState(false);
-
-    useEffect(() => {
-        const checkMobile = () => {
-            setIsMobile(window.innerWidth < 1024);
-            if (window.innerWidth >= 1024) {
-                setIsOpen(false);
-            }
-        };
-
-        checkMobile();
-        window.addEventListener('resize', checkMobile);
-        return () => window.removeEventListener('resize', checkMobile);
-    }, []);
+    const { isOpen, setIsOpen, isMobile } = useSidebar();
 
     // Close sidebar when clicking outside on mobile
     useEffect(() => {
@@ -50,21 +37,21 @@ export default function MobileSidebarWrapper({ children }: MobileSidebarTogglePr
                 </button>
             )}
 
-            {/* Overlay */}
-            {isMobile && isOpen && (
+            {/* Overlay with subtle blur */}
+            {isMobile && (
                 <div
-                    className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+                    className={`fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                     onClick={() => setIsOpen(false)}
                 />
             )}
 
-            {/* Sidebar */}
+            {/* Sidebar Container */}
             <div
-                className={`mobile-sidebar fixed inset-y-0 z-50 transition-transform duration-300 ease-in-out ${isMobile
-                        ? isOpen
-                            ? 'translate-x-0'
-                            : '-translate-x-full'
-                        : 'translate-x-0'
+                className={`mobile-sidebar fixed inset-y-0 z-50 transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${isMobile
+                    ? isOpen
+                        ? 'translate-x-0'
+                        : '-translate-x-full'
+                    : 'translate-x-0'
                     }`}
             >
                 {children}

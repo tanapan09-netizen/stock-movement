@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { PERMISSION_LIST, PermissionItem } from '@/lib/permissions';
 import { updateRolePermissions } from '@/actions/roleActions';
 import { Check, Loader2, Save } from 'lucide-react';
@@ -118,7 +118,7 @@ export default function RolePermissionEditor({ roles }: Props) {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {Object.entries(groupedPermissions).map(([category, items]) => (
-                            <>
+                            <Fragment key={category}>
                                 <tr key={category} className="bg-gray-50/50">
                                     <td colSpan={roles.length + 1} className="px-6 py-2 font-semibold text-gray-600 text-xs tracking-wider">
                                         {category}
@@ -156,7 +156,7 @@ export default function RolePermissionEditor({ roles }: Props) {
                                         })}
                                     </tr>
                                 ))}
-                            </>
+                            </Fragment>
                         ))}
                     </tbody>
                 </table>

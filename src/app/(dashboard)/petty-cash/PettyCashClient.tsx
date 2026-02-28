@@ -59,6 +59,16 @@ export default function PettyCashClient() {
         actual_spent: '',
         notes: ''
     });
+
+    // Detailed fields for new request
+    const [requestForm, setRequestForm] = useState({
+        department: '',
+        items: '',
+        reason: '',
+        payee: '',
+        amount: ''
+    });
+
     const [files, setFiles] = useState<FileList | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -99,15 +109,20 @@ export default function PettyCashClient() {
         e.preventDefault();
         setIsSubmitting(true);
 
+        const combinedPurpose = `แผนก/โครงการ: ${requestForm.department}
+รายการ: ${requestForm.items}
+เหตุผล: ${requestForm.reason}
+ผู้รับเงิน: ${requestForm.payee}`;
+
         const fd = new FormData();
-        fd.append('purpose', formData.purpose);
-        fd.append('requested_amount', formData.requested_amount);
+        fd.append('purpose', combinedPurpose);
+        fd.append('requested_amount', requestForm.amount);
 
         const res = await createPettyCashRequest(fd);
         if (res.success) {
             showToast('ส่งคำขอเบิกเงินสำเร็จ', 'success');
             setShowRequestModal(false);
-            setFormData({ ...formData, purpose: '', requested_amount: '' });
+            setRequestForm({ department: '', items: '', reason: '', payee: '', amount: '' });
             loadData();
         } else {
             showToast(res.error || 'ส่งคำขอล้มเหลว', 'error');
@@ -317,25 +332,106 @@ export default function PettyCashClient() {
 
             {/* Request Modal */}
             {showRequestModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg p-6 w-full max-w-md">
-                        <h2 className="text-xl font-bold mb-4">ขอเบิกเงินสดย่อย</h2>
-                        <form onSubmit={handleRequestCash}>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">จำนวนเงินที่ต้องการจัดสรร (บาท)</label>
-                                    <input type="number" step="0.01" required value={formData.requested_amount} onChange={e => setFormData({ ...formData, requested_amount: e.target.value })} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500" />
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
+                        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                                <DollarSign className="w-5 h-5 text-blue-600" />
+                                แบบฟอร์มขอเบิกเงินสดย่อย
+                            </h2>
+                            <button onClick={() => setShowRequestModal(false)} className="text-gray-400 hover:text-gray-600">
+                                <XCircle className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-y-auto">
+                            <form onSubmit={handleRequestCash}>
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">จำนวนเงิน (บาท) <span className="text-red-500">*</span></label>
+                                            <div className="relative">
+                                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                    <span className="text-gray-500 sm:text-sm">฿</span>
+                                                </div>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    required
+                                                    placeholder=" "
+                                                    value={requestForm.amount}
+                                                    onChange={e => setRequestForm({ ...requestForm, amount: e.target.value })}
+                                                    className="pl-8 block w-full border border-gray-300 rounded-lg shadow-sm p-2.5 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">ผู้รับเงินไป <span className="text-red-500">*</span></label>
+                                            <input
+                                                type="text"
+                                                required
+                                                placeholder=" "
+                                                value={requestForm.payee}
+                                                onChange={e => setRequestForm({ ...requestForm, payee: e.target.value })}
+                                                className="block w-full border border-gray-300 rounded-lg shadow-sm p-2.5 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">แผนก / โครงการที่ใช้งาน <span className="text-red-500">*</span></label>
+                                        <input
+                                            type="text"
+                                            required
+                                            placeholder=" "
+                                            value={requestForm.department}
+                                            onChange={e => setRequestForm({ ...requestForm, department: e.target.value })}
+                                            className="block w-full border border-gray-300 rounded-lg shadow-sm p-2.5 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">รายการสิ่งของที่จะซื้อ <span className="text-red-500">*</span></label>
+                                        <textarea
+                                            required
+                                            rows={2}
+                                            placeholder=" "
+                                            value={requestForm.items}
+                                            onChange={e => setRequestForm({ ...requestForm, items: e.target.value })}
+                                            className="block w-full border border-gray-300 rounded-lg shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 resize-none transition-colors text-sm"
+                                        ></textarea>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">เหตุผลความจำเป็น <span className="text-red-500">*</span></label>
+                                        <textarea
+                                            required
+                                            rows={2}
+                                            placeholder=" "
+                                            value={requestForm.reason}
+                                            onChange={e => setRequestForm({ ...requestForm, reason: e.target.value })}
+                                            className="block w-full border border-gray-300 rounded-lg shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500 resize-none transition-colors text-sm"
+                                        ></textarea>
+                                    </div>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700">จุดประสงค์ / รายการที่จะซื้อ</label>
-                                    <textarea required rows={3} value={formData.purpose} onChange={e => setFormData({ ...formData, purpose: e.target.value })} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+                                <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-gray-100 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowRequestModal(false)}
+                                        className="px-5 py-2.5 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                                    >
+                                        ยกเลิก
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isSubmitting}
+                                        className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 focus:ring-4 focus:ring-blue-200 disabled:opacity-50 transition-all flex items-center gap-2"
+                                    >
+                                        <FileText className="w-4 h-4" />
+                                        ส่งคำขอเบิกเงิน
+                                    </button>
                                 </div>
-                            </div>
-                            <div className="mt-6 flex justify-end space-x-3">
-                                <button type="button" onClick={() => setShowRequestModal(false)} className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">ยกเลิก</button>
-                                <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">บันทึกคำขอ</button>
-                            </div>
-                        </form>
+                            </form>
+                        </div>
                     </div>
                 </div>
             )}
