@@ -437,7 +437,7 @@ ${lineItems.map((item, idx) => `${idx + 1}. ${item.description} - ฿${fmt(Numbe
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-1">Post GL (General Ledger)</h3>
             <p className="text-gray-500 max-w-sm">
-                การลงบัญชี GL ต้องมีการตั้งค่าผังบัญชีก่อน ฟีเจอร์นี้จะเปิดใช้งานเมื่อระบบพร้อม
+                อาจจะยังน้าา
             </p>
             <button onClick={() => setActiveTab('Basic Data')} className="mt-6 px-4 py-2 text-sm text-blue-600 font-medium hover:bg-blue-50 rounded-md transition-colors">
                 กลับไปหน้า Basic Data

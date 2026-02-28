@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     getPettyCashRequests,
     createPettyCashRequest,
@@ -14,9 +14,64 @@ import {
 import { getSession } from 'next-auth/react';
 import Link from 'next/link';
 import {
-    Plus, DollarSign, CheckCircle, Search, ExternalLink, Trash2, XCircle, FileText
+    Plus, DollarSign, CheckCircle, Search, ExternalLink, Trash2, XCircle, FileText, AlertTriangle
 } from 'lucide-react';
 import { useToast } from '@/components/ToastProvider';
+
+// --- Custom Confirm Modal Component ---
+function ConfirmModal({ open, title, message, confirmLabel, confirmColor, onConfirm, onCancel }: {
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    confirmColor?: 'red' | 'emerald' | 'blue';
+    onConfirm: () => void;
+    onCancel: () => void;
+}) {
+    if (!open) return null;
+    const colors = {
+        red: 'bg-red-600 hover:bg-red-700 focus:ring-red-300',
+        emerald: 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-300',
+        blue: 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-300',
+    };
+    const iconColors = {
+        red: 'bg-red-100 text-red-600',
+        emerald: 'bg-emerald-100 text-emerald-600',
+        blue: 'bg-blue-100 text-blue-600',
+    };
+    const color = confirmColor || 'blue';
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={onCancel}>
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity" />
+            <div
+                className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 transform transition-all animate-in fade-in zoom-in-95 duration-200"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="flex flex-col items-center text-center">
+                    <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-4 ${iconColors[color]}`}>
+                        <AlertTriangle className="w-7 h-7" />
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-900 mb-1">{title}</h3>
+                    <p className="text-sm text-gray-500 mb-6">{message}</p>
+                    <div className="flex gap-3 w-full">
+                        <button
+                            onClick={onCancel}
+                            className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors text-sm"
+                        >
+                            ยกเลิก
+                        </button>
+                        <button
+                            onClick={onConfirm}
+                            className={`flex-1 px-4 py-2.5 text-white rounded-xl font-medium transition-colors text-sm focus:ring-4 ${colors[color]}`}
+                        >
+                            {confirmLabel || 'ตกลง'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 type PettyCash = {
     id: number;
@@ -63,6 +118,33 @@ export default function PettyCashClient() {
 
     const [files, setFiles] = useState<FileList | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Custom confirm modal state
+    const [confirmModal, setConfirmModal] = useState<{
+        open: boolean;
+        title: string;
+        message: string;
+        confirmLabel?: string;
+        confirmColor?: 'red' | 'emerald' | 'blue';
+    }>({ open: false, title: '', message: '' });
+    const confirmResolveRef = useRef<((v: boolean) => void) | null>(null);
+
+    const openConfirm = useCallback((title: string, message: string, confirmLabel?: string, confirmColor?: 'red' | 'emerald' | 'blue'): Promise<boolean> => {
+        return new Promise(resolve => {
+            confirmResolveRef.current = resolve;
+            setConfirmModal({ open: true, title, message, confirmLabel, confirmColor });
+        });
+    }, []);
+
+    const handleConfirm = useCallback(() => {
+        confirmResolveRef.current?.(true);
+        setConfirmModal(prev => ({ ...prev, open: false }));
+    }, []);
+
+    const handleCancel = useCallback(() => {
+        confirmResolveRef.current?.(false);
+        setConfirmModal(prev => ({ ...prev, open: false }));
+    }, []);
 
     useEffect(() => {
         loadData();
@@ -113,7 +195,8 @@ export default function PettyCashClient() {
     };
 
     const handleApprove = async (id: number) => {
-        if (!confirm('ยืนยันนุมัติคำขอนี้ใช่หรือไม่?')) return;
+        const ok = await openConfirm('ยืนยันการอนุมัติ', 'คุณต้องการอนุมัติคำขอเบิกเงินสดย่อยนี้ใช่หรือไม่?', 'อนุมัติ', 'emerald');
+        if (!ok) return;
         setIsSubmitting(true);
         const res = await approvePettyCash(id);
         if (res.success) {
@@ -167,7 +250,9 @@ export default function PettyCashClient() {
     };
 
     const handleReject = async () => {
-        if (!selectedRequest || !confirm('คุณแน่ใจหรือไม่ว่าต้องการปฏิเสธคำขอนี้?')) return;
+        if (!selectedRequest) return;
+        const ok = await openConfirm('ปฏิเสธคำขอ', 'คุณแน่ใจหรือไม่ว่าต้องการปฏิเสธคำขอเบิกเงินนี้?', 'ปฏิเสธ', 'red');
+        if (!ok) return;
         setIsSubmitting(true);
         const res = await rejectPettyCash(selectedRequest.id, formData.notes);
         if (res.success) {
@@ -181,7 +266,8 @@ export default function PettyCashClient() {
     };
 
     const handleDelete = async (id: number) => {
-        if (!confirm('ลบคำขอนี้อย่างถาวรหรือไม่?')) return;
+        const ok = await openConfirm('ลบคำขอ', 'ลบคำขอนี้อย่างถาวรหรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้', 'ลบถาวร', 'red');
+        if (!ok) return;
         const res = await deletePettyCashRequest(id);
         if (res.success) {
             showToast('ลบคำขอสำเร็จ', 'success');
@@ -427,6 +513,17 @@ export default function PettyCashClient() {
                     </div>
                 </div>
             )}
+
+            {/* Custom Confirm Modal */}
+            <ConfirmModal
+                open={confirmModal.open}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                confirmLabel={confirmModal.confirmLabel}
+                confirmColor={confirmModal.confirmColor}
+                onConfirm={handleConfirm}
+                onCancel={handleCancel}
+            />
         </div>
     );
 }
