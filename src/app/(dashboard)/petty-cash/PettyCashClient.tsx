@@ -40,6 +40,7 @@ export default function PettyCashClient() {
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState<string>('');
     const [userName, setUserName] = useState<string>('');
+    const [isApprover, setIsApprover] = useState<boolean>(false);
     const [currentTab, setCurrentTab] = useState('active'); // active, history
     const { showToast } = useToast();
 
@@ -71,6 +72,7 @@ export default function PettyCashClient() {
         if (session?.user) {
             setUserRole((session.user as any).role?.toLowerCase() || '');
             setUserName(session.user.name || '');
+            setIsApprover((session.user as any).is_approver === true);
         }
 
         const res = await getPettyCashRequests();
@@ -301,7 +303,7 @@ export default function PettyCashClient() {
                                             {req.status === 'pending' && userName === req.requested_by && !isAccountingOrAdmin && (
                                                 <button onClick={() => handleDelete(req.id)} className="text-red-600 hover:text-red-900 mr-3">ยกเลิก</button>
                                             )}
-                                            {isAccountingOrAdmin && ['pending', 'dispensed', 'clearing', 'reconciled'].includes(req.status) && (
+                                            {(isApprover || userRole === 'admin' || userRole === 'manager') && ['pending', 'dispensed', 'clearing', 'reconciled'].includes(req.status) && (
                                                 <button onClick={() => handleDelete(req.id)} className="text-red-600 hover:text-red-900"><Trash2 className="w-4 h-4 inline" /></button>
                                             )}
                                         </td>

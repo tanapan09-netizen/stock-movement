@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import {
     Wrench, Plus, Search, X, History, User, DollarSign, Printer, Clock, CheckCircle, XCircle, BarChart3, PieChart, AlertTriangle, Trash2, CalendarCheck
@@ -97,6 +98,7 @@ interface MaintenanceClientProps {
 }
 
 export default function MaintenanceClient({ initialRole = 'reporter' }: MaintenanceClientProps) {
+    const { data: session } = useSession();
     const [activeRole, setActiveRole] = useState<'reporter' | 'technician' | 'admin'>(initialRole);
 
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
@@ -855,7 +857,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                                 >
                                     <Printer size={20} />
                                 </Link>
-                                {activeRole === 'admin' && (
+                                {(activeRole === 'admin' || (session?.user as any)?.is_approver) && (
                                     <button
                                         onClick={() => handleDelete(selectedRequest.request_id)}
                                         className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"

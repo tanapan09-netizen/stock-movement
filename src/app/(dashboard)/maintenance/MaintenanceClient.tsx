@@ -111,8 +111,7 @@ const formatAcceptedTime = (req: MaintenanceRequestItem): Date | null => {
     return acceptedEvent ? new Date(acceptedEvent.changed_at) : null;
 };
 
-const getElapsedTime = (startDate: Date): string => {
-    const now = new Date();
+const getElapsedTime = (startDate: Date, now: Date): string => {
     const diffMs = now.getTime() - startDate.getTime();
     if (diffMs < 0) return 'เพิ่งรับงาน';
 
@@ -232,6 +231,16 @@ export default function MaintenanceClient() {
         actual_cost: 0,
         notes: ''
     });
+
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    // Auto-update time every minute for real-time elapsed time display
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setCurrentTime(new Date());
+        }, 60000);
+        return () => clearInterval(timer);
+    }, []);
 
     async function loadData() {
         setLoading(true);
@@ -808,7 +817,7 @@ export default function MaintenanceClient() {
                                                                 {req.status === 'in_progress' && (
                                                                     <span className="text-xs text-orange-600 bg-orange-50 dark:bg-orange-500/10 px-1.5 py-0.5 rounded w-fit flex items-center gap-1">
                                                                         <Clock size={12} />
-                                                                        {getElapsedTime(acceptedTime)}
+                                                                        {getElapsedTime(acceptedTime, currentTime)}
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -824,7 +833,7 @@ export default function MaintenanceClient() {
                                                             {req.status === 'pending' && (
                                                                 <span className="text-xs text-yellow-600 bg-yellow-50 dark:bg-yellow-500/10 px-1.5 py-0.5 rounded w-fit flex items-center gap-1">
                                                                     <Clock size={12} />
-                                                                    รอหาช่างมาแล้ว {getElapsedTime(createdTime)}
+                                                                    รอช่างมาแล้ว {getElapsedTime(createdTime, currentTime)}
                                                                 </span>
                                                             )}
                                                         </div>
@@ -906,13 +915,15 @@ export default function MaintenanceClient() {
                                                         </button>
                                                     )}
                                                     {/* Delete button */}
-                                                    <button
-                                                        onClick={() => handleDelete(req.request_id)}
-                                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"
-                                                        title="ลบ"
-                                                    >
-                                                        <X size={16} />
-                                                    </button>
+                                                    {((session?.user as any)?.is_approver || (session?.user as any)?.role?.toLowerCase() === 'admin') && (
+                                                        <button
+                                                            onClick={() => handleDelete(req.request_id)}
+                                                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"
+                                                            title="ลบ"
+                                                        >
+                                                            <X size={16} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>

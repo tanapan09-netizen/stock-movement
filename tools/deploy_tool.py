@@ -60,12 +60,28 @@ class DeployTool(ctk.CTk):
                                         fg_color="#0EA5E9", hover_color="#0284C7", height=40, font=ctk.CTkFont(size=14))
         self.btn_registry.grid(row=6, column=0, padx=20, pady=10)
         
+        self.btn_ssh = ctk.CTkButton(self.sidebar_frame, text="🔌 App Container Console", command=self.open_ssh, 
+                                        fg_color="#8B5CF6", hover_color="#7C3AED", height=40, font=ctk.CTkFont(size=14))
+        self.btn_ssh.grid(row=7, column=0, padx=20, pady=10)
+        
+        # --- Remote SSH ---
+        self.ssh_label = ctk.CTkLabel(self.sidebar_frame, text="Remote SSH:", font=ctk.CTkFont(size=12, weight="bold"))
+        self.ssh_label.grid(row=8, column=0, padx=20, pady=(10, 0), sticky="w")
+
+        self.ssh_input = ctk.CTkEntry(self.sidebar_frame, placeholder_text="user@host -p port")
+        self.ssh_input.grid(row=9, column=0, padx=20, pady=(5, 0), sticky="ew")
+        self.ssh_input.insert(0, "nong@sg.sugoidev.com -p 8022")
+
+        self.btn_ssh_remote = ctk.CTkButton(self.sidebar_frame, text="🌐 Connect Server", command=self.connect_ssh_remote, 
+                                        fg_color="#F43F5E", hover_color="#E11D48", height=30, font=ctk.CTkFont(size=12))
+        self.btn_ssh_remote.grid(row=10, column=0, padx=20, pady=(5, 10), sticky="ew")
+
         # --- Server Controls ---
         self.control_label = ctk.CTkLabel(self.sidebar_frame, text="Server Controls:", font=ctk.CTkFont(size=12, weight="bold"))
-        self.control_label.grid(row=7, column=0, padx=20, pady=(10, 0), sticky="w")
+        self.control_label.grid(row=11, column=0, padx=20, pady=(10, 0), sticky="w")
         
         self.control_frame = ctk.CTkFrame(self.sidebar_frame, fg_color="transparent")
-        self.control_frame.grid(row=8, column=0, padx=20, pady=5, sticky="ew")
+        self.control_frame.grid(row=12, column=0, padx=20, pady=5, sticky="ew")
         
         self.btn_start = ctk.CTkButton(self.control_frame, text="▶️ Start", command=self.start_server, fg_color="#10B981", hover_color="#059669", width=60)
         self.btn_start.pack(side="left", padx=(0, 5), expand=True, fill="x")
@@ -77,13 +93,13 @@ class DeployTool(ctk.CTk):
         self.btn_restart.pack(side="left", padx=(5, 0), expand=True, fill="x")
 
         self.db_push_check = ctk.CTkCheckBox(self.sidebar_frame, text="Run DB Push (Prisma)", variable=self.db_push_var, onvalue="on", offvalue="off")
-        self.db_push_check.grid(row=9, column=0, padx=20, pady=20)
+        self.db_push_check.grid(row=13, column=0, padx=20, pady=20)
         
         self.appearance_mode_label = ctk.CTkLabel(self.sidebar_frame, text="Theme:", anchor="w")
-        self.appearance_mode_label.grid(row=10, column=0, padx=20, pady=(10, 0))
+        self.appearance_mode_label.grid(row=14, column=0, padx=20, pady=(10, 0))
         self.appearance_mode_optionmenu = ctk.CTkOptionMenu(self.sidebar_frame, values=["Dark", "Light"],
                                                                command=self.change_appearance_mode_event)
-        self.appearance_mode_optionmenu.grid(row=11, column=0, padx=20, pady=(10, 20))
+        self.appearance_mode_optionmenu.grid(row=15, column=0, padx=20, pady=(10, 20))
 
         # --- Main Area ---
         self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -317,6 +333,59 @@ class DeployTool(ctk.CTk):
             self.after(0, lambda: messagebox.showinfo("Success", "Successfully pushed image to Sugoidev Registry!"))
             
         threading.Thread(target=_target, daemon=True).start()
+
+    def open_ssh(self):
+        """Opens a new terminal window connected to the app container"""
+        self.log("=" * 50)
+        self.log("Opening SSH connection to 'app' container...", 'info')
+        
+        # Determine the terminal command based on the OS
+        if os.name == 'nt':
+            # Windows: use start cmd configured to run docker exec
+            cmd = 'start cmd /k "docker-compose -f docker-compose.prod.yml exec app sh"'
+        else:
+            # macOS/Linux: we try a few common terminal emulators
+            terminals = [
+                "x-terminal-emulator -e", "gnome-terminal --", "konsole -e", "xfce4-terminal -e", "mac-terminal"
+            ]
+            
+            if sys.platform == "darwin":
+                cmd = "osascript -e 'tell application \"Terminal\" to do script \"cd \\\"" + os.getcwd() + "\\\" && docker-compose -f docker-compose.prod.yml exec app sh\"'"
+            else:
+                cmd = f"x-terminal-emulator -e 'docker-compose -f docker-compose.prod.yml exec app sh'" # simplified default
+                
+        self.log(f"> {cmd}", 'cmd')
+        try:
+            subprocess.Popen(cmd, shell=True)
+            self.log("SSH window opened.", 'success')
+        except Exception as e:
+            self.log(f"Failed to open SSH window: {e}", 'error')
+            
+    def connect_ssh_remote(self):
+        """Opens a new terminal window connected to the remote server"""
+        ssh_string = self.ssh_input.get().strip()
+        if not ssh_string:
+            messagebox.showwarning("Warning", "Please enter an SSH connection string.")
+            return
+
+        self.log("=" * 50)
+        self.log(f"Opening SSH connection to '{ssh_string}'...", 'info')
+        
+        # Determine the terminal command based on the OS
+        if os.name == 'nt':
+            cmd = f'start cmd /k "ssh {ssh_string}"'
+        else:
+            if sys.platform == "darwin":
+                cmd = f"osascript -e 'tell application \"Terminal\" to do script \"ssh {ssh_string}\"'"
+            else:
+                cmd = f"x-terminal-emulator -e 'ssh {ssh_string}'"
+                
+        self.log(f"> {cmd}", 'cmd')
+        try:
+            subprocess.Popen(cmd, shell=True)
+            self.log("Remote SSH window opened.", 'success')
+        except Exception as e:
+            self.log(f"Failed to open Remote SSH window: {e}", 'error')
 
     def start_server(self):
         if not messagebox.askyesno("Confirm Start", "Start the server containers?"):

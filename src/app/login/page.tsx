@@ -212,6 +212,22 @@ export default function LoginPage() {
                                 </>
                             )}
                         </button>
+                        <div className="relative flex py-2 items-center">
+                            <div className="flex-grow border-t border-gray-200"></div>
+                            <span className="flex-shrink-0 mx-4 text-gray-400 text-sm">หรือ</span>
+                            <div className="flex-grow border-t border-gray-200"></div>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => signIn('line', { callbackUrl: '/' })}
+                            className="w-full py-3.5 bg-[#06C755] text-white font-semibold rounded-xl shadow-lg shadow-[#06C755]/30 hover:bg-[#05b34c] hover:shadow-xl hover:shadow-[#06C755]/40 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+                        >
+                            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M23.928 11.52C23.928 5.485 18.575.6 12 .6S.072 5.484.072 11.52c0 5.4 4.364 9.948 10.334 10.824.4.086.953.265 1.092.61.125.31-.035.789-.084 1.109-.06.39-.286 1.705-.349 2.08-.083.504.385.706.772.504.606-.316 3.253-1.895 4.85-3.542 2.684-2.768 4.241-6.027 4.241-8.585M9.135 14.51H7.075c-.39 0-.705-.316-.705-.706V8.92c0-.39.316-.705.705-.705h2.06c.39 0 .705.315.705.705v4.884h1.355c.39 0 .706.315.706.705v1.3c0 .39-.316.705-.706.705m4.35 0h-2.06c-.39 0-.705-.316-.705-.706V8.92c0-.39.315-.705.705-.705h2.06c.39 0 .705.315.705.705v5.59c0 .39-.315.706-.705.706m3.58.05c-.147.085-.3.125-.456.125-.23 0-.455-.09-.625-.26l-2.78-3.795v3.226c0 .39-.315.705-.705.705h-2.06c-.39 0-.705-.316-.705-.706V8.92c0-.39.315-.705.705-.705h2.06c.205 0 .405.085.545.23l2.805 3.825V8.92c0-.39.315-.705.705-.705h2.06c.39 0 .705.315.705.705v5.59c0 .245-.13.465-.345.58m3.585-2.015h-2.26v1.31c0 .39-.315.706-.705.706h-2.06c-.39 0-.705-.316-.705-.706V8.92c0-.39.315-.705.705-.705h3.665c.39 0 .705.315.705.705v1.3c0 .39-.315.705-.705.705h-2.26v1.31h2.26c.39 0 .705.315.705.705v1.3c0 .39-.315.705-.705.705" />
+                            </svg>
+                            <span>เข้าสู่ระบบด้วย LINE</span>
+                        </button>
                     </form>
 
                     {/* Footer */}

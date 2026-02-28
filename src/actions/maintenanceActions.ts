@@ -725,6 +725,13 @@ export async function deleteMaintenanceRequest(request_id: number) {
     try {
         const session = await auth();
 
+        if (!session?.user) return { success: false, error: 'Unauthorized' };
+
+        // Only Admin or Approvers can delete
+        if (session.user.role !== 'admin' && !session.user.is_approver) {
+            return { success: false, error: 'Permission denied: Requires Approver status' };
+        }
+
         // Get details before delete
         const request = await prisma.tbl_maintenance_requests.findUnique({
             where: { request_id },

@@ -1,5 +1,6 @@
-import NextAuth, { CredentialsSignin } from 'next-auth';
-import Credentials from 'next-auth/providers/credentials';
+import NextAuth, { CredentialsSignin, AuthError } from 'next-auth';
+import CredentialsProvider from 'next-auth/providers/credentials';
+import LineProvider from "next-auth/providers/line";
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 
@@ -26,7 +27,11 @@ class AccountLocked extends CredentialsSignin {
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
     providers: [
-        Credentials({
+        LineProvider({
+            clientId: process.env.AUTH_LINE_ID,
+            clientSecret: process.env.AUTH_LINE_SECRET,
+        }),
+        CredentialsProvider({
             name: 'Credentials',
             credentials: {
                 username: { label: "Username", type: "text" },
@@ -131,27 +136,48 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                     id: user.p_id.toString(),
                     name: user.username,
                     role: user.role, // Custom property
+                    is_approver: false, // Default to false for normal user login unless defined later
                 };
             },
         }),
     ],
     trustHost: true, // Required for NextAuth v5 in production
     callbacks: {
-        jwt({ token, user }) {
-            if (user) {
+        async signIn({ user, account, profile }) {
+            if (account?.provider === 'line' && profile) {
+                // Check if the LINE user is registered in tbl_line_users
+                const lineUser = await prisma.tbl_line_users.findUnique({
+                    where: { line_user_id: profile.sub as string }
+                });
 
+                if (!lineUser || !lineUser.is_active) {
+                    // Registration required or inactive
+                    // Return false to deny login, or throw custom error
+                    return false;
+                }
+
+                // Map database role and approver status into the user object
+                user.role = lineUser.role;
+                user.is_approver = lineUser.is_approver;
+                user.id = lineUser.id.toString(); // Optionally map to internal ID
+                // Continue sign-in
+                return true;
+            }
+            return true;
+        },
+        jwt({ token, user, trigger, session }) {
+            if (user) {
                 token.id = user.id;
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                token.role = (user as any).role;
+                token.role = user.role;
+                token.is_approver = user.is_approver;
             }
             return token;
         },
         session({ session, token }) {
             if (session.user) {
                 session.user.id = token.id as string;
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (session.user as any).role = token.role as string;
-
+                session.user.role = token.role as string;
+                session.user.is_approver = token.is_approver as boolean;
             }
             return session;
         },

@@ -281,9 +281,10 @@ export async function deletePettyCashRequest(id: number) {
         const session = await auth();
         if (!session || !session.user) return { success: false, error: 'Unauthorized' };
 
-        // Need admin to delete
-        if (!['admin', 'manager'].includes((session.user as any).role?.toLowerCase() || '')) {
-            return { success: false, error: 'Permission denied' };
+        // Need admin, manager, or approver to delete
+        const role = (session.user as any).role?.toLowerCase() || '';
+        if (!['admin', 'manager'].includes(role) && !session.user.is_approver) {
+            return { success: false, error: 'Permission denied: Requires Approver status' };
         }
 
         await prisma.tbl_petty_cash.delete({
