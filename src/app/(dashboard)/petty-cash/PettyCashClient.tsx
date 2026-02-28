@@ -105,6 +105,7 @@ export default function PettyCashClient() {
     const [showDispenseModal, setShowDispenseModal] = useState(false);
     const [showClearModal, setShowClearModal] = useState(false);
     const [showReconcileModal, setShowReconcileModal] = useState(false);
+    const [showDetailsModal, setShowDetailsModal] = useState(false);
     const [selectedRequest, setSelectedRequest] = useState<PettyCash | null>(null);
 
     // Form states
@@ -390,6 +391,9 @@ export default function PettyCashClient() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             {/* Action Buttons Logic */}
+                                            <button onClick={() => { setSelectedRequest(req); setShowDetailsModal(true); }} className="text-gray-600 hover:text-gray-900 mr-3" title="ดูรายละเอียด">
+                                                <ExternalLink className="w-4 h-4 inline" />
+                                            </button>
                                             {req.status === 'pending' && (isApprover || userRole === 'admin' || userRole === 'manager') && (
                                                 <button onClick={() => handleApprove(req.id)} className="text-emerald-600 hover:text-emerald-900 mr-3">อนุมัติ</button>
                                             )}
@@ -406,7 +410,7 @@ export default function PettyCashClient() {
                                                 <button onClick={() => handleDelete(req.id)} className="text-red-600 hover:text-red-900 mr-3">ยกเลิก</button>
                                             )}
                                             {(isApprover || userRole === 'admin' || userRole === 'manager') && ['pending', 'dispensed', 'clearing', 'reconciled'].includes(req.status) && (
-                                                <button onClick={() => handleDelete(req.id)} className="text-red-600 hover:text-red-900"><Trash2 className="w-4 h-4 inline" /></button>
+                                                <button onClick={() => handleDelete(req.id)} className="text-red-600 hover:text-red-900" title="ลบถาวร"><Trash2 className="w-4 h-4 inline" /></button>
                                             )}
                                         </td>
                                     </tr>
@@ -545,6 +549,86 @@ export default function PettyCashClient() {
                                 <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"><CheckCircle className="w-4 h-4 inline mr-1" /> ยืนยันปิดยอด</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Details Modal */}
+            {showDetailsModal && selectedRequest && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] flex flex-col">
+                        <div className="flex justify-between items-center border-b pb-3 mb-4">
+                            <h2 className="text-xl font-bold flex items-center"><FileText className="w-5 h-5 mr-2 text-blue-600" /> รายละเอียดคำขอเบิกเงินสดย่อย</h2>
+                            <button onClick={() => setShowDetailsModal(false)} className="text-gray-400 hover:text-gray-600"><XCircle className="w-6 h-6" /></button>
+                        </div>
+
+                        <div className="overflow-y-auto flex-1 pr-2 space-y-4">
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div className="p-3 bg-gray-50 rounded-lg">
+                                    <p className="text-gray-500 mb-1">เลขที่คำขอ</p>
+                                    <p className="font-semibold">{selectedRequest.request_number}</p>
+                                </div>
+                                <div className="p-3 bg-gray-50 rounded-lg">
+                                    <p className="text-gray-500 mb-1">สถานะ</p>
+                                    <div>{getStatusBadge(selectedRequest.status)}</div>
+                                </div>
+                                <div className="p-3 bg-gray-50 rounded-lg">
+                                    <p className="text-gray-500 mb-1">ผู้เบิก</p>
+                                    <p className="font-semibold">{selectedRequest.requested_by}</p>
+                                </div>
+                                <div className="p-3 bg-gray-50 rounded-lg">
+                                    <p className="text-gray-500 mb-1">วันที่ขอ (สร้าง)</p>
+                                    <p className="font-semibold">{new Date(selectedRequest.created_at).toLocaleString('th-TH')}</p>
+                                </div>
+                            </div>
+
+                            <div className="p-4 border border-gray-200 rounded-lg">
+                                <h3 className="font-semibold text-gray-800 mb-3 border-b pb-2">รายการเบิก</h3>
+                                {renderPurposeDetails(selectedRequest.purpose)}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 text-sm mt-4">
+                                <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                                    <p className="text-blue-600 mb-1 font-medium">ยอดเงินที่ขอเบิก</p>
+                                    <p className="text-xl font-bold text-blue-700">฿{Number(selectedRequest.requested_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                </div>
+                                {selectedRequest.dispensed_amount && (
+                                    <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-lg">
+                                        <p className="text-emerald-600 mb-1 font-medium">ยอดเงินที่จ่ายจริง</p>
+                                        <p className="text-xl font-bold text-emerald-700">฿{Number(selectedRequest.dispensed_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {selectedRequest.notes && (
+                                <div className="p-3 bg-yellow-50 text-yellow-800 rounded-lg text-sm border border-yellow-100 mt-4">
+                                    <strong>หมายเหตุ:</strong> {selectedRequest.notes}
+                                </div>
+                            )}
+
+                            {selectedRequest.receipt_urls && (
+                                <div className="mt-4 border-t pt-4">
+                                    <h3 className="font-semibold text-gray-800 mb-2">เอกสารแนบ (ใบเสร็จ/อื่นๆ)</h3>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        {JSON.parse(selectedRequest.receipt_urls).map((url: string, i: number) => (
+                                            <a key={i} href={url} target="_blank" rel="noreferrer" className="flex items-center p-2 border rounded-md hover:bg-gray-50 transition text-sm text-blue-600 group">
+                                                <div className="p-2 bg-blue-100 rounded-md mr-3 group-hover:bg-blue-200 transition">
+                                                    <FileText className="w-4 h-4" />
+                                                </div>
+                                                <span className="truncate">ดูเอกสารแนบที่ {i + 1}</span>
+                                                <ExternalLink className="w-3 h-3 ml-auto text-gray-400 group-hover:text-blue-500" />
+                                            </a>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mt-6 border-t pt-4 flex justify-end">
+                            <button onClick={() => setShowDetailsModal(false)} className="px-5 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition-colors">
+                                ปิดหน้าต่าง
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
