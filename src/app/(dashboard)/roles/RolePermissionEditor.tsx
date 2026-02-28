@@ -95,13 +95,19 @@ export default function RolePermissionEditor({ roles }: Props) {
                         <tr>
                             <th className="px-6 py-4 sticky left-0 bg-gray-50 z-10 w-64 shadow-sm">เมนูใช้งาน</th>
                             {roles.map(role => (
-                                <th key={role.role_id} className="px-6 py-4 text-center min-w-[120px]">
+                                <th key={role.role_id} className="px-6 py-4 text-center min-w-[100px]">
                                     <div className="flex flex-col items-center gap-1">
-                                        <span className={`px-2 py-0.5 rounded text-[10px] text-white
+                                        <span className={`px-2 py-0.5 rounded text-[10px] text-white uppercase font-semibold
                                             ${role.role_name === 'admin' ? 'bg-purple-600' :
                                                 role.role_name === 'manager' ? 'bg-blue-500' :
                                                     role.role_name === 'technician' ? 'bg-orange-500' :
-                                                        role.role_name === 'operation' ? 'bg-teal-500' : 'bg-green-500'}`
+                                                        role.role_name === 'operation' ? 'bg-teal-500' :
+                                                            role.role_name === 'general' ? 'bg-gray-500' :
+                                                                role.role_name === 'maid' ? 'bg-pink-500' :
+                                                                    role.role_name === 'driver' ? 'bg-indigo-500' :
+                                                                        role.role_name === 'purchasing' ? 'bg-amber-600' :
+                                                                            role.role_name === 'accounting' ? 'bg-cyan-600' :
+                                                                                role.role_name === 'employee' ? 'bg-green-500' : 'bg-gray-400'}`
                                         }>
                                             {role.role_name}
                                         </span>

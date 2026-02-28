@@ -110,12 +110,29 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissions> = {
         [PERMISSIONS.MAINTENANCE]: true,
         [PERMISSIONS.MAINTENANCE_REQUESTS]: true,
     },
+    'general': {
+        [PERMISSIONS.DASHBOARD]: true,
+        [PERMISSIONS.PRODUCTS]: true,
+        [PERMISSIONS.MOVEMENTS]: true,
+        [PERMISSIONS.BORROW]: true,
+        [PERMISSIONS.MAINTENANCE]: true,
+    },
+    'maid': {
+        [PERMISSIONS.DASHBOARD]: true,
+        [PERMISSIONS.MAINTENANCE]: true,
+        [PERMISSIONS.BORROW]: true,
+    },
+    'driver': {
+        [PERMISSIONS.DASHBOARD]: true,
+        [PERMISSIONS.MAINTENANCE]: true,
+        [PERMISSIONS.BORROW]: true,
+    },
     'accounting': {
         [PERMISSIONS.DASHBOARD]: true,
-        [PERMISSIONS.MAINTENANCE_REQUESTS]: true, // View PRs
+        [PERMISSIONS.PETTY_CASH]: true,
+        [PERMISSIONS.MAINTENANCE_REQUESTS]: true,
         [PERMISSIONS.PO_VIEW]: true,
         [PERMISSIONS.PO_PRINT]: true,
-        // Add Specific Accounting permissions if needed later
     },
     'purchasing': {
         [PERMISSIONS.DASHBOARD]: true,

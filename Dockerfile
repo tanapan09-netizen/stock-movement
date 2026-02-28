@@ -29,6 +29,12 @@ ENV NODE_ENV=production
 # during build. The real DATABASE_URL is injected at runtime by docker-compose.
 ENV DATABASE_URL="mysql://build:build@localhost:3306/build_placeholder"
 
+# LINE Login credentials (needed at build time for NextAuth)
+ARG AUTH_LINE_ID=2009265965
+ARG AUTH_LINE_SECRET=2af2043594a8653da078b0fd7a819155
+ENV AUTH_LINE_ID=${AUTH_LINE_ID}
+ENV AUTH_LINE_SECRET=${AUTH_LINE_SECRET}
+
 # Build the application
 RUN npm run build
 
