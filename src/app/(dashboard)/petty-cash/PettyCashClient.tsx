@@ -278,6 +278,23 @@ export default function PettyCashClient() {
     };
 
     // UI Helpers
+    const renderPurposeDetails = (purpose: string) => {
+        if (!purpose) return null;
+        return purpose.split('\n').map((line, idx) => {
+            const parts = line.split(/(\*\*.*?\*\*)/g);
+            return (
+                <div key={idx} className={`${line.trim() === '' ? 'h-2' : 'min-h-[1.5rem]'} ${line.startsWith('**รายการค่าใช้จ่าย:**') ? 'mt-2 mb-1 font-semibold text-gray-800' : 'text-gray-600'}`}>
+                    {parts.map((part, i) => {
+                        if (part.startsWith('**') && part.endsWith('**')) {
+                            return <strong key={i} className="text-gray-800">{part.slice(2, -2)}</strong>;
+                        }
+                        return <span key={i}>{part}</span>;
+                    })}
+                </div>
+            );
+        });
+    };
+
     const getStatusBadge = (status: string) => {
         const styles = {
             pending: { class: 'bg-yellow-100 text-yellow-800', label: 'รออนุมัติ' },
@@ -363,7 +380,7 @@ export default function PettyCashClient() {
                                             {req.requested_by}
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
-                                            {req.purpose}
+                                            {req.purpose?.replace(/\*\*/g, '')}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                             ฿{Number(req.dispensed_amount || req.requested_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -408,7 +425,25 @@ export default function PettyCashClient() {
                         <div className="mb-4 p-3 bg-gray-50 rounded-lg">
                             <p className="text-sm"><strong>ผู้เบิก:</strong> {selectedRequest.requested_by}</p>
                             <p className="text-sm"><strong>จำนวเงินที่ขอ:</strong> ฿{Number(selectedRequest.requested_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                            <p className="text-sm"><strong>รายการ:</strong> {selectedRequest.purpose}</p>
+                            <div className="text-sm mt-3">
+                                <strong>รายละเอียดรายการ:</strong>
+                                <div className="mt-2 p-3 bg-white border border-gray-200 rounded-md max-h-[300px] overflow-y-auto whitespace-pre-wrap leading-relaxed shadow-inner">
+                                    {selectedRequest.purpose.split('\n').map((line, idx) => {
+                                        // Simple bold parser for **text**
+                                        const parts = line.split(/(\*\*.*?\*\*)/g);
+                                        return (
+                                            <div key={idx} className={`${line.trim() === '' ? 'h-2' : 'min-h-[1.5rem]'} ${line.startsWith('**รายการค่าใช้จ่าย:**') ? 'mt-2 mb-1 font-semibold text-gray-800' : 'text-gray-600'}`}>
+                                                {parts.map((part, i) => {
+                                                    if (part.startsWith('**') && part.endsWith('**')) {
+                                                        return <strong key={i} className="text-gray-800">{part.slice(2, -2)}</strong>;
+                                                    }
+                                                    return <span key={i}>{part}</span>;
+                                                })}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
                         <form onSubmit={handleDispense}>
                             <div className="space-y-4">

@@ -40,8 +40,8 @@ const StatCard = ({ title, value, subtitle, icon: Icon, color, link }: any) => {
 
     const theme = colorMap[color] || colorMap.blue;
 
-    return (
-        <div className={`${theme.style} border rounded-2xl p-6 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1`}>
+    const content = (
+        <div className={`${theme.style} border rounded-2xl p-6 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 h-full`}>
             <div className="flex items-start justify-between mb-4">
                 <div>
                     <p className={`${theme.subtext} text-sm font-semibold mb-1`}>{title}</p>
@@ -55,14 +55,24 @@ const StatCard = ({ title, value, subtitle, icon: Icon, color, link }: any) => {
                 <div className={`flex items-center justify-between pt-3 border-t border-gray-100 mt-2`}>
                     {subtitle && <span className={`text-xs font-medium ${theme.subtext}`}>{subtitle}</span>}
                     {link && (
-                        <Link href={link} className={`text-xs font-medium flex items-center px-2 py-1 rounded transition-colors ${theme.linkBg}`}>
-                            ดูรายละเอียด <ArrowRight className="w-3 h-3 ml-1" />
-                        </Link>
+                        <span className={`text-xs font-medium flex items-center px-2 py-1 rounded transition-colors ${theme.linkBg}`}>
+                            คลิกเพื่อดูรายละเอียด <ArrowRight className="w-3 h-3 ml-1" />
+                        </span>
                     )}
                 </div>
             )}
         </div>
     );
+
+    if (link) {
+        return (
+            <Link href={link} className="block h-full group">
+                {content}
+            </Link>
+        );
+    }
+
+    return content;
 };
 
 export default async function AdminDashboard() {

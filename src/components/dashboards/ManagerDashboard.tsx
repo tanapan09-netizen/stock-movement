@@ -31,14 +31,14 @@ export default async function ManagerDashboard() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-white dark:bg-slate-800 border-blue-100/50 border rounded-2xl p-6 shadow-sm">
+                <Link href="/maintenance" className="block transform transition-all hover:-translate-y-1 hover:shadow-md bg-white dark:bg-slate-800 border-blue-100/50 border rounded-2xl p-6 shadow-sm">
                     <h3 className="text-sm font-semibold text-gray-500 mb-1">ขอซื้ออะไหล่รออนุมัติ</h3>
                     <p className="text-3xl font-bold text-gray-900 dark:text-white">{pendingPR}</p>
-                </div>
-                <div className="bg-white dark:bg-slate-800 border-orange-100/50 border rounded-2xl p-6 shadow-sm">
+                </Link>
+                <Link href="/petty-cash" className="block transform transition-all hover:-translate-y-1 hover:shadow-md bg-white dark:bg-slate-800 border-orange-100/50 border rounded-2xl p-6 shadow-sm">
                     <h3 className="text-sm font-semibold text-gray-500 mb-1">เบิกเงินสดย่อยรออนุมัติ</h3>
                     <p className="text-3xl font-bold text-gray-900 dark:text-white">{pendingPettyCash}</p>
-                </div>
+                </Link>
             </div>
 
             <div className="mt-8">
