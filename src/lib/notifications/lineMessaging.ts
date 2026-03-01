@@ -173,7 +173,7 @@ export function createPettyCashFlexMessage(data: {
                         spacing: 'sm',
                         contents: [
                             { type: 'text', text: 'รายการ:', color: '#aaaaaa', size: 'sm', flex: 2 },
-                            { type: 'text', text: data.purpose, wrap: true, color: '#666666', size: 'sm', flex: 5 }
+                            { type: 'text', text: data.purpose.replace(/\*\*/g, ''), wrap: true, color: '#666666', size: 'sm', flex: 5 }
                         ],
                         margin: 'sm'
                     },
@@ -198,6 +198,24 @@ export function createPettyCashFlexMessage(data: {
                         margin: 'md'
                     }] : [])
                 ]
+            },
+            footer: {
+                type: 'box',
+                layout: 'vertical',
+                spacing: 'sm',
+                contents: [
+                    {
+                        type: 'button',
+                        style: 'primary',
+                        height: 'sm',
+                        action: {
+                            type: 'uri',
+                            label: 'ดูรายละเอียด',
+                            uri: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/petty-cash?req=${data.request_number}`,
+                        },
+                    },
+                ],
+                flex: 0,
             }
         }
     };

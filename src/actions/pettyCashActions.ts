@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { uploadFile } from '@/lib/gcs';
+import { adjustFundBalance, getPettyCashFundStatus } from './pettyCashFundActions';
 
 // Generate PC Request Number (e.g., PC-20260226-001)
 async function generatePettyCashNumber() {
@@ -159,6 +160,12 @@ export async function dispensePettyCash(id: number, dispensed_amount: number, no
             }
         });
 
+        // Deduct from Main Fund
+        const fundRes = await getPettyCashFundStatus();
+        if (fundRes.success && fundRes.data) {
+            await adjustFundBalance(fundRes.data.id, -dispensed_amount);
+        }
+
         revalidatePath('/petty-cash');
 
         try {
@@ -267,6 +274,14 @@ export async function reconcilePettyCash(id: number, notes?: string) {
             }
         });
 
+        // Return any change back to the Main Fund
+        if (currentRequest?.change_returned && Number(currentRequest.change_returned) > 0) {
+            const fundRes = await getPettyCashFundStatus();
+            if (fundRes.success && fundRes.data) {
+                await adjustFundBalance(fundRes.data.id, Number(currentRequest.change_returned));
+            }
+        }
+
         revalidatePath('/petty-cash');
 
         try {
@@ -336,5 +351,26 @@ export async function deletePettyCashRequest(id: number) {
     } catch (error) {
         console.error('Error deleting petty cash:', error);
         return { success: false, error: 'Failed to delete request' };
+    }
+}
+
+export async function verifyOriginalReceipt(id: number, hasReceived: boolean) {
+    try {
+        const session = await auth();
+        if (!session || !session.user) return { success: false, error: 'Unauthorized' };
+
+        const isAdminOrAccounting = ['admin', 'manager', 'accounting'].includes((session.user as any).role?.toLowerCase() || '');
+        if (!isAdminOrAccounting) return { success: false, error: 'Permission denied' };
+
+        const updated = await prisma.tbl_petty_cash.update({
+            where: { id },
+            data: { has_original_receipt: hasReceived }
+        });
+
+        revalidatePath('/petty-cash');
+        return { success: true, data: updated };
+    } catch (error) {
+        console.error('Error verifying original receipt:', error);
+        return { success: false, error: 'Failed to verify original receipt' };
     }
 }

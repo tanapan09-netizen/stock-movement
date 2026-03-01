@@ -9,7 +9,8 @@ import {
     submitClearance,
     reconcilePettyCash,
     rejectPettyCash,
-    deletePettyCashRequest
+    deletePettyCashRequest,
+    verifyOriginalReceipt
 } from '@/actions/pettyCashActions';
 import { getSession } from 'next-auth/react';
 import Link from 'next/link';
@@ -17,6 +18,7 @@ import {
     Plus, DollarSign, CheckCircle, Search, ExternalLink, Trash2, XCircle, FileText, AlertTriangle
 } from 'lucide-react';
 import { useToast } from '@/components/ToastProvider';
+import PettyCashFundDisplay from './components/PettyCashFundDisplay';
 
 // --- Custom Confirm Modal Component ---
 function ConfirmModal({ open, title, message, confirmLabel, confirmColor, onConfirm, onCancel }: {
@@ -73,6 +75,75 @@ function ConfirmModal({ open, title, message, confirmLabel, confirmColor, onConf
     );
 }
 
+// --- Custom Prompt Modal Component ---
+function PromptModal({ open, title, message, placeholder, confirmLabel, confirmColor, onConfirm, onCancel }: {
+    open: boolean;
+    title: string;
+    message: string;
+    placeholder?: string;
+    confirmLabel?: string;
+    confirmColor?: 'red' | 'emerald' | 'blue';
+    onConfirm: (text: string) => void;
+    onCancel: () => void;
+}) {
+    const [text, setText] = useState('');
+
+    useEffect(() => {
+        if (open) setText('');
+    }, [open]);
+
+    if (!open) return null;
+    const colors = {
+        red: 'bg-red-600 hover:bg-red-700 focus:ring-red-300',
+        emerald: 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-300',
+        blue: 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-300',
+    };
+    const iconColors = {
+        red: 'bg-red-100 text-red-600',
+        emerald: 'bg-emerald-100 text-emerald-600',
+        blue: 'bg-blue-100 text-blue-600',
+    };
+    const color = confirmColor || 'blue';
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={onCancel}>
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity" />
+            <div
+                className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 transform transition-all animate-in fade-in zoom-in-95 duration-200"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="flex flex-col items-center text-center">
+                    <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-4 ${iconColors[color]}`}>
+                        <AlertTriangle className="w-7 h-7" />
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-900 mb-1">{title}</h3>
+                    <p className="text-sm text-gray-500 mb-4">{message}</p>
+                    <textarea
+                        className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none mb-6 resize-none text-left"
+                        rows={3}
+                        placeholder={placeholder || 'ระบุเหตุผล...'}
+                        value={text}
+                        onChange={e => setText(e.target.value)}
+                    />
+                    <div className="flex gap-3 w-full">
+                        <button
+                            onClick={onCancel}
+                            className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors text-sm"
+                        >
+                            ยกเลิก
+                        </button>
+                        <button
+                            onClick={() => onConfirm(text)}
+                            className={`flex-1 px-4 py-2.5 text-white rounded-xl font-medium transition-colors text-sm focus:ring-4 ${colors[color]}`}
+                        >
+                            {confirmLabel || 'ตกลง'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 type PettyCash = {
     id: number;
     request_number: string;
@@ -85,6 +156,7 @@ type PettyCash = {
     receipt_urls: string | null;
     notes: string | null;
     status: string;
+    has_original_receipt: boolean;
     created_at: Date;
     updated_at: Date;
     dispensed_at: Date | null;
@@ -100,6 +172,8 @@ export default function PettyCashClient() {
     const [isApprover, setIsApprover] = useState<boolean>(false);
     const [currentTab, setCurrentTab] = useState('active'); // active, history
     const { showToast } = useToast();
+
+    const isAdminOrAccounting = ['admin', 'manager', 'accounting'].includes(userRole);
 
     // Modals
     const [showDispenseModal, setShowDispenseModal] = useState(false);
@@ -145,6 +219,34 @@ export default function PettyCashClient() {
     const handleCancel = useCallback(() => {
         confirmResolveRef.current?.(false);
         setConfirmModal(prev => ({ ...prev, open: false }));
+    }, []);
+
+    // Custom prompt modal state
+    const [promptModal, setPromptModal] = useState<{
+        open: boolean;
+        title: string;
+        message: string;
+        placeholder?: string;
+        confirmLabel?: string;
+        confirmColor?: 'red' | 'emerald' | 'blue';
+    }>({ open: false, title: '', message: '' });
+    const promptResolveRef = useRef<((v: string | null) => void) | null>(null);
+
+    const openPrompt = useCallback((title: string, message: string, placeholder?: string, confirmLabel?: string, confirmColor?: 'red' | 'emerald' | 'blue'): Promise<string | null> => {
+        return new Promise(resolve => {
+            promptResolveRef.current = resolve;
+            setPromptModal({ open: true, title, message, placeholder, confirmLabel, confirmColor });
+        });
+    }, []);
+
+    const handlePromptConfirm = useCallback((text: string) => {
+        promptResolveRef.current?.(text);
+        setPromptModal(prev => ({ ...prev, open: false }));
+    }, []);
+
+    const handlePromptCancel = useCallback(() => {
+        promptResolveRef.current?.(null);
+        setPromptModal(prev => ({ ...prev, open: false }));
     }, []);
 
     useEffect(() => {
@@ -252,10 +354,11 @@ export default function PettyCashClient() {
 
     const handleReject = async () => {
         if (!selectedRequest) return;
-        const ok = await openConfirm('ปฏิเสธคำขอ', 'คุณแน่ใจหรือไม่ว่าต้องการปฏิเสธคำขอเบิกเงินนี้?', 'ปฏิเสธ', 'red');
-        if (!ok) return;
+        const text = await openPrompt('ปฏิเสธการจ่ายเงิน', 'คุณแน่ใจหรือไม่ว่าต้องการปฏิเสธคำขอเบิกเงินนี้?', 'ระบุเหตุผล...', 'ปฏิเสธ', 'red');
+        if (text === null) return;
         setIsSubmitting(true);
-        const res = await rejectPettyCash(selectedRequest.id, formData.notes);
+        const reason = text.trim() !== '' ? `ปฏิเสธโดยบัญชี: ${text}` : 'ปฏิเสธโดยบัญชี';
+        const res = await rejectPettyCash(selectedRequest.id, reason);
         if (res.success) {
             showToast('ปฏิเสธคำขอแล้ว', 'success');
             setShowDispenseModal(false);
@@ -267,10 +370,11 @@ export default function PettyCashClient() {
     };
 
     const handleDirectReject = async (id: number) => {
-        const ok = await openConfirm('ไม่อนุมัติคำขอ', 'คุณต้องการไม่อนุมัติ (ตีตก) คำขอเบิกเงินสดย่อยนี้ใช่หรือไม่?', 'ไม่อนุมัติ', 'red');
-        if (!ok) return;
+        const text = await openPrompt('ไม่อนุมัติคำขอ', 'คุณต้องการไม่อนุมัติ (ตีตก) คำขอเบิกเงินสดย่อยนี้ใช่หรือไม่? สามารถระบุเหตุผลได้', 'ระบุเหตุผลที่ไม่ใช่อนุมัติ...', 'ไม่อนุมัติ', 'red');
+        if (text === null) return;
         setIsSubmitting(true);
-        const res = await rejectPettyCash(id, 'ไม่อนุมัติโดยผู้จัดการ');
+        const reason = text.trim() !== '' ? `ไม่อนุมัติโดยผู้จัดการ: ${text}` : 'ไม่อนุมัติโดยผู้จัดการ';
+        const res = await rejectPettyCash(id, reason);
         if (res.success) {
             showToast('ไม่อนุมัติคำขอแล้ว', 'success');
             loadData();
@@ -289,6 +393,26 @@ export default function PettyCashClient() {
             loadData();
         } else {
             showToast(res.error || 'การลบล้มเหลว', 'error');
+        }
+    };
+
+    const handleVerifyReceipt = async (id: number, currentStatus: boolean) => {
+        try {
+            const newStatus = !currentStatus;
+            // Optimistic update
+            setRequests(prev => prev.map(r => r.id === id ? { ...r, has_original_receipt: newStatus } : r));
+
+            const res = await verifyOriginalReceipt(id, newStatus);
+            if (!res.success) {
+                // Revert on failure
+                setRequests(prev => prev.map(r => r.id === id ? { ...r, has_original_receipt: currentStatus } : r));
+                showToast(res.error || 'ไม่สามารถอัปเดตสถานะใบเสร็จได้', 'error');
+            } else {
+                showToast(newStatus ? 'รับเอกสารตัวจริงแล้ว' : 'ยกเลิกการรับเอกสารตัวจริง', 'success');
+            }
+        } catch (error) {
+            console.error(error);
+            showToast('เกิดข้อผิดพลาด', 'error');
         }
     };
 
@@ -330,12 +454,22 @@ export default function PettyCashClient() {
                     <h1 className="text-2xl font-bold text-gray-900">เงินสดย่อย (Petty Cash)</h1>
                     <p className="text-sm text-gray-500">จัดการการเบิกเงินสดสำรองจ่ายและเคลียร์เงิน</p>
                 </div>
-                <Link
-                    href="/petty-cash/new"
-                    className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
-                >
-                    <Plus className="w-5 h-5 mr-2" /> เบิกเงินสดย่อย
-                </Link>
+                <div className="flex gap-3">
+                    {isAdminOrAccounting && (
+                        <Link
+                            href="/petty-cash/dashboard"
+                            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition"
+                        >
+                            <FileText className="w-5 h-5 mr-2" /> ภาพรวมเงินสดย่อย
+                        </Link>
+                    )}
+                    <Link
+                        href="/petty-cash/new"
+                        className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+                    >
+                        <Plus className="w-5 h-5 mr-2" /> เบิกเงินสดย่อย
+                    </Link>
+                </div>
             </div>
 
             {/* Tabs */}
@@ -362,6 +496,8 @@ export default function PettyCashClient() {
                 </nav>
             </div>
 
+            <PettyCashFundDisplay isAdminOrAccounting={isAdminOrAccounting} />
+
             {/* Content Table */}
             <div className="bg-white rounded-lg shadow overflow-hidden">
                 <div className="overflow-x-auto">
@@ -372,6 +508,7 @@ export default function PettyCashClient() {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ผู้เบิก</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">รายการ</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">จำนวนเงิน</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">เอกสารตัวจริง</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">สถานะ</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">จัดการ</th>
                             </tr>
@@ -399,6 +536,22 @@ export default function PettyCashClient() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                             ฿{Number(req.dispensed_amount || req.requested_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                            {/* Receipt Toggle logic */}
+                                            {isAdminOrAccounting ? (
+                                                <button
+                                                    onClick={() => handleVerifyReceipt(req.id, req.has_original_receipt)}
+                                                    className={`p-1.5 rounded-full transition-colors ${req.has_original_receipt ? 'bg-green-100 text-green-600 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+                                                    title={req.has_original_receipt ? "ได้รับเอกสารแล้ว (คลิกเพื่อยกเลิก)" : "ยังไม่ได้รับเอกสาร (คลิกเพื่อยืนยันว่าได้รับแล้ว)"}
+                                                >
+                                                    <CheckCircle className="w-5 h-5" />
+                                                </button>
+                                            ) : (
+                                                <span className={`inline-flex p-1.5 rounded-full ${req.has_original_receipt ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`} title={req.has_original_receipt ? "บัญชีได้รับเอกสารแล้ว" : "บัญชียังไม่ได้รับเอกสาร"}>
+                                                    <CheckCircle className="w-5 h-5" />
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             {getStatusBadge(req.status)}
@@ -659,6 +812,18 @@ export default function PettyCashClient() {
                 confirmColor={confirmModal.confirmColor}
                 onConfirm={handleConfirm}
                 onCancel={handleCancel}
+            />
+
+            {/* Custom Prompt Modal */}
+            <PromptModal
+                open={promptModal.open}
+                title={promptModal.title}
+                message={promptModal.message}
+                placeholder={promptModal.placeholder}
+                confirmLabel={promptModal.confirmLabel}
+                confirmColor={promptModal.confirmColor}
+                onConfirm={handlePromptConfirm}
+                onCancel={handlePromptCancel}
             />
         </div>
     );

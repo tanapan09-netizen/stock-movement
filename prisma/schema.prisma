@@ -679,6 +679,10 @@ model tbl_petty_cash {
   
   status           String    @default("pending") @db.VarChar(50)
   
+  has_original_receipt Boolean @default(false)
+  cost_center      String?   @db.VarChar(100)
+  category         String?   @db.VarChar(100)
+  
   created_at       DateTime  @default(now()) @db.Timestamp(0)
   updated_at       DateTime  @default(now()) @updatedAt @db.Timestamp(0)
   dispensed_at     DateTime? @db.Timestamp(0)
@@ -690,4 +694,17 @@ model tbl_petty_cash {
 
   @@index([status], map: "idx_pc_status")
   @@index([requested_by], map: "idx_pc_requested_by")
+}
+
+model tbl_petty_cash_fund {
+  id                  Int       @id @default(autoincrement())
+  fund_name           String    @db.VarChar(100)
+  max_limit           Decimal   @db.Decimal(10, 2)
+  current_balance     Decimal   @db.Decimal(10, 2)
+  warning_threshold   Decimal   @db.Decimal(10, 2)
+  status              String    @default("active") @db.VarChar(20)
+  last_replenished_at DateTime? @db.Timestamp(0)
+  replenished_by      String?   @db.VarChar(255)
+  created_at          DateTime  @default(now()) @db.Timestamp(0)
+  updated_at          DateTime  @default(now()) @updatedAt @db.Timestamp(0)
 }

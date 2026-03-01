@@ -27,6 +27,7 @@ export default function NewPettyCashClient() {
     const { showToast } = useToast();
     const [activeTab, setActiveTab] = useState('Basic Data');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showPreviewModal, setShowPreviewModal] = useState(false);
 
     // Header
     const [header, setHeader] = useState({
@@ -467,7 +468,7 @@ ${lineItems.map((item, idx) => `${idx + 1}. ${item.description} - ฿${fmt(Numbe
                     <h1 className="text-2xl font-bold text-gray-800">New Petty Cash Payment</h1>
                 </div>
                 <div className="flex gap-2 w-full md:w-auto">
-                    <button type="button" className="flex-1 md:flex-none px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center justify-center gap-2 text-sm font-medium transition-colors">
+                    <button type="button" onClick={() => setShowPreviewModal(true)} className="flex-1 md:flex-none px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center justify-center gap-2 text-sm font-medium transition-colors">
                         <Eye className="w-4 h-4" /> Preview
                     </button>
                     <button onClick={handleSubmit} disabled={isSubmitting} className="flex-1 md:flex-none px-6 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 flex items-center justify-center gap-2 text-sm font-medium transition-colors disabled:opacity-50">
@@ -500,6 +501,102 @@ ${lineItems.map((item, idx) => `${idx + 1}. ${item.description} - ฿${fmt(Numbe
                     {renderTabContent()}
                 </div>
             </div>
+
+            {/* Preview Modal */}
+            {showPreviewModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
+                        <div className="flex justify-between items-center border-b pb-3 mb-4">
+                            <h2 className="text-xl font-bold flex items-center text-gray-800"><Eye className="w-5 h-5 mr-2 text-blue-600" /> สรุปข้อมูลคำขอเบิกเงินสดย่อย</h2>
+                            <button onClick={() => setShowPreviewModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-6 h-6" /></button>
+                        </div>
+
+                        <div className="overflow-y-auto flex-1 pr-2 space-y-6">
+                            {/* Basic Info */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg text-sm">
+                                <div><p className="text-gray-500 mb-1">เลขที่เอกสาร</p><p className="font-semibold">{header.documentNo}</p></div>
+                                <div><p className="text-gray-500 mb-1">วันที่เอกสาร</p><p className="font-semibold">{header.documentDate}</p></div>
+                                <div><p className="text-gray-500 mb-1">แผนก/โครงการ</p><p className="font-semibold">{header.department || '-'}</p></div>
+                                <div><p className="text-gray-500 mb-1">ผู้รับเงิน</p><p className="font-semibold">{header.payee || '-'}</p></div>
+                                <div className="col-span-full border-t border-gray-200 mt-2 pt-2">
+                                    <p className="text-gray-500 mb-1">รายละเอียด (Header)</p>
+                                    <p className="text-gray-800">{header.description || '-'}</p>
+                                </div>
+                            </div>
+
+                            {/* Line Items */}
+                            <div>
+                                <h3 className="font-semibold text-gray-700 mb-3 border-b pb-2">รายการค่าใช้จ่าย</h3>
+                                <div className="border border-gray-200 rounded-md overflow-hidden">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-100 text-gray-600 border-b">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left font-medium">รายละเอียด</th>
+                                                <th className="px-3 py-2 text-right font-medium">จำนวนเงิน</th>
+                                                <th className="px-3 py-2 font-medium">หมายเหตุ</th>
+                                                <th className="px-3 py-2 text-center font-medium">VAT</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {lineItems.map((item, i) => (
+                                                <tr key={i} className="hover:bg-gray-50">
+                                                    <td className="px-3 py-2">{item.description || <span className="text-red-400 italic">ไม่ได้ระบุชื่อ</span>}</td>
+                                                    <td className="px-3 py-2 text-right">{fmt(item.amount)}</td>
+                                                    <td className="px-3 py-2 text-gray-500">{item.remark || '-'}</td>
+                                                    <td className="px-3 py-2 text-center">{item.vatExempt ? <span className="text-gray-400 text-xs">ยกเว้น</span> : <span className="text-emerald-600 text-xs font-semibold">คิด VAT</span>}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* Summary */}
+                            <div className="bg-blue-50 border border-blue-100 rounded-lg p-5">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                                    <div><p className="text-blue-600 mb-1">รวมเป็นเงิน</p><p className="font-bold text-lg">฿{fmt(calculations.subtotal)}</p></div>
+                                    <div><p className="text-gray-600 mb-1">ฐานภาษี</p><p className="font-semibold">฿{fmt(calculations.vatBase)}</p></div>
+                                    <div><p className="text-gray-600 mb-1">ภาษีมูลค่าเพิ่ม 7%</p><p className="font-semibold">฿{fmt(calculations.vatAmount)}</p></div>
+                                    <div><p className="text-orange-600 mb-1">หัก ณ ที่จ่าย ({whtRate}%)</p><p className="font-semibold">-฿{fmt(calculations.whtAmount)}</p></div>
+                                </div>
+                                <div className="border-t border-blue-200 mt-2 pt-3 flex justify-between items-center sm:px-4">
+                                    <span className="font-bold text-blue-800 text-lg">ยอดเงินสุทธิ</span>
+                                    <span className="font-bold text-2xl text-blue-800">฿{fmt(calculations.netTotal)}</span>
+                                </div>
+                            </div>
+
+                            {/* Notes */}
+                            {notes && (
+                                <div className="p-4 bg-yellow-50 text-yellow-800 rounded-lg text-sm border border-yellow-200">
+                                    <strong>หมายเหตุเพิ่มเติม/เงื่อนไข:</strong>
+                                    <p className="whitespace-pre-wrap mt-2">{notes}</p>
+                                </div>
+                            )}
+
+                            {/* Attachments */}
+                            {attachments && attachments.length > 0 && (
+                                <div>
+                                    <h3 className="font-semibold text-gray-700 mb-2 flex items-center gap-2"><Paperclip className="w-4 h-4" /> เอกสารแนบ</h3>
+                                    <ul className="list-disc list-inside text-sm text-gray-600 ml-2 space-y-1">
+                                        {Array.from(attachments).map((f, i) => (
+                                            <li key={i}>{f.name} <span className="text-gray-400">({(f.size / 1024).toFixed(1)} KB)</span></li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mt-6 border-t pt-4 flex justify-end gap-3 shrink-0">
+                            <button onClick={() => setShowPreviewModal(false)} className="px-5 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                                กลับไปแก้ไข
+                            </button>
+                            <button onClick={() => { setShowPreviewModal(false); handleSubmit(); }} disabled={isSubmitting} className="px-6 py-2.5 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-2">
+                                <Save className="w-4 h-4" /> บันทึกคำขอนี้
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
