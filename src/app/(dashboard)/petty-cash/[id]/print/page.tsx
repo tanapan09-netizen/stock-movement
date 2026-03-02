@@ -1,25 +1,15 @@
-import { getPettyCashRequestById } from "@/actions/pettyCashActions";
-import { notFound } from "next/navigation";
-import PettyCashPrintClient from "./PettyCashPrintClient";
-import { auth } from "@/auth";
+'use client';
 
-export default async function PettyCashPrintPage({ params }: { params: { id: string } }) {
-    const session = await auth();
-    if (!session || !session.user) {
-        return <div className="p-8 text-center text-xl text-red-500">กรุณาเข้าสู่ระบบก่อนใช้งาน</div>;
+import { useParams } from 'next/navigation';
+import PettyCashPrintClient from './PettyCashPrintClient';
+
+export default function PettyCashPrintPage() {
+    const params = useParams();
+    const id = params?.id;
+
+    if (!id) {
+        return <div className="p-8 text-center text-red-500">ไม่พบรหัสคำขอ</div>;
     }
 
-    const { id } = params;
-    const reqRes = await getPettyCashRequestById(Number(id));
-
-    if (!reqRes.success || !reqRes.data) {
-        return notFound();
-    }
-
-    return (
-        <PettyCashPrintClient
-            data={reqRes.data}
-            currentUserRole={(session.user as any).role || 'employee'}
-        />
-    );
+    return <PettyCashPrintClient requestId={Number(id)} />;
 }
