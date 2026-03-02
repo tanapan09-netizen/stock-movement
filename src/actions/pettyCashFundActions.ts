@@ -107,3 +107,52 @@ export async function adjustFundBalance(fundId: number, adjustment: number) {
         return { success: false, error: error.message };
     }
 }
+
+export async function updateFundLimit(newLimit: number) {
+    try {
+        const session = await auth();
+        if (!session?.user) {
+            throw new Error('Unauthorized');
+        }
+
+        // Only Admin/Director can change the max limit directly
+        if (session.user.role !== 'admin' && session.user.role !== 'director') {
+            throw new Error('Permission denied: Only Admin or Director can adjust the petty cash fund limit.');
+        }
+
+        if (newLimit <= 0) {
+            throw new Error('Invalid limit amount');
+        }
+
+        const fund = await prisma.tbl_petty_cash_fund.findFirst({
+            where: { status: 'active' }
+        });
+
+        if (!fund) {
+            throw new Error('Active fund not found');
+        }
+
+        // Also update the warning threshold automatically (e.g. 20% of new limit)
+        const newWarningThreshold = newLimit * 0.2;
+
+        const updatedFund = await prisma.tbl_petty_cash_fund.update({
+            where: { id: fund.id },
+            data: {
+                max_limit: newLimit,
+                warning_threshold: newWarningThreshold
+            }
+        });
+
+        const serializedFund = {
+            ...updatedFund,
+            max_limit: Number(updatedFund.max_limit),
+            current_balance: Number(updatedFund.current_balance),
+            warning_threshold: Number(updatedFund.warning_threshold),
+        };
+
+        return { success: true, data: serializedFund };
+    } catch (error: any) {
+        console.error('Error updating fund limit:', error);
+        return { success: false, error: error.message };
+    }
+}
