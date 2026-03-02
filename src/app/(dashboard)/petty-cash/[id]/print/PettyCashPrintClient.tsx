@@ -3,6 +3,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
 import { getPettyCashRequestById, savePettyCashSignatures } from '@/actions/pettyCashActions';
+import { getSystemSettings } from '@/actions/settingActions';
 import { useToast } from '@/components/ToastProvider';
 import { Printer, Save, RefreshCcw, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
@@ -15,8 +16,9 @@ export default function PettyCashPrintClient({ requestId }: PettyCashPrintClient
     const { showToast } = useToast();
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [companyName, setCompanyName] = useState<string>("บริษัท ตัวอย่าง จำกัด");
 
-    // Canvas References
+    // Canvas References for 2 Roles based on new layout reference
     const payeeSigRef = useRef<SignatureCanvas>(null);
     const payerSigRef = useRef<SignatureCanvas>(null);
 
@@ -25,11 +27,19 @@ export default function PettyCashPrintClient({ requestId }: PettyCashPrintClient
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        getPettyCashRequestById(requestId).then((res) => {
-            if (res.success && res.data) {
-                setData(res.data);
-                setSavedPayeeSig(res.data.payee_signature || null);
-                setSavedPayerSig(res.data.payer_signature || null);
+        Promise.all([
+            getPettyCashRequestById(requestId),
+            getSystemSettings()
+        ]).then(([pettyCashRes, settingsRes]) => {
+            if (pettyCashRes.success && pettyCashRes.data) {
+                setData(pettyCashRes.data);
+                setSavedPayeeSig(pettyCashRes.data.payee_signature || null);
+                setSavedPayerSig(pettyCashRes.data.payer_signature || null);
+            }
+            if (settingsRes.success && settingsRes.data) {
+                if (settingsRes.data.company_name) {
+                    setCompanyName(settingsRes.data.company_name);
+                }
             }
             setLoading(false);
         });
@@ -57,21 +67,21 @@ export default function PettyCashPrintClient({ requestId }: PettyCashPrintClient
         if (res.success) {
             if (newPayeeSig) setSavedPayeeSig(newPayeeSig);
             if (newPayerSig) setSavedPayerSig(newPayerSig);
-            showToast('บันทึกลายเซ็นเรียบร้อยแล้ว', 'success');
+            showToast('บันทึกลายเซ็นลงฐานข้อมูลเรียบร้อยแล้ว', 'success');
         } else {
             showToast(res.error || 'เกิดข้อผิดพลาดในการบันทึก', 'error');
         }
         setIsSaving(false);
     };
 
-    const clearPayeeCanvas = () => { payeeSigRef.current?.clear(); };
-    const clearPayerCanvas = () => { payerSigRef.current?.clear(); };
-
     if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-500 text-lg">กำลังโหลดข้อมูล...</div>;
     if (!data) return <div className="min-h-screen flex items-center justify-center text-red-500 text-lg">ไม่พบข้อมูลคำขอเบิกเงินสดย่อย</div>;
 
+    // Filter valid lines
+    const descriptionLines = data.purpose.split('\n').filter((l: string) => l.trim() !== '' && !l.includes('฿0.00'));
+
     return (
-        <div className="min-h-screen bg-gray-100 py-10 print:bg-white print:py-0 text-black">
+        <div className="min-h-screen bg-gray-100 py-10 print:bg-white print:py-0 text-black font-sans">
             {/* Action Bar - Hidden in Print mode */}
             <div className="w-full max-w-4xl mx-auto bg-white shadow-sm p-4 rounded-xl mb-6 flex items-center justify-between print:hidden">
                 <Link href="/petty-cash" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg font-medium transition-colors">
@@ -98,193 +108,129 @@ export default function PettyCashPrintClient({ requestId }: PettyCashPrintClient
             </div>
 
             {/* Print A4 Container */}
-            <div id="print-area" className="bg-white w-full max-w-4xl mx-auto min-h-[297mm] p-10 shadow-xl border border-gray-200 rounded-sm print:shadow-none print:border-none print:p-6 print:m-0">
+            <div id="print-area" className="bg-white w-full max-w-4xl mx-auto min-h-[297mm] px-16 py-12 shadow-xl print:shadow-none print:p-0 print:m-0 text-[16px]">
 
-                {/* Document Header */}
-                <div className="flex justify-between items-start mb-8 border-b-2 border-gray-800 pb-6">
-                    <div>
-                        <h1 className="text-3xl font-extrabold text-gray-800 tracking-tight">ใบสำคัญจ่ายเงินสดย่อย</h1>
-                        <p className="text-sm text-gray-500 mt-2 tracking-widest uppercase">Petty Cash Voucher</p>
-                    </div>
-                    <div className="text-right">
-                        <div className="flex items-center justify-end gap-2 mb-1">
-                            <span className="font-bold text-gray-600">เลขที่:</span>
-                            <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded font-mono text-lg border border-gray-200">{data.request_number}</span>
-                        </div>
-                        <div className="flex items-center justify-end gap-2 text-sm text-gray-600">
-                            <span className="font-semibold">วันที่:</span>
-                            <span>{new Date(data.created_at).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-                        </div>
+                {/* Header section matching the minimalist photo */}
+                <div className="text-center mb-8">
+                    <h1 className="text-[26px] font-bold text-black mb-2 tracking-wide">{companyName}</h1>
+                    <h2 className="text-[22px] font-bold mb-4">ใบเบิกเงินสดย่อย</h2>
+                    <div className="flex justify-end pr-16">
+                        <span className="font-semibold text-lg">วันที่</span>
+                        <span className="border-b border-dotted border-black px-4 inline-block w-40 text-center">
+                            {new Date(data.created_at).toLocaleDateString('th-TH', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                        </span>
                     </div>
                 </div>
 
-                {/* Sender/Receiver Info Row */}
-                <div className="grid grid-cols-2 gap-8 mb-8">
-                    <div className="bg-gray-50 p-4 border border-gray-200 rounded-lg">
-                        <p className="text-sm font-semibold text-gray-500 mb-1">จ่ายให้แก่ (Payee)</p>
-                        <p className="text-lg font-bold text-gray-800 border-b border-dotted border-gray-300 pb-1">{data.requested_by}</p>
-                    </div>
-                    <div className="bg-gray-50 p-4 border border-gray-200 rounded-lg">
-                        <p className="text-sm font-semibold text-gray-500 mb-1">แผนก / หมวดหมู่ (Category)</p>
-                        <p className="text-lg font-bold text-gray-800 border-b border-dotted border-gray-300 pb-1">{data.category || '-'}</p>
-                    </div>
-                </div>
-
-                {/* Details Table */}
-                <div className="mb-10 rounded-lg border-2 border-gray-800 overflow-hidden">
-                    <table className="w-full text-left border-collapse">
-                        <thead className="bg-gray-800 text-white">
-                            <tr>
-                                <th className="py-4 px-6 font-semibold w-16 text-center border-r border-gray-700">#</th>
-                                <th className="py-4 px-6 font-semibold border-r border-gray-700">รายการ (Description)</th>
-                                <th className="py-4 px-6 font-semibold w-48 text-right">จำนวนเงิน (Amount)</th>
+                {/* Minimalist 3-Column Table */}
+                <div className="border-[1.5px] border-black mt-10">
+                    <table className="w-full text-center border-collapse">
+                        <thead>
+                            <tr className="border-b-[1.5px] border-black">
+                                <th className="py-3 px-2 border-r-[1.5px] border-black w-24 font-normal text-lg">ลำดับที่</th>
+                                <th className="py-3 px-4 border-r-[1.5px] border-black font-normal text-lg">รายการ</th>
+                                <th className="py-3 px-4 w-48 font-normal text-lg">จำนวนเงิน</th>
                             </tr>
                         </thead>
-                        <tbody className="bg-white">
-                            <tr className="border-b border-gray-200">
-                                <td className="py-6 px-6 text-center text-gray-600 border-r border-gray-200 font-mono">1</td>
-                                <td className="py-2 px-6 text-gray-800 font-medium border-r border-gray-200">
-                                    {data.purpose.split('\n').map((line: string, idx: number) => {
-                                        // Hide any line that is exactly "฿0.00" value for tax or WHT
-                                        if (line.includes('฿0.00')) return null;
+                        <tbody>
+                            <tr className="align-top border-b border-black h-[400px]">
+                                <td className="py-4 border-r-[1.5px] border-black font-medium text-center">
+                                    {descriptionLines.map((_: any, idx: number) => (
+                                        <div key={idx} className="mb-2 leading-[1.8]">{idx + 1}</div>
+                                    ))}
+                                </td>
 
-                                        const parts = line.split(/(\*\*.*?\*\*)/g);
-                                        return (
-                                            <div key={idx} className={`${line.trim() === '' ? 'h-1' : 'min-h-[1.25rem]'} ${line.startsWith('**รายการค่าใช้จ่าย:**') ? 'mt-3 mb-1 text-gray-800' : ''}`}>
-                                                {parts.map((part, i) => {
-                                                    if (part.startsWith('**') && part.endsWith('**')) {
-                                                        return <strong key={i} className="text-gray-900">{part.slice(2, -2)}</strong>;
-                                                    }
-                                                    return <span key={i}>{part}</span>;
-                                                })}
-                                            </div>
-                                        );
+                                <td className="py-4 px-6 border-r-[1.5px] border-black text-left">
+                                    {descriptionLines.map((line: string, idx: number) => (
+                                        <div key={idx} className="mb-2 leading-[1.8]">
+                                            {line.split(/(\*\*.*?\*\*)/g).map((part, i) => {
+                                                if (part.startsWith('**') && part.endsWith('**')) {
+                                                    return <span key={i} className="font-semibold">{part.slice(2, -2)}</span>;
+                                                }
+                                                return <span key={i}>{part}</span>;
+                                            })}
+                                        </div>
+                                    ))}
+                                </td>
+
+                                <td className="py-4 px-4 text-right">
+                                    {descriptionLines.map((_: any, idx: number) => {
+                                        // Divide equally for aesthetic rows if single breakdown, otherwise just show on first line
+                                        const val = ((data.dispensed_amount || data.requested_amount) / (descriptionLines.length || 1)).toLocaleString('th-TH', { minimumFractionDigits: 2 });
+                                        return <div key={idx} className="mb-2 leading-[1.8]">{val}</div>;
                                     })}
                                 </td>
-                                <td className="py-6 px-6 text-right font-mono text-lg font-bold text-gray-800">
+                            </tr>
+
+                            {/* Simple Totals Row */}
+                            <tr className="font-medium text-lg border-b-[1.5px] border-black bg-white">
+                                <td className="border-r-[1.5px] border-black py-4"></td>
+                                <td className="border-r-[1.5px] border-black py-4 px-6 text-center font-bold">รวมเป็นเงิน</td>
+                                <td className="text-right px-4 py-4 font-bold">
                                     {(data.dispensed_amount || data.requested_amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
                                 </td>
                             </tr>
 
-                            {/* Empty padding rows */}
-                            <tr className="border-b border-gray-200"><td className="py-5 px-6 border-r border-gray-200"></td><td className="py-5 px-6 border-r border-gray-200"></td><td></td></tr>
-                            <tr className="border-b border-gray-200"><td className="py-5 px-6 border-r border-gray-200"></td><td className="py-5 px-6 border-r border-gray-200"></td><td></td></tr>
-
-                            {/* Totals */}
-                            <tr className="bg-gray-100">
-                                <td colSpan={2} className="py-5 px-6 text-right font-bold text-gray-800 border-r border-gray-200 uppercase tracking-widest text-sm">
-                                    รวมเงิน (Total Amount)
-                                </td>
-                                <td className="py-4 px-6 text-right font-mono text-xl font-bold text-blue-700 border-t-2 border-gray-800">
-                                    ฿ {(data.dispensed_amount || data.requested_amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                                </td>
-                            </tr>
-
-                            {data.actual_spent != null && data.change_returned != null && (
-                                <tr className="bg-gray-50">
-                                    <td colSpan={2} className="py-3 px-6 text-right font-medium text-gray-600 border-r border-gray-200 text-sm">
-                                        เงินทอน (Change Returned)
-                                    </td>
-                                    <td className="py-3 px-6 text-right font-mono font-bold text-emerald-600 border-t border-gray-300">
-                                        + ฿ {Number(data.change_returned).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                                    </td>
-                                </tr>
-                            )}
                         </tbody>
                     </table>
                 </div>
 
-                {/* Notes */}
-                {data.notes && (
-                    <div className="mb-12 border border-gray-300 p-4 rounded-lg bg-gray-50 italic text-gray-600">
-                        <span className="font-bold mr-2 not-italic text-gray-800">หมายเหตุ:</span> {data.notes}
-                    </div>
-                )}
+                {/* 2 Bottom Signatures - Down Left & Down Right */}
+                <div className="flex justify-between items-start mt-20 px-8 text-lg">
 
-                {/* Signatures Area */}
-                <div className="mt-16 pt-8 border-t-2 border-dashed border-gray-300 grid grid-cols-2 gap-12">
-
-                    {/* Payee Signature (ผู้รับเงิน) */}
-                    <div className="flex flex-col items-center">
-                        <p className="text-sm font-semibold text-gray-500 mb-4 tracking-wide">ผู้รับเงิน (Receiver)</p>
-
-                        {savedPayeeSig ? (
-                            <div className="border border-gray-200 rounded-lg p-2 bg-white w-full max-w-[280px] h-[120px] flex items-center justify-center relative group">
-                                <img src={savedPayeeSig} alt="Payee Signature" className="max-w-full max-h-full object-contain" />
-                                <button
-                                    onClick={() => setSavedPayeeSig(null)}
-                                    className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity print:hidden"
-                                    title="ลบลายเซ็นเพื่อเซ็นใหม่"
-                                >
-                                    <RefreshCcw className="w-4 h-4" />
-                                </button>
+                    <div className="flex flex-col relative w-64 items-center">
+                        <div className="flex items-end mb-2 w-full gap-2">
+                            <span>ลงชื่อ</span>
+                            <div className="flex-1 border-b border-dotted border-black relative h-10 group flex justify-center items-end pb-1">
+                                {savedPayeeSig ? (
+                                    <>
+                                        <img src={savedPayeeSig} className="absolute bottom-1 max-h-16 max-w-full object-contain" />
+                                        <button onClick={() => setSavedPayeeSig(null)} className="absolute -top-4 -right-4 text-xs bg-red-500 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">ลบ</button>
+                                    </>
+                                ) : (
+                                    <div className="absolute bottom-0 w-full h-16 bg-blue-50/50 print:bg-transparent">
+                                        <SignatureCanvas ref={payeeSigRef} penColor="black" canvasProps={{ className: 'w-full h-full cursor-crosshair' }} />
+                                        <button onClick={() => payeeSigRef.current?.clear()} className="absolute -top-4 -right-4 text-[10px] text-gray-500 hover:text-red-500 print:hidden">เคลียร์</button>
+                                    </div>
+                                )}
                             </div>
-                        ) : (
-                            <div className="w-full max-w-[280px] border-2 border-gray-300 rounded-lg bg-gray-50 relative print:bg-white print:border-gray-800">
-                                <SignatureCanvas
-                                    ref={payeeSigRef}
-                                    penColor="blue"
-                                    canvasProps={{ className: 'w-full h-[120px] rounded-lg cursor-crosshair' }}
-                                />
-                                <div className="absolute bottom-2 right-2 flex gap-2 print:hidden">
-                                    <button onClick={clearPayeeCanvas} className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded shadow hover:bg-gray-300 transition-colors">
-                                        ล้าง
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="text-center w-full max-w-[280px] mt-4">
-                            <div className="border-b border-gray-800 mb-2"></div>
-                            <p className="text-gray-800 font-medium">({data.requested_by})</p>
-                            <p className="text-gray-500 text-sm mt-1">วันที่ _______/_______/_______</p>
                         </div>
+                        <div className="text-center w-full mt-2">ผู้เบิกเงิน</div>
                     </div>
 
-                    {/* Payer/Accounting Signature (ผู้จ่ายเงิน) */}
-                    <div className="flex flex-col items-center">
-                        <p className="text-sm font-semibold text-gray-500 mb-4 tracking-wide">ผู้จ่ายเงิน (Payer)</p>
-
-                        {savedPayerSig ? (
-                            <div className="border border-gray-200 rounded-lg p-2 bg-white w-full max-w-[280px] h-[120px] flex items-center justify-center relative group">
-                                <img src={savedPayerSig} alt="Payer Signature" className="max-w-full max-h-full object-contain" />
-                                <button
-                                    onClick={() => setSavedPayerSig(null)}
-                                    className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity print:hidden"
-                                    title="ลบลายเซ็นเพื่อเซ็นใหม่"
-                                >
-                                    <RefreshCcw className="w-4 h-4" />
-                                </button>
+                    <div className="flex flex-col relative w-64 items-center">
+                        <div className="flex items-end mb-2 w-full gap-2">
+                            <span>ลงชื่อ</span>
+                            <div className="flex-1 border-b border-dotted border-black relative h-10 group flex justify-center items-end pb-1">
+                                {savedPayerSig ? (
+                                    <>
+                                        <img src={savedPayerSig} className="absolute bottom-1 max-h-16 max-w-full object-contain" />
+                                        <button onClick={() => setSavedPayerSig(null)} className="absolute -top-4 -right-4 text-xs bg-red-500 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity print:hidden">ลบ</button>
+                                    </>
+                                ) : (
+                                    <div className="absolute bottom-0 w-full h-16 bg-blue-50/50 print:bg-transparent">
+                                        <SignatureCanvas ref={payerSigRef} penColor="black" canvasProps={{ className: 'w-full h-full cursor-crosshair' }} />
+                                        <button onClick={() => payerSigRef.current?.clear()} className="absolute -top-4 -right-4 text-[10px] text-gray-500 hover:text-red-500 print:hidden">เคลียร์</button>
+                                    </div>
+                                )}
                             </div>
-                        ) : (
-                            <div className="w-full max-w-[280px] border-2 border-gray-300 rounded-lg bg-gray-50 relative print:bg-white print:border-gray-800">
-                                <SignatureCanvas
-                                    ref={payerSigRef}
-                                    penColor="blue"
-                                    canvasProps={{ className: 'w-full h-[120px] rounded-lg cursor-crosshair' }}
-                                />
-                                <div className="absolute bottom-2 right-2 flex gap-2 print:hidden">
-                                    <button onClick={clearPayerCanvas} className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded shadow hover:bg-gray-300 transition-colors">
-                                        ล้าง
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="text-center w-full max-w-[280px] mt-4">
-                            <div className="border-b border-gray-800 mb-2"></div>
-                            <p className="text-gray-800 font-medium">({data.dispensed_by || 'เจ้าหน้าที่บัญชี'})</p>
-                            <p className="text-gray-500 text-sm mt-1">วันที่ _______/_______/_______</p>
                         </div>
+                        <div className="text-center w-full mt-2">ผู้จ่ายเงิน</div>
                     </div>
 
                 </div>
+
             </div>
 
             {/* Print CSS */}
             <style jsx global>{`
                 @media print {
-                    @page { margin: 10mm; }
+                    @page { margin: 15mm; }
+                    body {
+                        background-color: white !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
                     body * {
                         visibility: hidden;
                     }
@@ -297,7 +243,7 @@ export default function PettyCashPrintClient({ requestId }: PettyCashPrintClient
                         top: 0;
                         width: 100%;
                         margin: 0;
-                        padding: 20px;
+                        padding: 0;
                         box-shadow: none;
                         border: none;
                         border-radius: 0;
