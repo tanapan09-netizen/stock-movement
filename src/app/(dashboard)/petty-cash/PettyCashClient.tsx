@@ -14,9 +14,7 @@ import {
 } from '@/actions/pettyCashActions';
 import { getSession } from 'next-auth/react';
 import Link from 'next/link';
-import {
-    Plus, DollarSign, CheckCircle, Search, ExternalLink, Trash2, XCircle, FileText, AlertTriangle
-} from 'lucide-react';
+import { Eye, Edit, Trash2, CheckCircle, XCircle, Search, ExternalLink, FileText, Upload, Printer, Plus, DollarSign, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/components/ToastProvider';
 import PettyCashFundDisplay from './components/PettyCashFundDisplay';
 
@@ -559,6 +557,9 @@ export default function PettyCashClient() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             {/* Action Buttons Logic */}
+                                            <Link href={`/petty-cash/${req.id}/print`} className="text-gray-600 hover:text-blue-600 mr-3" title="🖨️ พิมพ์/เซ็นใบเบิก">
+                                                <Printer className="w-4 h-4 inline" />
+                                            </Link>
                                             <button onClick={() => { setSelectedRequest(req); setShowDetailsModal(true); }} className="text-gray-600 hover:text-gray-900 mr-3" title="ดูรายละเอียด">
                                                 <ExternalLink className="w-4 h-4 inline" />
                                             </button>

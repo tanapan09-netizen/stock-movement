@@ -12,6 +12,7 @@
     "@google-cloud/storage": "^7.19.0",
     "@line/bot-sdk": "^10.6.0",
     "@prisma/client": "5.22.0",
+    "@types/react-signature-canvas": "^1.0.7",
     "bcryptjs": "^3.0.3",
     "date-fns": "^4.1.0",
     "html5-qrcode": "^2.3.8",
@@ -24,6 +25,7 @@
     "nodemailer": "^7.0.13",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-signature-canvas": "^1.1.0-alpha.2",
     "recharts": "^3.7.0",
     "xlsx": "^0.18.5"
   },

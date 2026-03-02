@@ -379,7 +379,66 @@ export async function verifyOriginalReceipt(id: number, hasReceived: boolean) {
         revalidatePath('/petty-cash');
         return { success: true, data: updated };
     } catch (error) {
-        console.error('Error verifying original receipt:', error);
-        return { success: false, error: 'Failed to verify original receipt' };
+        console.error('Error verifying receipt:', error);
+        return { success: false, error: 'Failed to verify receipt' };
+    }
+}
+
+// Ensure the request by ID also converts values cleanly
+export async function getPettyCashRequestById(id: number) {
+    try {
+        const session = await auth();
+        if (!session || !session.user) return { success: false, error: 'Unauthorized' };
+
+        const request = await prisma.tbl_petty_cash.findUnique({
+            where: { id },
+        });
+
+        if (!request) return { success: false, error: 'Not found' };
+
+        return {
+            success: true,
+            data: {
+                ...request,
+                requested_amount: Number(request.requested_amount),
+                dispensed_amount: request.dispensed_amount ? Number(request.dispensed_amount) : null,
+                actual_spent: request.actual_spent ? Number(request.actual_spent) : null,
+                change_returned: request.change_returned ? Number(request.change_returned) : null,
+            }
+        };
+    } catch (error) {
+        console.error('Error getting request:', error);
+        return { success: false, error: 'Failed to get record' };
+    }
+}
+
+export async function savePettyCashSignatures(id: number, payeeSignature?: string, payerSignature?: string) {
+    try {
+        const session = await auth();
+        if (!session || !session.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        const dataToUpdate: any = {};
+        if (payeeSignature !== undefined) dataToUpdate.payee_signature = payeeSignature;
+        if (payerSignature !== undefined) dataToUpdate.payer_signature = payerSignature;
+
+        if (Object.keys(dataToUpdate).length === 0) {
+            return { success: true, message: 'Nothing to update' };
+        }
+
+        const request = await prisma.tbl_petty_cash.update({
+            where: { id },
+            data: dataToUpdate
+        });
+
+        revalidatePath('/petty-cash');
+        revalidatePath(`/petty-cash/${id}/print`);
+
+        return { success: true, data: request };
+
+    } catch (error) {
+        console.error('Error saving signatures:', error);
+        return { success: false, error: 'Failed to save signatures' };
     }
 }

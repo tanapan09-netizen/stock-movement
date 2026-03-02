@@ -692,6 +692,9 @@ model tbl_petty_cash {
   dispensed_by     String?   @db.VarChar(255)
   reconciled_by    String?   @db.VarChar(255)
 
+  payee_signature  String?   @db.LongText // Add Receiver signature
+  payer_signature  String?   @db.LongText // Add Payer/Accounting signature
+
   @@index([status], map: "idx_pc_status")
   @@index([requested_by], map: "idx_pc_requested_by")
 }
