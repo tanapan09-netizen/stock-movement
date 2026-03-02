@@ -10,7 +10,7 @@ export default function DashboardLayoutContent({ children }: { children: React.R
     return (
         <div className={`flex w-full flex-col min-h-screen transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${isMobile ? 'ml-0' : (collapsed ? 'lg:ml-20' : 'lg:ml-72')}`}>
             <Header />
-            <main className="flex-1 p-4 lg:p-8">{children}</main>
+            <main className="flex-1 w-full overflow-x-hidden p-4 lg:p-8">{children}</main>
         </div>
     );
 }
