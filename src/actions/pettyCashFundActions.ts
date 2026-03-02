@@ -1,3 +1,5 @@
+'use server';
+
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 
@@ -27,7 +29,14 @@ export async function getPettyCashFundStatus() {
             });
         }
 
-        return { success: true, data: fund };
+        const serializedFund = {
+            ...fund,
+            max_limit: Number(fund.max_limit),
+            current_balance: Number(fund.current_balance),
+            warning_threshold: Number(fund.warning_threshold),
+        };
+
+        return { success: true, data: serializedFund };
     } catch (error: any) {
         console.error('Error fetching fund status:', error);
         return { success: false, error: error.message };
@@ -62,7 +71,14 @@ export async function replenishFund(amount: number) {
             }
         });
 
-        return { success: true, data: updatedFund };
+        const serializedFund = {
+            ...updatedFund,
+            max_limit: Number(updatedFund.max_limit),
+            current_balance: Number(updatedFund.current_balance),
+            warning_threshold: Number(updatedFund.warning_threshold),
+        };
+
+        return { success: true, data: serializedFund };
     } catch (error: any) {
         console.error('Error replenishing fund:', error);
         return { success: false, error: error.message };

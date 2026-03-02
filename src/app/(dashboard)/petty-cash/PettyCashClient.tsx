@@ -472,6 +472,9 @@ export default function PettyCashClient() {
                 </div>
             </div>
 
+            {/* Fund Display */}
+            <PettyCashFundDisplay isAdminOrAccounting={isAdminOrAccounting} />
+
             {/* Tabs */}
             <div className="border-b border-gray-200 mb-6">
                 <nav className="-mb-px flex space-x-8">
@@ -495,8 +498,6 @@ export default function PettyCashClient() {
                     </button>
                 </nav>
             </div>
-
-            <PettyCashFundDisplay isAdminOrAccounting={isAdminOrAccounting} />
 
             {/* Content Table */}
             <div className="bg-white rounded-lg shadow overflow-hidden">

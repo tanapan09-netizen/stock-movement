@@ -46,7 +46,16 @@ export async function getPettyCashRequests() {
             orderBy: { created_at: 'desc' }
         });
 
-        return { success: true, data: requests };
+        // Convert Prisma Decimal to primitive Number for Client Component serialization
+        const serializedRequests = requests.map(req => ({
+            ...req,
+            requested_amount: Number(req.requested_amount),
+            dispensed_amount: req.dispensed_amount ? Number(req.dispensed_amount) : null,
+            actual_spent: req.actual_spent ? Number(req.actual_spent) : null,
+            change_returned: req.change_returned ? Number(req.change_returned) : null,
+        }));
+
+        return { success: true, data: serializedRequests };
     } catch (error) {
         console.error('Error fetching petty cash requests:', error);
         return { success: false, error: 'Failed' };
