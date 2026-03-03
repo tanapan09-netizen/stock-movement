@@ -341,7 +341,6 @@ export default function PartRequestClient() {
                                             className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none dark:bg-slate-700 dark:border-slate-600"
                                         >
                                             <option value="standard">สั่งซื้อทั่วไป (PR)</option>
-                                            <option value="petty_cash">เบิกเงินสดย่อย (Petty Cash)</option>
                                             <option value="urgent">เร่งด่วน</option>
                                         </select>
                                     </div>
