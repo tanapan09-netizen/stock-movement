@@ -77,8 +77,89 @@ export default function PettyCashPrintClient({ requestId }: PettyCashPrintClient
     if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-500 text-lg">กำลังโหลดข้อมูล...</div>;
     if (!data) return <div className="min-h-screen flex items-center justify-center text-red-500 text-lg">ไม่พบข้อมูลคำขอเบิกเงินสดย่อย</div>;
 
-    // Filter valid lines
-    const descriptionLines = data.purpose.split('\n').filter((l: string) => l.trim() !== '' && !l.includes('฿0.00'));
+    let department = '';
+    let payee = '';
+    let description = '';
+    let items: { id: number, name: string, amount: string }[] = [];
+    let summaries: { label: string, value: string }[] = [];
+    let notes = '';
+
+    if (data.purpose) {
+        const lines = data.purpose.split('\n');
+        let currentSection = 'header';
+
+        lines.forEach((line: string) => {
+            if (!line.trim()) return;
+
+            if (line.includes('**รายการค่าใช้จ่าย:**')) {
+                currentSection = 'items';
+                return;
+            } else if (line.includes('**ยอดรวม:**') || line.includes('**ยอดสุทธิ:**')) {
+                currentSection = 'summary';
+                // Fallthrough to handle it inside summary block
+            } else if (line.includes('**หมายเหตุ:**')) {
+                currentSection = 'notes';
+            }
+
+            if (currentSection === 'header') {
+                if (line.startsWith('**แผนก/โครงการ:**')) department = line.replace('**แผนก/โครงการ:**', '').trim();
+                else if (line.startsWith('**ผู้รับเงิน:**')) payee = line.replace('**ผู้รับเงิน:**', '').trim();
+                else if (line.startsWith('**รายละเอียด:**')) description = line.replace('**รายละเอียด:**', '').trim();
+            } else if (currentSection === 'items') {
+                if (!line.includes('**รายการค่าใช้จ่าย:**')) {
+                    const bhtIndex = line.indexOf('฿');
+                    if (bhtIndex !== -1) {
+                        const namePart = line.substring(0, bhtIndex).replace(/^\d+\.\s+/, '').replace(/\s*-\s*$/, '').trim();
+                        const amountPartWithRest = line.substring(bhtIndex + 1);
+                        const numMatch = amountPartWithRest.match(/^([\d,.]+)(.*)/);
+                        if (numMatch) {
+                            items.push({
+                                id: items.length + 1,
+                                name: namePart + (numMatch[2] ? ` ${numMatch[2].trim()}` : ''),
+                                amount: numMatch[1]
+                            });
+                        } else {
+                            items.push({
+                                id: items.length + 1,
+                                name: line.replace(/^\d+\.\s+/, ''),
+                                amount: ''
+                            });
+                        }
+                    } else {
+                        items.push({
+                            id: items.length + 1,
+                            name: line.replace(/^\d+\.\s+/, ''),
+                            amount: ''
+                        });
+                    }
+                }
+            } else if (currentSection === 'summary') {
+                if (!line.includes('**ยอดรวม:**') && !line.includes('**ยอดสุทธิ:**')) {
+                    const plainLine = line.replace(/\*\*/g, '').trim();
+                    const match = plainLine.match(/^(.*?):\s*฿?(-?[\d,.]+)/);
+                    if (match) {
+                        const valFloat = parseFloat(match[2].replace(/,/g, ''));
+                        if (Math.abs(valFloat) > 0) {
+                            // Ensure 2 decimal places formatted
+                            const formattedValue = valFloat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                            summaries.push({ label: match[1].trim(), value: formattedValue });
+                        }
+                    }
+                }
+            } else if (currentSection === 'notes') {
+                notes += line.replace('**หมายเหตุ:**', '').trim() + ' ';
+            }
+        });
+    }
+
+    // Fallback if parsing fails or old format
+    if (items.length === 0 && data.purpose) {
+        items.push({
+            id: 1,
+            name: data.purpose,
+            amount: (data.dispensed_amount || data.requested_amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })
+        });
+    }
 
     return (
         <div className="min-h-screen bg-gray-100 py-10 print:bg-white print:py-0 text-black font-sans">
@@ -122,44 +203,79 @@ export default function PettyCashPrintClient({ requestId }: PettyCashPrintClient
                     </div>
                 </div>
 
+                {/* Extracted Metadata Headers */}
+                <div className="flex flex-col gap-2 mb-4 px-2">
+                    {payee && (
+                        <div className="flex text-[17px]">
+                            <span className="font-semibold w-32 shrink-0">ผู้รับเงิน :</span>
+                            <span>{payee}</span>
+                        </div>
+                    )}
+                    {department && (
+                        <div className="flex text-[17px]">
+                            <span className="font-semibold w-32 shrink-0">แผนก :</span>
+                            <span>{department}</span>
+                        </div>
+                    )}
+                    {description && (
+                        <div className="flex text-[17px]">
+                            <span className="font-semibold w-32 shrink-0">รายละเอียด :</span>
+                            <span>{description}</span>
+                        </div>
+                    )}
+                </div>
+
                 {/* Minimalist 3-Column Table */}
-                <div className="border-[1.5px] border-black mt-10">
+                <div className="border-[1.5px] border-black mt-4">
                     <table className="w-full text-center border-collapse">
                         <thead>
-                            <tr className="border-b-[1.5px] border-black">
+                            <tr className="border-b-[1.5px] border-black bg-gray-50/50">
                                 <th className="py-3 px-2 border-r-[1.5px] border-black w-24 font-normal text-lg">ลำดับที่</th>
                                 <th className="py-3 px-4 border-r-[1.5px] border-black font-normal text-lg">รายการ</th>
                                 <th className="py-3 px-4 w-48 font-normal text-lg">จำนวนเงิน</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr className="align-top border-b border-black h-[400px]">
-                                <td className="py-4 border-r-[1.5px] border-black font-medium text-center">
-                                    {descriptionLines.map((_: any, idx: number) => (
-                                        <div key={idx} className="mb-2 leading-[1.8]">{idx + 1}</div>
-                                    ))}
-                                </td>
+                            {items.map((item, idx) => (
+                                <tr key={item.id} className="align-top leading-relaxed">
+                                    <td className="py-3 border-r-[1.5px] border-black font-medium text-center">{idx + 1}</td>
+                                    <td className="py-3 px-6 border-r-[1.5px] border-black text-left">{item.name}</td>
+                                    <td className="py-3 px-4 text-right">{item.amount || '-'}</td>
+                                </tr>
+                            ))}
 
-                                <td className="py-4 px-6 border-r-[1.5px] border-black text-left">
-                                    {descriptionLines.map((line: string, idx: number) => (
-                                        <div key={idx} className="mb-2 leading-[1.8]">
-                                            {line.split(/(\*\*.*?\*\*)/g).map((part, i) => {
-                                                if (part.startsWith('**') && part.endsWith('**')) {
-                                                    return <span key={i} className="font-semibold">{part.slice(2, -2)}</span>;
-                                                }
-                                                return <span key={i}>{part}</span>;
-                                            })}
-                                        </div>
-                                    ))}
-                                </td>
+                            {/* Filler Space for Layout Stretching */}
+                            <tr className="align-top h-[250px]">
+                                <td className="border-r-[1.5px] border-black text-center"></td>
+                                <td className="px-6 border-r-[1.5px] border-black text-left"></td>
+                                <td className="px-4 text-right"></td>
+                            </tr>
 
-                                <td className="py-4 px-4 text-right">
-                                    {descriptionLines.map((_: any, idx: number) => {
-                                        // Divide equally for aesthetic rows if single breakdown, otherwise just show on first line
-                                        const val = ((data.dispensed_amount || data.requested_amount) / (descriptionLines.length || 1)).toLocaleString('th-TH', { minimumFractionDigits: 2 });
-                                        return <div key={idx} className="mb-2 leading-[1.8]">{val}</div>;
-                                    })}
-                                </td>
+                            {/* Summaries Rows */}
+                            {summaries.map((s, idx) => (
+                                <tr key={`summary-${idx}`} className="align-top leading-relaxed text-gray-600 text-sm">
+                                    <td className="py-2 border-r-[1.5px] border-black text-center"></td>
+                                    <td className="py-2 px-6 border-r-[1.5px] border-black text-left">{s.label}</td>
+                                    <td className="py-2 px-4 text-right">{s.value}</td>
+                                </tr>
+                            ))}
+
+                            {/* Note Row if exists */}
+                            {notes && (
+                                <tr className="align-top">
+                                    <td className="py-2 border-r-[1.5px] border-black text-center"></td>
+                                    <td className="py-3 px-6 border-r-[1.5px] border-black text-left text-sm text-gray-600 italic">
+                                        หมายเหตุ: {notes}
+                                    </td>
+                                    <td className="py-2 px-4 text-right"></td>
+                                </tr>
+                            )}
+
+                            {/* Bottom border spacer before totals */}
+                            <tr className="border-b border-black">
+                                <td className="py-1 border-r-[1.5px] border-black"></td>
+                                <td className="py-1 border-r-[1.5px] border-black"></td>
+                                <td className="py-1"></td>
                             </tr>
 
                             {/* Simple Totals Row */}
@@ -170,7 +286,6 @@ export default function PettyCashPrintClient({ requestId }: PettyCashPrintClient
                                     {(data.dispensed_amount || data.requested_amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
                                 </td>
                             </tr>
-
                         </tbody>
                     </table>
                 </div>
