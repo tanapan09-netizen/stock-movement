@@ -107,7 +107,7 @@ export async function createPettyCashRequest(formData: FormData) {
             'สร้างคำขอเบิกเงินสดย่อย',
             'PettyCash',
             request.id,
-            `เลขที่: ${request_number}, จำนวน: ${requested_amount}`,
+            `เลขที่: ${request_number} | จำนวนเงิน: ${requested_amount.toLocaleString()} บาท | วัตถุประสงค์: ${purpose} | ผู้ขอ: ${session.user.name} | สถานะ: รออนุมัติ`,
             (session.user as any).p_id || (session.user as any).id,
             session.user.name
         );
@@ -156,7 +156,7 @@ export async function approvePettyCash(id: number) {
             'อนุมัติคำขอเงินสดย่อย',
             'PettyCash',
             id,
-            `อนุมัติคำขอเลขที่: ${request.request_number}`,
+            `อนุมัติคำขอเลขที่: ${request.request_number} | จำนวนเงิน: ${Number(request.requested_amount).toLocaleString()} บาท | วัตถุประสงค์: ${request.purpose} | ผู้ขอ: ${request.requested_by} | อนุมัติโดย: ${session.user.name}`,
             (session.user as any).p_id || (session.user as any).id,
             session.user.name
         );
@@ -214,7 +214,7 @@ export async function dispensePettyCash(id: number, dispensed_amount: number, no
             'จ่ายเงินสดย่อย',
             'PettyCash',
             id,
-            `จ่ายเงินจำนวน: ${dispensed_amount} เลขที่: ${request.request_number}`,
+            `จ่ายเงินสดย่อยเลขที่: ${request.request_number} | จำนวนที่จ่าย: ${dispensed_amount.toLocaleString()} บาท | ผู้รับ: ${request.requested_by} | วัตถุประสงค์: ${request.purpose} | จ่ายโดย: ${session.user.name}${notes ? ' | หมายเหตุ: ' + notes : ''}`,
             (session.user as any).p_id || (session.user as any).id,
             session.user.name
         );
@@ -288,7 +288,7 @@ export async function submitClearance(id: number, formData: FormData) {
             'ส่งเอกสารเคลียร์เงินสดย่อย',
             'PettyCash',
             id,
-            `ส่งเคลียร์เงินสดย่อย เลขที่: ${updated.request_number} ยอดใช้จริง: ${actual_spent}`,
+            `ส่งเคลียร์เงินสดย่อยเลขที่: ${updated.request_number} | ยอดใช้จริง: ${actual_spent.toLocaleString()} บาท | เงินทอนคืน: ${change_returned.toLocaleString()} บาท | ใบเสร็จ: ${receipt_urls.length} ไฟล์ | ผู้ส่ง: ${session.user.name}${notes ? ' | หมายเหตุ: ' + notes : ''}`,
             (session.user as any).p_id || (session.user as any).id,
             session.user.name
         );
@@ -348,7 +348,7 @@ export async function reconcilePettyCash(id: number, notes?: string) {
             'ปิดยอดเงินสดย่อย',
             'PettyCash',
             id,
-            `ปิดยอด (Reconcile) เลขที่: ${updated.request_number}`,
+            `ปิดยอด (Reconcile) เลขที่: ${updated.request_number} | ยอดใช้จริง: ${Number(updated.actual_spent).toLocaleString()} บาท | เงินทอน: ${Number(updated.change_returned).toLocaleString()} บาท | ผู้ปิดยอด: ${session.user.name}`,
             (session.user as any).p_id || (session.user as any).id,
             session.user.name
         );
@@ -384,7 +384,7 @@ export async function rejectPettyCash(id: number, notes?: string) {
             'ปฏิเสธคำขอเงินสดย่อย',
             'PettyCash',
             id,
-            `ปฏิเสธคำขอ เลขที่: ${currentRequest?.request_number || id}`,
+            `ปฏิเสธคำขอเลขที่: ${currentRequest?.request_number || id} | จำนวนเงิน: ${Number(currentRequest?.requested_amount).toLocaleString()} บาท | ผู้ขอ: ${currentRequest?.requested_by} | ปฏิเสธโดย: ${session.user.name}${notes ? ' | เหตุผล: ' + notes : ''}`,
             (session.user as any).p_id || (session.user as any).id,
             session.user.name
         );
@@ -417,7 +417,7 @@ export async function deletePettyCashRequest(id: number) {
             'ลบคำขอเงินสดย่อย',
             'PettyCash',
             id,
-            `ลบข้อมูลใบเบิกเงินสดย่อย ID: ${id}`,
+            `ลบใบเบิกเงินสดย่อย ID: ${id} | ลบโดย: ${session.user.name} (สิทธิ์: ${(session.user as any).role || 'N/A'})`,
             (session.user as any).p_id || (session.user as any).id,
             session.user.name
         );

@@ -11,13 +11,20 @@ export default function PageViewTracker() {
     useEffect(() => {
         if (!pathname) return;
 
-        // Prevent double logging exactly the same path unnecesssarily fast
+        // Prevent double logging exactly the same path
         if (lastReportedPath.current === pathname) return;
 
         lastReportedPath.current = pathname;
 
-        // Use a timeout or basic request to log the view off-thread
-        logPageView(pathname).catch(console.error);
+        // Collect browser/device info
+        const extra = {
+            userAgent: navigator.userAgent,
+            screenWidth: window.screen.width,
+            screenHeight: window.screen.height,
+            referrer: document.referrer || '',
+        };
+
+        logPageView(pathname, extra).catch(console.error);
 
     }, [pathname]);
 
