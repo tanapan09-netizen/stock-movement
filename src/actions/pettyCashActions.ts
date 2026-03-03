@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { uploadFile } from '@/lib/gcs';
 import { adjustFundBalance, getPettyCashFundStatus } from './pettyCashFundActions';
+import { logSystemAction } from '@/lib/logger';
 
 // Generate PC Request Number (e.g., PC-20260226-001)
 async function generatePettyCashNumber() {
@@ -102,6 +103,15 @@ export async function createPettyCashRequest(formData: FormData) {
             console.error('[Petty Cash] Notification failed:', err);
         }
 
+        await logSystemAction(
+            'สร้างคำขอเบิกเงินสดย่อย',
+            'PettyCash',
+            request.id,
+            `เลขที่: ${request_number}, จำนวน: ${requested_amount}`,
+            (session.user as any).p_id || (session.user as any).id,
+            session.user.name
+        );
+
         return { success: true, data: request };
     } catch (error) {
         console.error('Error creating petty cash request:', error);
@@ -141,6 +151,15 @@ export async function approvePettyCash(id: number) {
         } catch (err) {
             console.error('[Petty Cash] Notification failed:', err);
         }
+
+        await logSystemAction(
+            'อนุมัติคำขอเงินสดย่อย',
+            'PettyCash',
+            id,
+            `อนุมัติคำขอเลขที่: ${request.request_number}`,
+            (session.user as any).p_id || (session.user as any).id,
+            session.user.name
+        );
 
         return { success: true, data: request };
     } catch (error) {
@@ -190,6 +209,15 @@ export async function dispensePettyCash(id: number, dispensed_amount: number, no
         } catch (err) {
             console.error('[Petty Cash] Notification failed:', err);
         }
+
+        await logSystemAction(
+            'จ่ายเงินสดย่อย',
+            'PettyCash',
+            id,
+            `จ่ายเงินจำนวน: ${dispensed_amount} เลขที่: ${request.request_number}`,
+            (session.user as any).p_id || (session.user as any).id,
+            session.user.name
+        );
 
         return { success: true, data: request };
     } catch (error) {
@@ -256,6 +284,15 @@ export async function submitClearance(id: number, formData: FormData) {
             console.error('[Petty Cash] Notification failed:', err);
         }
 
+        await logSystemAction(
+            'ส่งเอกสารเคลียร์เงินสดย่อย',
+            'PettyCash',
+            id,
+            `ส่งเคลียร์เงินสดย่อย เลขที่: ${updated.request_number} ยอดใช้จริง: ${actual_spent}`,
+            (session.user as any).p_id || (session.user as any).id,
+            session.user.name
+        );
+
         return { success: true, data: updated };
     } catch (error) {
         console.error('Error submitting clearance:', error);
@@ -307,6 +344,15 @@ export async function reconcilePettyCash(id: number, notes?: string) {
             console.error('[Petty Cash] Notification failed:', err);
         }
 
+        await logSystemAction(
+            'ปิดยอดเงินสดย่อย',
+            'PettyCash',
+            id,
+            `ปิดยอด (Reconcile) เลขที่: ${updated.request_number}`,
+            (session.user as any).p_id || (session.user as any).id,
+            session.user.name
+        );
+
         return { success: true, data: updated };
     } catch (error) {
         console.error('Error reconciling petty cash:', error);
@@ -333,6 +379,16 @@ export async function rejectPettyCash(id: number, notes?: string) {
         });
 
         revalidatePath('/petty-cash');
+
+        await logSystemAction(
+            'ปฏิเสธคำขอเงินสดย่อย',
+            'PettyCash',
+            id,
+            `ปฏิเสธคำขอ เลขที่: ${currentRequest?.request_number || id}`,
+            (session.user as any).p_id || (session.user as any).id,
+            session.user.name
+        );
+
         return { success: true, data: request };
     } catch (error) {
         console.error('Error rejecting petty cash:', error);
@@ -356,6 +412,16 @@ export async function deletePettyCashRequest(id: number) {
         });
 
         revalidatePath('/petty-cash');
+
+        await logSystemAction(
+            'ลบคำขอเงินสดย่อย',
+            'PettyCash',
+            id,
+            `ลบข้อมูลใบเบิกเงินสดย่อย ID: ${id}`,
+            (session.user as any).p_id || (session.user as any).id,
+            session.user.name
+        );
+
         return { success: true };
     } catch (error) {
         console.error('Error deleting petty cash:', error);
@@ -377,6 +443,16 @@ export async function verifyOriginalReceipt(id: number, hasReceived: boolean) {
         });
 
         revalidatePath('/petty-cash');
+
+        await logSystemAction(
+            'ตรวจสอบเอกสารต้นฉบับ',
+            'PettyCash',
+            id,
+            `เปลี่ยนสถานะรับเอกสารต้นฉบับเป็น: ${hasReceived ? 'ได้รับ' : 'ยังไม่ได้รับ'} (PC: ${updated.request_number})`,
+            (session.user as any).p_id || (session.user as any).id,
+            session.user.name
+        );
+
         return { success: true, data: updated };
     } catch (error) {
         console.error('Error verifying receipt:', error);
@@ -434,6 +510,15 @@ export async function savePettyCashSignatures(id: number, payeeSignature?: strin
 
         revalidatePath('/petty-cash');
         revalidatePath(`/petty-cash/${id}/print`);
+
+        await logSystemAction(
+            'บันทึกลายเซ็น',
+            'PettyCash',
+            id,
+            `บันทึกลายเซ็น ${payeeSignature ? '[ผู้รับเงิน]' : ''} ${payerSignature ? '[ผู้จ่ายเงิน]' : ''} (PC: ${request.request_number})`,
+            (session.user as any).p_id || (session.user as any).id,
+            session.user.name
+        );
 
         return { success: true, data: request };
 
