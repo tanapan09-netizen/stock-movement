@@ -63,6 +63,12 @@ export async function updateRolePermissions(roleId: number, permissions: RolePer
             return { success: false, error: 'Unauthorized: Admin access required' };
         }
 
+        // Get old permissions for comparison
+        const oldRole = await prisma.tbl_roles.findUnique({
+            where: { role_id: roleId },
+            select: { role_name: true, permissions: true }
+        });
+
         const role = await prisma.tbl_roles.update({
             where: { role_id: roleId },
             data: {
@@ -70,12 +76,21 @@ export async function updateRolePermissions(roleId: number, permissions: RolePer
             }
         });
 
-        // const session = await auth();
+        // Count changes for logging
+        const oldPerms = oldRole?.permissions ? JSON.parse(oldRole.permissions) : {};
+        const enabledKeys = Object.keys(permissions).filter(k => (permissions as any)[k] === true && !(oldPerms as any)[k]);
+        const disabledKeys = Object.keys(oldPerms).filter(k => (oldPerms as any)[k] === true && !(permissions as any)[k]);
+
+        const changeDetail = [
+            enabledKeys.length > 0 ? `เปิด: ${enabledKeys.join(', ')}` : '',
+            disabledKeys.length > 0 ? `ปิด: ${disabledKeys.join(', ')}` : '',
+        ].filter(Boolean).join(' | ') || 'ไม่มีการเปลี่ยนแปลง';
+
         await logSystemAction(
-            'UPDATE',
+            'แก้ไขสิทธิ์',
             'Role',
             roleId,
-            `Updated permissions for role: ${role.role_name}`,
+            `แก้ไขสิทธิ์ของ Role: ${role.role_name} | ${changeDetail} | แก้ไขโดย: ${session.user.name}`,
             session?.user?.id ? parseInt(session.user.id) : 0,
             session?.user?.name || 'Unknown',
             'unknown'

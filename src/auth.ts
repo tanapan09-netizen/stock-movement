@@ -52,7 +52,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 });
 
                 if (!user) {
-
+                    // Fire-and-forget: log failed login (user not found)
+                    import('@/lib/logger').then(({ logSystemAction }) =>
+                        logSystemAction('เข้าสู่ระบบล้มเหลว', 'User', username, `ล็อกอินล้มเหลว: ไม่พบผู้ใช้ "${username}"`, null, username, 'unknown')
+                    ).catch(() => { });
                     throw new UserNotFound();
                 }
 
@@ -113,11 +116,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                     const attemptsLeft = maxAttempts - newFailed;
                     if (newFailed >= maxAttempts) {
                         const unlockTime = lockedUntil?.getTime() || Date.now();
+                        // Fire-and-forget: log account locked
+                        import('@/lib/logger').then(({ logSystemAction }) =>
+                            logSystemAction('บัญชีถูกล็อค', 'User', user.p_id, `บัญชี "${username}" ถูกล็อค | พยายามล็อกอินผิด ${newFailed} ครั้ง | ล็อคจนถึง: ${lockedUntil?.toLocaleString('th-TH')}`, user.p_id, username, 'unknown')
+                        ).catch(() => { });
                         throw new AccountLocked(unlockTime);
                     }
 
-                    // console.log(`Invalid password. Attempts left: ${attemptsLeft}`);
-                    // We pass attempts left in the message code if we want, or just generic
+                    // Fire-and-forget: log failed attempt
+                    import('@/lib/logger').then(({ logSystemAction }) =>
+                        logSystemAction('เข้าสู่ระบบล้มเหลว', 'User', user.p_id, `"${username}" ใส่รหัสผ่านผิด | ครั้งที่ ${newFailed}/${maxAttempts} | เหลือ ${attemptsLeft} ครั้ง`, user.p_id, username, 'unknown')
+                    ).catch(() => { });
                     throw new InvalidPassword(attemptsLeft);
                 }
 
@@ -190,19 +199,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         updateAge: 5 * 60, // Update session every 5 mins if active
     },
     events: {
-        async signIn({ user }) {
+        async signIn({ user, account }) {
             if (user && user.id) {
                 try {
                     const { logSystemAction } = await import('@/lib/logger');
                     const { headers } = await import('next/headers');
                     const head = await headers();
                     const ip = head.get('x-forwarded-for') || 'unknown';
+                    const ua = head.get('user-agent') || '';
+
+                    let device = '';
+                    if (ua.includes('Mobile')) device = '📱 มือถือ';
+                    else if (ua.includes('Tablet')) device = '📟 แท็บเล็ต';
+                    else device = '💻 คอมพิวเตอร์';
+
+                    const loginMethod = account?.provider === 'line' ? 'LINE Login' : 'Username/Password';
 
                     await logSystemAction(
-                        'LOGIN',
+                        'เข้าสู่ระบบ',
                         'User',
                         user.id,
-                        `User ${user.name || user.email} logged in`,
+                        `${user.name || 'Unknown'} เข้าสู่ระบบสำเร็จ | วิธี: ${loginMethod} | สิทธิ์: ${(user as any).role || 'N/A'} | อุปกรณ์: ${device} | IP: ${ip}`,
                         parseInt(user.id),
                         user.name || 'Unknown',
                         ip
@@ -210,6 +227,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 } catch (error) {
                     console.error('Failed to log sign in:', error);
                 }
+            }
+        },
+        async signOut(message: any) {
+            try {
+                const { logSystemAction } = await import('@/lib/logger');
+                const token = message?.token;
+                if (token) {
+                    await logSystemAction(
+                        'ออกจากระบบ',
+                        'User',
+                        token.id?.toString() || '0',
+                        `${token.name || 'Unknown'} ออกจากระบบ | สิทธิ์: ${token.role || 'N/A'}`,
+                        token.id ? parseInt(token.id.toString()) : null,
+                        token.name?.toString() || 'Unknown',
+                        'unknown'
+                    );
+                }
+            } catch (error) {
+                console.error('Failed to log sign out:', error);
             }
         }
     }

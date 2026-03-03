@@ -20,12 +20,38 @@ export async function getSystemSettings() {
 
 export async function updateSystemSetting(key: string, value: string, description?: string) {
     try {
+        const { auth } = await import('@/auth');
+        const session = await auth();
+
+        // Get old value for logging
+        const oldSetting = await prisma.tbl_system_settings.findUnique({
+            where: { setting_key: key },
+            select: { setting_value: true }
+        });
+        const oldValue = oldSetting?.setting_value || '(ไม่มี)';
+
         await prisma.tbl_system_settings.upsert({
             where: { setting_key: key },
             update: { setting_value: value, description, updated_at: new Date() },
             create: { setting_key: key, setting_value: value, description }
         });
+
         revalidatePath('/settings');
+
+        // Non-blocking log
+        if (session?.user) {
+            const { logSystemAction } = await import('@/lib/logger');
+            logSystemAction(
+                'เปลี่ยนค่าระบบ',
+                'Settings',
+                key,
+                `เปลี่ยนค่า "${key}" | เดิม: ${oldValue} → ใหม่: ${value} | โดย: ${session.user.name}${description ? ' | คำอธิบาย: ' + description : ''}`,
+                session.user.id ? parseInt(session.user.id) : null,
+                session.user.name || 'Unknown',
+                'unknown'
+            ).catch(console.error);
+        }
+
         return { success: true };
     } catch (error) {
         console.error('Error updating setting:', error);
