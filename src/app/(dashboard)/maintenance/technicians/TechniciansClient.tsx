@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { UserCog, Plus, Edit2, Trash2, Phone, Mail, X, Search } from 'lucide-react';
+import { UserCog, Plus, Edit2, Trash2, Phone, Mail, X, Search, Users } from 'lucide-react';
 import Link from 'next/link';
 import {
     getTechnicians,
+    getLineTechnicians,
     createTechnician,
     updateTechnician,
     deleteTechnician
@@ -22,8 +23,22 @@ interface Technician {
     created_at: Date;
 }
 
+interface LineTechnician {
+    id: number;
+    line_user_id: string;
+    display_name: string | null;
+    full_name: string | null;
+    picture_url: string | null;
+    role: string;
+    is_active: boolean;
+    is_approver: boolean;
+    last_interaction: Date | null;
+    created_at: Date;
+}
+
 export default function TechniciansClient() {
     const [technicians, setTechnicians] = useState<Technician[]>([]);
+    const [lineTechnicians, setLineTechnicians] = useState<LineTechnician[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [editingTech, setEditingTech] = useState<Technician | null>(null);
@@ -41,9 +56,15 @@ export default function TechniciansClient() {
 
     const loadData = useCallback(async () => {
         setLoading(true);
-        const result = await getTechnicians();
-        if (result.success) {
-            setTechnicians(result.data as Technician[]);
+        const [techResult, lineResult] = await Promise.all([
+            getTechnicians(),
+            getLineTechnicians()
+        ]);
+        if (techResult.success) {
+            setTechnicians(techResult.data as Technician[]);
+        }
+        if (lineResult.success) {
+            setLineTechnicians(lineResult.data as LineTechnician[]);
         }
         setLoading(false);
     }, []);
@@ -113,7 +134,18 @@ export default function TechniciansClient() {
         );
     });
 
-    const activeCount = technicians.filter(t => t.status === 'active').length;
+    const filteredLineTechnicians = lineTechnicians.filter(lt => {
+        if (!searchText) return true;
+        const search = searchText.toLowerCase();
+        return (
+            lt.display_name?.toLowerCase().includes(search) ||
+            lt.full_name?.toLowerCase().includes(search) ||
+            lt.line_user_id.toLowerCase().includes(search)
+        );
+    });
+
+    const totalCount = lineTechnicians.length + technicians.length;
+    const activeCount = lineTechnicians.filter(lt => lt.is_active).length + technicians.filter(t => t.status === 'active').length;
 
     return (
         <div className="space-y-6">
@@ -141,7 +173,7 @@ export default function TechniciansClient() {
             {/* Summary */}
             <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
-                    <div className="text-2xl font-bold text-gray-900 dark:text-white">{technicians.length}</div>
+                    <div className="text-2xl font-bold text-gray-900 dark:text-white">{totalCount}</div>
                     <div className="text-gray-600 dark:text-gray-400 text-sm">ช่างทั้งหมด</div>
                 </div>
                 <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4">
@@ -165,63 +197,125 @@ export default function TechniciansClient() {
                 </div>
             </div>
 
-            {/* List */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {loading ? (
-                    <div className="col-span-full text-center text-gray-500 py-8">กำลังโหลด...</div>
-                ) : filteredTechnicians.length === 0 ? (
-                    <div className="col-span-full text-center text-gray-500 py-8">ไม่พบข้อมูลช่าง</div>
-                ) : (
-                    filteredTechnicians.map(tech => (
-                        <div key={tech.tech_id} className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
-                            <div className="flex justify-between items-start">
-                                <div className="flex items-center gap-3">
-                                    <div className={`h-12 w-12 rounded-full flex items-center justify-center text-xl font-bold text-white ${tech.status === 'active' ? 'bg-blue-500' : 'bg-gray-400'}`}>
-                                        {tech.name.charAt(0).toUpperCase()}
+            {loading ? (
+                <div className="text-center text-gray-500 py-8">กำลังโหลด...</div>
+            ) : (
+                <>
+                    {/* LINE Technicians Section */}
+                    {filteredLineTechnicians.length > 0 && (
+                        <div className="space-y-4">
+                            <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2">
+                                <Users size={20} className="text-green-500" />
+                                ช่างจาก LINE ({filteredLineTechnicians.length})
+                            </h2>
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                {filteredLineTechnicians.map(lt => (
+                                    <div key={lt.id} className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border-l-4 border-green-400">
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex items-center gap-3">
+                                                {lt.picture_url ? (
+                                                    <img
+                                                        src={lt.picture_url}
+                                                        alt={lt.display_name || 'LINE user'}
+                                                        className="h-12 w-12 rounded-full object-cover ring-2 ring-green-200"
+                                                    />
+                                                ) : (
+                                                    <div className="h-12 w-12 rounded-full flex items-center justify-center text-xl font-bold text-white bg-green-500">
+                                                        {(lt.display_name || lt.full_name || '?').charAt(0).toUpperCase()}
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <div className="font-bold text-gray-900 dark:text-white">
+                                                        {lt.full_name || lt.display_name || 'ไม่ระบุชื่อ'}
+                                                    </div>
+                                                    {lt.display_name && lt.full_name && (
+                                                        <div className="text-xs text-gray-500">LINE: {lt.display_name}</div>
+                                                    )}
+                                                    <div className="text-[11px] text-gray-400 font-mono mt-0.5">{lt.line_user_id.slice(0, 12)}...</div>
+                                                </div>
+                                            </div>
+                                            <span className={`px-2 py-1 rounded text-xs ${lt.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                {lt.is_active ? 'พร้อมงาน' : 'ไม่พร้อม'}
+                                            </span>
+                                        </div>
+                                        <div className="mt-3 text-xs text-gray-500">
+                                            {lt.last_interaction && (
+                                                <span>ใช้งานล่าสุด: {new Date(lt.last_interaction).toLocaleDateString('th-TH')}</span>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div>
-                                        <div className="font-bold text-gray-900 dark:text-white">{tech.name}</div>
-                                        {tech.specialty && (
-                                            <div className="text-sm text-gray-500">{tech.specialty}</div>
-                                        )}
-                                    </div>
-                                </div>
-                                <span className={`px-2 py-1 rounded text-xs ${tech.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                    {tech.status === 'active' ? 'พร้อมงาน' : 'ไม่พร้อม'}
-                                </span>
-                            </div>
-
-                            <div className="mt-4 space-y-2 text-sm">
-                                {tech.phone && (
-                                    <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                        <Phone size={14} /> {tech.phone}
-                                    </div>
-                                )}
-                                {tech.email && (
-                                    <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                                        <Mail size={14} /> {tech.email}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="mt-4 pt-3 border-t flex gap-2">
-                                <button
-                                    onClick={() => openForm(tech)}
-                                    className="flex-1 text-sm py-1.5 border rounded hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center justify-center gap-1"
-                                >
-                                    <Edit2 size={14} /> แก้ไข
-                                </button>
-                                <button
-                                    onClick={() => handleDelete(tech.tech_id)}
-                                    className="text-sm py-1.5 px-3 border border-red-200 text-red-600 rounded hover:bg-red-50 flex items-center gap-1"
-                                >
-                                    <Trash2 size={14} />
-                                </button>
+                                ))}
                             </div>
                         </div>
-                    ))
-                )}
-            </div>
+                    )}
+
+                    {/* Manual Technicians Section */}
+                    {filteredTechnicians.length > 0 && (
+                        <div className="space-y-4">
+                            {filteredLineTechnicians.length > 0 && (
+                                <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2">
+                                    <UserCog size={20} className="text-blue-500" />
+                                    ช่างที่เพิ่มด้วยตนเอง ({filteredTechnicians.length})
+                                </h2>
+                            )}
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                {filteredTechnicians.map(tech => (
+                                    <div key={tech.tech_id} className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`h-12 w-12 rounded-full flex items-center justify-center text-xl font-bold text-white ${tech.status === 'active' ? 'bg-blue-500' : 'bg-gray-400'}`}>
+                                                    {tech.name.charAt(0).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <div className="font-bold text-gray-900 dark:text-white">{tech.name}</div>
+                                                    {tech.specialty && (
+                                                        <div className="text-sm text-gray-500">{tech.specialty}</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <span className={`px-2 py-1 rounded text-xs ${tech.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                {tech.status === 'active' ? 'พร้อมงาน' : 'ไม่พร้อม'}
+                                            </span>
+                                        </div>
+
+                                        <div className="mt-4 space-y-2 text-sm">
+                                            {tech.phone && (
+                                                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                                    <Phone size={14} /> {tech.phone}
+                                                </div>
+                                            )}
+                                            {tech.email && (
+                                                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                                    <Mail size={14} /> {tech.email}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="mt-4 pt-3 border-t flex gap-2">
+                                            <button
+                                                onClick={() => openForm(tech)}
+                                                className="flex-1 text-sm py-1.5 border rounded hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center justify-center gap-1"
+                                            >
+                                                <Edit2 size={14} /> แก้ไข
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(tech.tech_id)}
+                                                className="text-sm py-1.5 px-3 border border-red-200 text-red-600 rounded hover:bg-red-50 flex items-center gap-1"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {filteredLineTechnicians.length === 0 && filteredTechnicians.length === 0 && (
+                        <div className="text-center text-gray-500 py-8">ไม่พบข้อมูลช่าง</div>
+                    )}
+                </>
+            )}
 
             {/* Form Modal */}
             {showForm && (
@@ -268,17 +362,6 @@ export default function TechniciansClient() {
                                         placeholder="email@example.com"
                                     />
                                 </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">LINE User ID</label>
-                                <input
-                                    type="text"
-                                    value={formData.line_user_id}
-                                    onChange={(e) => setFormData({ ...formData, line_user_id: e.target.value })}
-                                    className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                    placeholder="U1234567890abcdef"
-                                />
-                                <p className="text-xs text-gray-500 mt-1">สำหรับแจ้งเตือนผ่าน LINE</p>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium mb-1">ความเชี่ยวชาญ</label>

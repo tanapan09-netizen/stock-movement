@@ -15,6 +15,19 @@ export async function getTechnicians() {
     }
 }
 
+export async function getLineTechnicians() {
+    try {
+        const lineUsers = await prisma.tbl_line_users.findMany({
+            where: { role: 'technician' },
+            orderBy: { created_at: 'desc' }
+        });
+        return { success: true, data: lineUsers };
+    } catch (error) {
+        console.error('Error fetching LINE technicians:', error);
+        return { success: false, error: 'Failed to fetch LINE technicians' };
+    }
+}
+
 export async function getActiveTechnicians() {
     try {
         const technicians = await prisma.tbl_technicians.findMany({
