@@ -273,7 +273,7 @@ export default function PettyCashClient() {
 
     const filteredRequests = requests.filter(req => {
         if (currentTab === 'active') {
-            return ['pending', 'dispensed', 'clearing'].includes(req.status);
+            return ['pending', 'approved', 'dispensed', 'clearing'].includes(req.status);
         } else {
             return ['reconciled', 'rejected'].includes(req.status);
         }
@@ -530,8 +530,20 @@ export default function PettyCashClient() {
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                             {req.requested_by}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
-                                            {req.purpose?.replace(/\*\*/g, '')}
+                                        <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={req.purpose?.replace(/\*\*/g, '')}>
+                                            {(() => {
+                                                if (!req.purpose) return '-';
+                                                // Extract anything after **รายละเอียด:** or **รายการค่าใช้จ่าย:**
+                                                const parts = req.purpose.split('\n');
+                                                const detailLine = parts.find((l: string) => l.includes('**รายละเอียด:**'))?.replace('**รายละเอียด:**', '').trim();
+                                                const firstItem = parts.find((l: string) => l.match(/^\d+\./))?.replace(/^\d+\.\s+/, '').split(' - ')[0].trim();
+
+                                                if (detailLine && detailLine !== '-') return detailLine;
+                                                if (firstItem) return firstItem;
+
+                                                // Fallback to first line
+                                                return parts[0].replace(/\*\*/g, '').trim();
+                                            })()}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                             ฿{Number(req.dispensed_amount || req.requested_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
