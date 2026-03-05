@@ -53,7 +53,11 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
         return acc;
     }, {} as Record<string, string>);
 
-
+    // Calculate real subtotal and tax in case DB fields are 0 for older records
+    const calculatedSubtotal = poWithItems.tbl_po_items.reduce((sum, item) => sum + Number(item.line_total || 0), 0);
+    const displaySubtotal = Number(po.subtotal) > 0 ? Number(po.subtotal) : calculatedSubtotal;
+    const calculatedTax = Number(po.total_amount) - displaySubtotal;
+    const displayTax = Number(po.tax_amount) > 0 ? Number(po.tax_amount) : (calculatedTax > 0 ? calculatedTax : 0);
 
     return (
         <div className="bg-white min-h-screen p-8 print:p-0 text-black">
@@ -130,13 +134,13 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
                         <tr className="border-t-2 border-black">
                             <td colSpan={3}></td>
                             <td className="py-2 text-right">Subtotal</td>
-                            <td className="py-2 text-right">{Number(po.subtotal || 0).toLocaleString()}</td>
+                            <td className="py-2 text-right">{displaySubtotal.toLocaleString()}</td>
                         </tr>
-                        {Number(po.tax_amount || 0) > 0 && (
+                        {displayTax > 0 && (
                             <tr>
                                 <td colSpan={3}></td>
                                 <td className="py-2 text-right">VAT (7%)</td>
-                                <td className="py-2 text-right">{Number(po.tax_amount || 0).toLocaleString()}</td>
+                                <td className="py-2 text-right">{displayTax.toLocaleString()}</td>
                             </tr>
                         )}
                         <tr className="border-t border-gray-200">
