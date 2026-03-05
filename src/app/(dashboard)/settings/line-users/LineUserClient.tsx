@@ -192,7 +192,7 @@ export default function LineUserClient() {
                                             <div className="flex items-center gap-3">
                                                 {user.picture_url ? (
                                                     // eslint-disable-next-line @next/next/no-img-element
-                                                    <img src={user.picture_url} alt={user.display_name || 'User'} className="w-10 h-10 rounded-full object-cover" />
+                                                    <img src={user.picture_url} alt={user.display_name || 'User'} className="w-10 h-10 rounded-full object-cover" referrerPolicy="no-referrer" />
                                                 ) : (
                                                     <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-slate-600 flex items-center justify-center text-gray-500 text-xs">NO IMG</div>
                                                 )}

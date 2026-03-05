@@ -214,10 +214,12 @@ export default function TechniciansClient() {
                                         <div className="flex justify-between items-start">
                                             <div className="flex items-center gap-3">
                                                 {lt.picture_url ? (
+                                                    // eslint-disable-next-line @next/next/no-img-element
                                                     <img
                                                         src={lt.picture_url}
                                                         alt={lt.display_name || 'LINE user'}
                                                         className="h-12 w-12 rounded-full object-cover ring-2 ring-green-200"
+                                                        referrerPolicy="no-referrer"
                                                     />
                                                 ) : (
                                                     <div className="h-12 w-12 rounded-full flex items-center justify-center text-xl font-bold text-white bg-green-500">
