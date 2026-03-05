@@ -25,6 +25,12 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
         return notFound();
     }
 
+    const getImageUrl = (url: string | null) => {
+        if (!url) return null;
+        if (url.startsWith('http') || url.startsWith('/uploads/')) return url;
+        return `/uploads/${url}`;
+    };
+
     // Depreciation Calculation (Straight Line - TAS 16 Compliant Pro-Rata)
     // Annual Depreciation = (Cost - Salvage) / Useful Life
     const cost = Number(asset.purchase_price);
@@ -113,7 +119,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                     <div className="bg-white rounded-lg shadow-lg overflow-hidden">
                         <div className="h-64 bg-gray-100 flex items-center justify-center">
                             {asset.image_url ? (
-                                <img src={`/uploads/${asset.image_url}`} className="h-full w-full object-cover" />
+                                <img src={getImageUrl(asset.image_url)!} className="h-full w-full object-cover" />
                             ) : (
                                 <span className="text-gray-400">No Image</span>
                             )}

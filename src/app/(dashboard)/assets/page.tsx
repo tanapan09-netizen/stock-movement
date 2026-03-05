@@ -14,6 +14,12 @@ export default async function AssetsPage() {
         orderBy: { created_at: 'desc' }
     });
 
+    const getImageUrl = (url: string | null) => {
+        if (!url) return null;
+        if (url.startsWith('http') || url.startsWith('/uploads/')) return url;
+        return `/uploads/${url}`;
+    };
+
     return (
         <div>
             <div className="mb-6 flex items-center justify-between">
@@ -73,7 +79,7 @@ export default async function AssetsPage() {
                                         <td className="px-6 py-4">
                                             <div className="flex items-center">
                                                 {asset.image_url && (
-                                                    <img src={`/uploads/${asset.image_url}`} className="h-8 w-8 rounded mr-2 object-cover" alt="" />
+                                                    <img src={getImageUrl(asset.image_url)!} className="h-8 w-8 rounded mr-2 object-cover" alt="" />
                                                 )}
                                                 {asset.asset_name}
                                             </div>

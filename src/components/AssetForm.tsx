@@ -28,9 +28,15 @@ type Asset = {
 
 export default function AssetForm({ asset }: { asset?: Asset }) {
     const [isPending, setIsPending] = useState(false);
-    const [preview, setPreview] = useState<string | null>(
-        asset?.image_url ? `/uploads/${asset.image_url}` : null
-    );
+
+    // Auto-detect image URL format
+    const getInitialPreview = (url: string | null | undefined) => {
+        if (!url) return null;
+        if (url.startsWith('http') || url.startsWith('/uploads/')) return url;
+        return `/uploads/${url}`;
+    };
+
+    const [preview, setPreview] = useState<string | null>(getInitialPreview(asset?.image_url));
     const formRef = useRef<HTMLFormElement>(null);
     const { showConfirm, showToast } = useToast();
     const router = useRouter();

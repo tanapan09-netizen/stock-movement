@@ -108,7 +108,7 @@ export default function NotificationBell() {
             </button>
 
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
+                <div className="absolute right-0 mt-2 w-72 sm:w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden transform origin-top-right">
                     {/* Header */}
                     <div className="px-4 py-3 bg-gray-50 border-b flex justify-between items-center">
                         <h3 className="font-bold text-gray-800">การแจ้งเตือน</h3>
