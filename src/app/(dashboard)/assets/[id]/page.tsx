@@ -59,12 +59,12 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
         return `/uploads/${url}`;
     };
 
-    // Depreciation Calculation (Straight Line - TAS 16 Compliant Pro-Rata)
-    // Annual Depreciation = (Cost - Salvage) / Useful Life
+    // Depreciation Calculation (Straight Line - หลักสรรพากร / TRD Principle)
+    // สรรพากรคิดค่าเสื่อมจาก "ราคาทุน" เป็นฐาน (ไม่ลบมูลค่าซากก่อน) แต่หักจนเหลือมูลค่าซาก (เช่น 1 บาท)
     const cost = Number(asset.purchase_price);
     const salvage = Number(asset.salvage_value);
     const life = asset.useful_life_years;
-    const annualDepreciation = (cost - salvage) / life;
+    const annualDepreciation = cost / life; // ฐานทุนเต็ม
     const purchaseDate = new Date(asset.purchase_date);
     const purchaseYear = purchaseDate.getFullYear();
     const purchaseMonth = purchaseDate.getMonth(); // 0-11
@@ -241,7 +241,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                         <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
                             <div className="flex-1">
                                 <h3 className="font-bold text-gray-800 flex items-center text-lg mb-3">
-                                    <DollarSign className="w-5 h-5 mr-2" /> ตารางค่าเสื่อมราคา (Straight-Line / TAS 16)
+                                    <DollarSign className="w-5 h-5 mr-2" /> ตารางค่าเสื่อมราคา (Straight-Line / หลักสรรพากร)
                                 </h3>
                                 <div className="flex flex-wrap gap-2 text-sm">
                                     <div className="bg-blue-600 text-white px-3 py-1.5 rounded shadow-sm">
