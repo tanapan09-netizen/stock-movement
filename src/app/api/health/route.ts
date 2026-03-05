@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
 
 interface HealthStatus {
     status: 'healthy' | 'degraded' | 'unhealthy';
@@ -22,7 +23,18 @@ interface HealthStatus {
 
 const startTime = Date.now();
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+    // Determine if requester is authorized for detailed metrics
+    const authHeader = request.headers.get('authorization');
+    const hasCronSecret = process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`;
+
+    // Check session
+    const session = await auth();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const isAdmin = session?.user && (session.user as any).role === 'admin';
+
+    const isAuthorized = hasCronSecret || isAdmin;
+
     const health: HealthStatus = {
         status: 'healthy',
         timestamp: new Date().toISOString(),
@@ -76,6 +88,14 @@ export async function GET() {
     // Determine HTTP status code
     const httpStatus = health.status === 'healthy' ? 200 :
         health.status === 'degraded' ? 200 : 503;
+
+    // Mask detailed info if unauthorized
+    if (!isAuthorized) {
+        return NextResponse.json({
+            status: health.status,
+            timestamp: health.timestamp
+        }, { status: httpStatus });
+    }
 
     return NextResponse.json(health, { status: httpStatus });
 }

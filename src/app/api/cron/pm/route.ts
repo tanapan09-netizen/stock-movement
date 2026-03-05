@@ -8,12 +8,9 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
 
-    // Optional: Allow running if CRON_SECRET is not set (DEV mode) or secure it always
-    // For now, let's enforce it if it's set, or require a specific secret.
-    // If using Vercel Cron, it sends a specific header.
-    // Let's use a simple Bearer token approach.
-
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if (!cronSecret) {
+        console.warn('[Cron] CRON_SECRET is not set in environment variables');
+    } else if (authHeader !== `Bearer ${cronSecret}`) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

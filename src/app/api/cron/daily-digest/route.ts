@@ -5,6 +5,15 @@ import { emailConfig } from '@/config/email.config';
 
 export async function GET(request: NextRequest) {
     try {
+        // Verify Cron Secret to prevent unauthorized access
+        const authHeader = request.headers.get('authorization');
+
+        if (!process.env.CRON_SECRET) {
+            console.warn('[Cron] CRON_SECRET is not set in environment variables');
+        } else if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         // 1. Get Low Stock Items
         const allProducts = await prisma.tbl_products.findMany({
             where: {

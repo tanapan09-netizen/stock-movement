@@ -4,7 +4,17 @@ import { sendLineMessage, sendLineNotify } from '@/lib/lineNotify';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
+    // 1. Security Check
+    const authHeader = request.headers.get('authorization');
+    const cronSecret = process.env.CRON_SECRET;
+
+    if (!cronSecret) {
+        console.warn('[Cron] CRON_SECRET is not set in environment variables');
+    } else if (authHeader !== `Bearer ${cronSecret}`) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     try {
         // Check Settings
         const settings = await prisma.tbl_system_settings.findMany();

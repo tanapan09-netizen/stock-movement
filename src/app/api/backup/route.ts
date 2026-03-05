@@ -6,9 +6,16 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
 
 export async function GET() {
     try {
+        const session = await auth();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (!session || (session.user as any).role !== 'admin') {
+            return new NextResponse('Unauthorized', { status: 401 });
+        }
+
         // Export main data from database
         const [products, categories, users, suppliers] = await Promise.all([
             prisma.tbl_products.findMany(),
@@ -51,6 +58,12 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
     try {
+        const session = await auth();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (!session || (session.user as any).role !== 'admin') {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         const backup = await request.json();
 
         if (!backup.version || !backup.data) {
