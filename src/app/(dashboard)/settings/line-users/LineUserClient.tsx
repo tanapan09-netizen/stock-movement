@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Trash2, UserCheck, UserX, Plus } from 'lucide-react';
-import { getLineUsers, toggleApprover, toggleLineUserActive, deleteLineUser, updateLineUserRole, updateLineUserFullName } from '@/actions/lineUserActions';
+import { getLineUsers, toggleApprover, toggleLineUserActive, deleteLineUser, updateLineUserRole, updateLineUserFullName, refreshLineUserProfiles } from '@/actions/lineUserActions';
 
 interface LineUser {
     id: number;
@@ -23,6 +23,7 @@ export default function LineUserClient() {
     const [showQRCode, setShowQRCode] = useState(false);
     const [uploadingQR, setUploadingQR] = useState(false);
     const [qrTimestamp, setQrTimestamp] = useState(Date.now());
+    const [refreshing, setRefreshing] = useState(false);
 
     async function loadUsers() {
         setLoading(true);
@@ -37,6 +38,18 @@ export default function LineUserClient() {
     useEffect(() => {
         loadUsers();
     }, []);
+
+    const handleRefreshPhotos = async () => {
+        setRefreshing(true);
+        const result = await refreshLineUserProfiles();
+        if (result.success) {
+            alert(result.message);
+            loadUsers();
+        } else {
+            alert('เกิดข้อผิดพลาด: ' + result.error);
+        }
+        setRefreshing(false);
+    };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -112,13 +125,23 @@ export default function LineUserClient() {
                     <h1 className="text-2xl font-bold text-gray-800 dark:text-white">LINE User Management</h1>
                     <p className="text-gray-500 dark:text-gray-400">Manage users for LINE Messaging API notifications</p>
                 </div>
-                <button
-                    onClick={() => setShowQRCode(!showQRCode)}
-                    className="flex items-center gap-2 bg-[#06C755] hover:bg-[#05b34c] text-white px-4 py-2 rounded-lg transition-colors"
-                >
-                    <Plus size={20} />
-                    Add Friend
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={handleRefreshPhotos}
+                        disabled={refreshing}
+                        className="flex items-center gap-2 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50 text-sm"
+                        title="ดึงรูปโปรไฟล์ใหม่จาก LINE API"
+                    >
+                        {refreshing ? '⏳ กำลังอัปเดต...' : '🔄 Refresh Photos'}
+                    </button>
+                    <button
+                        onClick={() => setShowQRCode(!showQRCode)}
+                        className="flex items-center gap-2 bg-[#06C755] hover:bg-[#05b34c] text-white px-4 py-2 rounded-lg transition-colors"
+                    >
+                        <Plus size={20} />
+                        Add Friend
+                    </button>
+                </div>
             </div>
 
             {showQRCode && (
@@ -192,7 +215,12 @@ export default function LineUserClient() {
                                             <div className="flex items-center gap-3">
                                                 {user.picture_url ? (
                                                     // eslint-disable-next-line @next/next/no-img-element
-                                                    <img src={user.picture_url} alt={user.display_name || 'User'} className="w-10 h-10 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                                    <img
+                                                        src={`/api/line/avatar?url=${encodeURIComponent(user.picture_url)}`}
+                                                        alt={user.display_name || 'User'}
+                                                        className="w-10 h-10 rounded-full object-cover"
+                                                        referrerPolicy="no-referrer"
+                                                    />
                                                 ) : (
                                                     <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-slate-600 flex items-center justify-center text-gray-500 text-xs">NO IMG</div>
                                                 )}

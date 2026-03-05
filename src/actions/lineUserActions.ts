@@ -256,3 +256,57 @@ export async function deleteLineUser(id: number) {
         return { success: false, error: 'Failed to delete user' };
     }
 }
+
+/**
+ * Refresh LINE user profile pictures from LINE API
+ * Call this when pictures are broken/expired
+ */
+export async function refreshLineUserProfiles() {
+    try {
+        const session = await auth();
+        if (!session || !session.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        const { getUserProfile } = await import('@/lib/notifications/lineMessaging');
+
+        const users = await prisma.tbl_line_users.findMany({
+            select: { id: true, line_user_id: true },
+        });
+
+        let updated = 0;
+        let failed = 0;
+
+        for (const user of users) {
+            try {
+                const profile = await getUserProfile(user.line_user_id);
+                if (profile) {
+                    await prisma.tbl_line_users.update({
+                        where: { id: user.id },
+                        data: {
+                            display_name: profile.displayName || undefined,
+                            picture_url: profile.pictureUrl || undefined,
+                        },
+                    });
+                    updated++;
+                } else {
+                    failed++;
+                }
+            } catch {
+                failed++;
+            }
+        }
+
+        revalidatePath('/settings/line-users');
+
+        return {
+            success: true,
+            updated,
+            failed,
+            message: `อัปเดตรูปสำเร็จ ${updated} คน, ล้มเหลว ${failed} คน`
+        };
+    } catch (error) {
+        console.error('Error refreshing user profiles:', error);
+        return { success: false, error: 'Failed to refresh profiles' };
+    }
+}
