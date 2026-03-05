@@ -47,6 +47,14 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
 
     const getImageUrl = (url: string | null) => {
         if (!url) return null;
+        try {
+            const parsed = JSON.parse(url);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                return parsed[0]; // Assume first string is the main url
+            }
+        } catch (e) {
+            // Not a JSON string, fallback to standard handling
+        }
         if (url.startsWith('http') || url.startsWith('/uploads/')) return url;
         return `/uploads/${url}`;
     };
