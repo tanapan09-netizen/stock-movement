@@ -54,6 +54,12 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
         redirect(`/purchase-orders/${poId}`);
     }
 
+    // Calculate real subtotal and tax in case DB fields are 0 for older records
+    const calculatedSubtotal = poWithItems.tbl_po_items.reduce((sum, item) => sum + Number(item.line_total || 0), 0);
+    const displaySubtotal = Number(po.subtotal) > 0 ? Number(po.subtotal) : calculatedSubtotal;
+    const calculatedTax = Number(po.total_amount) - displaySubtotal;
+    const displayTax = Number(po.tax_amount) > 0 ? Number(po.tax_amount) : (calculatedTax > 0 ? calculatedTax : 0);
+
     return (
         <div className="max-w-4xl mx-auto py-6">
             <div className="mb-6 flex justify-between items-center">
@@ -98,16 +104,12 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
                     </div>
                 </div>
 
-                <div className="p-6 grid grid-cols-2 gap-6">
+                <div className="p-6 grid grid-cols-2 gap-6 pb-4">
                     <div>
                         <h3 className="text-gray-500 text-sm uppercase font-semibold">Supplier</h3>
                         <div className="font-bold text-lg">{supplier?.name || 'Unknown'}</div>
                         <div className="text-gray-600">{supplier?.address}</div>
                         <div className="text-gray-600">{supplier?.phone}</div>
-                    </div>
-                    <div className="text-right">
-                        <h3 className="text-gray-500 text-sm uppercase font-semibold">Total Amount</h3>
-                        <div className="font-bold text-2xl text-blue-600">{Number(po.total_amount).toLocaleString()} บาท</div>
                     </div>
                 </div>
 
@@ -135,6 +137,26 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
                             ))}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Summary Section */}
+                <div className="bg-gray-50 p-6 border-t flex justify-end">
+                    <div className="w-64 space-y-3">
+                        <div className="flex justify-between text-gray-600">
+                            <span>Subtotal</span>
+                            <span>{displaySubtotal.toLocaleString()}</span>
+                        </div>
+                        {displayTax > 0 && (
+                            <div className="flex justify-between text-gray-600">
+                                <span>VAT (7%)</span>
+                                <span>{displayTax.toLocaleString()}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between font-bold text-lg text-blue-600 border-t pt-3">
+                            <span>Total Amount</span>
+                            <span>{Number(po.total_amount).toLocaleString()} บาท</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 

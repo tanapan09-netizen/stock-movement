@@ -69,33 +69,48 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
     const purchaseYear = purchaseDate.getFullYear();
     const purchaseMonth = purchaseDate.getMonth(); // 0-11
 
-    // Calculate months in first year (from purchase month to December)
-    const monthsInFirstYear = 12 - purchaseMonth;
-    const monthsInLastYear = 12 - monthsInFirstYear;
-
+    // Calculate based on exact days
+    const msPerDay = 1000 * 60 * 60 * 24;
     const currentYear = new Date().getFullYear();
 
     const depreciationTable = [];
     let accumulatedDep = 0;
     const totalDepreciable = cost - salvage;
 
+    // The asset fully depreciates exactly 'life' years after purchase
+    const endOfLifeDate = new Date(purchaseDate);
+    endOfLifeDate.setFullYear(purchaseDate.getFullYear() + life);
+    // Subtract 1 day so it doesn't overlap into the next period unnecessarily
+    endOfLifeDate.setDate(endOfLifeDate.getDate() - 1);
+
     for (let i = 0; i <= life; i++) {
         const year = purchaseYear + i;
         const beginningValue = cost - accumulatedDep;
 
         let expense = 0;
-        let monthsUsed = 12;
+
+        // Days in current year
+        const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+        const daysInThisYear = isLeapYear ? 366 : 365;
+        let daysUsed = daysInThisYear;
 
         if (i === 0) {
-            // Year 1: Pro-rata based on purchase date
-            expense = annualDepreciation * (monthsInFirstYear / 12);
-            monthsUsed = monthsInFirstYear;
-        } else if (i === life && monthsInLastYear > 0) {
-            // Last Year (if partial): Remaining depreciation
-            const remaining = totalDepreciable - accumulatedDep;
-            expense = Math.min(remaining, annualDepreciation * (monthsInLastYear / 12));
-            monthsUsed = monthsInLastYear;
-        } else if (i < life) {
+            // Year 1: from purchase date to Dec 31
+            const endOfYear = new Date(year, 11, 31);
+            daysUsed = Math.floor((endOfYear.getTime() - purchaseDate.getTime()) / msPerDay) + 1;
+            expense = (annualDepreciation / daysInThisYear) * daysUsed;
+        } else if (i === life) {
+            // Last year: from Jan 1 to the end of life date
+            const startOfYear = new Date(year, 0, 1);
+            if (endOfLifeDate.getTime() >= startOfYear.getTime()) {
+                daysUsed = Math.floor((endOfLifeDate.getTime() - startOfYear.getTime()) / msPerDay) + 1;
+                const remaining = totalDepreciable - accumulatedDep;
+                expense = Math.min(remaining, (annualDepreciation / daysInThisYear) * daysUsed);
+            } else {
+                daysUsed = 0;
+                expense = 0;
+            }
+        } else {
             // Full years in between
             expense = annualDepreciation;
         }
@@ -111,7 +126,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
         if (expense > 0 || i === 0) {
             depreciationTable.push({
                 year,
-                monthsUsed,
+                daysUsed,
                 beginningValue,
                 expense,
                 accumulatedDep,
@@ -229,7 +244,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                                     <DollarSign className="w-4 h-4 mr-2" /> ตารางค่าเสื่อมราคา (Straight-Line / TAS 16)
                                 </h3>
                                 <div className="text-xs text-gray-500 mt-1">
-                                    ทุน {cost.toLocaleString()} | ซาก {salvage.toLocaleString()} | อายุใช้งาน {life} ปี | ค่าเสื่อม/ปี {annualDepreciation.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท
+                                    ทุน {cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | ซาก {salvage.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | อายุใช้งาน {life} ปี | ค่าเสื่อม/ปี {annualDepreciation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท
                                     <span className="ml-1 text-blue-600">(เริ่มคิดจากวันที่ซื้อ: {purchaseDate.toLocaleDateString('th-TH')})</span>
                                 </div>
                             </div>
@@ -246,7 +261,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                                 <thead className="bg-white text-gray-500 border-b">
                                     <tr>
                                         <th className="py-3 px-4">ปี</th>
-                                        <th className="py-3 px-4">จำนวนเดือน</th>
+                                        <th className="py-3 px-4">จำนวนวัน</th>
                                         <th className="py-3 px-4">มูลค่าต้นงวด</th>
                                         <th className="py-3 px-4">ค่าเสื่อม/ปี</th>
                                         <th className="py-3 px-4">ค่าเสื่อมสะสม</th>
@@ -257,11 +272,11 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                                     {depreciationTable.map((row) => (
                                         <tr key={row.year} className={row.year === currentYear ? 'bg-blue-50 font-medium' : ''}>
                                             <td className="py-2 px-4">{row.year + 543}</td>
-                                            <td className="py-2 px-4 text-gray-500">{row.monthsUsed}</td>
-                                            <td className="py-2 px-4">{row.beginningValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                                            <td className="py-2 px-4 text-red-600">{row.expense.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                                            <td className="py-2 px-4 text-gray-500">{row.accumulatedDep.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                                            <td className="py-2 px-4 text-blue-600">{row.endingValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                                            <td className="py-2 px-4 text-gray-500">{row.daysUsed}</td>
+                                            <td className="py-2 px-4">{row.beginningValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className="py-2 px-4 text-red-600">{row.expense.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className="py-2 px-4 text-gray-500">{row.accumulatedDep.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className="py-2 px-4 text-blue-600">{row.endingValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                         </tr>
                                     ))}
                                 </tbody>
