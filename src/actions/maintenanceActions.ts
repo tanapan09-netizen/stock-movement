@@ -176,6 +176,7 @@ export async function getMaintenanceRequests(filters?: {
     status?: string | string[];
     room_id?: number;
     priority?: string;
+    date?: string;
 }) {
     try {
         const where: Record<string, unknown> = {};
@@ -192,6 +193,17 @@ export async function getMaintenanceRequests(filters?: {
         }
         if (filters?.priority && filters.priority !== 'all') {
             where.priority = filters.priority;
+        }
+        if (filters?.date) {
+            // Match the exact date ignoring time by setting start and end of that day
+            const selectedDate = new Date(filters.date);
+            const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
+            const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
+
+            where.created_at = {
+                gte: startOfDay,
+                lte: endOfDay
+            };
         }
 
         // Fetch requests WITHOUT strict relation include first

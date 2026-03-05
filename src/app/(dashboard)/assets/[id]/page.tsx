@@ -7,6 +7,26 @@ import AssetActions from '@/components/AssetActions';
 import PrintButton from '@/components/PrintButton';
 import { auth } from '@/auth';
 
+const translateActionType = (type: string) => {
+    switch (type) {
+        case 'Create': return 'ลงทะเบียนใหม่';
+        case 'Update': return 'อัปเดตข้อมูล';
+        case 'Dispose': return 'จำหน่าย/เลิกใช้งาน';
+        case 'Repair': return 'ส่งซ่อม';
+        case 'Maintenance': return 'บำรุงรักษา';
+        case 'Move': return 'ย้ายสถานที่';
+        default: return type;
+    }
+};
+
+const translateDescription = (desc: string | null) => {
+    if (!desc) return '';
+    if (desc === 'Asset registered in system') return 'ลงทะเบียนทรัพย์สินเข้าสู่ระบบ';
+    if (desc === 'Asset details updated') return 'อัปเดตข้อมูลทรัพย์สิน';
+    if (desc === 'Asset marked as disposed') return 'บันทึกการจำหน่าย/เลิกใช้งานทรัพย์สิน';
+    return desc;
+};
+
 export default async function AssetDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
     const session = await auth();
@@ -202,6 +222,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                                 </h3>
                                 <div className="text-xs text-gray-500 mt-1">
                                     ทุน {cost.toLocaleString()} | ซาก {salvage.toLocaleString()} | อายุใช้งาน {life} ปี | ค่าเสื่อม/ปี {annualDepreciation.toLocaleString(undefined, { maximumFractionDigits: 2 })} บาท
+                                    <span className="ml-1 text-blue-600">(เริ่มคิดจากวันที่ซื้อ: {purchaseDate.toLocaleDateString('th-TH')})</span>
                                 </div>
                             </div>
                             <PrintButton
@@ -227,7 +248,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                                 <tbody className="divide-y">
                                     {depreciationTable.map((row) => (
                                         <tr key={row.year} className={row.year === currentYear ? 'bg-blue-50 font-medium' : ''}>
-                                            <td className="py-2 px-4">{row.year}</td>
+                                            <td className="py-2 px-4">{row.year + 543}</td>
                                             <td className="py-2 px-4 text-gray-500">{row.monthsUsed}</td>
                                             <td className="py-2 px-4">{row.beginningValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                                             <td className="py-2 px-4 text-red-600">{row.expense.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
@@ -260,16 +281,16 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                                                 }`}></span>
                                             <div>
                                                 <div className="flex items-center text-sm mb-1">
-                                                    <span className="font-bold text-gray-900 mr-2">{h.action_type}</span>
+                                                    <span className="font-bold text-gray-900 mr-2">{translateActionType(h.action_type)}</span>
                                                     <span className="text-gray-500 text-xs">{new Date(h.action_date).toLocaleString('th-TH')}</span>
                                                 </div>
-                                                <p className="text-sm text-gray-700">{h.description}</p>
+                                                <p className="text-sm text-gray-700">{translateDescription(h.description)}</p>
                                                 {(h.cost && Number(h.cost) > 0) && (
                                                     <p className="text-sm text-red-600 mt-1">
                                                         ค่าใช้จ่าย: {Number(h.cost).toLocaleString()} บาท
                                                     </p>
                                                 )}
-                                                <p className="text-xs text-gray-500 mt-1">โดย: {h.performed_by || '-'}</p>
+                                                <p className="text-xs text-gray-500 mt-1">โดย: {h.performed_by === 'System' ? 'ระบบ' : (h.performed_by || '-')}</p>
                                             </div>
                                         </div>
                                     ))}
