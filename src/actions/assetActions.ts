@@ -247,3 +247,103 @@ export async function searchAssets(query: string) {
     }
 }
 
+export async function getAssetFinancialSummary() {
+    try {
+        const assets = await prisma.tbl_assets.findMany({
+            where: { status: 'Active' },
+            select: {
+                purchase_price: true,
+                salvage_value: true,
+                useful_life_years: true,
+                purchase_date: true
+            }
+        });
+
+        let totalValue = 0;
+        let totalAccumulatedDepreciation = 0;
+        const now = new Date();
+
+        // Exact same calculation logic as the detail page
+        const msPerDay = 1000 * 60 * 60 * 24;
+
+        assets.forEach(asset => {
+            const cost = Number(asset.purchase_price);
+            const salvage = Number(asset.salvage_value);
+            const life = asset.useful_life_years;
+            const purchaseDate = new Date(asset.purchase_date);
+            const purchaseYear = purchaseDate.getFullYear();
+
+            totalValue += cost;
+
+            if (life > 0 && cost > salvage) {
+                const totalDepreciable = cost - salvage;
+                const annualDepreciation = totalDepreciable / life;
+
+                const endOfLifeDate = new Date(purchaseDate);
+                endOfLifeDate.setFullYear(purchaseDate.getFullYear() + life);
+
+                let accumulatedDep = 0;
+
+                // If we are past end of life, it's fully depreciated
+                if (now.getTime() >= endOfLifeDate.getTime()) {
+                    totalAccumulatedDepreciation += totalDepreciable;
+                } else {
+                    const currentYear = now.getFullYear();
+
+                    // Loop through years since purchase up to current year
+                    for (let i = 0; i <= (currentYear - purchaseYear); i++) {
+                        const year = purchaseYear + i;
+
+                        let expense = 0;
+                        const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+                        const daysInThisYear = isLeapYear ? 366 : 365;
+                        let daysUsed = daysInThisYear;
+
+                        if (i === 0 && year === currentYear) {
+                            // Bought this year -> run up to today
+                            daysUsed = Math.floor((now.getTime() - purchaseDate.getTime()) / msPerDay) + 1;
+                            expense = (annualDepreciation / daysInThisYear) * daysUsed;
+                        } else if (i === 0) {
+                            // Year 1: from purchase date to Dec 31
+                            const endOfYear = new Date(year, 11, 31);
+                            daysUsed = Math.floor((endOfYear.getTime() - purchaseDate.getTime()) / msPerDay) + 1;
+                            expense = (annualDepreciation / daysInThisYear) * daysUsed;
+                        } else if (year === currentYear) {
+                            // Current year: from Jan 1 to today
+                            const startOfYear = new Date(year, 0, 1);
+                            daysUsed = Math.floor((now.getTime() - startOfYear.getTime()) / msPerDay) + 1;
+                            expense = (annualDepreciation / daysInThisYear) * daysUsed;
+                        } else {
+                            // Full years in between
+                            expense = annualDepreciation;
+                        }
+
+                        accumulatedDep += expense;
+                    }
+
+                    if (accumulatedDep > totalDepreciable) {
+                        accumulatedDep = totalDepreciable;
+                    }
+
+                    totalAccumulatedDepreciation += accumulatedDep;
+                }
+            }
+        });
+
+        return {
+            success: true,
+            totalValue,
+            totalAccumulatedDepreciation,
+            netValue: totalValue - totalAccumulatedDepreciation
+        };
+    } catch (error) {
+        console.error('Failed to get asset financial summary:', error);
+        return {
+            success: false,
+            totalValue: 0,
+            totalAccumulatedDepreciation: 0,
+            netValue: 0
+        };
+    }
+}
+

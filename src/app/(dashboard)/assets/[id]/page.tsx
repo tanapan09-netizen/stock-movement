@@ -81,7 +81,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
     const endOfLifeDate = new Date(purchaseDate);
     endOfLifeDate.setFullYear(purchaseDate.getFullYear() + life);
     // Subtract 1 day so it doesn't overlap into the next period unnecessarily
-    endOfLifeDate.setDate(endOfLifeDate.getDate() - 0);
+    // endOfLifeDate.setDate(endOfLifeDate.getDate() - 1);
 
     for (let i = 0; i <= life; i++) {
         const year = purchaseYear + i;
@@ -239,13 +239,31 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                     {/* Depreciation Table */}
                     <div id="depreciation-printable" className="bg-white rounded-lg shadow overflow-hidden">
                         <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
-                            <div>
-                                <h3 className="font-bold text-gray-800 flex items-center">
-                                    <DollarSign className="w-4 h-4 mr-2" /> ตารางค่าเสื่อมราคา (Straight-Line / TAS 16)
+                            <div className="flex-1">
+                                <h3 className="font-bold text-gray-800 flex items-center text-lg mb-3">
+                                    <DollarSign className="w-5 h-5 mr-2" /> ตารางค่าเสื่อมราคา (Straight-Line / TAS 16)
                                 </h3>
-                                <div className="text-xs text-gray-500 mt-1">
-                                    ทุน {cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | ซาก {salvage.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | อายุใช้งาน {life} ปี | ค่าเสื่อม/ปี {annualDepreciation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท
-                                    <span className="ml-1 text-blue-600">(เริ่มคิดจากวันที่ซื้อ: {purchaseDate.toLocaleDateString('th-TH')})</span>
+                                <div className="flex flex-wrap gap-2 text-sm">
+                                    <div className="bg-blue-600 text-white px-3 py-1.5 rounded shadow-sm">
+                                        <span className="opacity-80 mr-1">ทุน</span>
+                                        <span className="font-bold">{cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    </div>
+                                    <div className="bg-blue-600 text-white px-3 py-1.5 rounded shadow-sm">
+                                        <span className="opacity-80 mr-1">ซาก</span>
+                                        <span className="font-bold">{salvage.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    </div>
+                                    <div className="bg-blue-600 text-white px-3 py-1.5 rounded shadow-sm">
+                                        <span className="opacity-80 mr-1">อายุใช้งาน</span>
+                                        <span className="font-bold">{life} ปี</span>
+                                    </div>
+                                    <div className="bg-blue-600 text-white px-3 py-1.5 rounded shadow-sm">
+                                        <span className="opacity-80 mr-1">ค่าเสื่อม/ปี</span>
+                                        <span className="font-bold">{annualDepreciation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</span>
+                                    </div>
+                                    <div className="bg-blue-700 text-white px-3 py-1.5 rounded shadow-sm flex items-center">
+                                        <span className="opacity-80 mr-1">เริ่มคิดจากวันที่ซื้อ:</span>
+                                        <span className="font-bold">{purchaseDate.toLocaleDateString('th-TH')}</span>
+                                    </div>
                                 </div>
                             </div>
                             <PrintButton

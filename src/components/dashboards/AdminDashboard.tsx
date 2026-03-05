@@ -3,6 +3,7 @@ import { Package, AlertTriangle, DollarSign, Activity, TrendingUp, TrendingDown,
 import Link from 'next/link';
 import DashboardCharts from '@/components/DashboardCharts';
 import { getLowStockItems } from '@/actions/productActions';
+import { getAssetFinancialSummary } from '@/actions/assetActions';
 
 const StatCard = ({ title, value, subtitle, icon: Icon, color, link }: any) => {
     // Force "Light" style (White Card) for both modes as requested
@@ -35,6 +36,13 @@ const StatCard = ({ title, value, subtitle, icon: Icon, color, link }: any) => {
             text: 'text-gray-900 dark:text-white',
             subtext: 'text-gray-500 dark:text-gray-400',
             linkBg: 'hover:bg-orange-50 dark:hover:bg-orange-900/30 text-orange-600 dark:text-orange-400'
+        },
+        rose: {
+            style: 'bg-white dark:bg-slate-800 border-rose-100/50 dark:border-slate-700',
+            iconBg: 'bg-rose-50 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400',
+            text: 'text-gray-900 dark:text-white',
+            subtext: 'text-gray-500 dark:text-gray-400',
+            linkBg: 'hover:bg-rose-50 dark:hover:bg-rose-900/30 text-rose-600 dark:text-rose-400'
         }
     };
 
@@ -85,7 +93,8 @@ export default async function AdminDashboard() {
         recentMovements,
         todayMovements,
         totalAssets,
-        lowStockResult
+        lowStockResult,
+        assetSummary
     ] = await Promise.all([
         prisma.tbl_products.count({ where: { active: true } }),
         prisma.tbl_products.findMany({
@@ -99,8 +108,9 @@ export default async function AdminDashboard() {
         prisma.tbl_product_movements.count({
             where: { movement_time: { gte: today } }
         }),
-        prisma.tbl_assets.count(),
-        getLowStockItems()
+        prisma.tbl_assets.count({ where: { status: 'Active' } }),
+        getLowStockItems(),
+        getAssetFinancialSummary()
     ]);
 
     // Calculate stats
@@ -140,13 +150,13 @@ export default async function AdminDashboard() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
                 <StatCard
                     title="มูลค่าสต็อกรวม"
                     value={<>{totalValue.toLocaleString()} <span className="text-lg font-normal opacity-70">฿</span></>}
                     icon={Wallet}
                     color="emerald"
-                    subtitle="คำนวณจากสินค้าคงเหลือทั้งหมด"
+                    subtitle="ภาพรวมสินค้าคงคลัง"
                 />
 
                 <StatCard
@@ -155,7 +165,7 @@ export default async function AdminDashboard() {
                     icon={Package}
                     color="blue"
                     link="/products"
-                    subtitle="รายการสินค้าที่ Active"
+                    subtitle="รายการที่ยัง Active"
                 />
 
                 <StatCard
@@ -163,16 +173,32 @@ export default async function AdminDashboard() {
                     value={todayMovements}
                     icon={Activity}
                     color="purple"
-                    subtitle="รายการ รับ/เบิก วันนี้"
+                    subtitle="เบิก/รับ วันนี้"
                 />
 
                 <StatCard
-                    title="ทรัพย์สินถาวร"
+                    title="จำนวนทรัพย์สิน"
                     value={totalAssets}
                     icon={Briefcase}
                     color="orange"
                     link="/assets"
-                    subtitle="ครุภัณฑ์และอุปกรณ์"
+                    subtitle="รายการที่ยังใช้งานอยู่"
+                />
+
+                <StatCard
+                    title="มูลค่าทรัพย์สินทั้งหมด"
+                    value={<>{(assetSummary.totalValue || 0).toLocaleString()} <span className="text-lg font-normal opacity-70">฿</span></>}
+                    icon={DollarSign}
+                    color="blue"
+                    subtitle="ราคาทุนรวมของทรัพย์สิน"
+                />
+
+                <StatCard
+                    title="ค่าเสื่อมราคาสะสม"
+                    value={<>{(assetSummary.totalAccumulatedDepreciation || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-lg font-normal opacity-70">฿</span></>}
+                    icon={TrendingDown}
+                    color="rose"
+                    subtitle="ค่าเสื่อมสะสมถึงปัจจุบัน"
                 />
             </div>
 
