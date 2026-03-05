@@ -149,7 +149,8 @@ export default function MaintenanceClient() {
     const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterRoom, setFilterRoom] = useState<number | null>(null);
-    const [filterDate, setFilterDate] = useState('');
+    const [filterStartDate, setFilterStartDate] = useState('');
+    const [filterEndDate, setFilterEndDate] = useState('');
 
     const [assetSearchQuery, setAssetSearchQuery] = useState('');
     const [assetResults, setAssetResults] = useState<any[]>([]);
@@ -250,7 +251,8 @@ export default function MaintenanceClient() {
                 getMaintenanceRequests({
                     status: filterStatus !== 'all' ? filterStatus : undefined,
                     room_id: filterRoom || undefined,
-                    date: filterDate || undefined
+                    startDate: filterStartDate || undefined,
+                    endDate: filterEndDate || undefined
                 }),
                 getRooms(),
                 getMaintenanceSummary(),
@@ -280,7 +282,7 @@ export default function MaintenanceClient() {
     useEffect(() => {
         loadData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filterStatus, filterRoom, filterDate]);
+    }, [filterStatus, filterRoom, filterStartDate, filterEndDate]);
 
     useEffect(() => {
         if (reqQueryParam && requests.length > 0 && !hasOpenedFromUrl) {
@@ -738,18 +740,31 @@ export default function MaintenanceClient() {
                     ))}
                 </select>
                 <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-300">ตั้งแต่:</span>
                     <input
                         type="date"
-                        value={filterDate}
-                        onChange={(e) => setFilterDate(e.target.value)}
+                        value={filterStartDate}
+                        onChange={(e) => setFilterStartDate(e.target.value)}
                         className="border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
-                        aria-label="กรองตามวันที่"
-                        title="กรองตามวันที่แจ้งซ่อม"
+                        aria-label="ตั้งแต่วันที่"
+                        title="ตั้งแต่วันที่"
                     />
-                    {filterDate && (
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-300">ถึง:</span>
+                    <input
+                        type="date"
+                        value={filterEndDate}
+                        onChange={(e) => setFilterEndDate(e.target.value)}
+                        className="border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
+                        aria-label="ถึงวันที่"
+                        title="ถึงวันที่"
+                    />
+                    {(filterStartDate || filterEndDate) && (
                         <button
-                            onClick={() => setFilterDate('')}
-                            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                            onClick={() => {
+                                setFilterStartDate('');
+                                setFilterEndDate('');
+                            }}
+                            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 ml-1"
                             title="ล้างวันที่"
                         >
                             <X size={16} />

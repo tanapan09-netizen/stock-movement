@@ -176,7 +176,8 @@ export async function getMaintenanceRequests(filters?: {
     status?: string | string[];
     room_id?: number;
     priority?: string;
-    date?: string;
+    startDate?: string;
+    endDate?: string;
 }) {
     try {
         const where: Record<string, unknown> = {};
@@ -194,16 +195,26 @@ export async function getMaintenanceRequests(filters?: {
         if (filters?.priority && filters.priority !== 'all') {
             where.priority = filters.priority;
         }
-        if (filters?.date) {
-            // Match the exact date ignoring time by setting start and end of that day
-            const selectedDate = new Date(filters.date);
-            const startOfDay = new Date(selectedDate.setHours(0, 0, 0, 0));
-            const endOfDay = new Date(selectedDate.setHours(23, 59, 59, 999));
 
-            where.created_at = {
-                gte: startOfDay,
-                lte: endOfDay
-            };
+        // Handle Date Range Filtering
+        if (filters?.startDate || filters?.endDate) {
+            const dateFilter: { gte?: Date; lte?: Date } = {};
+
+            if (filters.startDate) {
+                const start = new Date(filters.startDate);
+                start.setHours(0, 0, 0, 0);
+                dateFilter.gte = start;
+            }
+
+            if (filters.endDate) {
+                const end = new Date(filters.endDate);
+                end.setHours(23, 59, 59, 999);
+                dateFilter.lte = end;
+            }
+
+            if (Object.keys(dateFilter).length > 0) {
+                where.created_at = dateFilter;
+            }
         }
 
         // Fetch requests WITHOUT strict relation include first
