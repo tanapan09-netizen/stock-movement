@@ -164,7 +164,7 @@ export default function AssetForm({ asset }: { asset?: Asset }) {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">ราคาซาก (บาท)</label>
-                                <CurrencyInput name="salvage_value" defaultValue={asset ? Number(asset.salvage_value) : 1} required placeholder="1.00" />
+                                <CurrencyInput name="salvage_value" defaultValue={asset ? Number(asset.salvage_value) : 0} placeholder="0.00" />
                             </div>
                         </div>
                         <div>

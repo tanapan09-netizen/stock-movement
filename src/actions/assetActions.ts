@@ -15,7 +15,7 @@ export async function createAsset(formData: FormData) {
     const purchase_date = new Date(formData.get('purchase_date') as string);
     const purchase_price = parseFloat(formData.get('purchase_price') as string) || 0;
     const useful_life_years = parseInt(formData.get('useful_life_years') as string) || 1;
-    const salvage_value = parseFloat(formData.get('salvage_value') as string) || 1;
+    const salvage_value = parseFloat(formData.get('salvage_value') as string) || 0;
     const location = formData.get('location') as string;
     const status = formData.get('status') as string || 'Active';
     const vendor = formData.get('vendor') as string;
