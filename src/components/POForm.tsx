@@ -115,8 +115,8 @@ export default function POForm({ products, suppliers, initialData }: { products:
         formData.append('order_date', orderDate);
         formData.append('expected_date', expectedDate);
         formData.append('status', status);
-        // formData.append('subtotal', subtotal.toString()); // Not used in backend explicitly for validation but good to have
-        // formData.append('tax_amount', taxAmount.toString());
+        formData.append('subtotal', subtotal.toString());
+        formData.append('tax_amount', taxAmount.toString());
         formData.append('total_amount', grandTotal.toString());
         formData.append('notes', notes);
         formData.append('items', JSON.stringify(cart));

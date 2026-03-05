@@ -42,10 +42,10 @@ export async function createPO(formData: FormData) {
         });
         if (existing) return { error: 'เลขที่ใบสั่งซื้อซ้ำ' };
 
-        let total_amount = 0;
-        items.forEach(i => {
-            total_amount += (i.quantity * i.unit_price);
-        });
+        // Use values from formData instead of recalculating without tax
+        const subtotal = parseFloat(formData.get('subtotal') as string) || 0;
+        const tax_amount = parseFloat(formData.get('tax_amount') as string) || 0;
+        const total_amount = parseFloat(formData.get('total_amount') as string) || 0;
 
         await prisma.$transaction(async (tx) => {
             const po = await tx.tbl_purchase_orders.create({
@@ -54,6 +54,8 @@ export async function createPO(formData: FormData) {
                     supplier_id,
                     order_date: new Date(order_date),
                     status: 'draft',
+                    subtotal,
+                    tax_amount,
                     total_amount,
                     notes,
                     created_by: session.user?.name,
@@ -158,7 +160,9 @@ export async function updatePO(formData: FormData) {
     const expected_date = formData.get('expected_date') as string;
     const status = formData.get('status') as tbl_purchase_orders_status;
     const notes = formData.get('notes') as string;
-    const total_amount = parseFloat(formData.get('total_amount') as string);
+    const subtotal = parseFloat(formData.get('subtotal') as string) || 0;
+    const tax_amount = parseFloat(formData.get('tax_amount') as string) || 0;
+    const total_amount = parseFloat(formData.get('total_amount') as string) || 0;
 
     const itemsJson = formData.get('items') as string;
     let items: POItemInput[] = [];
@@ -191,6 +195,8 @@ export async function updatePO(formData: FormData) {
                     order_date: new Date(order_date),
                     expected_date: expected_date ? new Date(expected_date) : null,
                     status,
+                    subtotal,
+                    tax_amount,
                     total_amount,
                     notes,
                     updated_at: new Date()
