@@ -290,7 +290,9 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                                     {depreciationTable.map((row) => (
                                         <tr key={row.year} className={row.year === currentYear ? 'bg-blue-50 font-medium' : ''}>
                                             <td className="py-2 px-4">{row.year + 543}</td>
-                                            <td className="py-2 px-4 text-gray-500">{row.daysUsed}</td>
+                                            <td className="py-2 px-4 text-gray-500">
+                                                {(row.daysUsed === 365 || row.daysUsed === 366) ? '1 ปี' : row.daysUsed}
+                                            </td>
                                             <td className="py-2 px-4">{row.beginningValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                             <td className="py-2 px-4 text-red-600">{row.expense.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                             <td className="py-2 px-4 text-gray-500">{row.accumulatedDep.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
