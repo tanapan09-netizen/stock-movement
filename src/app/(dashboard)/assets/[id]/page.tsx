@@ -81,7 +81,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
     const endOfLifeDate = new Date(purchaseDate);
     endOfLifeDate.setFullYear(purchaseDate.getFullYear() + life);
     // Subtract 1 day so it doesn't overlap into the next period unnecessarily
-    endOfLifeDate.setDate(endOfLifeDate.getDate() - 1);
+    endOfLifeDate.setDate(endOfLifeDate.getDate() - 0);
 
     for (let i = 0; i <= life; i++) {
         const year = purchaseYear + i;
