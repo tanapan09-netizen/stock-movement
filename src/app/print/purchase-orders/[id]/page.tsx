@@ -129,6 +129,18 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
                     <tfoot>
                         <tr className="border-t-2 border-black">
                             <td colSpan={3}></td>
+                            <td className="py-2 text-right">Subtotal</td>
+                            <td className="py-2 text-right">{Number(po.subtotal || 0).toLocaleString()}</td>
+                        </tr>
+                        {Number(po.tax_amount || 0) > 0 && (
+                            <tr>
+                                <td colSpan={3}></td>
+                                <td className="py-2 text-right">VAT (7%)</td>
+                                <td className="py-2 text-right">{Number(po.tax_amount || 0).toLocaleString()}</td>
+                            </tr>
+                        )}
+                        <tr className="border-t border-gray-200">
+                            <td colSpan={3}></td>
                             <td className="py-3 text-right font-bold">Total Amount</td>
                             <td className="py-3 text-right font-bold text-lg">{Number(po.total_amount).toLocaleString()}</td>
                         </tr>
