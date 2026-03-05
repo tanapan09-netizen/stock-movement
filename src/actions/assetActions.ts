@@ -5,9 +5,14 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { uploadFile } from '@/lib/gcs';
 
+import { auth } from '@/auth';
+
 const UPLOAD_DIR = 'assets';
 
 export async function createAsset(formData: FormData) {
+    const session = await auth();
+    const userName = (session?.user as any)?.name || 'System';
+
     const asset_code = formData.get('asset_code') as string;
     const asset_name = formData.get('asset_name') as string;
     const description = formData.get('description') as string;
@@ -60,8 +65,8 @@ export async function createAsset(formData: FormData) {
             data: {
                 asset_id: asset.asset_id,
                 action_type: 'Create',
-                description: 'Asset registered in system',
-                performed_by: 'System', // Could auth() user here
+                description: `ลงทะเบียนทรัพย์สินใหม่: ${asset_name} (${asset_code})`,
+                performed_by: userName,
             }
         });
 
@@ -75,6 +80,9 @@ export async function createAsset(formData: FormData) {
 }
 
 export async function updateAsset(formData: FormData) {
+    const session = await auth();
+    const userName = (session?.user as any)?.name || 'System';
+
     const asset_id = parseInt(formData.get('asset_id') as string);
     const asset_name = formData.get('asset_name') as string;
     const description = formData.get('description') as string;
@@ -118,10 +126,9 @@ export async function updateAsset(formData: FormData) {
     }
 
     try {
-        // Fetch current asset to check for changes
+        // Fetch current asset (full record) to compare changes
         const currentAsset = await prisma.tbl_assets.findUnique({
             where: { asset_id },
-            select: { location: true }
         });
 
         await prisma.tbl_assets.update({
@@ -129,24 +136,65 @@ export async function updateAsset(formData: FormData) {
             data,
         });
 
-        // Log Update
+        // Build detailed change log
+        const changes: string[] = [];
+        if (currentAsset) {
+            const fieldLabels: Record<string, string> = {
+                asset_name: 'ชื่อทรัพย์สิน',
+                description: 'รายละเอียด',
+                category: 'หมวดหมู่',
+                location: 'สถานที่',
+                status: 'สถานะ',
+                purchase_price: 'ราคาซื้อ',
+                useful_life_years: 'อายุใช้งาน',
+                salvage_value: 'ราคาซาก',
+                vendor: 'ร้านค้า',
+                brand: 'ยี่ห้อ',
+                model: 'รุ่น',
+                serial_number: 'S/N',
+            };
+
+            for (const [key, label] of Object.entries(fieldLabels)) {
+                const oldVal = (currentAsset as any)[key];
+                const newVal = data[key];
+
+                // Compare (handle number vs string, null vs empty)
+                const oldStr = oldVal === null || oldVal === undefined ? '' : String(oldVal);
+                const newStr = newVal === null || newVal === undefined ? '' : String(newVal);
+
+                if (oldStr !== newStr) {
+                    changes.push(`${label}: "${oldStr || '-'}" → "${newStr || '-'}"`);
+                }
+            }
+
+            // Check image change
+            if (data.image_url) {
+                changes.push('อัปโหลดรูปภาพใหม่');
+            }
+        }
+
+        const changeDescription = changes.length > 0
+            ? `แก้ไข: ${changes.join(', ')}`
+            : 'อัปเดตข้อมูล (ไม่มีการเปลี่ยนแปลง)';
+
+        // Log Update with details
         await prisma.tbl_asset_history.create({
             data: {
                 asset_id,
                 action_type: 'Update',
-                description: 'Asset details updated',
-                performed_by: 'System',
+                description: changeDescription,
+                performed_by: userName,
             }
         });
 
-        // Check and Log Location Move
+        // Check and Log Location Move separately
         if (currentAsset && currentAsset.location !== location) {
             await prisma.tbl_asset_history.create({
                 data: {
                     asset_id,
                     action_type: 'Move',
-                    description: `Moved from ${currentAsset.location || 'Unknown'} to ${location}`,
-                    performed_by: 'System',
+                    description: `ย้ายจาก "${currentAsset.location || '-'}" ไป "${location}"`,
+                    performed_by: userName,
                 }
             });
         }
