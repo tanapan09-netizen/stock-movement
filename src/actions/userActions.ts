@@ -78,7 +78,8 @@ export async function updateUser(formData: FormData) {
     const password = formData.get('password') as string; // Optional
     const email = formData.get('email') as string | null;
     const line_user_id = formData.get('line_user_id') as string | null;
-    const is_approver_form = formData.get('is_approver') === 'true';
+    const isApproverVal = formData.get('is_approver');
+    const is_approver_form = isApproverVal === 'true' || isApproverVal === 'on';
 
     if (!p_id || !role) {
         return { error: 'ข้อมูลไม่ถูกต้อง' };

@@ -92,8 +92,10 @@ export default function MaintenanceDashboardClient() {
             }
 
             if (partRes?.success && partRes.data) {
+                console.log("partRes:", partRes.data);
                 // Filter parts that need technician / head approval (stage 0 or pending)
                 const pendingParts = (partRes.data as any[]).filter(r => r.status === 'pending' && (r.current_stage === 0 || r.current_stage === undefined));
+                console.log("pendingParts:", pendingParts);
                 setPendingPartTasks(pendingParts);
             }
 
