@@ -2,6 +2,7 @@ import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import MobileSidebarWrapper from '@/components/MobileSidebarWrapper';
 import AutoBackup from '@/components/AutoBackup';
+import LoginNotificationPopup from '@/components/LoginNotificationPopup';
 import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
 import { SidebarProvider } from '@/contexts/SidebarContext';
@@ -30,6 +31,9 @@ export default async function DashboardLayout({
             <div className="flex min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-300">
                 {/* Auto backup on dashboard load */}
                 <AutoBackup />
+
+                {/* Login Notification Popup (shown once per session) */}
+                <LoginNotificationPopup />
 
                 {/* Sidebar with mobile wrapper */}
                 <MobileSidebarWrapper>
