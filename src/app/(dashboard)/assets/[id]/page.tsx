@@ -272,6 +272,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                                 cost={cost}
                                 salvage={salvage}
                                 life={life}
+                                printedBy={(session?.user as any)?.name || 'Admin'}
                             />
                         </div>
                         <div className="overflow-x-auto">

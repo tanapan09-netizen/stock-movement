@@ -6,11 +6,12 @@ interface PrintButtonProps {
     cost: number;
     salvage: number;
     life: number;
+    printedBy: string;
 }
 
-export default function PrintButton({ assetName, assetCode, cost, salvage, life }: PrintButtonProps) {
-    const annualDep = (cost - salvage) / life;
-    const printDate = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+export default function PrintButton({ assetName, assetCode, cost, salvage, life, printedBy }: PrintButtonProps) {
+    const annualDep = cost / life;
+    const printDate = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
     const getPrintHTML = (tableHTML: string) => `
         <!DOCTYPE html>
@@ -121,6 +122,9 @@ export default function PrintButton({ assetName, assetCode, cost, salvage, life 
                     color: #9ca3af;
                     border-top: 1px solid #e5e7eb;
                     padding-top: 20px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
                 }
                 @media print {
                     body { padding: 20px; }
@@ -171,13 +175,14 @@ export default function PrintButton({ assetName, assetCode, cost, salvage, life 
                         </div>
                         <div class="summary-item">
                             <div class="label">มาตรฐานอ้างอิง</div>
-                            <div class="value">TAS 16</div>
+                            <div class="value">หลักสรรพากร</div>
                         </div>
                     </div>
                 </div>
                 
                 <div class="footer">
-                    เอกสารนี้สร้างโดยระบบ Stock Movement | ${printDate}
+                    <span>เอกสารนี้สร้างโดยระบบ Stock Movement | ${printDate}</span>
+                    <span>พิมพ์โดย: ${printedBy}</span>
                 </div>
             </div>
         </body>
