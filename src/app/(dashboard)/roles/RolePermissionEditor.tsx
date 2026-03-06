@@ -89,13 +89,13 @@ export default function RolePermissionEditor({ roles }: Props) {
                 </div>
             )}
 
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-gray-50 text-gray-700 uppercase font-medium text-xs">
+            <div className="overflow-auto max-h-[70vh]">
+                <table className="w-full text-sm text-left relative border-collapse">
+                    <thead className="bg-gray-50 text-gray-700 uppercase font-medium text-xs sticky top-0 z-20 shadow-sm">
                         <tr>
-                            <th className="px-6 py-4 sticky left-0 bg-gray-50 z-10 w-64 shadow-sm">เมนูใช้งาน</th>
+                            <th className="px-6 py-4 sticky left-0 top-0 bg-gray-50 z-30 w-64 shadow-sm border-b">เมนูใช้งาน</th>
                             {roles.map(role => (
-                                <th key={role.role_id} className="px-6 py-4 text-center min-w-[100px]">
+                                <th key={role.role_id} className="px-6 py-4 text-center min-w-[100px] bg-gray-50 border-b">
                                     <div className="flex flex-col items-center gap-1">
                                         <span className={`px-2 py-0.5 rounded text-[10px] text-white uppercase font-semibold
                                             ${role.role_name === 'admin' ? 'bg-purple-600' :

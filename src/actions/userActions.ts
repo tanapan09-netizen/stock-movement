@@ -12,6 +12,7 @@ export async function createUser(formData: FormData) {
     const role = formData.get('role') as string;
     const email = formData.get('email') as string | null;
     const line_user_id = formData.get('line_user_id') as string | null;
+    const is_approver_form = formData.get('is_approver') === 'true';
 
     if (!username || !password || !role) {
         return { error: 'กรุณากรอกข้อมูลให้ครบถ้วน' };
@@ -28,8 +29,10 @@ export async function createUser(formData: FormData) {
 
         // Map role to role_id
         let role_id = 3;
-        if (role === 'admin') role_id = 1;
-        if (role === 'manager') role_id = 2;
+        let is_approver = is_approver_form;
+
+        if (role === 'admin') { role_id = 1; is_approver = true; }
+        if (role === 'manager') { role_id = 2; is_approver = true; }
         if (role === 'technician') role_id = 4; // Assuming IDs
         if (role === 'accounting') role_id = 5;
         if (role === 'purchasing') role_id = 6;
@@ -43,6 +46,7 @@ export async function createUser(formData: FormData) {
                 role_id,
                 email: email || null,
                 line_user_id: line_user_id || null,
+                is_approver
             },
         });
 
@@ -74,14 +78,17 @@ export async function updateUser(formData: FormData) {
     const password = formData.get('password') as string; // Optional
     const email = formData.get('email') as string | null;
     const line_user_id = formData.get('line_user_id') as string | null;
+    const is_approver_form = formData.get('is_approver') === 'true';
 
     if (!p_id || !role) {
         return { error: 'ข้อมูลไม่ถูกต้อง' };
     }
 
     let role_id = 3;
-    if (role === 'admin') role_id = 1;
-    if (role === 'manager') role_id = 2;
+    let is_approver = is_approver_form;
+
+    if (role === 'admin') { role_id = 1; is_approver = true; }
+    if (role === 'manager') { role_id = 2; is_approver = true; }
     if (role === 'technician') role_id = 4;
     if (role === 'accounting') role_id = 5;
     if (role === 'purchasing') role_id = 6;
@@ -91,7 +98,8 @@ export async function updateUser(formData: FormData) {
         role,
         role_id,
         email: email || null,
-        line_user_id: line_user_id || null
+        line_user_id: line_user_id || null,
+        is_approver
     };
 
     if (password && password.trim() !== '') {

@@ -12,6 +12,7 @@ type UserData = {
     role: string;
     email?: string | null;
     line_user_id?: string | null;
+    is_approver?: boolean;
 };
 
 export default function EditUserPage({ params }: { params: Promise<{ id: string }> }) {
@@ -191,6 +192,20 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
                             className="w-full rounded-md border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
                             placeholder="U1234..."
                         />
+                    </div>
+
+                    <div className="flex items-center mt-4">
+                        <input
+                            type="checkbox"
+                            id="is_approver_edit"
+                            name="is_approver"
+                            value="true"
+                            defaultChecked={userData?.is_approver ?? false}
+                            className="h-4 w-4 text-orange-500 focus:ring-orange-400 border-gray-300 rounded"
+                        />
+                        <label htmlFor="is_approver_edit" className="ml-2 block text-sm text-gray-900 font-medium">
+                            ตั้งเป็น หัวหน้าสายงาน (ผู้อนุมัติ / Approver)
+                        </label>
                     </div>
 
                     <div className="flex gap-3">

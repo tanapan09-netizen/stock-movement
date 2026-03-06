@@ -112,6 +112,19 @@ export default function NewUserPage() {
                         />
                     </div>
 
+                    <div className="flex items-center mt-4">
+                        <input
+                            type="checkbox"
+                            id="is_approver"
+                            name="is_approver"
+                            value="true"
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="is_approver" className="ml-2 block text-sm text-gray-900 font-medium whitespace-nowrap">
+                            ตั้งเป็น หัวหน้าสายงาน (ผู้อนุมัติ / Approver)
+                        </label>
+                    </div>
+
                     <button
                         type="submit"
                         disabled={isPending}

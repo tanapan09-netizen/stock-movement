@@ -26,11 +26,18 @@ export async function uploadFile(file: File, folder: string): Promise<string> {
     const buffer = Buffer.from(await file.arrayBuffer());
 
     // Generate unique filename
-    // Sanitize filename: remove spaces, special chars
-    const sanitizedOriginalName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    // Sanitize filename: remove spaces, special chars, keep only alphanumerics and hyphens
+    const originalExt = path.extname(file.name);
+    // Remove extension from original name before sanitizing
+    const baseName = path.basename(file.name, originalExt);
+    const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 30) || 'file'; // Fallback to 'file' if empty after sanitize
+
+    // Ensure extension only has one dot
+    const safeExt = originalExt.replace(/[^a-zA-Z0-9.]/g, '').replace(/\.{2,}/g, '.');
+
     const timestamp = Date.now(); // Use timestamp
     const random = Math.round(Math.random() * 1000);
-    const filename = `${folder}-${timestamp}-${random}-${sanitizedOriginalName}`;
+    const filename = `${folder}-${timestamp}-${random}-${sanitizedBaseName}${safeExt}`;
     const destination = `${folder}/${filename}`;
 
     if (shouldUseGCS && bucketName) {

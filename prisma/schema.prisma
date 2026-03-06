@@ -543,6 +543,7 @@ model tbl_users {
   email            String?           @db.VarChar(100)
   failed_attempts  Int               @default(0)
   locked_until     DateTime?         @db.DateTime(0)
+  is_approver      Boolean           @default(false)
   tbl_system_logs  tbl_system_logs[]
 }
 

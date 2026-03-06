@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import {
     Wrench, Clock, CheckCircle, AlertTriangle, TrendingUp,
-    Calendar, DollarSign, User, ArrowRight, BarChart3
+    Calendar, DollarSign, User, ArrowRight, BarChart3, ShoppingCart
 } from 'lucide-react';
 import {
     getMaintenanceRequests,
@@ -56,13 +56,16 @@ export default function MaintenanceDashboardClient() {
     const [myTasks, setMyTasks] = useState<MaintenanceRequestItem[]>([]);
     const [urgentTasks, setUrgentTasks] = useState<MaintenanceRequestItem[]>([]);
     const [todayTasks, setTodayTasks] = useState<MaintenanceRequestItem[]>([]);
+    const [pendingPartTasks, setPendingPartTasks] = useState<any[]>([]);
 
     async function loadData() {
         setLoading(true);
         try {
-            const [reqResult, statsResult] = await Promise.all([
+            const { getPartRequests } = await import('@/actions/partRequestActions');
+            const [reqResult, statsResult, partRes] = await Promise.all([
                 getMaintenanceRequests(),
-                getMaintenanceStats()
+                getMaintenanceStats(),
+                getPartRequests({ status: 'pending' })
             ]);
 
             if (reqResult.success) {
@@ -86,6 +89,12 @@ export default function MaintenanceDashboardClient() {
                 setTodayTasks(allRequests.filter(r =>
                     r.scheduled_date && new Date(r.scheduled_date).toDateString() === today
                 ));
+            }
+
+            if (partRes?.success && partRes.data) {
+                // Filter parts that need technician / head approval (stage 0 or pending)
+                const pendingParts = (partRes.data as any[]).filter(r => r.status === 'pending' && (r.current_stage === 0 || r.current_stage === undefined));
+                setPendingPartTasks(pendingParts);
             }
 
             if (statsResult.success && statsResult.data) {
@@ -256,7 +265,7 @@ export default function MaintenanceDashboardClient() {
             </div>
 
             {/* Secondary Grid */}
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid md:grid-cols-3 gap-6">
                 {/* Urgent Tasks */}
                 <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm overflow-hidden">
                     <div className="p-4 bg-red-50 dark:bg-red-900/20 border-b flex items-center gap-2">
@@ -304,6 +313,39 @@ export default function MaintenanceDashboardClient() {
                         )}
                     </div>
                 </div>
+
+                {/* Pending Part Requests (For Head Technician) */}
+                {((user as any)?.is_approver || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'head_technician') && (
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm overflow-hidden">
+                        <div className="p-4 bg-purple-50 dark:bg-purple-900/20 border-b flex items-center gap-2">
+                            <ShoppingCart className="text-purple-500" size={20} />
+                            <h3 className="font-semibold text-purple-700 dark:text-purple-400">ขอซื้ออะไหล่ ({pendingPartTasks.length})</h3>
+                        </div>
+                        <div className="divide-y dark:divide-slate-700 max-h-60 overflow-y-auto">
+                            {pendingPartTasks.length === 0 ? (
+                                <div className="p-4 text-center text-gray-500">ไม่มีรายการขอซื้อ</div>
+                            ) : (
+                                pendingPartTasks.map(part => (
+                                    <div key={part.request_id} className="p-3 hover:bg-gray-50 dark:hover:bg-slate-700/50 flex flex-col gap-1">
+                                        <div className="font-medium text-sm flex justify-between items-start">
+                                            <span>{part.item_name}</span>
+                                            <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 rounded ml-2 whitespace-nowrap">รออนุมัติ</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-xs text-gray-500">
+                                            <span>จำนวน: {part.quantity}</span>
+                                            <span>ผู้ขอ: {part.requested_by}</span>
+                                        </div>
+                                        <div className="mt-1 flex justify-end">
+                                            <Link href="/maintenance/part-requests" className="text-blue-500 hover:underline text-xs flex items-center">
+                                                ดูรายละเอียด <ArrowRight size={12} className="ml-1" />
+                                            </Link>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Recent Activities Table */}
