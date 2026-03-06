@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Package, Plus, Undo2, CheckCircle, Search, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
+import SearchableSelect from '@/components/SearchableSelect';
 import {
     getMaintenanceRequests,
     getProducts,
@@ -347,24 +348,18 @@ export default function PartsManagementClient() {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium mb-1">สินค้า/อะไหล่ *</label>
-                                    <select
-                                        value={withdrawForm.p_id}
-                                        onChange={(e) => setWithdrawForm({ ...withdrawForm, p_id: e.target.value })}
-                                        className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                        required
-                                    >
-                                        <option value="">เลือกสินค้า</option>
-                                        {products
+                                    <SearchableSelect
+                                        options={products
                                             .filter(p => (p.available_stock ?? p.p_count) > 0)
-                                            .map(p => {
-                                                const avail = p.available_stock ?? p.p_count;
-                                                return (
-                                                    <option key={p.p_id} value={p.p_id}>
-                                                        {p.p_name} (คงเหลือ: {avail} {p.p_unit || 'ชิ้น'})
-                                                    </option>
-                                                );
-                                            })}
-                                    </select>
+                                            .map(p => ({
+                                                value: p.p_id,
+                                                label: `${p.p_name} (คงเหลือ: ${p.available_stock ?? p.p_count} ${p.p_unit || 'ชิ้น'})`
+                                            }))}
+                                        value={withdrawForm.p_id}
+                                        onChange={(val: string) => setWithdrawForm({ ...withdrawForm, p_id: val })}
+                                        placeholder="เลือกสินค้า"
+                                        required
+                                    />
                                     {selectedProduct && availableStock < 5 && (
                                         <div className="text-xs text-orange-600 mt-1">⚠️ สินค้าใกล้หมด</div>
                                     )}

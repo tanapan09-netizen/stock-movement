@@ -26,6 +26,7 @@ import {
     submitRepairCompletion
 } from '@/actions/maintenanceActions';
 import SignaturePad from '@/components/SignaturePad';
+import SearchableSelect from '@/components/SearchableSelect';
 import { searchAssets } from '@/actions/assetActions';
 import { createPartRequest } from '@/actions/partRequestActions';
 import { getActiveTechnicians } from '@/actions/technicianActions';
@@ -1946,24 +1947,24 @@ export default function MaintenanceClient() {
                                                 );
                                             })}
                                             <div className="flex gap-2 items-center">
-                                                <select
-                                                    className="flex-1 text-sm border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 bg-white"
-                                                    onChange={(e) => {
-                                                        const p_id = e.target.value;
+                                                <SearchableSelect
+                                                    className="flex-1 text-sm"
+                                                    value=""
+                                                    onChange={(val) => {
+                                                        const p_id = val;
                                                         if (!p_id) return;
                                                         if (statusChangeData.partsUsed.some(p => p.p_id === p_id)) return; // prevent duplicate
                                                         setStatusChangeData({
                                                             ...statusChangeData,
                                                             partsUsed: [...statusChangeData.partsUsed, { p_id, quantity: 1, notes: 'เพิ่มตอนซ่อมเสร็จ' }]
                                                         });
-                                                        e.target.value = ""; // reset
                                                     }}
-                                                >
-                                                    <option value="">+ เลือกอะไหล่</option>
-                                                    {products.filter(p => !statusChangeData.partsUsed.some(pu => pu.p_id === p.p_id) && (p.available_stock ?? p.p_count) > 0).map(p => (
-                                                        <option key={p.p_id} value={p.p_id}>{p.p_name} (คงเหลือ {p.available_stock ?? p.p_count})</option>
-                                                    ))}
-                                                </select>
+                                                    placeholder="+ เลือกอะไหล่"
+                                                    options={products.filter(p => !statusChangeData.partsUsed.some(pu => pu.p_id === p.p_id) && (p.available_stock ?? p.p_count) > 0).map(p => ({
+                                                        value: p.p_id,
+                                                        label: `${p.p_name} (คงเหลือ ${p.available_stock ?? p.p_count})`
+                                                    }))}
+                                                />
                                             </div>
                                         </div>
 
