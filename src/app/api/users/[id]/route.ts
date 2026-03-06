@@ -25,6 +25,9 @@ export async function GET(
                 p_id: true,
                 username: true,
                 role: true,
+                email: true,
+                line_user_id: true,
+                is_approver: true,
                 created_at: true,
             }
         });

@@ -1,0 +1,64 @@
+version: "2"
+type: backend
+tech_stack:
+  - TypeScript
+  - Next.js (App Router)
+  - Prisma
+  - MySQL
+features:
+  - name: User Management API
+    description: CRUD operations and authentication for system users
+    files:
+      - src/actions/userActions.ts
+    endpoints:
+      - method: POST
+        path: /api/users
+        description: Create a new user
+        auth_required: true
+        request_schema:
+          body:
+            username: string
+            password: string
+            role: string
+        response_schema:
+          "200": "{ success: true }"
+          "400": "{ error: string }"
+      - method: PUT
+        path: /api/users
+        description: Update existing user
+        auth_required: true
+        request_schema:
+          body:
+            p_id: number
+            role: string
+        response_schema:
+          "200": "{ success: true }"
+  - name: Maintenance Requests API
+    description: Operations for handling technician maintenance and part requests
+    files:
+      - src/actions/maintenanceActions.ts
+      - src/actions/partRequestActions.ts
+    endpoints:
+      - method: GET
+        path: /api/maintenance
+        description: List active maintenance requests
+        auth_required: true
+        response_schema:
+          "200": Array of MaintenanceRequest
+      - method: GET
+        path: /api/maintenance/part-requests
+        description: List pending part requests
+        auth_required: true
+        response_schema:
+          "200": Array of PartRequest
+      - method: POST
+        path: /api/maintenance/part-requests/status
+        description: Approve or reject part requests
+        auth_required: true
+        request_schema:
+          body:
+            requestId: number
+            action: string
+        response_schema:
+          "200": "{ success: true }"
+known_limitations: []

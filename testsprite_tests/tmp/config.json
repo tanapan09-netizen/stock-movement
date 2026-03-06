@@ -1,0 +1,9 @@
+{
+  "status": "commited",
+  "type": "backend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:3002/D:\\StockMovement",
+  "backendAuthType": "basic token",
+  "backendUsername": "admin",
+  "backendPassword": "admin"
+}
