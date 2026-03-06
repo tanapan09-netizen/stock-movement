@@ -21,8 +21,11 @@ import {
     confirmPartsUsed,
     storeVerifyParts,
     reopenMaintenanceRequest,
-    resendMaintenanceNotification
+    resendMaintenanceNotification,
+    getProducts,
+    submitRepairCompletion
 } from '@/actions/maintenanceActions';
+import SignaturePad from '@/components/SignaturePad';
 import { searchAssets } from '@/actions/assetActions';
 import { createPartRequest } from '@/actions/partRequestActions';
 import { getActiveTechnicians } from '@/actions/technicianActions';
@@ -61,6 +64,9 @@ interface MaintenanceRequestItem {
     actual_cost: number | null;
     completed_at: Date | null;
     notes: string | null;
+    completion_image_url?: string | null;
+    technician_signature?: string | null;
+    customer_signature?: string | null;
     created_at: Date;
     tbl_rooms: Room;
     tbl_maintenance_history?: HistoryItem[];
@@ -174,12 +180,20 @@ export default function MaintenanceClient() {
         technician: string;
         scheduledDate: string;
         completionNotes: string;
+        completionPhoto: File | null;
+        technicianSignature: string | null;
+        customerSignature: string | null;
+        partsUsed: { p_id: string; quantity: number; notes: string }[];
     }>({
         request: null,
         newStatus: '',
         technician: '',
         scheduledDate: '',
-        completionNotes: ''
+        completionNotes: '',
+        completionPhoto: null,
+        technicianSignature: null,
+        customerSignature: null,
+        partsUsed: []
     });
     const [partRequestsForSummary, setPartRequestsForSummary] = useState<any[]>([]);
 
@@ -188,6 +202,7 @@ export default function MaintenanceClient() {
     const [lineTechnicians, setLineTechnicians] = useState<any[]>([]);
 
     // Parts Verification State
+    const [products, setProducts] = useState<any[]>([]);
     const [parts, setParts] = useState<MaintenancePart[]>([]);
     const [verifyingPartId, setVerifyingPartId] = useState<number | null>(null);
     const [verifyQty, setVerifyQty] = useState<number>(0);
@@ -247,7 +262,7 @@ export default function MaintenanceClient() {
     async function loadData() {
         setLoading(true);
         try {
-            const [reqResult, roomResult, summaryResult, techResult, lineUserResult] = await Promise.all([
+            const [reqResult, roomResult, summaryResult, techResult, lineUserResult, productResult] = await Promise.all([
                 getMaintenanceRequests({
                     status: filterStatus !== 'all' ? filterStatus : undefined,
                     room_id: filterRoom || undefined,
@@ -257,7 +272,8 @@ export default function MaintenanceClient() {
                 getRooms(),
                 getMaintenanceSummary(),
                 getActiveTechnicians(),
-                getLineUsers()
+                getLineUsers(),
+                getProducts()
             ]);
 
             if (reqResult.success) {
@@ -452,7 +468,11 @@ export default function MaintenanceClient() {
             scheduledDate: request.scheduled_date
                 ? new Date(request.scheduled_date).toISOString().split('T')[0]
                 : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default 7 days
-            completionNotes: ''
+            completionNotes: '',
+            completionPhoto: null,
+            technicianSignature: null,
+            customerSignature: null,
+            partsUsed: []
         });
         setPartRequestsForSummary([]); // Reset parts (would fetch from API if available)
         setShowStatusModal(true);
@@ -460,6 +480,34 @@ export default function MaintenanceClient() {
 
     async function confirmStatusChange() {
         if (!statusChangeData.request) return;
+
+        if (statusChangeData.newStatus === 'completed') {
+            const formData = new FormData();
+            formData.append('request_id', statusChangeData.request.request_id.toString());
+            formData.append('completionNotes', statusChangeData.completionNotes);
+            if (statusChangeData.technicianSignature) {
+                formData.append('technician_signature', statusChangeData.technicianSignature);
+            }
+            if (statusChangeData.customerSignature) {
+                formData.append('customer_signature', statusChangeData.customerSignature);
+            }
+            if (statusChangeData.completionPhoto) {
+                formData.append('completion_image', statusChangeData.completionPhoto);
+            }
+            if (statusChangeData.partsUsed.length > 0) {
+                formData.append('parts_used', JSON.stringify(statusChangeData.partsUsed));
+            }
+
+            const result = await submitRepairCompletion(formData);
+            if (result.success) {
+                setShowStatusModal(false);
+                loadData();
+                showToast('บันทึกการซ่อมเสร็จสิ้น', 'success');
+            } else {
+                showToast('เกิดข้อผิดพลาด: ' + result.error, 'error');
+            }
+            return;
+        }
 
         const updateData: {
             status: string;
@@ -1627,6 +1675,43 @@ export default function MaintenanceClient() {
                                 </div>
                             )}
 
+                            {/* Completion Details */}
+                            {selectedRequest.status === 'completed' && (
+                                <div className="mt-6 pt-4 border-t">
+                                    <h3 className="font-medium mb-3 flex items-center gap-2">
+                                        <CheckCircle size={18} className="text-green-600" /> ข้อมูลการซ่อมเสร็จสิ้น
+                                    </h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {selectedRequest.completion_image_url && (
+                                            <div>
+                                                <div className="text-sm text-gray-500 mb-2">รูปถ่ายหลังซ่อมเสร็จ</div>
+                                                <a href={selectedRequest.completion_image_url} target="_blank" rel="noopener noreferrer">
+                                                    <img src={selectedRequest.completion_image_url} alt="Completion" className="rounded-lg w-full max-h-48 object-cover border hover:opacity-90 transition" />
+                                                </a>
+                                            </div>
+                                        )}
+                                        <div className="space-y-4">
+                                            {selectedRequest.technician_signature && (
+                                                <div>
+                                                    <div className="text-sm text-gray-500 mb-2">ลายเซ็นช่างผู้ซ่อม</div>
+                                                    <div className="bg-white border rounded-lg p-2 flex items-center justify-center min-h-[100px]">
+                                                        <img src={selectedRequest.technician_signature} alt="Technician Signature" className="max-h-24 object-contain" />
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {selectedRequest.customer_signature && (
+                                                <div>
+                                                    <div className="text-sm text-gray-500 mb-2">ลายเซ็นลูกค้ารับงาน</div>
+                                                    <div className="bg-white border rounded-lg p-2 flex items-center justify-center min-h-[100px]">
+                                                        <img src={selectedRequest.customer_signature} alt="Customer Signature" className="max-h-24 object-contain" />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* History */}
                             {historyItems.length > 0 && (
                                 <div className="mt-6 pt-4 border-t">
@@ -1817,6 +1902,87 @@ export default function MaintenanceClient() {
                                             </div>
                                         )}
 
+                                        {/* Parts Used Selection (Dynamic) */}
+                                        <div className="bg-gray-50 dark:bg-slate-700/50 border border-gray-200 dark:border-slate-600 rounded-lg p-4 space-y-3">
+                                            <h4 className="font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                                                <ShoppingCart size={16} />
+                                                เพิ่มอะไหล่ที่ใช้ (ถ้ามี)
+                                            </h4>
+                                            {statusChangeData.partsUsed.map((part, index) => {
+                                                const product = products.find(p => p.p_id === part.p_id);
+                                                const avail = product ? product.p_count : 0;
+                                                return (
+                                                    <div key={index} className="flex flex-wrap items-center gap-2 bg-white dark:bg-slate-800 p-2 rounded-lg border dark:border-slate-600">
+                                                        <span className="flex-1 text-sm font-medium">{product?.p_name || part.p_id}</span>
+                                                        <div className="flex items-center gap-1">
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                max={avail}
+                                                                value={part.quantity}
+                                                                onChange={(e) => {
+                                                                    const newParts = [...statusChangeData.partsUsed];
+                                                                    let val = parseInt(e.target.value) || 1;
+                                                                    if (val > avail) val = avail;
+                                                                    newParts[index].quantity = val;
+                                                                    setStatusChangeData({ ...statusChangeData, partsUsed: newParts });
+                                                                }}
+                                                                className="w-16 px-2 py-1 text-sm border rounded dark:bg-slate-700 dark:border-slate-600 text-center"
+                                                            />
+                                                            <span className="text-sm text-gray-500">/{avail}</span>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const newParts = [...statusChangeData.partsUsed];
+                                                                newParts.splice(index, 1);
+                                                                setStatusChangeData({ ...statusChangeData, partsUsed: newParts });
+                                                            }}
+                                                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded-lg transition"
+                                                        >
+                                                            &times;
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                            <div className="flex gap-2 items-center">
+                                                <select
+                                                    className="flex-1 text-sm border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 bg-white"
+                                                    onChange={(e) => {
+                                                        const p_id = e.target.value;
+                                                        if (!p_id) return;
+                                                        if (statusChangeData.partsUsed.some(p => p.p_id === p_id)) return; // prevent duplicate
+                                                        setStatusChangeData({
+                                                            ...statusChangeData,
+                                                            partsUsed: [...statusChangeData.partsUsed, { p_id, quantity: 1, notes: 'เพิ่มตอนซ่อมเสร็จ' }]
+                                                        });
+                                                        e.target.value = ""; // reset
+                                                    }}
+                                                >
+                                                    <option value="">+ เลือกอะไหล่</option>
+                                                    {products.filter(p => !statusChangeData.partsUsed.some(pu => pu.p_id === p.p_id) && (p.available_stock ?? p.p_count) > 0).map(p => (
+                                                        <option key={p.p_id} value={p.p_id}>{p.p_name} (คงเหลือ {p.available_stock ?? p.p_count})</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* Completion Photo */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                รูปถ่ายหลังซ่อมเสร็จ
+                                            </label>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0] || null;
+                                                    setStatusChangeData({ ...statusChangeData, completionPhoto: file });
+                                                }}
+                                                className="w-full border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 focus:ring-2 focus:ring-green-500"
+                                            />
+                                        </div>
+
                                         {/* Completion Notes */}
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -1828,6 +1994,18 @@ export default function MaintenanceClient() {
                                                 className="w-full border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2.5 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-green-500 focus:border-transparent"
                                                 rows={3}
                                                 placeholder="รายละเอียดเพิ่มเติมเกี่ยวกับการซ่อม..."
+                                            />
+                                        </div>
+
+                                        {/* Signatures */}
+                                        <div className="space-y-4 pt-2">
+                                            <SignaturePad
+                                                label="ลายเซ็นช่างผู้ซ่อม *"
+                                                onSignatureChange={(sig) => setStatusChangeData({ ...statusChangeData, technicianSignature: sig })}
+                                            />
+                                            <SignaturePad
+                                                label="ลายเซ็นลูกค้ารับงาน *"
+                                                onSignatureChange={(sig) => setStatusChangeData({ ...statusChangeData, customerSignature: sig })}
                                             />
                                         </div>
                                     </div>

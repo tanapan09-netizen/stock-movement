@@ -10,8 +10,8 @@
     "projectName": "StockMovement",
     "projectPath": "d:\\StockMovement",
     "testIds": [],
-    "additionalInstruction": "The app is deployed on https://mpstock.sugoidev.com. Login credentials: admin/admin or test with technician role user. The app is in Thai language.",
-    "serverMode": "production",
+    "additionalInstruction": "",
+    "serverMode": "development",
     "envs": {
       "API_KEY": "sk-user-FqiXG66w2cqZDkSnOyveenOn9pywNWo4z_Id6DYKzNkmX-3Z4aVKU6AUZ_iLcB3-20_1kq6CMLDgtsAyZkmlcBZ3o3tIs384vMC-vxQ40UkAzXVIxFJTBP2rHv6rFbBGr-A"
     }

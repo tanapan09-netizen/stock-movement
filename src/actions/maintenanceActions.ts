@@ -1532,6 +1532,155 @@ export async function completeMaintenanceWithParts(request_id: number, changed_b
     }
 }
 
+// New action to support repair completion with signature, photo, and part selection
+export async function submitRepairCompletion(formData: FormData) {
+    try {
+        const session = await auth();
+        const request_id = parseInt(formData.get('request_id') as string);
+        const completionNotes = formData.get('completionNotes') as string;
+        const technician_signature = formData.get('technician_signature') as string;
+        const customer_signature = formData.get('customer_signature') as string;
+        const parts_used_json = formData.get('parts_used') as string;
+        const changed_by = session?.user?.name || 'System';
+
+        if (isNaN(request_id)) {
+            return { success: false, error: 'Invalid request ID' };
+        }
+
+        // Image upload handling
+        const imageFile = formData.get('completion_image') as File | null;
+        let completion_image_url = null;
+
+        if (imageFile && imageFile.size > 0) {
+            try {
+                const url = await uploadFile(imageFile, 'maintenance_completion');
+                completion_image_url = url;
+            } catch (err) {
+                console.error('Upload failed', err);
+            }
+        }
+
+        // Process parts
+        const partsUsed: { p_id: string; quantity: number; notes?: string }[] = parts_used_json ? JSON.parse(parts_used_json) : [];
+
+        await prisma.$transaction(async (tx) => {
+            // 1. Finalize previously withdrawn parts (similar to completeMaintenanceWithParts)
+            const withdrawnParts = await tx.tbl_maintenance_parts.findMany({
+                where: { request_id, status: 'withdrawn' }
+            });
+
+            for (const part of withdrawnParts) {
+                await tx.tbl_maintenance_parts.update({
+                    where: { part_id: part.part_id },
+                    data: { status: 'used', used_at: new Date() }
+                });
+
+                // Deduct stock (it was already in WH-03, but logical product stock needs decrementing)
+                await tx.tbl_products.update({
+                    where: { p_id: part.p_id },
+                    data: { p_count: { decrement: part.quantity } }
+                });
+
+                // Log stock movement
+                await tx.tbl_stock_movements.create({
+                    data: {
+                        p_id: part.p_id,
+                        username: changed_by,
+                        movement_type: 'maintenance_use',
+                        quantity: -part.quantity,
+                        remarks: `ตัดสต็อกเมื่อจบงาน (เบิกไว้แล้ว): Request #${request_id}`
+                    }
+                });
+            }
+
+            // 2. Handle newly selected parts at completion (direct deduct from WH-01)
+            if (partsUsed.length > 0) {
+                const wh01 = await tx.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-01' } });
+
+                for (const part of partsUsed) {
+                    await tx.tbl_maintenance_parts.create({
+                        data: {
+                            request_id,
+                            p_id: part.p_id,
+                            quantity: part.quantity,
+                            actual_used: part.quantity,
+                            status: 'used',
+                            withdrawn_by: changed_by,
+                            withdrawn_at: new Date(),
+                            used_at: new Date(),
+                            notes: part.notes || 'เพิ่มตอนจบงานซ่อม'
+                        }
+                    });
+
+                    await tx.tbl_products.update({
+                        where: { p_id: part.p_id },
+                        data: { p_count: { decrement: part.quantity } }
+                    });
+
+                    if (wh01) {
+                        await tx.tbl_warehouse_stock.update({
+                            where: { warehouse_id_p_id: { warehouse_id: wh01.warehouse_id, p_id: part.p_id } },
+                            data: { quantity: { decrement: part.quantity } }
+                        });
+                    }
+
+                    await tx.tbl_stock_movements.create({
+                        data: {
+                            p_id: part.p_id,
+                            username: changed_by,
+                            movement_type: 'maintenance_use',
+                            quantity: -part.quantity,
+                            remarks: `ตัดสต็อกเมื่อจบงาน (เพิ่มใหม่): Request #${request_id}`
+                        }
+                    });
+                }
+            }
+
+            // 3. Update the Maintenance Request
+            await tx.tbl_maintenance_requests.update({
+                where: { request_id },
+                data: {
+                    status: 'completed',
+                    completed_at: new Date(),
+                    notes: completionNotes,
+                    completion_image_url,
+                    technician_signature,
+                    customer_signature
+                }
+            });
+
+            // 4. Log history
+            await tx.tbl_maintenance_history.create({
+                data: {
+                    request_id,
+                    action: 'ปิดงานซ่อม',
+                    new_value: 'งานเสร็จสมบูรณ์ พร้อมรูปภาพ/ลายเซ็น',
+                    changed_by
+                }
+            });
+        });
+
+        // 5. System log and notifications
+        await logSystemAction(
+            'COMPLETE',
+            'MaintenanceRequest',
+            request_id,
+            `Completed maintenance #${request_id} with signatures`,
+            session?.user?.id ? parseInt(session.user.id) : 0,
+            changed_by,
+            'unknown'
+        );
+
+        revalidatePath('/maintenance');
+        revalidatePath('/products');
+
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error submitting repair completion:', error);
+        return { success: false, error: error.message || 'Failed to complete repair' };
+    }
+}
+
 // --- Analytics ---
 
 export async function getMaintenanceStats() {

@@ -263,6 +263,9 @@ model tbl_maintenance_requests {
   department              String?                   @db.VarChar(100)
   contact_info            String?                   @db.VarChar(100)
   tags                    String?                   @db.VarChar(255)
+  completion_image_url    String?                   @db.VarChar(500)
+  technician_signature    String?                   @db.LongText
+  customer_signature      String?                   @db.LongText
   tbl_maintenance_history tbl_maintenance_history[]
   tbl_maintenance_parts   tbl_maintenance_parts[]
   tbl_rooms               tbl_rooms                 @relation(fields: [room_id], references: [room_id])

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Package, Plus, Undo2, CheckCircle, Search, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import {
     getMaintenanceRequests,
     getProducts,
@@ -64,6 +65,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default function PartsManagementClient() {
+    const { data: session } = useSession();
     const [withdrawnParts, setWithdrawnParts] = useState<MaintenancePart[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
@@ -104,12 +106,17 @@ export default function PartsManagementClient() {
 
     async function handleWithdraw(e: React.FormEvent) {
         e.preventDefault();
-        if (!withdrawForm.request_id || !withdrawForm.p_id || !withdrawForm.quantity || !withdrawForm.withdrawn_by) {
+        if (!withdrawForm.request_id || !withdrawForm.p_id || !withdrawForm.quantity) {
             alert('กรุณากรอกข้อมูลให้ครบ');
             return;
         }
 
-        const result = await withdrawPartForMaintenance(withdrawForm);
+        const dataToSubmit = {
+            ...withdrawForm,
+            withdrawn_by: session?.user?.name || 'System'
+        };
+
+        const result = await withdrawPartForMaintenance(dataToSubmit);
         if (result.success) {
             setShowWithdrawForm(false);
             setWithdrawForm({ request_id: 0, p_id: '', quantity: 1, withdrawn_by: '' });
@@ -191,7 +198,10 @@ export default function PartsManagementClient() {
                         กลับหน้าแจ้งซ่อม
                     </Link>
                     <button
-                        onClick={() => setShowWithdrawForm(true)}
+                        onClick={() => {
+                            setWithdrawForm(prev => ({ ...prev, withdrawn_by: session?.user?.name || '' }));
+                            setShowWithdrawForm(true);
+                        }}
                         className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-2"
                     >
                         <Plus size={18} /> เบิกอะไหล่
@@ -344,14 +354,16 @@ export default function PartsManagementClient() {
                                         required
                                     >
                                         <option value="">เลือกสินค้า</option>
-                                        {products.map(p => {
-                                            const avail = p.available_stock ?? p.p_count;
-                                            return (
-                                                <option key={p.p_id} value={p.p_id} disabled={avail <= 0}>
-                                                    {p.p_name} (คงเหลือ: {avail} {p.p_unit || 'ชิ้น'})
-                                                </option>
-                                            );
-                                        })}
+                                        {products
+                                            .filter(p => (p.available_stock ?? p.p_count) > 0)
+                                            .map(p => {
+                                                const avail = p.available_stock ?? p.p_count;
+                                                return (
+                                                    <option key={p.p_id} value={p.p_id}>
+                                                        {p.p_name} (คงเหลือ: {avail} {p.p_unit || 'ชิ้น'})
+                                                    </option>
+                                                );
+                                            })}
                                     </select>
                                     {selectedProduct && availableStock < 5 && (
                                         <div className="text-xs text-orange-600 mt-1">⚠️ สินค้าใกล้หมด</div>
@@ -378,11 +390,10 @@ export default function PartsManagementClient() {
                                     <label className="block text-sm font-medium mb-1">ผู้เบิก *</label>
                                     <input
                                         type="text"
-                                        value={withdrawForm.withdrawn_by}
-                                        onChange={(e) => setWithdrawForm({ ...withdrawForm, withdrawn_by: e.target.value })}
-                                        className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                        value={session?.user?.name || ''}
+                                        readOnly
+                                        className="w-full border rounded-lg px-3 py-2 bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-gray-400 dark:border-slate-600 cursor-not-allowed"
                                         placeholder="ชื่อผู้เบิก"
-                                        required
                                     />
                                 </div>
                                 <div className="flex gap-2 pt-4">
