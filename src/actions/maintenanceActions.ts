@@ -1079,15 +1079,15 @@ export async function getProducts() {
         });
 
         const productsWithAvailability = products.map(p => {
-            // Important: Use WH-01 stock as base, not total p_count
-            const wh01Qty = wh01StockMap.get(p.p_id) || 0;
-            // The reserved logic in WH-03 is already physically moved from WH-01 during withdrawal,
-            // so we don't need to subtract `reserved` from `wh01Qty` again!
-            // When withdrawing, we just check against wh01Qty.
+            const reserved = reservedMap.get(p.p_id) || 0;
+            const wh01Qty = wh01StockMap.get(p.p_id);
+            // If explicitly present in WH-01, use it. Otherwise, assume unreserved p_count is in WH-01.
+            const available_stock = wh01Qty !== undefined ? wh01Qty : Math.max(0, p.p_count - reserved);
+
             return {
                 ...p,
-                reserved: reservedMap.get(p.p_id) || 0,
-                available_stock: wh01Qty
+                reserved,
+                available_stock
             };
         });
 
@@ -1204,9 +1204,21 @@ export async function withdrawPartForMaintenance(data: {
             }
         });
 
-        const availableQty = wh01Stock?.quantity || 0;
+        let availableQty: number | null | undefined = wh01Stock?.quantity;
 
-        if (availableQty < data.quantity) {
+        // Auto-heal: if WH-01 stock record is missing, assume unreserved p_count is in WH-01
+        if (availableQty === undefined || availableQty === null) {
+            const reservedAgg = await prisma.tbl_maintenance_parts.aggregate({
+                where: { p_id: data.p_id, status: 'withdrawn' },
+                _sum: { quantity: true }
+            });
+            const reservedQty = reservedAgg._sum.quantity || 0;
+            availableQty = Math.max(0, product.p_count - reservedQty);
+        }
+
+        const resolvedQty = availableQty as number;
+
+        if (resolvedQty < data.quantity) {
             return {
                 success: false,
                 error: `สต็อกใน WH-01 ไม่เพียงพอ (คงเหลือ ${availableQty} ${product.p_unit || 'ชิ้น'})`
@@ -1215,16 +1227,23 @@ export async function withdrawPartForMaintenance(data: {
 
         // Transaction: Move stock from WH-01 to WH-03
         await prisma.$transaction(async (tx) => {
-            // 1. Deduct from WH-01
-            await tx.tbl_warehouse_stock.update({
+            // 1. Deduct from WH-01 (Upsert for auto-healing if missing)
+            await tx.tbl_warehouse_stock.upsert({
                 where: {
                     warehouse_id_p_id: {
                         warehouse_id: mainWarehouse.warehouse_id,
                         p_id: data.p_id
                     }
                 },
-                data: {
+                update: {
                     quantity: { decrement: data.quantity },
+                    last_updated: new Date()
+                },
+                create: {
+                    warehouse_id: mainWarehouse.warehouse_id,
+                    p_id: data.p_id,
+                    // If creating, initialize with total expected minus this withdrawal
+                    quantity: resolvedQty - data.quantity,
                     last_updated: new Date()
                 }
             });
