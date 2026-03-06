@@ -145,7 +145,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                     id: user.p_id.toString(),
                     name: user.username,
                     role: user.role, // Custom property
-                    is_approver: false, // Default to false for normal user login unless defined later
+                    is_approver: (user as any).is_approver || false,
                 };
             },
         }),

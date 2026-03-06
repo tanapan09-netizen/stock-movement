@@ -230,10 +230,10 @@ export default function Sidebar(props: SidebarProps) {
                                 href="/maintenance/dashboard"
                                 onClick={handleLinkClick}
                                 className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/maintenance/dashboard') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
-                                title={collapsed ? 'Dashboard งานซ่อม' : undefined}
+                                title={collapsed ? 'Technician Dashboard' : undefined}
                             >
                                 <BarChart3 className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/maintenance/dashboard') && 'group-hover:scale-110 group-hover:text-blue-300'}`} />
-                                {!collapsed && <span className="truncate">Dashboard งานซ่อม</span>}
+                                {!collapsed && <span className="truncate">Technician Dashboard</span>}
                             </Link>
                         )}
 
