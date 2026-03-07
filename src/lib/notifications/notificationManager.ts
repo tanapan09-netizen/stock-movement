@@ -3,7 +3,7 @@
  * Centralized service to send notifications via multiple channels (LINE, Email)
  */
 
-import { sendMulticastMessage, createPartRequestFlexMessage, createStatusChangeFlexMessage, createPettyCashFlexMessage } from './lineMessaging';
+import { sendMulticastMessage, createPartRequestFlexMessage, createStatusChangeFlexMessage, createPettyCashFlexMessage, createStorePartsFlexMessage } from './lineMessaging';
 import { sendEmail, generatePartRequestEmail, generateStatusChangeEmail, generateMaintenanceRequestEmail, generateJobAssignmentEmail, generateMaintenanceStatusChangeEmail } from './emailService';
 
 export interface PartRequestData {
@@ -484,5 +484,44 @@ export async function notifyApprovalEvent(
         }
     } catch (err) {
         console.error('[Notification] Approval event failed:', err);
+    }
+}
+
+/**
+ * Send notifications for Store Parts events (e.g., withdraw, confirm usage)
+ */
+export async function notifyStorePartsEvent(
+    data: {
+        eventType: 'withdraw' | 'pending_verification';
+        request_number: string;
+        item_name: string;
+        quantity: number;
+        withdrawn_by: string;
+        notes?: string;
+    }
+): Promise<void> {
+    console.log('[Notification] Store Parts Event:', data.eventType, data.request_number);
+
+    try {
+        if (process.env.LINE_MESSAGING_ENABLED !== 'false') {
+            const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
+
+            // Find users with the 'store' role
+            const lineIds = await getLineIdsByRoles(['store']);
+
+            if (lineIds.length > 0) {
+                const flexMessage = createStorePartsFlexMessage(data);
+                const result = await sendMulticastMessage(lineIds, flexMessage);
+                if (result.success) {
+                    console.log(`[Notification] Store Parts ${data.eventType} sent to`, lineIds.length, 'users');
+                } else {
+                    console.warn(`[Notification] Store Parts ${data.eventType} failed:`, result.error);
+                }
+            } else {
+                console.log('[Notification] No store roles with LINE IDs found.');
+            }
+        }
+    } catch (err) {
+        console.error('[Notification] Store Parts event failed:', err);
     }
 }

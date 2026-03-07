@@ -791,6 +791,130 @@ function chunkArray<T>(array: T[], size: number): T[][] {
 }
 
 /**
+ * Create Flex Message for Store Parts Event
+ */
+export function createStorePartsFlexMessage(data: {
+    eventType: 'withdraw' | 'pending_verification';
+    request_number: string;
+    item_name: string;
+    quantity: number;
+    withdrawn_by: string;
+    notes?: string;
+}): FlexMessage {
+    const titles = {
+        withdraw: '📦 ช่างเบิกอะไหล่',
+        pending_verification: '🔎 รอสโตร์ตรวจนับอะไหล่',
+    };
+    const colors = {
+        withdraw: '#3b82f6', // Blue
+        pending_verification: '#f59e0b', // Amber
+    };
+
+    const title = titles[data.eventType];
+    const color = colors[data.eventType];
+
+    return {
+        type: 'flex',
+        altText: title,
+        contents: {
+            type: 'bubble',
+            header: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'text',
+                        text: title,
+                        weight: 'bold',
+                        color: '#ffffff',
+                        size: 'lg'
+                    }
+                ],
+                backgroundColor: color,
+                paddingAll: '20px'
+            },
+            body: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        spacing: 'sm',
+                        contents: [
+                            { type: 'text', text: 'ใบงาน:', color: '#aaaaaa', size: 'sm', flex: 2 },
+                            { type: 'text', text: data.request_number, wrap: true, color: '#666666', size: 'sm', flex: 5 }
+                        ]
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        spacing: 'sm',
+                        contents: [
+                            { type: 'text', text: 'ผู้เบิก:', color: '#aaaaaa', size: 'sm', flex: 2 },
+                            { type: 'text', text: data.withdrawn_by, wrap: true, color: '#666666', size: 'sm', flex: 5 }
+                        ],
+                        margin: 'sm'
+                    },
+                    {
+                        type: 'separator',
+                        margin: 'md'
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        spacing: 'sm',
+                        contents: [
+                            { type: 'text', text: 'รายการ:', color: '#aaaaaa', size: 'sm', flex: 2 },
+                            { type: 'text', text: data.item_name, wrap: true, color: '#111827', size: 'sm', flex: 5, weight: 'bold' }
+                        ],
+                        margin: 'md'
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        spacing: 'sm',
+                        contents: [
+                            { type: 'text', text: 'จำนวน:', color: '#aaaaaa', size: 'sm', flex: 2 },
+                            { type: 'text', text: `${data.quantity}`, wrap: true, color: '#ef4444', weight: 'bold', size: 'md', flex: 5 }
+                        ],
+                        margin: 'sm'
+                    },
+                    ...(data.notes ? [{
+                        type: 'box' as const,
+                        layout: 'baseline' as const,
+                        spacing: 'sm',
+                        contents: [
+                            { type: 'text' as const, text: 'หมายเหตุ:', color: '#aaaaaa', size: 'sm', flex: 2 },
+                            { type: 'text' as const, text: data.notes, wrap: true, color: '#666666', size: 'sm', flex: 5 }
+                        ],
+                        margin: 'md'
+                    }] : [])
+                ]
+            },
+            footer: {
+                type: 'box',
+                layout: 'vertical',
+                spacing: 'sm',
+                contents: [
+                    {
+                        type: 'button',
+                        style: 'primary',
+                        height: 'sm',
+                        action: {
+                            type: 'uri',
+                            label: data.eventType === 'pending_verification' ? 'ตรวจนับเลย' : 'ดูรายละเอียด',
+                            uri: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/maintenance?req=${data.request_number}`,
+                        },
+                    },
+                ],
+                flex: 0,
+            }
+        }
+    };
+}
+
+/**
  * Get user profile from LINE
  */
 export async function getUserProfile(userId: string) {

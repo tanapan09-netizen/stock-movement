@@ -1308,6 +1308,27 @@ export async function withdrawPartForMaintenance(data: {
             'unknown'
         );
 
+        // Notify Store about part withdrawal
+        try {
+            const { notifyStorePartsEvent } = await import('@/lib/notifications/notificationManager');
+            const maintRequest = await prisma.tbl_maintenance_requests.findUnique({
+                where: { request_id: data.request_id },
+                select: { request_number: true }
+            });
+            if (maintRequest) {
+                await notifyStorePartsEvent({
+                    eventType: 'withdraw',
+                    request_number: maintRequest.request_number,
+                    item_name: product.p_name,
+                    quantity: data.quantity,
+                    withdrawn_by: data.withdrawn_by,
+                    notes: data.notes
+                });
+            }
+        } catch (notifyErr) {
+            console.error('[Notification] Store notification failed on withdraw:', notifyErr);
+        }
+
         return { success: true, message: `เบิกสำเร็จ: ${product.p_name} x ${data.quantity} (ย้ายไป WH-03 แล้ว)` };
     } catch (error) {
         console.error('Error withdrawing part:', error);
@@ -1967,6 +1988,28 @@ export async function confirmPartsUsed(data: {
             session?.user?.name || data.changed_by,
             'unknown'
         );
+
+        // Notify Store about parts verification needed
+        try {
+            const { notifyStorePartsEvent } = await import('@/lib/notifications/notificationManager');
+            const maintRequest = await prisma.tbl_maintenance_requests.findUnique({
+                where: { request_id: part.request_id },
+                select: { request_number: true }
+            });
+            if (maintRequest) {
+                const calculatedUnusedQty = part.quantity - data.actual_used;
+                await notifyStorePartsEvent({
+                    eventType: 'pending_verification',
+                    request_number: maintRequest.request_number,
+                    item_name: part.tbl_products.p_name,
+                    quantity: data.actual_used,
+                    withdrawn_by: data.changed_by,
+                    notes: `รายงานใช้จริง ${data.actual_used}, เหลือ ${calculatedUnusedQty} ชิ้น (แจ้งโดยช่าง)`
+                });
+            }
+        } catch (notifyErr) {
+            console.error('[Notification] Store notification failed on confirm used:', notifyErr);
+        }
 
         return {
             success: true,
