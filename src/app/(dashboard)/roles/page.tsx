@@ -47,7 +47,8 @@ export default async function UsersPage() {
                                             user.role === 'technician' ? 'bg-orange-500' :
                                                 user.role === 'accounting' ? 'bg-pink-500' :
                                                     user.role === 'purchasing' ? 'bg-cyan-600' :
-                                                        user.role === 'operation' ? 'bg-teal-500' : 'bg-green-500'}
+                                                        user.role === 'store' ? 'bg-indigo-500' :
+                                                            user.role === 'operation' ? 'bg-teal-500' : 'bg-green-500'}
                      `}>
                                     {user.username.charAt(0).toUpperCase()}
                                 </div>

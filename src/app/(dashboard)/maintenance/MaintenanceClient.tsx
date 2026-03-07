@@ -726,7 +726,7 @@ export default function MaintenanceClient() {
                         onClick={() => setShowForm(true)}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
                     >
-                        <Wrench size={18} /> แจ้งซ่อมใหม่
+                        <Wrench size={18} /> แจ้งใหม่
                     </button>
                 </div>
             </div>
@@ -1183,6 +1183,7 @@ export default function MaintenanceClient() {
                                         <option value="maid">Maid (แม่บ้าน)</option>
                                         <option value="driver">Driver (คนขับรถ)</option>
                                         <option value="purchasing">Purchasing (จัดซื้อ)</option>
+                                        <option value="store">Store (คลังสินค้า)</option>
                                         <option value="accounting">Accounting (บัญชี)</option>
                                         <option value="manager">Manager (ผู้จัดการ)</option>
                                         <option value="admin">Admin (ผู้ดูแลระบบ)</option>

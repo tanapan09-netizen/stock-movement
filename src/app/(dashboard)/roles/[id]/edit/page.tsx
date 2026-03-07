@@ -163,6 +163,9 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
                             >
                                 <option value="employee">Employee (พนักงานทั่วไป)</option>
                                 <option value="technician">Technician (ช่างซ่อม)</option>
+                                <option value="maid">Maid (แม่บ้าน)</option>
+                                <option value="driver">Driver (คนขับรถ)</option>
+                                <option value="store">Store (คลังสินค้า)</option>
                                 <option value="accounting">Accounting (บัญชี)</option>
                                 <option value="purchasing">Purchasing (จัดซื้อ)</option>
                                 <option value="operation">Operation (ฝ่ายปฏิบัติการ)</option>

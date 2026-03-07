@@ -143,5 +143,14 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissions> = {
         [PERMISSIONS.PO_EDIT]: true,
         [PERMISSIONS.PO_PRINT]: true,
         [PERMISSIONS.PO_RECEIVE]: true,
+    },
+    'store': {
+        [PERMISSIONS.DASHBOARD]: true,
+        [PERMISSIONS.PRODUCTS]: true,
+        [PERMISSIONS.MOVEMENTS]: true,
+        [PERMISSIONS.STOCK_ADJUST]: true,
+        [PERMISSIONS.BORROW]: true,
+        [PERMISSIONS.MAINTENANCE]: true,
+        [PERMISSIONS.PO_RECEIVE]: true,
     }
 };
