@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/components/ToastProvider';
 import Link from 'next/link';
 import {
-    Wrench, Plus, Search, Filter, X, History, User, DollarSign, Printer, Clock, CheckCircle, XCircle, Image as ImageIcon, ShoppingCart, Package, AlertTriangle, Bell
+    Wrench, Plus, Search, Filter, X, History, User, DollarSign, Printer, Clock, CheckCircle, XCircle, Image as ImageIcon, ShoppingCart, Package, AlertTriangle, Bell, AlertCircle
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import {
@@ -1507,7 +1507,11 @@ export default function MaintenanceClient() {
                                         <select
                                             value={editData.assigned_to || ''}
                                             onChange={(e) => setEditData({ ...editData, assigned_to: e.target.value })}
-                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                            disabled={!!selectedRequest.assigned_to || ['in_progress', 'completed', 'cancelled'].includes(selectedRequest.status)}
+                                            className={`w-full border rounded-lg px-3 py-2 ${(!!selectedRequest.assigned_to || ['in_progress', 'completed', 'cancelled'].includes(selectedRequest.status))
+                                                ? 'bg-gray-100 text-gray-500 cursor-not-allowed dark:bg-slate-800 dark:text-gray-400'
+                                                : 'dark:bg-slate-700 dark:border-slate-600'
+                                                }`}
                                         >
                                             <option value="">-- ไม่ระบุ --</option>
                                             {Array.from(new Set([
@@ -1520,6 +1524,11 @@ export default function MaintenanceClient() {
                                                 <option value={editData.assigned_to}>{editData.assigned_to}</option>
                                             )}
                                         </select>
+                                        {(!!selectedRequest.assigned_to || ['in_progress', 'completed', 'cancelled'].includes(selectedRequest.status)) && (
+                                            <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                                                <AlertCircle size={12} /> ไม่สามารถเปลี่ยนช่างได้เมื่อรับงานแล้ว
+                                            </p>
+                                        )}
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium mb-1">วันที่นัดซ่อม</label>
