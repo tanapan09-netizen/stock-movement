@@ -56,7 +56,7 @@ export async function createUser(formData: FormData) {
             'User',
             username,
             `Created user: ${username} (Role: ${role})`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );
@@ -125,7 +125,7 @@ export async function updateUser(formData: FormData) {
             'User',
             p_id,
             `Updated user ID: ${p_id} (Role: ${role})`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );
@@ -157,7 +157,7 @@ export async function deleteUser(p_id: number) {
             'User',
             p_id,
             `Deleted user ID: ${p_id}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );
@@ -189,7 +189,7 @@ export async function unlockUser(p_id: number) {
             'User',
             p_id,
             `Unlocked user ID: ${p_id} (${user.username})`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'user_management' // Updated category to be more specific if possible, or keep 'unknown' if schema restricts
         );
@@ -222,7 +222,7 @@ export async function updateUserPermissions(p_id: number, permissions: Record<st
             'User',
             p_id,
             `แก้ไขสิทธิ์รายบุคคลของ User: ${user.username} | แก้ไขโดย: ${session.user.name}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'user_management'
         );

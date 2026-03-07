@@ -46,7 +46,7 @@ export async function updateSystemSetting(key: string, value: string, descriptio
                 'Settings',
                 key,
                 `เปลี่ยนค่า "${key}" | เดิม: ${oldValue} → ใหม่: ${value} | โดย: ${session.user.name}${description ? ' | คำอธิบาย: ' + description : ''}`,
-                session.user.id ? parseInt(session.user.id) : null,
+                session?.user?.id ? (parseInt(session.user.id as string) || 0) : null,
                 session.user.name || 'Unknown',
                 'unknown'
             ).catch(console.error);

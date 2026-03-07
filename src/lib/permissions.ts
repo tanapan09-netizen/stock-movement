@@ -11,6 +11,7 @@ export const PERMISSIONS = {
     MAINTENANCE_PARTS: 'maintenance_parts',
     MAINTENANCE_REQUESTS: 'maintenance_requests',
     MAINTENANCE_REPORTS: 'maintenance_reports',
+    APPROVALS: 'approvals',
     PETTY_CASH: 'petty_cash',
     ADMIN_ROLES: 'admin_roles',
     ADMIN_PO: 'admin_po',
@@ -47,6 +48,7 @@ export const PERMISSION_LIST: PermissionItem[] = [
     { key: PERMISSIONS.BORROW, label: 'ยืม-คืน', description: 'จัดการการยืมและคืนของ', category: 'Core' },
     { key: PERMISSIONS.ASSETS, label: 'ทรัพย์สิน', description: 'ทะเบียนทรัพย์สินถาวร', category: 'Core' },
     { key: PERMISSIONS.MAINTENANCE, label: 'แจ้งซ่อม', description: 'สิทธิ์ในการส่งใบแจ้งซ่อม', category: 'Core' },
+    { key: PERMISSIONS.APPROVALS, label: 'คำขอทั่วไป (OT/ลา/เบิก)', description: 'สิทธิ์ในการจัดการคำขออนุมัติ', category: 'Core' },
     { key: PERMISSIONS.PETTY_CASH, label: 'เงินสดย่อย', description: 'จัดการระบบเบิกจ่ายเงินสดย่อย', category: 'Core' },
 
     // Maintenance
@@ -92,6 +94,7 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissions> = {
         [PERMISSIONS.MAINTENANCE_PARTS]: true,
         [PERMISSIONS.MAINTENANCE_REQUESTS]: true,
         [PERMISSIONS.PO_VIEW]: true, // Allow tech to view POs? Maybe not by default.
+        [PERMISSIONS.APPROVALS]: true,
     },
     'operation': {
         [PERMISSIONS.DASHBOARD]: true,
@@ -103,12 +106,14 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissions> = {
         [PERMISSIONS.MAINTENANCE]: true,
         [PERMISSIONS.PO_VIEW]: true,
         [PERMISSIONS.PO_RECEIVE]: true, // Operations usually receive goods
+        [PERMISSIONS.APPROVALS]: true,
     },
     'employee': {
         [PERMISSIONS.DASHBOARD]: true,
         [PERMISSIONS.BORROW]: true,
         [PERMISSIONS.MAINTENANCE]: true,
         [PERMISSIONS.MAINTENANCE_REQUESTS]: true,
+        [PERMISSIONS.APPROVALS]: true,
     },
     'general': {
         [PERMISSIONS.DASHBOARD]: true,
@@ -121,11 +126,13 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissions> = {
         [PERMISSIONS.DASHBOARD]: true,
         [PERMISSIONS.MAINTENANCE]: true,
         [PERMISSIONS.BORROW]: true,
+        [PERMISSIONS.APPROVALS]: true,
     },
     'driver': {
         [PERMISSIONS.DASHBOARD]: true,
         [PERMISSIONS.MAINTENANCE]: true,
         [PERMISSIONS.BORROW]: true,
+        [PERMISSIONS.APPROVALS]: true,
     },
     'accounting': {
         [PERMISSIONS.DASHBOARD]: true,
@@ -133,6 +140,7 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissions> = {
         [PERMISSIONS.MAINTENANCE_REQUESTS]: true,
         [PERMISSIONS.PO_VIEW]: true,
         [PERMISSIONS.PO_PRINT]: true,
+        [PERMISSIONS.APPROVALS]: true,
     },
     'purchasing': {
         [PERMISSIONS.DASHBOARD]: true,
@@ -143,6 +151,7 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissions> = {
         [PERMISSIONS.PO_EDIT]: true,
         [PERMISSIONS.PO_PRINT]: true,
         [PERMISSIONS.PO_RECEIVE]: true,
+        [PERMISSIONS.APPROVALS]: true,
     },
     'store': {
         [PERMISSIONS.DASHBOARD]: true,
@@ -152,5 +161,6 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissions> = {
         [PERMISSIONS.BORROW]: true,
         [PERMISSIONS.MAINTENANCE]: true,
         [PERMISSIONS.PO_RECEIVE]: true,
+        [PERMISSIONS.APPROVALS]: true,
     }
 };

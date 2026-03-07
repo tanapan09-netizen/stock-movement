@@ -27,7 +27,7 @@ export default async function ApprovalsPage() {
             initialRequests={(requestsRes.success && requestsRes.data) ? requestsRes.data : []}
             activeJobs={(maintenanceRes.success && maintenanceRes.data) ? maintenanceRes.data.filter((r: any) => r.status !== 'completed' && r.status !== 'cancelled') : []}
             canApprove={canApprove}
-            currentUserId={parseInt(session.user.id)}
+            currentUserId={parseInt(session.user.id as string) || 0}
         />
     );
 }

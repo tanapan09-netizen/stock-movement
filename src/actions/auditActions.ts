@@ -62,7 +62,7 @@ interface AuditLogData {
 export async function logAudit(data: AuditLogData) {
     try {
         const session = await auth();
-        const userId = session?.user?.id ? parseInt(session.user.id) : null;
+        const userId = session?.user?.id ? (parseInt(session.user.id as string) || 0) : null;
         const username = session?.user?.name || 'System';
 
         // Use the centralized logger

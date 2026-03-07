@@ -29,7 +29,9 @@ export default async function DashboardLayout({
 
     // Fetch user's custom permissions
     let customPermissions = {};
-    if (session.user?.id) {
+    const isLinked = (session.user as any).is_linked;
+
+    if (session.user?.id && isLinked) {
         const user = await prisma.tbl_users.findUnique({
             where: { p_id: parseInt(session.user.id) },
             select: { custom_permissions: true }

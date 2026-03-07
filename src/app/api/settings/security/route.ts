@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
 
 // Default Fallback Values
 const DEFAULTS = {
@@ -23,6 +24,11 @@ const DEFAULTS = {
 
 export async function GET() {
     try {
+        const session = await auth();
+        if (!session || (session.user as any).role !== 'admin') {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         const settings = await prisma.tbl_system_settings.findMany();
 
         // Convert to object
@@ -60,6 +66,11 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
     try {
+        const session = await auth();
+        if (!session || (session.user as any).role !== 'admin') {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         const body = await request.json();
 
         // Save each key individually
@@ -127,8 +138,6 @@ export async function POST(request: NextRequest) {
         console.error('Save settings error detailed:', error);
         return NextResponse.json({
             error: 'Failed to process request',
-            details: error.message,
-            stack: error.stack
         }, { status: 500 });
     }
 }

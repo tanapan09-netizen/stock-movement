@@ -91,7 +91,7 @@ export async function updateRolePermissions(roleId: number, permissions: RolePer
             'Role',
             roleId,
             `แก้ไขสิทธิ์ของ Role: ${role.role_name} | ${changeDetail} | แก้ไขโดย: ${session.user.name}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );
@@ -120,6 +120,7 @@ async function seedDefaultRoles() {
         { name: 'driver', desc: 'Driver - คนขับรถ', is_system: false },
         { name: 'purchasing', desc: 'Purchasing - จัดซื้อ', is_system: false },
         { name: 'accounting', desc: 'Accounting - บัญชี', is_system: false },
+        { name: 'store', desc: 'Store - คลังสินค้า', is_system: true },
     ];
 
     for (const r of roles) {

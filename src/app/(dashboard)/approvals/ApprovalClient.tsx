@@ -256,8 +256,8 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
 
             {/* Create Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-8 px-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-lg my-auto overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                         <div className="px-6 py-4 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-800/50">
                             <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
                                 <Plus size={20} className="text-indigo-600" />
@@ -384,8 +384,8 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
 
             {/* Reject Modal */}
             {rejectModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-sm overflow-hidden p-6 space-y-4">
+                <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-8 px-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-sm my-auto overflow-hidden p-6 space-y-4">
                         <h2 className="text-lg font-bold text-gray-800 dark:text-white">ไม่อนุมัติคำขอ</h2>
                         <textarea
                             className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"

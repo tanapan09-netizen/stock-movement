@@ -168,17 +168,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 // Map database role and approver status into the user object
                 user.role = lineUser.role;
                 user.is_approver = lineUser.is_approver;
-                user.id = lineUser.id.toString(); // Optionally map to internal ID
+                user.id = lineUser.user_id ? lineUser.user_id.toString() : `line_${lineUser.id}`;
+                (user as any).is_linked = !!lineUser.user_id;
+
                 // Continue sign-in
                 return true;
             }
+            // For credentials login, user is always linked to tbl_users
+            if (account?.provider === 'credentials') {
+                (user as any).is_linked = true;
+            }
             return true;
         },
-        jwt({ token, user, trigger, session }) {
+        jwt({ token, user, account }) {
             if (user) {
                 token.id = user.id;
                 token.role = user.role;
                 token.is_approver = user.is_approver;
+                token.provider = account?.provider;
+                token.is_linked = (user as any).is_linked;
             }
             return token;
         },
@@ -187,6 +195,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 session.user.id = token.id as string;
                 session.user.role = token.role as string;
                 session.user.is_approver = token.is_approver as boolean;
+                (session.user as any).provider = token.provider;
+                (session.user as any).is_linked = token.is_linked;
             }
             return session;
         },

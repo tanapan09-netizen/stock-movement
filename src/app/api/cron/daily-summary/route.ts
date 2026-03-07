@@ -9,10 +9,7 @@ export async function GET(request: Request) {
         const authHeader = request.headers.get('authorization');
         const expectedAuth = `Bearer ${process.env.CRON_SECRET}`;
 
-        // Only enforce token if it's set in the environment
-        if (!process.env.CRON_SECRET) {
-            console.warn('[Cron] CRON_SECRET is not set in environment variables');
-        } else if (authHeader !== expectedAuth) {
+        if (!process.env.CRON_SECRET || authHeader !== expectedAuth) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 

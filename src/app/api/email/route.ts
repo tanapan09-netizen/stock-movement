@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { emailConfig, emailUtils } from '@/config/email.config';
+import { auth } from '@/auth';
 
 // In-memory store for email queue
 const emailQueue: Array<{
@@ -18,6 +19,11 @@ const emailQueue: Array<{
 
 export async function POST(request: NextRequest) {
     try {
+        const session = await auth();
+        if (!session || (session.user as any).role !== 'admin') {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         const body = await request.json();
         const { type, data } = body;
 
@@ -95,6 +101,11 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
     try {
+        const session = await auth();
+        if (!session || (session.user as any).role !== 'admin') {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         return NextResponse.json({
             configured: emailUtils.isConfigured(),
             smtp: {

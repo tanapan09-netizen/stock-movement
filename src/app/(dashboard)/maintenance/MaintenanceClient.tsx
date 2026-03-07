@@ -138,8 +138,11 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
     high: { label: 'สูง', color: 'bg-orange-100 text-orange-600' },
     urgent: { label: 'เร่งด่วน', color: 'bg-red-100 text-red-600' }
 };
+interface MaintenanceClientProps {
+    userPermissions?: Record<string, boolean>;
+}
 
-export default function MaintenanceClient() {
+export default function MaintenanceClient({ userPermissions = {} }: MaintenanceClientProps) {
     const { data: session } = useSession();
     const searchParams = useSearchParams();
     const reqQueryParam = searchParams.get('req');
@@ -707,30 +710,38 @@ export default function MaintenanceClient() {
                     <p className="text-gray-600 dark:text-gray-400">จัดการรายการแจ้งซ่อมและติดตามสถานะ</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <a
-                        href="/maintenance/technicians"
-                        className="px-3 py-2 border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 flex items-center gap-2 text-sm"
-                    >
-                        <User size={16} /> จัดการช่าง
-                    </a>
-                    <a
-                        href="/maintenance/parts"
-                        className="px-3 py-2 border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50 flex items-center gap-2 text-sm"
-                    >
-                        <DollarSign size={16} /> เบิก/คืนอะไหล่
-                    </a>
-                    <button
-                        onClick={() => setShowRoomForm(true)}
-                        className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-2"
-                    >
-                        <Plus size={18} /> เพิ่มห้อง
-                    </button>
-                    <button
-                        onClick={() => setShowForm(true)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-                    >
-                        <Wrench size={18} /> แจ้งใหม่
-                    </button>
+                    {userPermissions['maintenance:technicians'] && (
+                        <a
+                            href="/maintenance/technicians"
+                            className="px-3 py-2 border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 flex items-center gap-2 text-sm"
+                        >
+                            <User size={16} /> จัดการช่าง
+                        </a>
+                    )}
+                    {userPermissions['maintenance:parts'] && (
+                        <a
+                            href="/maintenance/parts"
+                            className="px-3 py-2 border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50 flex items-center gap-2 text-sm"
+                        >
+                            <DollarSign size={16} /> เบิก/คืนอะไหล่
+                        </a>
+                    )}
+                    {userPermissions['admin:rooms'] && (
+                        <button
+                            onClick={() => setShowRoomForm(true)}
+                            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-2"
+                        >
+                            <Plus size={18} /> เพิ่มห้อง
+                        </button>
+                    )}
+                    {userPermissions['maintenance'] && (
+                        <button
+                            onClick={() => setShowForm(true)}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                        >
+                            <Wrench size={18} /> แจ้งใหม่
+                        </button>
+                    )}
                 </div>
             </div>
 

@@ -142,7 +142,7 @@ export async function createPartRequest(formData: FormData) {
             'PartRequest',
             request.request_id,
             `Created part request: ${request.item_name} (Qty: ${request.quantity})`,
-            parseInt(session.user.id || '0'),
+            (parseInt(session.user.id as string) || 0),
             session.user.name,
             'unknown'
         );
@@ -206,7 +206,7 @@ export async function updatePartRequestStatus(
             'PartRequest',
             request_id,
             `Updated status to ${status} for item: ${currentRequest?.item_name}`,
-            parseInt(session.user.id || '0'),
+            (parseInt(session.user.id as string) || 0),
             session.user.name,
             'unknown'
         );
@@ -240,7 +240,7 @@ export async function deletePartRequest(request_id: number) {
             'PartRequest',
             request_id,
             `Deleted part request: ${request?.item_name}`,
-            parseInt(session.user.id || '0'),
+            (parseInt(session.user.id as string) || 0),
             session.user.name,
             'unknown'
         );
@@ -343,7 +343,7 @@ export async function approvePartRequest(
             'PartRequest',
             request_id,
             `${action === 'approve' ? 'Approved' : 'Rejected'} part request (Stage ${currentStage})`,
-            parseInt(session.user.id || '0'),
+            (parseInt(session.user.id as string) || 0),
             session.user.name,
             'unknown'
         );

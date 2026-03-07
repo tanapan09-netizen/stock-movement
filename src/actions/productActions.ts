@@ -57,7 +57,7 @@ export async function createProduct(formData: FormData) {
             'Product',
             p_id,
             `Created product: ${p_name}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );
@@ -115,7 +115,7 @@ export async function updateProduct(formData: FormData) {
             'Product',
             p_id,
             `Updated product: ${p_name}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );
@@ -140,7 +140,7 @@ export async function deleteProduct(p_id: string) {
             'Product',
             p_id, // p_id is string, but log expects int ID usually, but schema allows string entity_id
             `Deleted product: ${p_id}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );

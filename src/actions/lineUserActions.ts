@@ -111,7 +111,7 @@ export async function toggleApprover(id: number, isApprover: boolean) {
             'LineUser',
             id,
             `Toggled approver status to ${isApprover}`,
-            parseInt(session.user.id || '0'),
+            (parseInt(session.user.id as string) || 0),
             session.user.name,
             'unknown'
         );
@@ -145,7 +145,7 @@ export async function toggleLineUserActive(id: number, isActive: boolean) {
             'LineUser',
             id,
             `Toggled active status to ${isActive}`,
-            parseInt(session.user.id || '0'),
+            (parseInt(session.user.id as string) || 0),
             session.user.name,
             'unknown'
         );
@@ -179,7 +179,7 @@ export async function updateLineUserRole(id: number, role: string) {
             'LineUser',
             id,
             `Updated role to ${role}`,
-            parseInt(session.user.id || '0'),
+            (parseInt(session.user.id as string) || 0),
             session.user.name || 'System',
             'unknown'
         );
@@ -213,7 +213,7 @@ export async function updateLineUserFullName(id: number, fullName: string) {
             'LineUser',
             id,
             `Updated full name to ${fullName}`,
-            parseInt(session.user.id || '0'),
+            (parseInt(session.user.id as string) || 0),
             session.user.name || 'System',
             'unknown'
         );
@@ -244,7 +244,7 @@ export async function deleteLineUser(id: number) {
             'LineUser',
             id,
             'Deleted LINE user',
-            parseInt(session.user.id || '0'),
+            (parseInt(session.user.id as string) || 0),
             session.user.name,
             'unknown'
         );

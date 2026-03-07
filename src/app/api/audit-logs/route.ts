@@ -6,9 +6,17 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { auth } from '@/auth';
 
 export async function POST(request: NextRequest) {
     try {
+        // Only allow internal server actions (no session - called by server actions)
+        // Minimal validation: require an internal API key header or just block external POST
+        const internalKey = request.headers.get('x-internal-key');
+        if (internalKey !== process.env.INTERNAL_API_KEY && process.env.INTERNAL_API_KEY) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
         const body = await request.json();
         const { action, entity, entityId, details, ipAddress, username } = body;
 
@@ -34,8 +42,13 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
     try {
+        const session = await auth();
+        if (!session?.user) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         const { searchParams } = new URL(request.url);
-        const limit = parseInt(searchParams.get('limit') || '50');
+        const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
         const offset = parseInt(searchParams.get('offset') || '0');
         const action = searchParams.get('action');
         const entity = searchParams.get('entity');

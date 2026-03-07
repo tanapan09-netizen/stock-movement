@@ -43,7 +43,7 @@ export async function createRoom(data: {
             'Room',
             room.room_id,
             `Created room: ${room.room_code} - ${room.room_name}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );
@@ -88,7 +88,7 @@ export async function updateRoom(room_id: number, data: {
             'Room',
             room_id,
             `Updated room: ${room.room_code}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );
@@ -115,7 +115,7 @@ export async function deleteRoom(room_id: number) {
             'Room',
             room_id,
             `Soft deleted room ID: ${room_id}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );
@@ -145,7 +145,7 @@ export async function toggleRoomActive(room_id: number) {
             'Room',
             room_id,
             `${updated.active ? 'Activated' : 'Deactivated'} room: ${updated.room_name}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );
@@ -394,7 +394,7 @@ export async function createMaintenanceRequest(formData: FormData) {
             'MaintenanceRequest',
             request.request_id,
             `Created maintenance request: ${title}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || reported_by,
             'unknown'
         );
@@ -733,7 +733,7 @@ export async function updateMaintenanceRequest(
             'MaintenanceRequest',
             request_id,
             `Updated maintenance request for: ${request.title}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || changed_by,
             'unknown'
         );
@@ -772,7 +772,7 @@ export async function deleteMaintenanceRequest(request_id: number) {
             'MaintenanceRequest',
             request_id,
             `Deleted maintenance request: ${request?.title}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );
@@ -833,7 +833,7 @@ export async function reopenMaintenanceRequest(
             'MaintenanceRequest',
             request_id,
             `Reopened Job (Override): ${reason}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Manager',
             'unknown'
         );
@@ -1303,7 +1303,7 @@ export async function withdrawPartForMaintenance(data: {
             'MaintenancePart',
             data.request_id,
             `Withdrew part: ${product.p_name} x ${data.quantity} (WH-01 → WH-03) for Request #${data.request_id}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || data.withdrawn_by,
             'unknown'
         );
@@ -1387,7 +1387,7 @@ export async function markPartAsUsed(part_id: number, changed_by: string) {
             'MaintenancePart',
             part.request_id,
             `Used part: ${part_id} (Deducted stock)`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || changed_by,
             'unknown'
         );
@@ -1489,7 +1489,7 @@ export async function returnPartToStock(data: {
             'MaintenancePart',
             part.request_id,
             `Returned part: ${part.p_id} x ${data.returned_qty} (WH-03 → WH-01)`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || data.returned_by,
             'unknown'
         );
@@ -1562,7 +1562,7 @@ export async function completeMaintenanceWithParts(request_id: number, changed_b
             'MaintenanceRequest',
             request_id,
             `Completed maintenance request #${request_id} and finalized parts`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || changed_by,
             'unknown'
         );
@@ -1708,7 +1708,7 @@ export async function submitRepairCompletion(formData: FormData) {
             'MaintenanceRequest',
             request_id,
             `Completed maintenance #${request_id} with signatures`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             changed_by,
             'unknown'
         );
@@ -1838,7 +1838,7 @@ export async function clearAllReservedParts(performed_by: string) {
             'MaintenancePart',
             0,
             `Cleared ${reservedParts.length} reserved parts (Daily Reset)`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || performed_by,
             'unknown'
         );
@@ -1984,7 +1984,7 @@ export async function confirmPartsUsed(data: {
             'MaintenancePart',
             part.request_id,
             `Confirmed usage: ${part.tbl_products.p_name} x ${data.actual_used} (${data.is_defective ? 'Defective' : 'Pending Verification'})`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || data.changed_by,
             'unknown'
         );
@@ -2150,7 +2150,7 @@ export async function storeVerifyParts(data: {
             'MaintenancePart',
             part.request_id,
             `Verified: ${part.tbl_products.p_name} x ${data.verified_quantity} (WH-03 → WH-02)`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || data.verified_by,
             'unknown'
         );

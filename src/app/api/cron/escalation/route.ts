@@ -10,9 +10,7 @@ export const dynamic = 'force-dynamic'; // Ensure not cached
 export async function GET(request: Request) {
     try {
         const authHeader = request.headers.get('authorization');
-        if (!process.env.CRON_SECRET) {
-            console.warn('[Cron] CRON_SECRET is not set in environment variables');
-        } else if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
             return new NextResponse('Unauthorized', { status: 401 });
         }
 

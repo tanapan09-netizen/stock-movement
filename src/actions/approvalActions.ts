@@ -12,7 +12,7 @@ export async function createApprovalRequest(data: any) {
             return { success: false, error: 'Unauthorized' };
         }
 
-        const userId = parseInt(session.user.id);
+        const userId = parseInt(session.user.id as string) || 0;
 
         // Ensure request number is unique
         const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -62,7 +62,7 @@ export async function getApprovalRequests() {
             return { success: false, error: 'Unauthorized' };
         }
 
-        const userId = parseInt(session.user.id);
+        const userId = parseInt(session.user.id as string) || 0;
         const role = session.user.role?.toLowerCase() || '';
         const isApprover = session.user.is_approver;
 
@@ -102,7 +102,7 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
             return { success: false, error: 'Unauthorized' };
         }
 
-        const userId = parseInt(session.user.id);
+        const userId = parseInt(session.user.id as string) || 0;
         const role = session.user.role?.toLowerCase() || '';
         const isApprover = session.user.is_approver;
 

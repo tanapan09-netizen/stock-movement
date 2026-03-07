@@ -8,9 +8,7 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
 
-    if (!cronSecret) {
-        console.warn('[Cron] CRON_SECRET is not set in environment variables');
-    } else if (authHeader !== `Bearer ${cronSecret}`) {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

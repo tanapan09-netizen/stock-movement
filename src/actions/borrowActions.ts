@@ -98,7 +98,7 @@ export async function createBorrowRequest(formData: FormData) {
             'BorrowRequest',
             request.id,
             `Created borrow request #${request.id}: ${items.length} items by ${borrower_name}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );
@@ -166,7 +166,7 @@ export async function returnBorrowRequest(requestId: number) {
             'BorrowRequest',
             requestId,
             `Returned borrow request #${requestId}`,
-            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
         );
