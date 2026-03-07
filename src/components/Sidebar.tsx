@@ -285,6 +285,28 @@ export default function Sidebar(props: SidebarProps) {
                             </Link>
                         )}
 
+                        {/* ─── คำขออนุมัติ ─── */}
+                        {!collapsed && (
+                            <div className="pt-5 pb-2 px-3 flex items-center gap-2">
+                                <div className="h-px bg-gray-700 flex-1"></div>
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-violet-400 truncate">📝 คำขออนุมัติ</p>
+                                <div className="h-px bg-gray-700 flex-1"></div>
+                            </div>
+                        )}
+                        {collapsed && (
+                            <div className="my-2 h-px bg-gray-700/60" />
+                        )}
+
+                        <Link
+                            href="/approvals"
+                            onClick={handleLinkClick}
+                            className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/approvals') ? 'bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-lg shadow-violet-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-violet-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                            title={collapsed ? 'คำขอทั่วไป (OT/ลา/เบิก)' : undefined}
+                        >
+                            <FileText className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/approvals') && 'group-hover:scale-110 group-hover:text-violet-400'}`} />
+                            {!collapsed && <span className="truncate">คำขอทั่วไป (OT/ลา/เบิก)</span>}
+                        </Link>
+
                         {/* ─── การเงิน & เบิกจ่าย ─── */}
                         {can(PERMISSIONS.PETTY_CASH) && !collapsed && (
                             <div className="pt-5 pb-2 px-3 flex items-center gap-2">

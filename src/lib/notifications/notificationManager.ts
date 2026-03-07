@@ -409,3 +409,80 @@ export async function notifyPettyCashEvent(
         console.error('[Notification] Petty Cash event failed:', err);
     }
 }
+
+/**
+ * Send notifications for General Approval events
+ */
+export async function notifyApprovalEvent(
+    data: {
+        eventType: 'pending' | 'approved' | 'rejected';
+        request_number: string;
+        request_type: string;
+        requested_by: string; // The username of requester
+        requester_line_id?: string | null;
+        reason: string;
+        amount?: number | null;
+        start_time?: Date | null;
+        end_time?: Date | null;
+        reference_job?: string | null;
+        rejection_reason?: string | null;
+    }
+): Promise<void> {
+    console.log('[Notification] Approval Event:', data.eventType, data.request_number);
+
+    try {
+        if (process.env.LINE_MESSAGING_ENABLED !== 'false') {
+            const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
+            const { sendPushMessage, sendMulticastMessage } = await import('./lineMessaging');
+
+            const typeMap: Record<string, string> = {
+                'ot': 'ขอทำงานล่วงเวลา (OT)',
+                'leave': 'ขอลาหยุด',
+                'expense': 'ขอเบิกค่าใช้จ่าย',
+                'other': 'ขออนุมัติอื่นๆ'
+            };
+
+            const reqTypeName = typeMap[data.request_type] || 'ขออนุมัติ';
+
+            let messageText = '';
+            if (data.eventType === 'pending') {
+                messageText = `📝 *มีรายการคำขอใหม่*\n\nประเภท: ${reqTypeName}\nเลขที่: ${data.request_number}\nผู้ขอ: ${data.requested_by}\n\n💬 เหตุผล: ${data.reason}`;
+
+                if (data.request_type === 'ot' && data.start_time && data.end_time) {
+                    const st = new Date(data.start_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+                    const et = new Date(data.end_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+                    messageText += `\nเวลา: ${st} - ${et}`;
+                }
+                if (data.request_type === 'expense' && data.amount) {
+                    messageText += `\nยอดเงิน: ${Number(data.amount).toLocaleString()} บาท`;
+                }
+                if (data.reference_job) {
+                    messageText += `\nอ้างอิงงาน: ${data.reference_job}`;
+                }
+
+                // Send to managers/admins
+                const lineIds = await getLineIdsByRoles(['manager', 'admin']);
+                if (lineIds.length > 0) {
+                    const fallbackMsg = { type: 'text' as const, text: messageText };
+                    await sendMulticastMessage(lineIds, fallbackMsg);
+                    console.log(`[Notification] Approval pending sent to`, lineIds.length, 'managers');
+                }
+            } else {
+                // Approved or Rejected - notify requester
+                const statusStr = data.eventType === 'approved' ? '✅ อนุมัติแล้ว' : '❌ ไม่อนุมัติ';
+                messageText = `📢 *แจ้งผลคำขอ*\n\nประเภท: ${reqTypeName}\nเลขที่: ${data.request_number}\nผลการพิจารณา: ${statusStr}`;
+                if (data.eventType === 'rejected' && data.rejection_reason) {
+                    messageText += `\nเหตุผลที่ไม่อนุมัติ: ${data.rejection_reason}`;
+                }
+
+                if (data.requester_line_id) {
+                    const fallbackMsg = { type: 'text' as const, text: messageText };
+                    await sendPushMessage(data.requester_line_id, fallbackMsg);
+                    console.log(`[Notification] Approval result sent to requester:`, data.requested_by);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[Notification] Approval event failed:', err);
+    }
+}

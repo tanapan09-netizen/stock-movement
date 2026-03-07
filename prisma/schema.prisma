@@ -548,6 +548,8 @@ model tbl_users {
   locked_until     DateTime?         @db.DateTime(0)
   is_approver      Boolean           @default(false)
   tbl_system_logs  tbl_system_logs[]
+  approval_requests_made  tbl_approval_requests[] @relation("Requester")
+  approval_requests_approved tbl_approval_requests[] @relation("Approver")
 }
 
 
@@ -714,4 +716,29 @@ model tbl_petty_cash_fund {
   replenished_by      String?   @db.VarChar(255)
   created_at          DateTime  @default(now()) @db.Timestamp(0)
   updated_at          DateTime  @default(now()) @updatedAt @db.Timestamp(0)
+}
+
+model tbl_approval_requests {
+  request_id      Int       @id @default(autoincrement())
+  request_number  String    @unique @db.VarChar(50)
+  request_type    String    @db.VarChar(50) // 'ot', 'leave', 'expense', 'other'
+  requested_by    Int
+  request_date    DateTime? @db.Date
+  start_time      DateTime? @db.Timestamp(0)
+  end_time        DateTime? @db.Timestamp(0)
+  amount          Decimal?  @db.Decimal(10, 2)
+  reason          String    @db.Text
+  reference_job   String?   @db.VarChar(50)
+  status          String    @default("pending") @db.VarChar(20)
+  supervisor_id   Int?
+  approved_at     DateTime? @db.Timestamp(0)
+  rejection_reason String?  @db.Text
+  created_at      DateTime  @default(now()) @db.Timestamp(0)
+  updated_at      DateTime  @default(now()) @updatedAt @db.Timestamp(0)
+
+  tbl_users       tbl_users  @relation("Requester", fields: [requested_by], references: [p_id])
+  tbl_approver    tbl_users? @relation("Approver", fields: [supervisor_id], references: [p_id])
+
+  @@index([request_type])
+  @@index([status])
 }
