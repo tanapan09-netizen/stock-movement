@@ -1724,10 +1724,10 @@ export default function MaintenanceClient() {
                                             )}
                                             {selectedRequest.customer_signature && (
                                                 <div>
-                                                    <div className="text-sm text-gray-500 mb-2">ลายเซ็นลูกค้ารับงาน</div>
+                                                    {/* <div className="text-sm text-gray-500 mb-2">ลายเซ็นลูกค้ารับงาน</div>
                                                     <div className="bg-white border rounded-lg p-2 flex items-center justify-center min-h-[100px]">
                                                         <img src={selectedRequest.customer_signature} alt="Customer Signature" className="max-h-24 object-contain" />
-                                                    </div>
+                                                    </div> */}
                                                 </div>
                                             )}
                                         </div>
@@ -1929,7 +1929,7 @@ export default function MaintenanceClient() {
                                         <div className="bg-gray-50 dark:bg-slate-700/50 border border-gray-200 dark:border-slate-600 rounded-lg p-4 space-y-3">
                                             <h4 className="font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
                                                 <ShoppingCart size={16} />
-                                                เพิ่มอะไหล่ที่ใช้ (ถ้ามี)
+                                                เบิก / เพิ่มอะไหล่ที่ใช้ (ตัดสต็อกอัตโนมัติ)
                                             </h4>
                                             {statusChangeData.partsUsed.map((part, index) => {
                                                 const product = products.find(p => p.p_id === part.p_id);
@@ -2026,10 +2026,11 @@ export default function MaintenanceClient() {
                                                 label="ลายเซ็นช่างผู้ซ่อม *"
                                                 onSignatureChange={(sig) => setStatusChangeData({ ...statusChangeData, technicianSignature: sig })}
                                             />
+                                            {/* Temporarily hidden customer signature
                                             <SignaturePad
                                                 label="ลายเซ็นลูกค้ารับงาน *"
                                                 onSignatureChange={(sig) => setStatusChangeData({ ...statusChangeData, customerSignature: sig })}
-                                            />
+                                            /> */}
                                         </div>
                                     </div>
                                 )}

@@ -5,6 +5,8 @@ import ManagerDashboard from '@/components/dashboards/ManagerDashboard';
 import AccountingDashboard from '@/components/dashboards/AccountingDashboard';
 import PurchasingDashboard from '@/components/dashboards/PurchasingDashboard';
 import TechnicianDashboard from '@/components/dashboards/TechnicianDashboard';
+import StoreDashboard from '@/components/dashboards/StoreDashboard';
+import GeneralDashboard from '@/components/dashboards/GeneralDashboard';
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -27,9 +29,17 @@ export default async function DashboardPage() {
       return <PurchasingDashboard />;
     case 'technician':
       return <TechnicianDashboard />;
+    case 'store':
+    case 'operation':
+      return <StoreDashboard />;
+    case 'employee':
+    case 'general':
+    case 'maid':
+    case 'driver':
+      return <GeneralDashboard />;
     default:
-      // Fallback to a basic or operation dashboard
-      return <AdminDashboard />;
+      // Fallback to a basic user dashboard
+      return <GeneralDashboard />;
   }
 }
 
