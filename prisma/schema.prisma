@@ -547,6 +547,7 @@ model tbl_users {
   failed_attempts  Int               @default(0)
   locked_until     DateTime?         @db.DateTime(0)
   is_approver      Boolean           @default(false)
+  custom_permissions String?         @db.Text
   tbl_system_logs  tbl_system_logs[]
   approval_requests_made  tbl_approval_requests[] @relation("Requester")
   approval_requests_approved tbl_approval_requests[] @relation("Approver")

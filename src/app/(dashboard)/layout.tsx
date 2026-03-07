@@ -9,6 +9,7 @@ import { SidebarProvider } from '@/contexts/SidebarContext';
 import DashboardLayoutContent from './DashboardLayoutContent';
 
 import { getRolePermissions } from '@/actions/roleActions';
+import { prisma } from '@/lib/prisma';
 
 export default async function DashboardLayout({
     children,
@@ -24,7 +25,26 @@ export default async function DashboardLayout({
     // Fetch permissions for the user's role
     // Cast to any because custom role property might not be in default types
     const role = (session.user as any).role || 'user';
-    const permissions = await getRolePermissions(role);
+    const defaultPermissions = await getRolePermissions(role);
+
+    // Fetch user's custom permissions
+    let customPermissions = {};
+    if (session.user?.id) {
+        const user = await prisma.tbl_users.findUnique({
+            where: { p_id: parseInt(session.user.id) },
+            select: { custom_permissions: true }
+        });
+        if (user?.custom_permissions) {
+            try {
+                customPermissions = JSON.parse(user.custom_permissions);
+            } catch (e) {
+                console.error("Failed to parse custom permissions", e);
+            }
+        }
+    }
+
+    // Merge custom permissions (custom overrides default)
+    const permissions = { ...defaultPermissions, ...customPermissions };
 
     return (
         <SidebarProvider>

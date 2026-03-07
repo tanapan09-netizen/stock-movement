@@ -201,3 +201,37 @@ export async function unlockUser(p_id: number) {
         return { error: 'ปลดล็อคผู้ใช้งานล้มเหลว' };
     }
 }
+
+export async function updateUserPermissions(p_id: number, permissions: Record<string, boolean>) {
+    try {
+        const session = await auth();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (!session || (session.user as any).role !== 'admin') {
+            return { success: false, error: 'Unauthorized: Admin access required' };
+        }
+
+        const user = await prisma.tbl_users.update({
+            where: { p_id },
+            data: {
+                custom_permissions: JSON.stringify(permissions)
+            }
+        });
+
+        await logSystemAction(
+            'แก้ไขสิทธิ์',
+            'User',
+            p_id,
+            `แก้ไขสิทธิ์รายบุคคลของ User: ${user.username} | แก้ไขโดย: ${session.user.name}`,
+            session?.user?.id ? parseInt(session.user.id) : 0,
+            session?.user?.name || 'Unknown',
+            'user_management'
+        );
+
+        revalidatePath('/roles');
+        revalidatePath('/', 'layout');
+        return { success: true };
+    } catch (error) {
+        console.error('Error updating user permissions:', error);
+        return { success: false, error: 'Failed to update user permissions' };
+    }
+}

@@ -4,6 +4,7 @@ import { UserPlus, Shield, Trash2, Edit, Lock } from 'lucide-react';
 import { deleteUser, unlockUser } from '@/actions/userActions';
 import { getRoles } from '@/actions/roleActions';
 import RolePermissionEditor from './RolePermissionEditor';
+import UserPermissionButton from './UserPermissionButton';
 import { auth } from '@/auth';
 
 export default async function UsersPage() {
@@ -80,6 +81,16 @@ export default async function UsersPage() {
                                     <Link href={`/roles/${user.p_id}/edit`} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition" title="แก้ไข">
                                         <Edit className="w-5 h-5" />
                                     </Link>
+
+                                    <UserPermissionButton
+                                        user={{
+                                            p_id: user.p_id,
+                                            username: user.username,
+                                            role: user.role,
+                                            custom_permissions: (user as any).custom_permissions || null
+                                        }}
+                                        dbRolePermissions={(roles || []).find((r: any) => r.role_name === user.role)?.permissions}
+                                    />
 
                                     {user.locked_until && new Date(user.locked_until) > new Date() && (
                                         <form action={async () => {
