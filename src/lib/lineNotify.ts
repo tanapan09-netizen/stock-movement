@@ -114,3 +114,68 @@ export async function notifyTechniciansViaLine(
 
     return sentCount;
 }
+
+// Send maintenance notification to specific roles with LINE User ID
+export async function notifyRoleViaLine(
+    targetRole: string,
+    title: string,
+    roomCode: string,
+    roomName: string,
+    priority: string,
+    reportedBy: string
+): Promise<number> {
+    const { prisma } = await import('@/lib/prisma');
+
+    // Default to 'technician' if somehow missing
+    const role = targetRole || 'technician';
+
+    // Find users with the specific role and a line ID
+    const users = await prisma.tbl_users.findMany({
+        where: {
+            role: role,
+            line_user_id: { not: null }
+        },
+        select: { line_user_id: true, username: true }
+    });
+
+    // Extract unique Line IDs
+    const lineIds = new Set<string>();
+    users.forEach(u => u.line_user_id && lineIds.add(u.line_user_id));
+
+    // If role is technician, ALSO check tbl_technicians for backward compatibility
+    if (role === 'technician') {
+        const techs = await prisma.tbl_technicians.findMany({
+            where: {
+                status: 'active',
+                line_user_id: { not: null }
+            },
+            select: { line_user_id: true }
+        });
+        techs.forEach(t => t.line_user_id && lineIds.add(t.line_user_id));
+    }
+
+    const priorityLabel = priority === 'urgent' ? '🚨 เร่งด่วน' : priority === 'high' ? '⚠️ สูง' : '';
+    const message = `
+🔧 แจ้งซ่อมใหม่ ${priorityLabel} [ถึงฝ่าย: ${role}]
+📍 ห้อง: ${roomCode} - ${roomName}
+📋 ${title}
+👤 ผู้แจ้ง: ${reportedBy}
+    `.trim();
+
+    if (lineIds.size === 0) {
+        console.log(`[LINE] No users found for role: ${role}, sending broadcast via sendLineNotify`);
+        await sendLineNotify(message);
+        return 0;
+    }
+
+    let sentCount = 0;
+    for (const lineId of lineIds) {
+        const success = await sendLineMessage(lineId, message);
+        if (success) sentCount++;
+    }
+
+    // Still send group notification as backup
+    await sendLineNotify(message);
+
+    return sentCount;
+}

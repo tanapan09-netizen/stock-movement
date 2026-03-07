@@ -226,7 +226,8 @@ export default function MaintenanceClient() {
         department: '',
         contact_info: '',
         tags: '',
-        tagInput: '' // Temporary state for tag input
+        tagInput: '', // Temporary state for tag input
+        target_role: 'general' // Default explicitly to General
     });
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [showReopenModal, setShowReopenModal] = useState(false);
@@ -366,6 +367,7 @@ export default function MaintenanceClient() {
         data.append('department', formData.department);
         data.append('contact_info', formData.contact_info);
         data.append('tags', formData.tags);
+        data.append('target_role', formData.target_role);
 
         if (selectedFile) {
             data.append('image_file', selectedFile);
@@ -390,7 +392,8 @@ export default function MaintenanceClient() {
                     department: '',
                     contact_info: '',
                     tags: '',
-                    tagInput: ''
+                    tagInput: '',
+                    target_role: 'general'
                 });
                 setSelectedFile(null);
                 setSelectedAsset(null);
@@ -1142,8 +1145,8 @@ export default function MaintenanceClient() {
                                 />
                             </div>
 
-                            {/* Reporter Name and Department */}
-                            <div className="grid grid-cols-2 gap-4">
+                            {/* Reporter Name and Department and Target Role */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium mb-2 text-gray-700">ชื่อผู้แจ้ง <span className="text-red-500">*</span></label>
                                     <input
@@ -1157,7 +1160,7 @@ export default function MaintenanceClient() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2 text-gray-700">แผนก</label>
+                                    <label className="block text-sm font-medium mb-2 text-gray-700">แผนก (ผู้แจ้ง)</label>
                                     <input
                                         type="text"
                                         value={formData.department}
@@ -1166,6 +1169,24 @@ export default function MaintenanceClient() {
                                         placeholder="ชื่อแผนก/หน่วยงาน"
                                         title="แผนก"
                                     />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2 text-gray-700">แผนกงานที่ต้องการแจ้ง <span className="text-red-500">*</span></label>
+                                    <select
+                                        value={formData.target_role}
+                                        onChange={(e) => setFormData({ ...formData, target_role: e.target.value })}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none dark:bg-slate-700 dark:border-slate-600"
+                                        required
+                                    >
+                                        <option value="general">General (ทั่วไป)</option>
+                                        <option value="technician">Technician (ช่างซ่อมบำรุง)</option>
+                                        <option value="maid">Maid (แม่บ้าน)</option>
+                                        <option value="driver">Driver (คนขับรถ)</option>
+                                        <option value="purchasing">Purchasing (จัดซื้อ)</option>
+                                        <option value="accounting">Accounting (บัญชี)</option>
+                                        <option value="manager">Manager (ผู้จัดการ)</option>
+                                        <option value="admin">Admin (ผู้ดูแลระบบ)</option>
+                                    </select>
                                 </div>
                             </div>
 

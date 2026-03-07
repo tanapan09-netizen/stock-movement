@@ -298,6 +298,7 @@ export async function createMaintenanceRequest(formData: FormData) {
         const department = formData.get('department') as string;
         const contact_info = formData.get('contact_info') as string;
         const tags = formData.get('tags') as string;
+        const target_role = formData.get('target_role') as string || 'technician';
         const imageFiles = formData.getAll('images') as File[];
         const uploadedImageUrls: string[] = [];
 
@@ -348,16 +349,17 @@ export async function createMaintenanceRequest(formData: FormData) {
             data: {
                 request_id: request.request_id,
                 action: 'สร้างรายการ',
-                new_value: `สร้างรายการแจ้งซ่อม: ${title}`,
+                new_value: `สร้างรายการแจ้งซ่อม: ${title} (ส่งแจ้งเตือนฝ่าย: ${target_role})`,
                 changed_by: reported_by
             }
         });
 
         // Send Notifications (LINE & Email)
         try {
-            // 1. Notify Technicians via LINE (Broadcast)
-            const { notifyTechniciansViaLine } = await import('@/lib/lineNotify');
-            await notifyTechniciansViaLine(
+            // 1. Notify Target Role via LINE (Broadcast)
+            const { notifyRoleViaLine } = await import('@/lib/lineNotify');
+            await notifyRoleViaLine(
+                target_role,
                 title,
                 request.tbl_rooms?.room_code || '',
                 request.tbl_rooms?.room_name || '',
