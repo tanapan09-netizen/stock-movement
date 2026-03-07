@@ -291,6 +291,9 @@ export default function MaintenanceClient() {
                 const lineTechs = (lineUserResult.data as any[]).filter(u => u.role === 'technician' && u.display_name && u.is_active);
                 setLineTechnicians(lineTechs);
             }
+            if (productResult && productResult.success) {
+                setProducts(productResult.data as any[]);
+            }
         } catch (error) {
             console.error('Error loading data:', error);
         }
@@ -1800,8 +1803,8 @@ export default function MaintenanceClient() {
             {/* Status Change Confirmation Modal */}
             {
                 showStatusModal && statusChangeData.request && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
-                        <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-lg mx-4 shadow-2xl overflow-hidden">
+                    <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-[60] overflow-y-auto py-8">
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-xl mx-4 shadow-2xl mb-8">
                             {/* Modal Header */}
                             <div className={`p - 5 ${statusChangeData.newStatus === 'in_progress'
                                 ? 'bg-gradient-to-r from-blue-500 to-blue-600'
