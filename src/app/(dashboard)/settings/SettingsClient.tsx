@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, Save, Bell, RefreshCw, AlertTriangle, CheckCircle, XCircle, X } from 'lucide-react';
+import { Settings, Save, Bell, RefreshCw, AlertTriangle, CheckCircle, XCircle, X, Download } from 'lucide-react';
 import { getSystemSettings, updateSystemSetting } from '@/actions/settingActions';
 import { performBackup, restoreDatabase, getBackupsList } from '@/actions/backupActions';
 
@@ -507,7 +507,13 @@ export default function SettingsClient() {
                                                 <td className="px-4 py-3 font-medium">{backup.name}</td>
                                                 <td className="px-4 py-3">{new Date(backup.date).toLocaleString()}</td>
                                                 <td className="px-4 py-3">{backup.size}</td>
-                                                <td className="px-4 py-3 text-right">
+                                                <td className="px-4 py-3 text-right flex justify-end gap-2">
+                                                    <a
+                                                        href={`/api/backups/download/${backup.name}`}
+                                                        className="text-blue-600 hover:text-blue-800 font-medium text-xs border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded transition-colors flex items-center gap-1"
+                                                    >
+                                                        <Download size={14} /> Download
+                                                    </a>
                                                     <button
                                                         onClick={() => requestRestore(backup.name)}
                                                         disabled={restoring}

@@ -5,16 +5,18 @@ import { revalidatePath } from 'next/cache';
 import bcrypt from 'bcryptjs';
 import { logSystemAction } from '@/lib/logger';
 import { auth } from '@/auth';
+import { validateData, updateUserSchema } from '@/lib/validation';
 
 export async function createUser(formData: FormData) {
-    const username = formData.get('username') as string;
-    const password = formData.get('password') as string;
-    const role = formData.get('role') as string;
-    const email = formData.get('email') as string | null;
-    const line_user_id = formData.get('line_user_id') as string | null;
-    const is_approver_form = formData.get('is_approver') === 'true';
+    const rawData = {
+        username: formData.get('username') as string,
+        password: formData.get('password') as string,
+        role: formData.get('role') as string,
+        email: formData.get('email') as string | null,
+        line_user_id: formData.get('line_user_id') as string | null,
+    };
 
-    if (!username || !password || !role) {
+    if (!rawData.username || !rawData.password || !rawData.role) {
         return { error: 'กรุณากรอกข้อมูลให้ครบถ้วน' };
     }
 
@@ -25,27 +27,29 @@ export async function createUser(formData: FormData) {
     }
 
     try {
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const validData = validateData(updateUserSchema, rawData, 'User');
+
+        const hashedPassword = await bcrypt.hash(rawData.password, 10);
 
         // Map role to role_id
         let role_id = 3;
-        let is_approver = is_approver_form;
+        let is_approver = formData.get('is_approver') === 'true';
 
-        if (role === 'admin') { role_id = 1; is_approver = true; }
-        if (role === 'manager') { role_id = 2; is_approver = true; }
-        if (role === 'technician') role_id = 4; // Assuming IDs
-        if (role === 'accounting') role_id = 5;
-        if (role === 'purchasing') role_id = 6;
-        if (role === 'operation') role_id = 7;
+        if (validData.role === 'admin') { role_id = 1; is_approver = true; }
+        if (validData.role === 'manager') { role_id = 2; is_approver = true; }
+        if (validData.role === 'technician') role_id = 4; // Assuming IDs
+        if (validData.role === 'accounting') role_id = 5;
+        if (validData.role === 'purchasing') role_id = 6;
+        if (validData.role === 'operation') role_id = 7;
 
         await prisma.tbl_users.create({
             data: {
-                username,
+                username: validData.username,
                 password: hashedPassword,
-                role,
+                role: validData.role,
                 role_id,
-                email: email || null,
-                line_user_id: line_user_id || null,
+                email: validData.email || null,
+                line_user_id: validData.line_user_id || null,
                 is_approver
             },
         });
@@ -54,8 +58,8 @@ export async function createUser(formData: FormData) {
         await logSystemAction(
             'CREATE',
             'User',
-            username,
-            `Created user: ${username} (Role: ${role})`,
+            validData.username,
+            `Created user: ${validData.username} (Role: ${validData.role})`,
             session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'

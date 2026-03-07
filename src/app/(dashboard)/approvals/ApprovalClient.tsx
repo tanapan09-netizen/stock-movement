@@ -99,14 +99,21 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
         }
     };
 
-    const StatusBadge = ({ status }: { status: string }) => {
+    const StatusBadge = ({ req }: { req: any }) => {
+        const { status, current_step, total_steps } = req;
+        const stepText = total_steps > 1 ? ` (ขั้นที่ ${current_step}/${total_steps})` : '';
+
         switch (status) {
             case 'approved':
                 return <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium flex items-center gap-1 w-max"><CheckCircle size={12} /> อนุมัติแล้ว</span>;
             case 'rejected':
                 return <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium flex items-center gap-1 w-max"><XCircle size={12} /> ไม่อนุมัติ</span>;
             default:
-                return <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium flex items-center gap-1 w-max"><Clock size={12} /> รอพิจารณา</span>;
+                return (
+                    <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium flex items-center gap-1 w-max">
+                        <Clock size={12} /> รอพิจารณา{stepText}
+                    </span>
+                );
         }
     };
 
@@ -211,7 +218,7 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
                                         )}
                                     </td>
                                     <td className="px-6 py-4">
-                                        <StatusBadge status={req.status} />
+                                        <StatusBadge req={req} />
                                         {req.status === 'rejected' && req.rejection_reason && (
                                             <div className="text-xs text-red-500 mt-1 whitespace-normal max-w-[200px] italic">
                                                 เหตุผล: {req.rejection_reason}

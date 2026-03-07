@@ -266,6 +266,7 @@ model tbl_maintenance_requests {
   completion_image_url    String?                   @db.VarChar(500)
   technician_signature    String?                   @db.LongText
   customer_signature      String?                   @db.LongText
+  deleted_at              DateTime?                 @db.Timestamp(0)
   tbl_maintenance_history tbl_maintenance_history[]
   tbl_maintenance_parts   tbl_maintenance_parts[]
   tbl_rooms               tbl_rooms                 @relation(fields: [room_id], references: [room_id])
@@ -386,6 +387,7 @@ model tbl_products {
   is_luxury             Boolean?                @default(false)
   order_number          Int?
   created_at            DateTime?               @default(now()) @db.DateTime(0)
+  deleted_at            DateTime?               @db.DateTime(0)
   tbl_action_log        tbl_action_log[]
   tbl_maintenance_parts tbl_maintenance_parts[]
   tbl_product_movements tbl_product_movements[]
@@ -432,6 +434,7 @@ model tbl_rooms {
   floor                    String?                    @db.VarChar(20)
   active                   Boolean                    @default(true)
   created_at               DateTime                   @default(now()) @db.Timestamp(0)
+  deleted_at               DateTime?                  @db.Timestamp(0)
   tbl_maintenance_requests tbl_maintenance_requests[]
   tbl_pm_plans             tbl_pm_plans[]
 }
@@ -548,9 +551,11 @@ model tbl_users {
   locked_until     DateTime?         @db.DateTime(0)
   is_approver      Boolean           @default(false)
   custom_permissions String?         @db.Text
+  deleted_at       DateTime?         @db.DateTime(0)
   tbl_system_logs  tbl_system_logs[]
   approval_requests_made  tbl_approval_requests[] @relation("Requester")
   approval_requests_approved tbl_approval_requests[] @relation("Approver")
+  step_logs_acted  tbl_approval_step_logs[] 
 }
 
 
@@ -737,9 +742,63 @@ model tbl_approval_requests {
   created_at      DateTime  @default(now()) @db.Timestamp(0)
   updated_at      DateTime  @default(now()) @updatedAt @db.Timestamp(0)
 
+  // Multi-step additions
+  current_step    Int       @default(1)
+  total_steps     Int       @default(1)
+  workflow_id     Int?
+
   tbl_users       tbl_users  @relation("Requester", fields: [requested_by], references: [p_id])
   tbl_approver    tbl_users? @relation("Approver", fields: [supervisor_id], references: [p_id])
+  workflow        tbl_approval_workflows? @relation(fields: [workflow_id], references: [id])
+  step_logs       tbl_approval_step_logs[]
 
   @@index([request_type])
   @@index([status])
+  @@index([workflow_id])
+}
+
+model tbl_approval_workflows {
+  id              Int      @id @default(autoincrement())
+  workflow_name   String   @db.VarChar(100)
+  request_type    String   @db.VarChar(50) // ot, leave, expense
+  condition_field String?  @db.VarChar(50) // e.g. amount
+  condition_op    String?  @db.VarChar(10) // e.g. >, <=, =
+  condition_value String?  @db.VarChar(50) // e.g. 5000
+  total_steps     Int      @default(1)
+  active          Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamp(0)
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  
+  steps           tbl_approval_workflow_steps[]
+  requests        tbl_approval_requests[]
+
+  @@index([request_type, active])
+}
+
+model tbl_approval_workflow_steps {
+  id            Int      @id @default(autoincrement())
+  workflow_id   Int
+  step_order    Int
+  approver_role String   @db.VarChar(50) // manager, admin, hr...
+  approver_id   Int?     // specific user id if needed
+  
+  workflow      tbl_approval_workflows @relation(fields: [workflow_id], references: [id], onDelete: Cascade)
+  
+  @@index([workflow_id])
+}
+
+model tbl_approval_step_logs {
+  id          Int       @id @default(autoincrement())
+  request_id  Int
+  step_order  Int
+  action      String    @db.VarChar(20) // approved, rejected
+  acted_by    Int
+  acted_at    DateTime  @default(now()) @db.Timestamp(0)
+  comment     String?   @db.Text
+  
+  request     tbl_approval_requests @relation(fields: [request_id], references: [request_id], onDelete: Cascade)
+  actor       tbl_users             @relation(fields: [acted_by], references: [p_id])
+  
+  @@index([request_id])
+  @@index([acted_by])
 }

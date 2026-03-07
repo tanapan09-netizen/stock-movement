@@ -6,18 +6,32 @@ import { redirect } from 'next/navigation';
 import { uploadFile } from '@/lib/gcs';
 import { logSystemAction } from '@/lib/logger';
 import { auth } from '@/auth';
+import { validateData, createProductSchema } from '@/lib/validation';
 
 const UPLOAD_DIR = 'products'; // Just folder name for GCS/Local util
 
 export async function createProduct(formData: FormData) {
+    const rawData = {
+        p_name: formData.get('p_name') as string,
+        p_desc: formData.get('p_desc') as string,
+        price_unit: parseFloat(formData.get('price_unit') as string) || 0,
+        p_unit: formData.get('p_unit') as string,
+        safety_stock: parseInt(formData.get('safety_stock') as string) || 0,
+        supplier: formData.get('supplier') as string,
+        p_sku: formData.get('p_sku') as string,
+        p_count: parseInt(formData.get('p_count') as string) || 0,
+    };
+
+    // validate
+    let validData;
+    try {
+        validData = validateData(createProductSchema, rawData, 'Product');
+    } catch (e: any) {
+        return { error: e.message };
+    }
+
     const p_id = formData.get('p_id') as string;
-    const p_name = formData.get('p_name') as string;
-    const p_desc = formData.get('p_desc') as string;
-    const p_price = parseFloat(formData.get('price_unit') as string) || 0;
-    const p_unit = formData.get('p_unit') as string;
     const cat_id = parseInt(formData.get('cat_id') as string) || null;
-    const safety_stock = parseInt(formData.get('safety_stock') as string) || 0;
-    const supplier = formData.get('supplier') as string;
     const is_luxury = formData.get('is_luxury') === 'true';
     const imageFile = formData.get('p_image') as File;
 
@@ -37,15 +51,16 @@ export async function createProduct(formData: FormData) {
         await prisma.tbl_products.create({
             data: {
                 p_id,
-                p_name,
-                p_desc,
-                price_unit: p_price,
-                p_unit,
+                p_name: validData.p_name,
+                p_desc: validData.p_desc || null,
+                price_unit: validData.price_unit || 0,
+                p_unit: validData.p_unit || 'ชิ้น',
                 cat_id,
-                safety_stock,
-                supplier,
+                safety_stock: validData.safety_stock,
+                supplier: validData.supplier || null,
+                p_sku: validData.p_sku || null,
                 p_image: imageName,
-                p_count: 0,
+                p_count: validData.p_count,
                 active: true,
                 is_luxury,
             },
@@ -56,7 +71,7 @@ export async function createProduct(formData: FormData) {
             'CREATE',
             'Product',
             p_id,
-            `Created product: ${p_name}`,
+            `Created product: ${validData.p_name}`,
             session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'

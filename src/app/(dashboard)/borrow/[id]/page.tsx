@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { ArrowLeft, User, Calendar } from 'lucide-react';
 import ReturnForm from '@/components/ReturnForm';
 
-export default async function BorrowDetailPage({ params }: { params: { id: string } }) {
+export default async function BorrowDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
     const requestId = parseInt(id);
 
@@ -110,8 +110,8 @@ export default async function BorrowDetailPage({ params }: { params: { id: strin
                                             </div>
                                             {item.returned_qty !== undefined && item.returned_qty > 0 && (
                                                 <div className={`px-2 py-1 rounded text-xs font-medium ${remaining === 0
-                                                        ? 'bg-green-100 text-green-700'
-                                                        : 'bg-orange-100 text-orange-700'
+                                                    ? 'bg-green-100 text-green-700'
+                                                    : 'bg-orange-100 text-orange-700'
                                                     }`}>
                                                     {remaining === 0 ? 'คืนแล้ว' : `คืนแล้ว ${item.returned_qty}`}
                                                 </div>

@@ -6,6 +6,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { logSystemAction } from '@/lib/logger';
 import { auth } from '@/auth';
 import { uploadFile } from '@/lib/gcs';
+import { validateData, createMaintenanceRequestSchema } from '@/lib/validation';
 
 // ==================== ROOMS ====================
 
@@ -286,11 +287,16 @@ export async function getMaintenanceRequestById(request_id: number) {
 
 export async function createMaintenanceRequest(formData: FormData) {
     try {
-        const room_id = parseInt(formData.get('room_id') as string);
-        const title = formData.get('title') as string;
-        const description = formData.get('description') as string;
+        const rawData = {
+            room_id: parseInt(formData.get('room_id') as string),
+            title: formData.get('title') as string,
+            description: formData.get('description') as string,
+            priority: (formData.get('priority') as string) || 'low',
+        };
+
+        const validData = validateData(createMaintenanceRequestSchema, rawData, 'Maintenance');
+
         const category = formData.get('category') as string;
-        const priority = formData.get('priority') as string;
         const reported_by = formData.get('reported_by') as string;
         const assigned_to = formData.get('assigned_to') as string;
         const scheduled_date = formData.get('scheduled_date') as string;
@@ -326,11 +332,11 @@ export async function createMaintenanceRequest(formData: FormData) {
         const request = await prisma.tbl_maintenance_requests.create({
             data: {
                 request_number: generateRequestNumber(),
-                room_id,
-                title,
-                description: description || null,
+                room_id: validData.room_id,
+                title: validData.title,
+                description: validData.description || null,
                 image_url: image_url || null,
-                priority: priority || 'normal',
+                priority: validData.priority,
                 status: 'pending',
                 reported_by,
                 assigned_to: assigned_to || null,
@@ -349,7 +355,7 @@ export async function createMaintenanceRequest(formData: FormData) {
             data: {
                 request_id: request.request_id,
                 action: 'สร้างรายการ',
-                new_value: `สร้างรายการแจ้งซ่อม: ${title} (ส่งแจ้งเตือนฝ่าย: ${target_role})`,
+                new_value: `สร้างรายการแจ้งซ่อม: ${validData.title} (ส่งแจ้งเตือนฝ่าย: ${target_role})`,
                 changed_by: reported_by
             }
         });
@@ -360,10 +366,10 @@ export async function createMaintenanceRequest(formData: FormData) {
             const { notifyRoleViaLine } = await import('@/lib/lineNotify');
             await notifyRoleViaLine(
                 target_role,
-                title,
+                validData.title,
                 request.tbl_rooms?.room_code || '',
                 request.tbl_rooms?.room_name || '',
-                priority || 'normal',
+                validData.priority || 'normal',
                 reported_by
             );
 
@@ -372,9 +378,9 @@ export async function createMaintenanceRequest(formData: FormData) {
             // Run in background
             notifyNewMaintenanceRequest({
                 request_number: request.request_number,
-                title: request.title,
-                description: request.description,
-                priority: request.priority,
+                title: validData.title,
+                description: validData.description,
+                priority: validData.priority,
                 room_code: request.tbl_rooms?.room_code || 'N/A',
                 room_name: request.tbl_rooms?.room_name || 'N/A',
                 reported_by: request.reported_by,
@@ -393,7 +399,7 @@ export async function createMaintenanceRequest(formData: FormData) {
             'CREATE',
             'MaintenanceRequest',
             request.request_id,
-            `Created maintenance request: ${title}`,
+            `Created maintenance request: ${validData.title}`,
             session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || reported_by,
             'unknown'

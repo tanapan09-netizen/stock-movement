@@ -29,6 +29,9 @@ import {
 import { useSession, signOut } from 'next-auth/react';
 import { PERMISSIONS, RolePermissions } from '@/lib/permissions';
 import { useSidebar } from '@/contexts/SidebarContext';
+import QrScannerModal from './QrScannerModal';
+import { QrCode } from 'lucide-react';
+
 
 interface SidebarProps {
     permissions?: RolePermissions;
@@ -44,7 +47,9 @@ export default function Sidebar(props: SidebarProps) {
     const permissions = props.permissions || {};
 
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+    const [showQrScanner, setShowQrScanner] = useState(false);
     const { collapsed, setCollapsed } = useSidebar();
+
 
     // Auto collapse on soft resize or link click on mobile
     const [isMobile, setIsMobile] = useState(false);
@@ -128,6 +133,16 @@ export default function Sidebar(props: SidebarProps) {
                                 {!collapsed && <span className="truncate">Dashboard</span>}
                             </Link>
                         )}
+
+                        {/* ─── เครื่องมือ ─── */}
+                        <button
+                            onClick={() => setShowQrScanner(true)}
+                            className={`w-full group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out text-gray-300 hover:bg-white/10 hover:text-blue-400`}
+                            title={collapsed ? 'สแกน QR' : undefined}
+                        >
+                            <QrCode className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 group-hover:scale-110`} />
+                            {!collapsed && <span className="truncate text-left">สแกน QR ค้นหา</span>}
+                        </button>
 
                         {/* ─── คลังสินค้า ─── */}
                         {(can(PERMISSIONS.PRODUCTS) || can(PERMISSIONS.MOVEMENTS) || can(PERMISSIONS.STOCK_ADJUST) || can(PERMISSIONS.BORROW)) && !collapsed && (
@@ -507,6 +522,12 @@ export default function Sidebar(props: SidebarProps) {
                     </div>
                 </div>
             )}
+
+            {/* QR Scanner Modal */}
+            <QrScannerModal
+                isOpen={showQrScanner}
+                onClose={() => setShowQrScanner(false)}
+            />
         </>
     );
 }

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stock-pro-v1';
+const CACHE_NAME = 'stock-pro-v2';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache on install
@@ -44,6 +44,27 @@ self.addEventListener('fetch', (event) => {
     // Skip chrome-extension and similar
     if (!event.request.url.startsWith('http')) return;
 
+    // For API requests, use Network First strategy
+    if (event.request.url.includes('/api/')) {
+        event.respondWith(
+            fetch(event.request)
+                .then((response) => {
+                    const responseToCache = response.clone();
+                    if (response.status === 200) {
+                        caches.open('stock-pro-api-v2').then((cache) => {
+                            cache.put(event.request, responseToCache);
+                        });
+                    }
+                    return response;
+                })
+                .catch(() => {
+                    return caches.match(event.request);
+                })
+        );
+        return;
+    }
+
+    // For normal pages, use Network First with fallback to offline page
     event.respondWith(
         fetch(event.request)
             .then((response) => {

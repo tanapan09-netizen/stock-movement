@@ -18,10 +18,10 @@ function ensureBackupDir() {
 }
 
 // Generate backup filename with timestamp
-function generateBackupFilename(): string {
+function generateBackupFilename(database: string): string {
     const now = new Date();
     const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    return `backup_${timestamp}.sql`;
+    return `backup_${database}_${timestamp}.sql`;
 }
 
 // Clean up old backups (older than RETENTION_DAYS)
@@ -88,11 +88,6 @@ export async function performBackup(): Promise<{ success: boolean; message: stri
             };
         }
 
-        ensureBackupDir();
-
-        const filename = generateBackupFilename();
-        const backupPath = path.join(BACKUP_DIR, filename);
-
         // MySQL connection details from DATABASE_URL
         const dbUrl = process.env.DATABASE_URL || '';
         const match = dbUrl.match(/mysql:\/\/([^:]+):([^@]*)@([^:]+):(\d+)\/(.+)/);
@@ -104,6 +99,11 @@ export async function performBackup(): Promise<{ success: boolean; message: stri
         const [, user, password, host, port, dbWithParams] = match;
         const database = dbWithParams.split('?')[0]; // Remove query params
         const isWindows = process.platform === 'win32';
+
+        ensureBackupDir();
+
+        const filename = generateBackupFilename(database);
+        const backupPath = path.join(BACKUP_DIR, filename);
 
         // Build mysqldump command
         let cmd = '';

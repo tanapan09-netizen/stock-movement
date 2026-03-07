@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma';
 import ProductForm from '@/components/ProductForm';
 import { notFound } from 'next/navigation';
 
-export default async function EditProductPage({ params }: { params: { id: string } }) {
+export default async function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
     // Use await for params to fix Next.js 15+ async params requirement
     const { id } = await params;
 

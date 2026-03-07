@@ -10,8 +10,10 @@ import DashboardLayoutContent from './DashboardLayoutContent';
 
 import { getRolePermissions } from '@/actions/roleActions';
 import { prisma } from '@/lib/prisma';
+import { OfflineQueueProvider } from '@/contexts/OfflineQueueProvider';
 
 export default async function DashboardLayout({
+
     children,
 }: {
     children: React.ReactNode;
@@ -50,23 +52,25 @@ export default async function DashboardLayout({
 
     return (
         <SidebarProvider>
-            <div className="flex min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-300">
-                {/* Auto backup on dashboard load */}
-                <AutoBackup />
+            <OfflineQueueProvider>
+                <div className="flex min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-300">
+                    {/* Auto backup on dashboard load */}
+                    <AutoBackup />
 
-                {/* Login Notification Popup (shown once per session) */}
-                <LoginNotificationPopup />
+                    {/* Login Notification Popup (shown once per session) */}
+                    <LoginNotificationPopup />
 
-                {/* Sidebar with mobile wrapper */}
-                <MobileSidebarWrapper>
-                    <Sidebar permissions={permissions} />
-                </MobileSidebarWrapper>
+                    {/* Sidebar with mobile wrapper */}
+                    <MobileSidebarWrapper>
+                        <Sidebar permissions={permissions} />
+                    </MobileSidebarWrapper>
 
-                {/* Main content - responsive margin via Context */}
-                <DashboardLayoutContent>
-                    {children}
-                </DashboardLayoutContent>
-            </div>
+                    {/* Main content - responsive margin via Context */}
+                    <DashboardLayoutContent>
+                        {children}
+                    </DashboardLayoutContent>
+                </div>
+            </OfflineQueueProvider>
         </SidebarProvider>
     );
 }
