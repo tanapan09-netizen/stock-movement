@@ -26,16 +26,20 @@ export async function getRooms() {
 export async function createRoom(data: {
     room_code: string;
     room_name: string;
+    room_type?: string;
     building?: string;
     floor?: string;
+    zone?: string;
 }) {
     try {
         const room = await prisma.tbl_rooms.create({
             data: {
                 room_code: data.room_code,
                 room_name: data.room_name,
+                room_type: data.room_type || null,
                 building: data.building || null,
-                floor: data.floor || null
+                floor: data.floor || null,
+                zone: data.zone || null
             }
         });
         const session = await auth();
@@ -75,8 +79,10 @@ export async function getAllRooms() {
 export async function updateRoom(room_id: number, data: {
     room_code?: string;
     room_name?: string;
+    room_type?: string | null;
     building?: string | null;
     floor?: string | null;
+    zone?: string | null;
 }) {
     try {
         const room = await prisma.tbl_rooms.update({

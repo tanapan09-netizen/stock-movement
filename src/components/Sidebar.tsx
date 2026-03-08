@@ -49,6 +49,9 @@ export default function Sidebar(props: SidebarProps) {
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
     const [showQrScanner, setShowQrScanner] = useState(false);
     const { collapsed, setCollapsed } = useSidebar();
+    const [expandedSubMenu, setExpandedSubMenu] = useState<string | null>(
+        pathname.startsWith('/admin') || pathname === '/roles' || pathname.startsWith('/settings') ? 'admin' : null
+    );
 
 
     // Auto collapse on soft resize or link click on mobile
@@ -415,51 +418,106 @@ export default function Sidebar(props: SidebarProps) {
                         )}
 
                         {/* ─── ผู้ดูแลระบบ ─── */}
-                        {(can(PERMISSIONS.ADMIN_ROLES) || can(PERMISSIONS.ADMIN_SETTINGS) || can(PERMISSIONS.ADMIN_SECURITY) || can(PERMISSIONS.ADMIN_ROOMS) || can(PERMISSIONS.ADMIN_LOGS)) && !collapsed && (
-                            <div className="pt-5 pb-2 px-3 flex items-center gap-2">
-                                <div className="h-px bg-gray-700 flex-1"></div>
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 truncate">⚙️ ผู้ดูแลระบบ</p>
-                                <div className="h-px bg-gray-700 flex-1"></div>
-                            </div>
-                        )}
-                        {collapsed && (can(PERMISSIONS.ADMIN_ROLES) || can(PERMISSIONS.ADMIN_SETTINGS)) && (
-                            <div className="my-2 h-px bg-gray-700/60" />
+                        {(can(PERMISSIONS.ADMIN_ROLES) || can(PERMISSIONS.ADMIN_SETTINGS) || can(PERMISSIONS.ADMIN_SECURITY) || can(PERMISSIONS.ADMIN_ROOMS) || can(PERMISSIONS.ADMIN_LOGS)) && (
+                            <>
+                                {!collapsed ? (
+                                    <div className="pt-5 pb-2 px-3 flex items-center gap-2">
+                                        <div className="h-px bg-gray-700 flex-1"></div>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 truncate">⚙️ ระบบงาน</p>
+                                        <div className="h-px bg-gray-700 flex-1"></div>
+                                    </div>
+                                ) : (
+                                    <div className="my-2 h-px bg-gray-700/60" />
+                                )}
+
+                                {/* Collapsible Admin Group */}
+                                <div>
+                                    <button
+                                        onClick={() => {
+                                            if (collapsed) {
+                                                setCollapsed(false);
+                                                setExpandedSubMenu('admin');
+                                            } else {
+                                                setExpandedSubMenu(expandedSubMenu === 'admin' ? null : 'admin');
+                                            }
+                                        }}
+                                        className={`w-full group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out text-gray-300 hover:bg-white/10 hover:text-white mb-1`}
+                                        title={collapsed ? 'ตั้งค่าระบบ' : undefined}
+                                    >
+                                        <Settings className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 group-hover:scale-110 group-hover:text-slate-300 group-hover:rotate-45`} />
+                                        {!collapsed && (
+                                            <>
+                                                <span className="truncate flex-1 text-left">ตั้งค่าระบบ</span>
+                                                <ChevronRight className={`h-4 w-4 transition-transform duration-300 ${expandedSubMenu === 'admin' ? 'rotate-90' : ''}`} />
+                                            </>
+                                        )}
+                                    </button>
+
+                                    {/* Sub-menu items */}
+                                    <div
+                                        className={`overflow-hidden transition-all duration-300 ease-in-out ${(!collapsed && expandedSubMenu === 'admin') ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}
+                                    >
+                                        <div className="space-y-1 mt-1">
+                                            {can(PERMISSIONS.ADMIN_ROLES) && (
+                                                <Link
+                                                    href="/roles"
+                                                    onClick={handleLinkClick}
+                                                    className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isActive('/roles') ? 'bg-white/15 text-yellow-400' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                                                >
+                                                    <Shield className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isActive('/roles') && 'group-hover:scale-110 group-hover:text-yellow-400'}`} />
+                                                    <span className="truncate">จัดการบทบาท</span>
+                                                </Link>
+                                            )}
+
+                                            {can(PERMISSIONS.ADMIN_ROOMS) && (
+                                                <Link
+                                                    href="/admin/rooms"
+                                                    onClick={handleLinkClick}
+                                                    className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isActive('/admin/rooms') ? 'bg-white/15 text-blue-400' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                                                >
+                                                    <Warehouse className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isActive('/admin/rooms') && 'group-hover:scale-110 group-hover:text-slate-300'}`} />
+                                                    <span className="truncate">จัดการห้อง</span>
+                                                </Link>
+                                            )}
+
+                                            {can(PERMISSIONS.ADMIN_SECURITY) && (
+                                                <Link
+                                                    href="/admin/security"
+                                                    onClick={handleLinkClick}
+                                                    className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isActive('/admin/security') ? 'bg-white/15 text-red-400' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                                                >
+                                                    <Shield className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isActive('/admin/security') && 'group-hover:scale-110 group-hover:text-red-400'}`} />
+                                                    <span className="truncate">ความปลอดภัย</span>
+                                                </Link>
+                                            )}
+
+                                            {can(PERMISSIONS.ADMIN_SETTINGS) && (
+                                                <Link
+                                                    href="/settings"
+                                                    onClick={handleLinkClick}
+                                                    className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isActive('/settings') ? 'bg-white/15 text-indigo-400' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                                                >
+                                                    <Settings className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isActive('/settings') && 'group-hover:scale-110 group-hover:text-slate-300'}`} />
+                                                    <span className="truncate">ตั้งค่าทั่วไป</span>
+                                                </Link>
+                                            )}
+
+                                            {can(PERMISSIONS.ADMIN_LOGS) && (
+                                                <Link
+                                                    href="/settings/system-logs"
+                                                    onClick={handleLinkClick}
+                                                    className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isActive('/settings/system-logs') ? 'bg-white/15 text-blue-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                                                >
+                                                    <ScrollText className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isActive('/settings/system-logs') && 'group-hover:scale-110 group-hover:text-blue-300'}`} />
+                                                    <span className="truncate">ประวัติการใช้งาน</span>
+                                                </Link>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
                         )}
 
-                        {can(PERMISSIONS.ADMIN_ROLES) && (
-                            <Link href="/roles" onClick={handleLinkClick} className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/roles') ? 'bg-gradient-to-r from-slate-700 to-slate-600 text-white shadow-lg shadow-slate-900/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-slate-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`} title={collapsed ? 'จัดการบทบาท' : undefined}>
-                                <Shield className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/roles') && 'group-hover:scale-110 group-hover:text-yellow-400'}`} />
-                                {!collapsed && <span className="truncate">จัดการบทบาท</span>}
-                            </Link>
-                        )}
-
-                        {can(PERMISSIONS.ADMIN_ROOMS) && (
-                            <Link href="/admin/rooms" onClick={handleLinkClick} className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/admin/rooms') ? 'bg-gradient-to-r from-slate-700 to-slate-600 text-white shadow-lg shadow-slate-900/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-slate-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`} title={collapsed ? 'จัดการห้อง' : undefined}>
-                                <Warehouse className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/admin/rooms') && 'group-hover:scale-110 group-hover:text-slate-300'}`} />
-                                {!collapsed && <span className="truncate">จัดการห้อง</span>}
-                            </Link>
-                        )}
-
-                        {can(PERMISSIONS.ADMIN_SECURITY) && (
-                            <Link href="/admin/security" onClick={handleLinkClick} className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/admin/security') ? 'bg-gradient-to-r from-slate-700 to-slate-600 text-white shadow-lg shadow-slate-900/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-slate-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`} title={collapsed ? 'ความปลอดภัย' : undefined}>
-                                <Shield className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/admin/security') && 'group-hover:scale-110 group-hover:text-red-400'}`} />
-                                {!collapsed && <span className="truncate">ความปลอดภัย</span>}
-                            </Link>
-                        )}
-
-                        {can(PERMISSIONS.ADMIN_SETTINGS) && (
-                            <Link href="/settings" onClick={handleLinkClick} className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/settings') ? 'bg-gradient-to-r from-slate-700 to-slate-600 text-white shadow-lg shadow-slate-900/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-slate-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`} title={collapsed ? 'ตั้งค่าระบบ' : undefined}>
-                                <Settings className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/settings') && 'group-hover:scale-110 group-hover:text-slate-300 group-hover:rotate-45'}`} />
-                                {!collapsed && <span className="truncate">ตั้งค่าระบบ</span>}
-                            </Link>
-                        )}
-
-                        {can(PERMISSIONS.ADMIN_LOGS) && (
-                            <Link href="/settings/system-logs" onClick={handleLinkClick} className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/settings/system-logs') ? 'bg-gradient-to-r from-slate-700 to-slate-600 text-white shadow-lg shadow-slate-900/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-slate-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`} title={collapsed ? 'ประวัติการใช้งาน' : undefined}>
-                                <ScrollText className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/settings/system-logs') && 'group-hover:scale-110 group-hover:text-blue-300'}`} />
-                                {!collapsed && <span className="truncate">ประวัติการใช้งาน</span>}
-                            </Link>
-                        )}
                     </nav>
                 </div>
 

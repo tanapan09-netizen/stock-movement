@@ -430,8 +430,10 @@ model tbl_rooms {
   room_id                  Int                        @id @default(autoincrement())
   room_code                String                     @unique @db.VarChar(20)
   room_name                String                     @db.VarChar(100)
-  building                 String?                    @db.VarChar(100)
-  floor                    String?                    @db.VarChar(20)
+  room_type                String?                    @db.VarChar(100) // Level 1 (e.g. ห้องพัก, ส่วนกลาง)
+  building                 String?                    @db.VarChar(100) // Alternative Level 1/2
+  floor                    String?                    @db.VarChar(20)  // Level 2
+  zone                     String?                    @db.VarChar(100) // Level 4 (e.g. โซนในห้อง)
   active                   Boolean                    @default(true)
   created_at               DateTime                   @default(now()) @db.Timestamp(0)
   deleted_at               DateTime?                  @db.Timestamp(0)
