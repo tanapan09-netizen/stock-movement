@@ -27,6 +27,7 @@
     "react-dom": "19.2.3",
     "react-signature-canvas": "^1.1.0-alpha.2",
     "recharts": "^3.7.0",
+    "sweetalert2": "^11.26.22",
     "thai-baht-text": "^2.0.5",
     "xlsx": "^0.18.5",
     "zod": "^4.3.6"

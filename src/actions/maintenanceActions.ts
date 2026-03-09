@@ -56,9 +56,13 @@ export async function createRoom(data: {
         revalidatePath('/maintenance');
         revalidatePath('/admin/rooms');
         return { success: true, data: room };
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error creating room:', error);
-        return { success: false, error: 'Failed to create room' };
+        if (error?.code === 'P2002') {
+            const field = error.meta?.target?.[0] || 'room_code';
+            return { success: false, error: `รหัส "${data.room_code}" ซ้ำกับที่มีอยู่แล้ว (${field})` };
+        }
+        return { success: false, error: `สร้างห้องไม่สำเร็จ: ${error?.message || 'ข้อผิดพลาดไม่ทราบสาเหตุ'}` };
     }
 }
 
@@ -103,25 +107,30 @@ export async function updateRoom(room_id: number, data: {
         revalidatePath('/maintenance');
         revalidatePath('/admin/rooms');
         return { success: true, data: room };
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error updating room:', error);
-        return { success: false, error: 'Failed to update room' };
+        if (error?.code === 'P2002') {
+            return { success: false, error: `รหัสห้องซ้ำกับที่มีอยู่แล้ว` };
+        }
+        if (error?.code === 'P2025') {
+            return { success: false, error: `ไม่พบห้องที่ต้องการแก้ไข` };
+        }
+        return { success: false, error: `แก้ไขห้องไม่สำเร็จ: ${error?.message || 'ข้อผิดพลาดไม่ทราบสาเหตุ'}` };
     }
 }
 
-// Soft delete room (set active to false)
+// Hard delete room (permanently remove from database)
 export async function deleteRoom(room_id: number) {
     try {
-        await prisma.tbl_rooms.update({
+        await prisma.tbl_rooms.delete({
             where: { room_id },
-            data: { active: false }
         });
         const session = await auth();
         await logSystemAction(
             'DELETE',
             'Room',
             room_id,
-            `Soft deleted room ID: ${room_id}`,
+            `Permanently deleted room ID: ${room_id}`,
             session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',
             'unknown'
@@ -130,9 +139,12 @@ export async function deleteRoom(room_id: number) {
         revalidatePath('/maintenance');
         revalidatePath('/admin/rooms');
         return { success: true };
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error deleting room:', error);
-        return { success: false, error: 'Failed to delete room' };
+        if (error?.code === 'P2025') {
+            return { success: false, error: `ไม่พบห้องที่ต้องการลบ (ID อาจถูกลบไปแล้ว)` };
+        }
+        return { success: false, error: `ลบห้องไม่สำเร็จ: ${error?.message || 'ข้อผิดพลาดไม่ทราบสาเหตุ'}` };
     }
 }
 

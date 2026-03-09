@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Swal from 'sweetalert2';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import {
@@ -203,7 +204,15 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         if (!formData.room_id || !formData.title || !formData.reported_by) {
-            alert('กรุณากรอกข้อมูลให้ครบ');
+            Swal.fire({
+                title: 'ข้อมูลไม่ครบถ้วน',
+                text: 'กรุณากรอกข้อมูลในช่องที่มีเครื่องหมาย * ให้ครบถ้วน',
+                icon: 'warning',
+                background: '#111827',
+                color: '#f3f4f6',
+                confirmButtonColor: '#3b82f6',
+                customClass: { popup: 'premium-swal-popup' }
+            });
             return;
         }
 
@@ -227,7 +236,15 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
             setFormData({ room_id: 0, title: '', description: '', category: 'electrical', image_url: '', priority: 'normal', reported_by: '', assigned_to: '', scheduled_date: '', estimated_cost: 0, location: '' });
             loadData();
         } else {
-            alert('เกิดข้อผิดพลาด: ' + result.error);
+            Swal.fire({
+                title: 'เกิดข้อผิดพลาด',
+                text: result.error || 'ไม่สามารถบันทึกข้อมูลได้',
+                icon: 'error',
+                background: '#111827',
+                color: '#f3f4f6',
+                confirmButtonColor: '#ef4444',
+                customClass: { popup: 'premium-swal-popup' }
+            });
         }
     }
 
@@ -235,7 +252,15 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
         e.preventDefault();
         // ... (Same logic)
         if (!roomFormData.room_code || !roomFormData.room_name) {
-            alert('กรุณากรอกรหัสและชื่อห้อง');
+            Swal.fire({
+                title: 'ข้อมูลห้องไม่ครบ',
+                text: 'กรุณากรอกรหัสและชื่อห้อง',
+                icon: 'warning',
+                background: '#111827',
+                color: '#f3f4f6',
+                confirmButtonColor: '#3b82f6',
+                customClass: { popup: 'premium-swal-popup' }
+            });
             return;
         }
 
@@ -252,9 +277,26 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
     // handleStatusChange removed
 
     async function handleDelete(request_id: number) {
-        if (!confirm('ต้องการลบรายการนี้หรือไม่?')) return;
-        const result = await deleteMaintenanceRequest(request_id);
-        if (result.success) loadData();
+        const result = await Swal.fire({
+            title: '<div style="font-size: 22px; font-weight: 800; margin-bottom: 8px;">ยืนยันการลบรายการ?</div>',
+            html: '<div style="font-size: 15px; opacity: 0.8; line-height: 1.6;">ข้อมูลรายการแจ้งซ่อมนี้จะถูกลบออกจากระบบ<br/><span style="color: #ef4444; font-weight: 600;">และไม่สามารถกู้คืนได้ในภายหลัง</span></div>',
+            icon: 'warning',
+            iconColor: '#fbbf24',
+            showCancelButton: true,
+            confirmButtonText: 'ใช่, ฉันต้องการลบ',
+            cancelButtonText: 'ยกเลิก',
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: 'transparent',
+            background: '#111827',
+            color: '#f3f4f6',
+            padding: '2.5rem',
+            buttonsStyling: false,
+            customClass: { confirmButton: 'premium-swal-confirm', cancelButton: 'premium-swal-cancel', popup: 'premium-swal-popup' }
+        } as any);
+
+        if (!result.isConfirmed) return;
+        const res = await deleteMaintenanceRequest(request_id);
+        if (res.success) loadData();
     }
 
     async function openDetailModal(request: MaintenanceRequestItem) {
@@ -296,8 +338,26 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
         if (result.success) {
             setShowDetailModal(false);
             loadData();
+            Swal.fire({
+                title: 'สำเร็จ',
+                text: 'อัปเดตข้อมูลเรียบร้อยแล้ว',
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false,
+                background: '#111827',
+                color: '#f3f4f6',
+                customClass: { popup: 'premium-swal-popup' }
+            });
         } else {
-            alert('เกิดข้อผิดพลาด: ' + result.error);
+            Swal.fire({
+                title: 'เกิดข้อผิดพลาด',
+                text: result.error || 'ไม่สามารถอัปเดตข้อมูลได้',
+                icon: 'error',
+                background: '#111827',
+                color: '#f3f4f6',
+                confirmButtonColor: '#ef4444',
+                customClass: { popup: 'premium-swal-popup' }
+            });
         }
     }
 
@@ -1093,6 +1153,35 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                     </div>
                 </div>
             )}
+
+            {/* Premium Swal Styles */}
+            <style>{`
+                .premium-swal-popup {
+                    box-shadow: 0 0 0 1px rgba(255,255,255,0.1), 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+                    font-family: 'Sarabun', sans-serif !important;
+                    border-radius: 24px !important;
+                }
+                .premium-swal-confirm {
+                    padding: 12px 32px !important; border-radius: 12px !important; background: #ef4444 !important;
+                    color: white !important; font-weight: 700 !important; font-size: 15px !important;
+                    border: none !important; cursor: pointer !important; margin: 0 8px !important; transition: all 0.2s !important;
+                }
+                .premium-swal-confirm:hover { background: #dc2626 !important; transform: translateY(-2px) !important; box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.3) !important; }
+                
+                .premium-swal-confirm-blue {
+                    padding: 12px 32px !important; border-radius: 12px !important; background: #2563eb !important;
+                    color: white !important; font-weight: 700 !important; font-size: 15px !important;
+                    border: none !important; cursor: pointer !important; margin: 0 8px !important; transition: all 0.2s !important;
+                }
+                .premium-swal-confirm-blue:hover { background: #1d4ed8 !important; transform: translateY(-2px) !important; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3) !important; }
+
+                .premium-swal-cancel {
+                    padding: 12px 32px !important; border-radius: 12px !important; background: transparent !important;
+                    color: #94a3b8 !important; font-weight: 600 !important; font-size: 15px !important;
+                    border: 1px solid #334155 !important; cursor: pointer !important; margin: 0 8px !important; transition: all 0.2s !important;
+                }
+                .premium-swal-cancel:hover { background: #1f2937 !important; color: white !important; }
+            `}</style>
         </div>
     );
 }
