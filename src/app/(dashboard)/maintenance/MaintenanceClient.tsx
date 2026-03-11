@@ -1871,15 +1871,760 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                 </div >
             )
             }
+            {/* New Room Modal */}
+            {showRoomForm && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 w-full max-w-md mx-4">
+                        <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">เพิ่มห้องใหม่</h2>
+                        <form onSubmit={handleRoomSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">รหัสห้อง *</label>
+                                <input
+                                    type="text"
+                                    value={roomFormData.room_code}
+                                    onChange={(e) => setRoomFormData({ ...roomFormData, room_code: e.target.value })}
+                                    className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                    placeholder="เช่น A101, B202"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">ชื่อห้อง *</label>
+                                <input
+                                    type="text"
+                                    value={roomFormData.room_name}
+                                    onChange={(e) => setRoomFormData({ ...roomFormData, room_name: e.target.value })}
+                                    className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                    placeholder="เช่น ห้องประชุมใหญ่"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">อาคาร</label>
+                                <input
+                                    type="text"
+                                    value={roomFormData.building}
+                                    onChange={(e) => setRoomFormData({ ...roomFormData, building: e.target.value })}
+                                    className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                    placeholder="เช่น อาคาร A"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">ชั้น</label>
+                                <input
+                                    type="text"
+                                    value={roomFormData.floor}
+                                    onChange={(e) => setRoomFormData({ ...roomFormData, floor: e.target.value })}
+                                    className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                    placeholder="เช่น 1, 2, ชั้นใต้ดิน"
+                                />
+                            </div>
+                            <div className="flex gap-2 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowRoomForm(false)}
+                                    className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700"
+                                >
+                                    ยกเลิก
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                >
+                                    บันทึก
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div >
+            )
+            }
 
-            {/* Rest of the modals... */}
-            {/* (Skipping the rest of the JSX to keep response within limits - they remain unchanged) */}
+            {/* Detail Modal */}
+            {
+                showDetailModal && selectedRequest && (
+                    <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 overflow-y-auto py-8 px-4">
+                        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 w-full max-w-3xl mx-auto shadow-2xl">
+
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                                    รายละเอียดการแจ้งซ่อม #{selectedRequest.request_number}
+                                </h2>
+                                <div className="flex gap-2">
+                                    <Link
+                                        href={`/maintenance/job-sheet/${selectedRequest.request_id}`}
+                                        target="_blank"
+                                        className="text-gray-500 hover:text-blue-600 mr-2"
+                                        title="พิมพ์ใบงาน"
+                                    >
+                                        <Printer size={24} />
+                                    </Link>
+                                    <button onClick={() => setShowDetailModal(false)} className="text-gray-500 hover:text-gray-700">
+                                        <X size={24} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-6">
+                                {/* Left Column - Info */}
+                                <div className="space-y-4">
+                                    <div>
+                                        <div className="text-sm text-gray-500">ห้อง</div>
+                                        <div className="font-medium">{selectedRequest.tbl_rooms?.room_code} - {selectedRequest.tbl_rooms?.room_name}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-sm text-gray-500">หัวข้อ</div>
+                                        <div className="font-medium">{selectedRequest.title}</div>
+                                    </div>
+                                    {selectedRequest.description && (
+                                        <div>
+                                            <div className="text-sm text-gray-500">รายละเอียด</div>
+                                            <div>{selectedRequest.description}</div>
+                                        </div>
+                                    )}
+                                    {selectedRequest.image_url && (
+                                        <div>
+                                            <div className="text-sm text-gray-500 mb-1">รูปภาพ</div>
+                                            <img src={selectedRequest.image_url} alt="รูปภาพปัญหา" className="rounded-lg max-h-40 object-cover" />
+                                        </div>
+                                    )}
+                                    <div>
+                                        <div className="text-sm text-gray-500">ผู้แจ้ง</div>
+                                        <div>{selectedRequest.reported_by}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-sm text-gray-500">วันที่แจ้ง</div>
+                                        <div>{new Date(selectedRequest.created_at).toLocaleString('th-TH')}</div>
+                                    </div>
+                                </div>
+
+                                {/* Right Column - Edit */}
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">สถานะ</label>
+                                        <select
+                                            value={editData.status}
+                                            onChange={(e) => setEditData({ ...editData, status: e.target.value })}
+                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                        >
+                                            <option value="pending">รอดำเนินการ</option>
+                                            <option value="in_progress">กำลังซ่อม</option>
+                                            <option value="completed">เสร็จแล้ว</option>
+                                            <option value="cancelled">ยกเลิก</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">ความเร่งด่วน</label>
+                                        <select
+                                            value={editData.priority}
+                                            onChange={(e) => setEditData({ ...editData, priority: e.target.value })}
+                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                        >
+                                            <option value="low">ต่ำ</option>
+                                            <option value="normal">ปกติ</option>
+                                            <option value="high">สูง</option>
+                                            <option value="urgent">เร่งด่วน</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">ผู้รับผิดชอบ/ช่าง</label>
+                                        <select
+                                            value={editData.assigned_to || ''}
+                                            onChange={(e) => setEditData({ ...editData, assigned_to: e.target.value })}
+                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                        >
+                                            <option value="">-- ไม่ระบุ --</option>
+                                            {Array.from(new Set([
+                                                ...technicians.map(t => t.name),
+                                                ...lineTechnicians.map(u => u.display_name)
+                                            ])).filter(Boolean).sort().map(name => (
+                                                <option key={name} value={name}>{name}</option>
+                                            ))}
+                                            {editData.assigned_to && !Array.from(new Set([...technicians.map(t => t.name), ...lineTechnicians.map(u => u.display_name)])).includes(editData.assigned_to) && (
+                                                <option value={editData.assigned_to}>{editData.assigned_to}</option>
+                                            )}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">วันที่นัดซ่อม</label>
+                                        <input
+                                            type="date"
+                                            value={editData.scheduled_date}
+                                            onChange={(e) => setEditData({ ...editData, scheduled_date: e.target.value })}
+                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">ค่าใช้จ่ายจริง (บาท)</label>
+                                        <input
+                                            type="number"
+                                            value={editData.actual_cost || ''}
+                                            onChange={(e) => setEditData({ ...editData, actual_cost: Number(e.target.value) })}
+                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                            placeholder="0"
+                                            min="0"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">หมายเหตุ</label>
+                                        <textarea
+                                            value={editData.notes}
+                                            onChange={(e) => setEditData({ ...editData, notes: e.target.value })}
+                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                            rows={2}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+
+                            {/* Parts Usage Section */}
+                            {parts.length > 0 && (
+                                <div className="mt-6 pt-4 border-t">
+                                    <h3 className="font-medium mb-3 flex items-center gap-2">
+                                        <Package size={18} /> รายการอะไหล่ที่เบิก
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {parts.map(part => (
+                                            <div key={part.part_id} className="bg-gray-50 dark:bg-slate-700/50 p-3 rounded-lg border border-gray-100 dark:border-slate-700">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div>
+                                                        <div className="font-medium">{part.product?.p_name || part.p_id}</div>
+                                                        <div className="text-sm text-gray-500">
+                                                            เบิก: {part.quantity} {part.unit || 'ชิ้น'} • โดย {part.withdrawn_by}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col items-end">
+                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium 
+                                                        ${part.status === 'withdrawn' ? 'bg-blue-100 text-blue-700' :
+                                                                part.status === 'pending_verification' ? 'bg-yellow-100 text-yellow-700' :
+                                                                    part.status === 'verified' ? 'bg-green-100 text-green-700' :
+                                                                        part.status === 'verification_failed' ? 'bg-red-100 text-red-700' :
+                                                                            part.status === 'defective' ? 'bg-red-100 text-red-700' :
+                                                                                part.status === 'returned' ? 'bg-gray-100 text-gray-700' :
+                                                                                    'bg-gray-100 text-gray-600'}`}>
+                                                            {part.status === 'withdrawn' ? 'เบิกแล้ว (รอใช้งาน)' :
+                                                                part.status === 'pending_verification' ? 'รอตรวจนับ' :
+                                                                    part.status === 'verified' ? 'ตรวจนับแล้ว' :
+                                                                        part.status === 'verification_failed' ? 'ตรวจนับไม่ตรง' :
+                                                                            part.status === 'defective' ? 'ของเสีย' :
+                                                                                part.status === 'returned' ? 'คืนสต็อก' : part.status}
+                                                        </span>
+                                                        {part.actual_used !== null && part.actual_used !== undefined && (
+                                                            <span className="text-xs text-gray-500 mt-1">ใช้จริง: {part.actual_used}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Technician Action: Confirm Usage */}
+                                                {part.status === 'withdrawn' && (session?.user as any)?.role !== 'store' && (
+                                                    <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                                                        {confirmingPartId === part.part_id ? (
+                                                            <div className="flex flex-col gap-2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        max={part.quantity}
+                                                                        value={confirmQty}
+                                                                        onChange={(e) => setConfirmQty(Number(e.target.value))}
+                                                                        className="w-20 px-2 py-1 border rounded text-sm"
+                                                                        placeholder="จำนวน"
+                                                                    />
+                                                                    <span className="text-sm text-gray-600">ที่ใช้จริง</span>
+                                                                    <label className="flex items-center gap-1 text-sm text-red-600 ml-2">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={isDefective}
+                                                                            onChange={(e) => setIsDefective(e.target.checked)}
+                                                                            className="w-4 h-4"
+                                                                        />
+                                                                        เป็นของเสีย
+                                                                    </label>
+                                                                </div>
+                                                                <div className="flex gap-2">
+                                                                    <button
+                                                                        onClick={() => handleConfirmUsage(part.part_id)}
+                                                                        className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                                                                    >
+                                                                        ยืนยัน
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setConfirmingPartId(null);
+                                                                            setIsDefective(false);
+                                                                        }}
+                                                                        className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300"
+                                                                    >
+                                                                        ยกเลิก
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setConfirmingPartId(part.part_id);
+                                                                    setConfirmQty(part.quantity); // Default to full amount
+                                                                    setIsDefective(false);
+                                                                }}
+                                                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                                            >
+                                                                <Wrench size={12} /> รายงานการใช้
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Store Action: Verify */}
+                                                {part.status === 'pending_verification' && ((session?.user as any)?.role === 'store' || (session?.user as any)?.role === 'admin') && (
+                                                    <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600 bg-yellow-50/50 dark:bg-yellow-900/10 -mx-3 px-3 pb-2 rounded-b-lg">
+                                                        {verifyingPartId === part.part_id ? (
+                                                            <div className="flex flex-col gap-2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        value={verifyQty}
+                                                                        onChange={(e) => setVerifyQty(Number(e.target.value))}
+                                                                        className="w-20 px-2 py-1 border rounded text-sm"
+                                                                        placeholder="จำนวน"
+                                                                    />
+                                                                    <span className="text-sm text-gray-600">นับได้จริง</span>
+                                                                </div>
+                                                                <div className="flex gap-2">
+                                                                    <button
+                                                                        onClick={() => handleVerifyPart(part.part_id)}
+                                                                        className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+                                                                    >
+                                                                        ยืนยันถูกต้อง
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setVerifyingPartId(null)}
+                                                                        className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300"
+                                                                    >
+                                                                        ยกเลิก
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setVerifyingPartId(part.part_id);
+                                                                    setVerifyQty(part.actual_used || 0); // Default to reported amount
+                                                                }}
+                                                                className="text-xs text-yellow-700 hover:text-yellow-900 flex items-center gap-1 font-medium"
+                                                            >
+                                                                <CheckCircle size={12} /> ตรวจนับสินค้า
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Completion Details */}
+                            {selectedRequest.status === 'completed' && (
+                                <div className="mt-6 pt-4 border-t">
+                                    <h3 className="font-medium mb-3 flex items-center gap-2">
+                                        <CheckCircle size={18} className="text-green-600" /> ข้อมูลการซ่อมเสร็จสิ้น
+                                    </h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {selectedRequest.completion_image_url && (
+                                            <div>
+                                                <div className="text-sm text-gray-500 mb-2">รูปถ่ายหลังซ่อมเสร็จ</div>
+                                                <a href={selectedRequest.completion_image_url} target="_blank" rel="noopener noreferrer">
+                                                    <img src={selectedRequest.completion_image_url} alt="Completion" className="rounded-lg w-full max-h-48 object-cover border hover:opacity-90 transition" />
+                                                </a>
+                                            </div>
+                                        )}
+                                        <div className="space-y-4">
+                                            {selectedRequest.technician_signature && (
+                                                <div>
+                                                    <div className="text-sm text-gray-500 mb-2">ลายเซ็นช่างผู้ซ่อม</div>
+                                                    <div className="bg-white border rounded-lg p-2 flex items-center justify-center min-h-[100px]">
+                                                        <img src={selectedRequest.technician_signature} alt="Technician Signature" className="max-h-24 object-contain" />
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {selectedRequest.customer_signature && (
+                                                <div>
+                                                    <div className="text-sm text-gray-500 mb-2">ลายเซ็นลูกค้ารับงาน</div>
+                                                    <div className="bg-white border rounded-lg p-2 flex items-center justify-center min-h-[100px]">
+                                                        <img src={selectedRequest.customer_signature} alt="Customer Signature" className="max-h-24 object-contain" />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* History */}
+                            {historyItems.length > 0 && (
+                                <div className="mt-6 pt-4 border-t">
+                                    <h3 className="font-medium mb-3 flex items-center gap-2">
+                                        <History size={18} /> ประวัติการเปลี่ยนแปลง
+                                    </h3>
+                                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                                        {historyItems.map(h => (
+                                            <div key={h.history_id} className="text-sm flex justify-between bg-gray-50 dark:bg-slate-700/50 px-3 py-2 rounded">
+                                                <div>
+                                                    <span className="font-medium">{h.action}</span>
+                                                    {h.old_value && h.new_value && (
+                                                        <span className="text-gray-500"> ({h.old_value} → {h.new_value})</span>
+                                                    )}
+                                                </div>
+                                                <div className="text-gray-500">
+                                                    {h.changed_by} • {new Date(h.changed_at).toLocaleString('th-TH')}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex gap-2 pt-6">
+                                <button
+                                    onClick={() => setShowDetailModal(false)}
+                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700"
+                                >
+                                    ปิด
+                                </button>
+
+                                {(session?.user as any)?.role === 'manager' && ['completed', 'cancelled'].includes(selectedRequest.status) && (
+                                    <button
+                                        onClick={() => {
+                                            setReopenRequest(selectedRequest);
+                                            setShowReopenModal(true);
+                                        }}
+                                        className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center justify-center gap-2"
+                                        title="Manager Override"
+                                    >
+                                        <AlertTriangle size={18} />
+                                        เปิดงานใหม่ (Manager)
+                                    </button>
+                                )}
+
+                                {!['completed', 'cancelled'].includes(selectedRequest.status) && (
+                                    <button
+                                        onClick={handleUpdateRequest}
+                                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                                    >
+                                        บันทึกการเปลี่ยนแปลง
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+
+
+            {/* Status Change Confirmation Modal */}
+            {
+                showStatusModal && statusChangeData.request && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-lg mx-4 shadow-2xl overflow-hidden">
+                            {/* Modal Header */}
+                            <div className={`p-5 ${statusChangeData.newStatus === 'in_progress'
+                                ? 'bg-gradient-to-r from-blue-500 to-blue-600'
+                                : statusChangeData.newStatus === 'completed'
+                                    ? 'bg-gradient-to-r from-green-500 to-emerald-600'
+                                    : 'bg-gradient-to-r from-gray-500 to-gray-600'
+                                }`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-white/20 rounded-lg">
+                                        {statusChangeData.newStatus === 'in_progress' ? (
+                                            <Wrench className="text-white" size={24} />
+                                        ) : statusChangeData.newStatus === 'completed' ? (
+                                            <CheckCircle className="text-white" size={24} />
+                                        ) : (
+                                            <Clock className="text-white" size={24} />
+                                        )}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-bold text-white">
+                                            {statusChangeData.newStatus === 'in_progress' && 'เริ่มดำเนินการซ่อม'}
+                                            {statusChangeData.newStatus === 'completed' && 'ยืนยันการซ่อมเสร็จ'}
+                                            {statusChangeData.newStatus === 'pending' && 'ยืนยันการเปลี่ยนสถานะ'}
+                                        </h3>
+                                        <p className="text-white/80 text-sm">
+                                            ใบงาน: {statusChangeData.request.request_number}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div className="p-5 space-y-4">
+                                {/* Request Summary */}
+                                <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-4">
+                                    <h4 className="font-semibold text-gray-900 dark:text-white mb-2">
+                                        {statusChangeData.request.title}
+                                    </h4>
+                                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                                        สถานที่: {statusChangeData.request.tbl_rooms.room_name} ({statusChangeData.request.tbl_rooms.room_code})
+                                    </p>
+                                    {statusChangeData.request.description && (
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                            {statusChangeData.request.description}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* In Progress: Technician & Schedule Selection */}
+                                {statusChangeData.newStatus === 'in_progress' && (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                ช่างที่รับผิดชอบ <span className="text-red-500">*</span>
+                                            </label>
+                                            <select
+                                                value={statusChangeData.technician}
+                                                onChange={(e) => setStatusChangeData({ ...statusChangeData, technician: e.target.value })}
+                                                className="w-full border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2.5 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                title="เลือกช่าง"
+                                            >
+                                                <option value="">-- เลือกช่าง --</option>
+                                                {Array.from(new Set([
+                                                    ...technicians.map(t => t.name),
+                                                    ...lineTechnicians.map(u => u.display_name)
+                                                ])).filter(Boolean).sort().map(name => (
+                                                    <option key={name} value={name}>{name}</option>
+                                                ))}
+                                                {statusChangeData.technician && !Array.from(new Set([...technicians.map(t => t.name), ...lineTechnicians.map(u => u.display_name)])).includes(statusChangeData.technician) && (
+                                                    <option value={statusChangeData.technician}>{statusChangeData.technician}</option>
+                                                )}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                วันที่คาดว่าจะเสร็จ <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="date"
+                                                value={statusChangeData.scheduledDate}
+                                                onChange={(e) => setStatusChangeData({ ...statusChangeData, scheduledDate: e.target.value })}
+                                                className="w-full border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2.5 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                title="เลือกวันที่"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Completed: Summary */}
+                                {statusChangeData.newStatus === 'completed' && (
+                                    <div className="space-y-4">
+                                        {/* Work Summary */}
+                                        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                                            <h4 className="font-medium text-green-800 dark:text-green-300 mb-2 flex items-center gap-2">
+                                                <CheckCircle size={16} />
+                                                สรุปการซ่อม
+                                            </h4>
+                                            <div className="text-sm text-green-700 dark:text-green-400 space-y-1">
+                                                <p>• ช่างผู้ดำเนินการ: {statusChangeData.request.assigned_to || '-'}</p>
+                                                <p>• วันที่กำหนด: {statusChangeData.request.scheduled_date
+                                                    ? new Date(statusChangeData.request.scheduled_date).toLocaleDateString('th-TH')
+                                                    : '-'}
+                                                </p>
+                                                {statusChangeData.request.estimated_cost && statusChangeData.request.estimated_cost > 0 && (
+                                                    <p>• ค่าใช้จ่ายประมาณ: ฿{Number(statusChangeData.request.estimated_cost).toLocaleString()}</p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Parts Used (if any) */}
+                                        {partRequestsForSummary.length > 0 && (
+                                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                                                <h4 className="font-medium text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-2">
+                                                    <ShoppingCart size={16} />
+                                                    อะไหล่ที่เบิก
+                                                </h4>
+                                                <ul className="text-sm text-blue-700 dark:text-blue-400 space-y-1">
+                                                    {partRequestsForSummary.map((part, idx) => (
+                                                        <li key={idx}>• {part.item_name} x{part.quantity}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        {/* Parts Used Selection (Dynamic) */}
+                                        <div className="bg-gray-50 dark:bg-slate-700/50 border border-gray-200 dark:border-slate-600 rounded-lg p-4 space-y-3">
+                                            <h4 className="font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                                                <ShoppingCart size={16} />
+                                                เพิ่มอะไหล่ที่ใช้ (ถ้ามี)
+                                            </h4>
+                                            {statusChangeData.partsUsed.map((part, index) => {
+                                                const product = products.find(p => p.p_id === part.p_id);
+                                                const avail = product ? product.p_count : 0;
+                                                return (
+                                                    <div key={index} className="flex flex-wrap items-center gap-2 bg-white dark:bg-slate-800 p-2 rounded-lg border dark:border-slate-600">
+                                                        <span className="flex-1 text-sm font-medium">{product?.p_name || part.p_id}</span>
+                                                        <div className="flex items-center gap-1">
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                max={avail}
+                                                                value={part.quantity}
+                                                                onChange={(e) => {
+                                                                    const newParts = [...statusChangeData.partsUsed];
+                                                                    let val = parseInt(e.target.value) || 1;
+                                                                    if (val > avail) val = avail;
+                                                                    newParts[index].quantity = val;
+                                                                    setStatusChangeData({ ...statusChangeData, partsUsed: newParts });
+                                                                }}
+                                                                className="w-16 px-2 py-1 text-sm border rounded dark:bg-slate-700 dark:border-slate-600 text-center"
+                                                            />
+                                                            <span className="text-sm text-gray-500">/{avail}</span>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const newParts = [...statusChangeData.partsUsed];
+                                                                newParts.splice(index, 1);
+                                                                setStatusChangeData({ ...statusChangeData, partsUsed: newParts });
+                                                            }}
+                                                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded-lg transition"
+                                                        >
+                                                            &times;
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                            <div className="flex gap-2 items-center">
+                                                <select
+                                                    className="flex-1 text-sm border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 bg-white"
+                                                    onChange={(e) => {
+                                                        const p_id = e.target.value;
+                                                        if (!p_id) return;
+                                                        if (statusChangeData.partsUsed.some(p => p.p_id === p_id)) return; // prevent duplicate
+                                                        setStatusChangeData({
+                                                            ...statusChangeData,
+                                                            partsUsed: [...statusChangeData.partsUsed, { p_id, quantity: 1, notes: 'เพิ่มตอนซ่อมเสร็จ' }]
+                                                        });
+                                                        e.target.value = ""; // reset
+                                                    }}
+                                                >
+                                                    <option value="">+ เลือกอะไหล่</option>
+                                                    {products.filter(p => !statusChangeData.partsUsed.some(pu => pu.p_id === p.p_id) && (p.available_stock ?? p.p_count) > 0).map(p => (
+                                                        <option key={p.p_id} value={p.p_id}>{p.p_name} (คงเหลือ {p.available_stock ?? p.p_count})</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* Completion Photo */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                รูปถ่ายหลังซ่อมเสร็จ
+                                            </label>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0] || null;
+                                                    setStatusChangeData({ ...statusChangeData, completionPhoto: file });
+                                                }}
+                                                className="w-full border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 focus:ring-2 focus:ring-green-500"
+                                            />
+                                        </div>
+
+                                        {/* Completion Notes */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                หมายเหตุการซ่อม
+                                            </label>
+                                            <textarea
+                                                value={statusChangeData.completionNotes}
+                                                onChange={(e) => setStatusChangeData({ ...statusChangeData, completionNotes: e.target.value })}
+                                                className="w-full border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2.5 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                                rows={3}
+                                                placeholder="รายละเอียดเพิ่มเติมเกี่ยวกับการซ่อม..."
+                                            />
+                                        </div>
+
+                                        {/* Signatures */}
+                                        <div className="space-y-4 pt-2">
+                                            <SignaturePad
+                                                label="ลายเซ็นช่างผู้ซ่อม *"
+                                                onSignatureChange={(sig) => setStatusChangeData({ ...statusChangeData, technicianSignature: sig })}
+                                            />
+                                            <SignaturePad
+                                                label="ลายเซ็นลูกค้ารับงาน *"
+                                                onSignatureChange={(sig) => setStatusChangeData({ ...statusChangeData, customerSignature: sig })}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="p-5 border-t dark:border-slate-700 flex gap-3">
+                                <button
+                                    onClick={() => setShowStatusModal(false)}
+                                    className="flex-1 px-4 py-2.5 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 font-medium transition"
+                                >
+                                    ยกเลิก
+                                </button>
+                                <button
+                                    onClick={confirmStatusChange}
+                                    className={`flex-1 px-4 py-2.5 text-white rounded-lg font-medium transition flex items-center justify-center gap-2 ${statusChangeData.newStatus === 'in_progress'
+                                        ? 'bg-blue-600 hover:bg-blue-700'
+                                        : statusChangeData.newStatus === 'completed'
+                                            ? 'bg-green-600 hover:bg-green-700'
+                                            : 'bg-gray-600 hover:bg-gray-700'
+                                        }`}
+                                >
+                                    {statusChangeData.newStatus === 'in_progress' && (
+                                        <>
+                                            <Wrench size={18} />
+                                            เริ่มซ่อม
+                                        </>
+                                    )}
+                                    {statusChangeData.newStatus === 'completed' && (
+                                        <>
+                                            <CheckCircle size={18} />
+                                            ยืนยันเสร็จสิ้น
+                                        </>
+                                    )}
+                                    {statusChangeData.newStatus === 'pending' && 'ยืนยัน'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {showPartRequestModal && selectedRequest && (
+                <PartRequestModal
+                    maintenanceId={selectedRequest.request_id}
+                    requestNumber={selectedRequest.request_number}
+                    onClose={() => setShowPartRequestModal(false)}
+                />
+            )}
+
+            {showReopenModal && reopenRequest && (
+                <ReopenModal
+                    request={reopenRequest}
+                    onClose={() => setShowReopenModal(false)}
+                    onConfirm={() => {
+                        setShowReopenModal(false);
+                        setShowDetailModal(false);
+                        loadData();
+                        showToast('เปิดงานซ่อมใหม่เรียบร้อยแล้ว', 'success');
+                    }}
+                />
+            )}
+
 
         </div >
     );
 }
 
-// Helper Components remain the same...
 function PartRequestModal({
     maintenanceId,
     onClose,
@@ -1889,8 +2634,96 @@ function PartRequestModal({
     onClose: () => void;
     requestNumber: string;
 }) {
-    // Implementation remains the same...
-    return null;
+    const [formData, setFormData] = useState({
+        item_name: '',
+        description: '',
+        quantity: 1
+    });
+
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        if (!formData.item_name) return;
+
+        const submitData = new FormData();
+        submitData.append('maintenance_id', maintenanceId.toString());
+        submitData.append('item_name', formData.item_name);
+        submitData.append('description', formData.description);
+        submitData.append('quantity', formData.quantity.toString());
+        submitData.append('department', '');
+        submitData.append('date_needed', '');
+        submitData.append('priority', 'normal');
+        submitData.append('estimated_price', '0');
+        submitData.append('supplier', '');
+        submitData.append('quotation_link', '');
+
+        const result = await createPartRequest(submitData);
+
+        if (result.success) {
+            alert('บันทึกคำขอเรียบร้อยแล้ว');
+            onClose();
+        } else {
+            alert('เกิดข้อผิดพลาด: ' + result.error);
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 w-full max-w-md shadow-xl border dark:border-slate-700">
+                <h2 className="text-xl font-bold mb-2">ขอซื้ออะไหล่เพิ่ม</h2>
+                <p className="text-sm text-gray-500 mb-4">สำหรับใบงาน: {requestNumber}</p>
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium mb-1">ชื่อสินค้า/อะไหล่ *</label>
+                        <input
+                            type="text"
+                            value={formData.item_name}
+                            onChange={(e) => setFormData({ ...formData, item_name: e.target.value })}
+                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                            placeholder="ระบุชื่ออะไหล่"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">รายละเอียด/สเปค</label>
+                        <textarea
+                            value={formData.description}
+                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                            rows={2}
+                            placeholder="รุ่น, ยี่ห้อ, ขนาด..."
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">จำนวน *</label>
+                        <input
+                            type="number"
+                            value={formData.quantity}
+                            onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
+                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                            min="1"
+                            required
+                        />
+                    </div>
+                    <div className="flex gap-2 pt-4">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700"
+                        >
+                            ยกเลิก
+                        </button>
+                        <button
+                            type="submit"
+                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        >
+                            ยืนยัน
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
 }
 
 function ReopenModal({
@@ -1902,6 +2735,87 @@ function ReopenModal({
     onClose: () => void;
     onConfirm: () => void;
 }) {
-    // Implementation remains the same...
-    return null;
+    const [reason, setReason] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+
+        const result = await reopenMaintenanceRequest(request.request_id, reason, password);
+
+        setLoading(false);
+
+        if (result.success) {
+            onConfirm();
+        } else {
+            setError(result.error || 'Failed to reopen');
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70]">
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-6 w-full max-w-sm shadow-xl border dark:border-slate-700">
+                <h2 className="text-xl font-bold mb-2 text-red-600 flex items-center gap-2">
+                    <AlertTriangle size={24} />
+                    Manager Override
+                </h2>
+                <p className="text-sm text-gray-500 mb-4">
+                    เปิดงานซ่อม <b>#{request.request_number}</b> ใหม่อีกครั้ง
+                </p>
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    {error && (
+                        <div className="p-3 bg-red-100 text-red-700 text-sm rounded-lg">
+                            {error}
+                        </div>
+                    )}
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">สาเหตุการเปิดใหม่</label>
+                        <textarea
+                            value={reason}
+                            onChange={e => setReason(e.target.value)}
+                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 resize-none focus:ring-2 focus:ring-red-500 outline-none"
+                            placeholder="ระบุสาเหตุ..."
+                            required
+                            rows={3}
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">Master Password</label>
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 focus:ring-2 focus:ring-red-500 outline-none"
+                            placeholder="รหัสผ่านผู้ดูแล"
+                            required
+                        />
+                    </div>
+
+                    <div className="flex gap-2 pt-2 border-t dark:border-slate-700 mt-4">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700"
+                        >
+                            ยกเลิก
+                        </button>
+                        <button
+                            type="submit"
+                            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-medium"
+                            disabled={loading}
+                        >
+                            {loading ? 'กำลังดำเนินการ...' : 'ยืนยันเปิดใหม่'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
 }
