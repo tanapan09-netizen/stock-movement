@@ -66,6 +66,46 @@ export async function createRoom(data: {
     }
 }
 
+export async function createRoomsBulk(roomsData: any[]) {
+    try {
+        const session = await auth();
+        if (!session) return { success: false, error: 'Unauthorized' };
+
+        const created = await prisma.tbl_rooms.createMany({
+            data: roomsData.map(r => ({
+                room_code: r.room_code,
+                room_name: r.room_name,
+                room_type: r.room_type || null,
+                building: r.building || null,
+                floor: r.floor || null,
+                zone: r.zone || null,
+                active: true
+            })),
+            skipDuplicates: false,
+        });
+
+        await logSystemAction(
+            'CREATE',
+            'Room',
+            0,
+            `Bulk created ${created.count} rooms/zones`,
+            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
+            session?.user?.name || 'Unknown',
+            'unknown'
+        );
+
+        revalidatePath('/maintenance');
+        revalidatePath('/admin/rooms');
+        return { success: true, count: created.count };
+    } catch (error: any) {
+        console.error('Error bulk creating rooms:', error);
+        if (error?.code === 'P2002') {
+            return { success: false, error: 'พบรหัสซ้ำในรายการที่กำลังเพิ่ม หรือมีรหัสนี้อยู่ในระบบแล้ว' };
+        }
+        return { success: false, error: `เพิ่มข้อมูลไม่สำเร็จ: ${error?.message || 'ข้อผิดพลาดไม่ทราบสาเหตุ'}` };
+    }
+}
+
 // Get ALL rooms (including inactive) for admin management
 export async function getAllRooms() {
     try {

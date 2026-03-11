@@ -26,11 +26,15 @@ export async function createUser(formData: FormData) {
         return { error: 'Unauthorized: Admin access required' };
     }
 
+    const usernameTrim = username.trim();
+    const emailTrim = email?.trim();
+    const lineIdTrim = line_user_id?.trim();
+
     const rawData = {
-        username,
+        username: usernameTrim,
         role,
-        email: email === '' ? null : email,
-        line_user_id: line_user_id === '' ? null : line_user_id,
+        email: emailTrim === '' ? null : emailTrim,
+        line_user_id: lineIdTrim === '' ? null : lineIdTrim,
     };
 
     try {
@@ -78,9 +82,10 @@ export async function createUser(formData: FormData) {
             return { error: 'Username นี้มีอยู่ในระบบแล้ว' };
         }
         if (error.message && error.message.includes('Validation Error')) {
+            // Keep the specific validation error message if it exists
             return { error: error.message };
         }
-        return { error: 'เพิ่มผู้ใช้งานล้มเหลว' };
+        return { error: 'เพิ่มผู้ใช้งานล้มเหลว: ' + (error.message || 'Error') };
     }
 
     revalidatePath('/roles');
@@ -95,8 +100,10 @@ export async function updateUser(formData: FormData) {
     const rawLineId = formData.get('line_user_id') as string;
     const isApproverVal = formData.get('is_approver');
 
-    const email = rawEmail === '' ? null : rawEmail;
-    const line_user_id = rawLineId === '' ? null : rawLineId;
+    const emailTrim = rawEmail?.trim();
+    const lineIdTrim = rawLineId?.trim();
+    const email = emailTrim === '' ? null : emailTrim;
+    const line_user_id = lineIdTrim === '' ? null : lineIdTrim;
     const is_approver_form = isApproverVal === 'true' || isApproverVal === 'on';
 
     if (!p_id || !role) {

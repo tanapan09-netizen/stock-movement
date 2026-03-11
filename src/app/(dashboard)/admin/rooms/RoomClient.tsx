@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { getAllRooms, createRoom, updateRoom, deleteRoom, toggleRoomActive } from '@/actions/maintenanceActions';
+import { getAllRooms, createRoom, createRoomsBulk, updateRoom, deleteRoom, toggleRoomActive } from '@/actions/maintenanceActions';
 import Swal from 'sweetalert2';
 
 // --- Types ---
@@ -235,8 +235,9 @@ function ZoneRow({ zone, onDelete, onEdit, onDetail }: {
 }
 
 // ---- RoomRow ----
-function RoomRow({ room, onDelete, onAddZone, onEdit, onDetail, expandAll }: {
+function RoomRow({ room, onDelete, onAddZone, onAddZonesBulk, onEdit, onDetail, expandAll }: {
     room: RoomNode; onDelete: (rid: number) => void; onAddZone: (room: RoomNode, code: string, name: string) => void;
+    onAddZonesBulk: (room: RoomNode, text: string) => void;
     onEdit: (id: number, level: string, code: string, name: string) => void; onDetail: (level: string, code: string, name: string, originalId?: number, active?: boolean, children?: any) => void;
     expandAll: boolean;
 }) {
@@ -263,6 +264,22 @@ function RoomRow({ room, onDelete, onAddZone, onEdit, onDetail, expandAll }: {
                     <button onClick={e => { e.stopPropagation(); onDetail("room", room.code, room.name, room.originalId, room.active, room.zones); }} style={iconBtnStyle("#3b82f6")} title="ดูรายละเอียด">👁️</button>
                     <button onClick={e => { e.stopPropagation(); if (room.originalId) onEdit(room.originalId, "room", room.code, room.name); }} style={iconBtnStyle("#f59e0b")} title="แก้ไข">✏️</button>
                     <button onClick={e => { e.stopPropagation(); setModal(true); }} style={{ padding: "4px 10px", borderRadius: 7, border: `1.5px solid ${col.accent}`, background: col.light, color: col.accent, cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 600, fontSize: 11 }}> + โซน </button>
+                    <button onClick={e => {
+                        e.stopPropagation();
+                        Swal.fire({
+                            title: 'เพิ่มโซนแบบรวดเร็ว',
+                            input: 'textarea',
+                            inputPlaceholder: 'กรอกชื่อโซน แยกด้วยเครื่องหมายจุลภาค (,) เช่น A, B, C',
+                            showCancelButton: true,
+                            confirmButtonText: 'บันทึก',
+                            cancelButtonText: 'ยกเลิก',
+                            confirmButtonColor: col.accent,
+                        }).then((result) => {
+                            if (result.isConfirmed && result.value) {
+                                onAddZonesBulk(room, result.value);
+                            }
+                        });
+                    }} style={{ padding: "4px 10px", borderRadius: 7, border: `1.5px solid ${col.accent}`, background: "#fff", color: col.accent, cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 600, fontSize: 11, marginLeft: 4 }}> Bulk </button>
                     <button onClick={e => { e.stopPropagation(); if (room.originalId) { onDelete(room.originalId) } }} style={iconBtnStyle("#ef4444")} title="ลบห้องนี้">🗑️</button>
                     <span onClick={() => setOpen(v => !v)} style={{ color: "#94a3b8", fontSize: 16, userSelect: "none", cursor: "pointer" }}>{open ? "▴" : "▾"}</span>
                 </div>
@@ -278,8 +295,10 @@ function RoomRow({ room, onDelete, onAddZone, onEdit, onDetail, expandAll }: {
 }
 
 // ---- FloorRow ----
-function FloorRow({ floor, onDelete, onAddRoom, onAddZone, onEdit, onDetail, expandAll }: {
-    floor: FloorNode; onDelete: (id: number) => void; onAddRoom: (floor: FloorNode, c: string, n: string) => void; onAddZone: (room: RoomNode, c: string, n: string) => void;
+function FloorRow({ floor, onDelete, onAddRoom, onAddZone, onAddZonesBulk, onEdit, onDetail, expandAll }: {
+    floor: FloorNode; onDelete: (id: number) => void; onAddRoom: (floor: FloorNode, c: string, n: string) => void;
+    onAddZone: (room: RoomNode, c: string, n: string) => void;
+    onAddZonesBulk: (room: RoomNode, text: string) => void;
     onEdit: (id: number, level: string, code: string, name: string) => void; onDetail: (level: string, code: string, name: string, originalId?: number, active?: boolean, children?: any) => void;
     expandAll: boolean;
 }) {
@@ -315,7 +334,7 @@ function FloorRow({ floor, onDelete, onAddRoom, onAddZone, onEdit, onDetail, exp
             </div>
             {open && floor.rooms.length > 0 && (
                 <div style={{ background: "#f8fafc", border: `1.5px solid ${col.accent}`, borderTop: "none", borderRadius: "0 0 10px 10px", padding: "8px 8px 4px" }}>
-                    {floor.rooms.map(r => (<RoomRow key={r.id} room={r} onDelete={onDelete} onAddZone={onAddZone} onEdit={onEdit} onDetail={onDetail} expandAll={expandAll} />))}
+                    {floor.rooms.map(r => (<RoomRow key={r.id} room={r} onDelete={onDelete} onAddZone={onAddZone} onAddZonesBulk={onAddZonesBulk} onEdit={onEdit} onDetail={onDetail} expandAll={expandAll} />))}
                 </div>
             )}
             {modal && (<AddModal level="room" parentName={`${floor.code} ${floor.name}`} onAdd={(c, n) => { onAddRoom(floor, c, n); setModal(false); setOpen(true); }} onClose={() => setModal(false)} />)}
@@ -324,8 +343,11 @@ function FloorRow({ floor, onDelete, onAddRoom, onAddZone, onEdit, onDetail, exp
 }
 
 // ---- TypeRow ----
-function TypeRow({ type, onDelete, onAddFloor, onAddRoom, onAddZone, onEdit, onDetail, expandAll }: {
-    type: TypeNode; onDelete: (id: number) => void; onAddFloor: (type: TypeNode, c: string, n: string) => void; onAddRoom: (floor: FloorNode, c: string, n: string) => void; onAddZone: (room: RoomNode, c: string, n: string) => void;
+function TypeRow({ type, onDelete, onAddFloor, onAddRoom, onAddZone, onAddZonesBulk, onEdit, onDetail, expandAll }: {
+    type: TypeNode; onDelete: (id: number) => void; onAddFloor: (type: TypeNode, c: string, n: string) => void;
+    onAddRoom: (floor: FloorNode, c: string, n: string) => void;
+    onAddZone: (room: RoomNode, c: string, n: string) => void;
+    onAddZonesBulk: (room: RoomNode, text: string) => void;
     onEdit: (id: number, level: string, code: string, name: string) => void; onDetail: (level: string, code: string, name: string, originalId?: number, active?: boolean, children?: any) => void;
     expandAll: boolean;
 }) {
@@ -363,7 +385,7 @@ function TypeRow({ type, onDelete, onAddFloor, onAddRoom, onAddZone, onEdit, onD
             </div>
             {open && type.floors.length > 0 && (
                 <div style={{ background: "#fff", border: `1.5px solid ${col.accent}44`, borderTop: "none", borderRadius: "0 0 12px 12px", padding: "10px 10px 6px" }}>
-                    {type.floors.map(floor => (<FloorRow key={floor.id} floor={floor} onDelete={onDelete} onAddRoom={onAddRoom} onAddZone={onAddZone} onEdit={onEdit} onDetail={onDetail} expandAll={expandAll} />))}
+                    {type.floors.map(floor => (<FloorRow key={floor.id} floor={floor} onDelete={onDelete} onAddRoom={onAddRoom} onAddZone={onAddZone} onAddZonesBulk={onAddZonesBulk} onEdit={onEdit} onDetail={onDetail} expandAll={expandAll} />))}
                 </div>
             )}
             {modal && (<AddModal level="floor" parentName={`${type.code} ${type.name}`} onAdd={(c, n) => { onAddFloor(type, c, n); setModal(false); setOpen(true); }} onClose={() => setModal(false)} />)}
@@ -567,12 +589,37 @@ export default function RoomManagement() {
             room_type: tCode,
             floor: fCode,
             building: room.code,
-            room_code: zCode,
+            room_code: `${room.code}-${zCode.toUpperCase()}`,
             room_name: zName,
-            zone: zCode
+            zone: zCode.toUpperCase()
         });
         if (res.success) {
             showToast('success', 'เพิ่มโซนใหม่เรียบร้อยแล้ว');
+            loadData();
+        } else showToast('error', res.error || 'บันทึกไม่สำเร็จ');
+    };
+
+    const handleCreateZonesBulk = async (room: RoomNode, zonesText: string) => {
+        const parts = room.id.split('_');
+        const tCode = parts[1];
+        const fCode = parts[2];
+
+        const zoneList = zonesText.split(',').map(z => z.trim()).filter(z => z !== '');
+
+        if (zoneList.length === 0) return;
+
+        const roomsData = zoneList.map(z => ({
+            room_type: tCode,
+            floor: fCode,
+            building: room.code,
+            room_code: `${room.code}-${z.toUpperCase()}`,
+            room_name: z,
+            zone: z.toUpperCase()
+        }));
+
+        const res = await createRoomsBulk(roomsData);
+        if (res.success) {
+            showToast('success', `เพิ่ม ${res.count} โซนเรียบร้อยแล้ว`);
             loadData();
         } else showToast('error', res.error || 'บันทึกไม่สำเร็จ');
     };
@@ -702,6 +749,7 @@ export default function RoomManagement() {
                             onAddFloor={handleCreateFloor}
                             onAddRoom={handleCreateRoom}
                             onAddZone={handleCreateZone}
+                            onAddZonesBulk={handleCreateZonesBulk}
                             onEdit={openEdit}
                             onDetail={openDetail}
                             expandAll={expandAll}
