@@ -8,15 +8,15 @@ import { auth } from '@/auth';
 import { validateData, updateUserSchema } from '@/lib/validation';
 
 export async function createUser(formData: FormData) {
-    const rawData = {
-        username: formData.get('username') as string,
-        password: formData.get('password') as string,
-        role: formData.get('role') as string,
-        email: formData.get('email') as string | null,
-        line_user_id: formData.get('line_user_id') as string | null,
-    };
+    const username = formData.get('username') as string;
+    const password = formData.get('password') as string;
+    const role = formData.get('role') as string;
+    const email = formData.get('email') as string;
+    const line_user_id = formData.get('line_user_id') as string;
+    const is_approver_form = formData.get('is_approver') === 'true';
 
-    if (!rawData.username || !rawData.password || !rawData.role) {
+    // Basic required check
+    if (!username || !password || !role) {
         return { error: 'กรุณากรอกข้อมูลให้ครบถ้วน' };
     }
 
@@ -26,18 +26,27 @@ export async function createUser(formData: FormData) {
         return { error: 'Unauthorized: Admin access required' };
     }
 
+    const rawData = {
+        username,
+        role,
+        email: email === '' ? null : email,
+        line_user_id: line_user_id === '' ? null : line_user_id,
+    };
+
     try {
+        // Validate basic fields
         const validData = validateData(updateUserSchema, rawData, 'User');
 
-        const hashedPassword = await bcrypt.hash(rawData.password, 10);
+        // Hash password separately since it's not in the updateUserSchema
+        const hashedPassword = await bcrypt.hash(password, 10);
 
         // Map role to role_id
         let role_id = 3;
-        let is_approver = formData.get('is_approver') === 'true';
+        let is_approver = is_approver_form;
 
         if (validData.role === 'admin') { role_id = 1; is_approver = true; }
         if (validData.role === 'manager') { role_id = 2; is_approver = true; }
-        if (validData.role === 'technician') role_id = 4; // Assuming IDs
+        if (validData.role === 'technician') role_id = 4;
         if (validData.role === 'accounting') role_id = 5;
         if (validData.role === 'purchasing') role_id = 6;
         if (validData.role === 'operation') role_id = 7;
@@ -54,7 +63,6 @@ export async function createUser(formData: FormData) {
             },
         });
 
-        // const session = await auth();
         await logSystemAction(
             'CREATE',
             'User',
@@ -69,6 +77,9 @@ export async function createUser(formData: FormData) {
         if (error.code === 'P2002') {
             return { error: 'Username นี้มีอยู่ในระบบแล้ว' };
         }
+        if (error.message && error.message.includes('Validation Error')) {
+            return { error: error.message };
+        }
         return { error: 'เพิ่มผู้ใช้งานล้มเหลว' };
     }
 
@@ -80,9 +91,12 @@ export async function updateUser(formData: FormData) {
     const p_id = parseInt(formData.get('p_id') as string);
     const role = formData.get('role') as string;
     const password = formData.get('password') as string; // Optional
-    const email = formData.get('email') as string | null;
-    const line_user_id = formData.get('line_user_id') as string | null;
+    const rawEmail = formData.get('email') as string;
+    const rawLineId = formData.get('line_user_id') as string;
     const isApproverVal = formData.get('is_approver');
+
+    const email = rawEmail === '' ? null : rawEmail;
+    const line_user_id = rawLineId === '' ? null : rawLineId;
     const is_approver_form = isApproverVal === 'true' || isApproverVal === 'on';
 
     if (!p_id || !role) {

@@ -1530,7 +1530,7 @@ export async function completeMaintenanceWithParts(request_id: number, changed_b
     try {
         // Find all parts that are withdrawn (pending use)
         const withdrawnParts = await prisma.tbl_maintenance_parts.findMany({
-            where: { request_id, status: 'withdrawn' }
+            where: { request_id, status: { in: ['withdrawn', 'verified'] } }
         });
 
         // Process each part: Mark as used and DEDUCT stock
@@ -1630,9 +1630,9 @@ export async function submitRepairCompletion(formData: FormData) {
         const partsUsed: { p_id: string; quantity: number; notes?: string }[] = parts_used_json ? JSON.parse(parts_used_json) : [];
 
         await prisma.$transaction(async (tx) => {
-            // 1. Finalize previously withdrawn parts (similar to completeMaintenanceWithParts)
+            // 1. Finalize previously withdrawn or verified parts
             const withdrawnParts = await tx.tbl_maintenance_parts.findMany({
-                where: { request_id, status: 'withdrawn' }
+                where: { request_id, status: { in: ['withdrawn', 'verified'] } }
             });
 
             for (const part of withdrawnParts) {

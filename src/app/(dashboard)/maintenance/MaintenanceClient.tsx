@@ -148,6 +148,7 @@ interface MaintenanceClientProps {
 
 export default function MaintenanceClient({ userPermissions = {} }: MaintenanceClientProps) {
     const { data: session } = useSession();
+    const isApprover = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'manager' || userPermissions.can_approve;
     const searchParams = useSearchParams();
     const reqQueryParam = searchParams.get('req');
     const [hasOpenedFromUrl, setHasOpenedFromUrl] = useState(false);
@@ -260,6 +261,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     });
 
     const [currentTime, setCurrentTime] = useState(new Date());
+    const [newPartsUsed, setNewPartsUsed] = useState<{ p_id: string; quantity: number }[]>([]);
+    const [modalPartSearch, setModalPartSearch] = useState('');
 
     // Auto-update time every minute for real-time elapsed time display
     useEffect(() => {
@@ -728,22 +731,37 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     async function handleUpdateRequest() {
         if (!selectedRequest) return;
 
+        // Validation for technician role and in_progress status
+        const isTechnician = (session?.user as any)?.role === 'technician';
+        if (isTechnician && editData.status === 'completed') {
+            const hasParts = parts.length > 0;
+            const allVerified = parts.every(p => p.status === 'verified');
+
+            if (hasParts && !allVerified) {
+                alert('ต้องตรวจนับอะไหล่ทุกชิ้นให้ครบถ้วนก่อนปิดงาน');
+                return;
+            }
+        }
+
+        const submitData = {
+            status: editData.status !== selectedRequest.status ? editData.status : undefined,
+            priority: editData.priority !== selectedRequest.priority ? editData.priority : undefined,
+            assigned_to: editData.assigned_to,
+            scheduled_date: editData.scheduled_date || undefined,
+            actual_cost: editData.actual_cost || undefined,
+            notes: editData.notes || undefined
+        };
+
         const result = await updateMaintenanceRequest(
             selectedRequest.request_id,
-            {
-                status: editData.status !== selectedRequest.status ? editData.status : undefined,
-                priority: editData.priority !== selectedRequest.priority ? editData.priority : undefined,
-                assigned_to: editData.assigned_to,
-                scheduled_date: editData.scheduled_date || undefined,
-                actual_cost: editData.actual_cost || undefined,
-                notes: editData.notes || undefined
-            },
+            submitData,
             'Admin'
         );
 
         if (result.success) {
             setShowDetailModal(false);
             loadData();
+            showToast('อัปเดตข้อมูลเรียบร้อยแล้ว', 'success');
         } else {
             alert('เกิดข้อผิดพลาด: ' + result.error);
         }
@@ -2004,13 +2022,19 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         <label className="block text-sm font-medium mb-1">สถานะ</label>
                                         <select
                                             value={editData.status}
-                                            onChange={(e) => setEditData({ ...editData, status: e.target.value })}
+                                            onChange={(e) => {
+                                                setEditData({ ...editData, status: e.target.value });
+                                                if (e.target.value !== 'completed') {
+                                                    setNewPartsUsed([]);
+                                                }
+                                            }}
                                             className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
                                         >
-                                            <option value="pending">รอดำเนินการ</option>
+                                            {(!isApprover && editData.status === 'pending') && <option value="pending">รอดำเนินการ</option>}
+                                            {isApprover && <option value="pending">รอดำเนินการ</option>}
                                             <option value="in_progress">กำลังซ่อม</option>
                                             <option value="completed">เสร็จแล้ว</option>
-                                            <option value="cancelled">ยกเลิก</option>
+                                            {isApprover && <option value="cancelled">ยกเลิก</option>}
                                         </select>
                                     </div>
                                     <div>
@@ -2018,7 +2042,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         <select
                                             value={editData.priority}
                                             onChange={(e) => setEditData({ ...editData, priority: e.target.value })}
-                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                            className={`w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 ${!isApprover ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                            disabled={!isApprover}
                                         >
                                             <option value="low">ต่ำ</option>
                                             <option value="normal">ปกติ</option>
@@ -2031,7 +2056,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         <select
                                             value={editData.assigned_to || ''}
                                             onChange={(e) => setEditData({ ...editData, assigned_to: e.target.value })}
-                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                            className={`w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 ${selectedRequest.status === 'in_progress' && !isApprover ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                            disabled={selectedRequest.status === 'in_progress' && !isApprover}
                                         >
                                             <option value="">-- ไม่ระบุ --</option>
                                             {Array.from(new Set([
@@ -2074,6 +2100,94 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             rows={2}
                                         />
                                     </div>
+
+                                    {/* Parts Selection UI - Only shown when status is 'completed' and not already completed */}
+                                    {editData.status === 'completed' && selectedRequest.status !== 'completed' && (
+                                        <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-3 space-y-3">
+                                            <h4 className="font-medium text-blue-800 dark:text-blue-300 flex items-center gap-2 text-sm">
+                                                <ShoppingCart size={14} />
+                                                เพิ่มอะไหล่ที่ใช้ (ถ้ามี)
+                                            </h4>
+                                            
+                                            {newPartsUsed.map((part, index) => {
+                                                const product = products.find(p => p.p_id === part.p_id);
+                                                const avail = product ? product.p_count : 0;
+                                                return (
+                                                    <div key={index} className="flex flex-wrap items-center gap-2 bg-white dark:bg-slate-800 p-2 rounded border dark:border-slate-600">
+                                                        <span className="flex-1 text-xs font-medium truncate">{product?.p_name || part.p_id}</span>
+                                                        <div className="flex items-center gap-1">
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                max={avail}
+                                                                value={part.quantity}
+                                                                onChange={(e) => {
+                                                                    const updated = [...newPartsUsed];
+                                                                    let val = parseInt(e.target.value) || 1;
+                                                                    if (val > avail) val = avail;
+                                                                    updated[index].quantity = val;
+                                                                    setNewPartsUsed(updated);
+                                                                }}
+                                                                className="w-12 px-1 py-0.5 text-xs border rounded dark:bg-slate-700 dark:border-slate-600 text-center"
+                                                            />
+                                                            <span className="text-[10px] text-gray-500">/{avail}</span>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const updated = newPartsUsed.filter((_, i) => i !== index);
+                                                                setNewPartsUsed(updated);
+                                                            }}
+                                                            className="text-red-500 hover:text-red-700 p-1"
+                                                        >
+                                                            &times;
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                            
+                                            <div className="space-y-2">
+                                                <div className="relative">
+                                                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="ค้นหาอะไหล่..."
+                                                        value={modalPartSearch}
+                                                        onChange={(e) => setModalPartSearch(e.target.value)}
+                                                        className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-lg dark:bg-slate-700 dark:border-slate-600 bg-white"
+                                                    />
+                                                </div>
+                                                
+                                                {modalPartSearch && (
+                                                    <div className="max-h-32 overflow-y-auto border rounded bg-white dark:bg-slate-800 shadow-sm">
+                                                        {products
+                                                            .filter(p => p.p_name.toLowerCase().includes(modalPartSearch.toLowerCase()) || p.p_id.toLowerCase().includes(modalPartSearch.toLowerCase()))
+                                                            .filter(p => !newPartsUsed.some(u => u.p_id === p.p_id))
+                                                            .slice(0, 10)
+                                                            .map(p => (
+                                                                <button
+                                                                    key={p.p_id}
+                                                                    onClick={() => {
+                                                                        setNewPartsUsed([...newPartsUsed, { p_id: p.p_id, quantity: 1 }]);
+                                                                        setModalPartSearch('');
+                                                                    }}
+                                                                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-slate-700 flex justify-between items-center"
+                                                                    disabled={p.p_count <= 0}
+                                                                >
+                                                                    <span className={p.p_count <= 0 ? 'text-gray-400' : ''}>{p.p_name}</span>
+                                                                    <span className={`text-[10px] ${p.p_count <= 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                                                                        สต็อก: {p.p_count}
+                                                                    </span>
+                                                                </button>
+                                                            ))}
+                                                        {products.filter(p => p.p_name.toLowerCase().includes(modalPartSearch.toLowerCase())).length === 0 && (
+                                                            <div className="px-3 py-2 text-[10px] text-gray-500 text-center">ไม่พบอะไหล่</div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
