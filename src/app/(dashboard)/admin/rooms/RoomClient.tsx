@@ -23,7 +23,8 @@ interface RoomNode { id: string; code: string; name: string; originalId?: number
 interface FloorNode { id: string; code: string; name: string; originalId?: number; active?: boolean; rooms: RoomNode[] }
 interface TypeNode { id: string; code: string; name: string; originalId?: number; active?: boolean; floors: FloorNode[] }
 
-type Toast = { type: 'success' | 'error'; text: string; id: number };
+// <-- UPDATED: Toast includes exiting flag -->
+type Toast = { type: 'success' | 'error'; text: string; id: number; exiting?: boolean };
 
 const ICONS = {
     type: "🏢",
@@ -407,12 +408,31 @@ export default function RoomManagement() {
     // Detail modal state
     const [detailModal, setDetailModal] = useState<{ level: string; code: string; name: string; originalId?: number; active?: boolean; children?: any } | null>(null);
 
+    // <-- UPDATED: showToast marks exiting and removes after animation -->
     const showToast = useCallback((type: 'success' | 'error', text: string) => {
         const id = Date.now();
         setToasts(prev => [...prev, { type, text, id }]);
+
+        // After visible duration, mark exiting to trigger exit animation
+        const visibleMs = 3000;
+        const exitAnimMs = 350; // must match CSS .toast-exit animation duration
         setTimeout(() => {
-            setToasts(prev => prev.filter(t => t.id !== id));
-        }, 3000);
+            setToasts(prev =>
+                prev.map(t =>
+                    t.id === id ? { ...t, exiting: true } : t
+                )
+            );
+
+            setTimeout(() => {
+                setToasts(prev => prev.filter(t => t.id !== id));
+            }, exitAnimMs);
+        }, visibleMs);
+    }, []);
+
+    // optional: allow clicking toast to dismiss immediately
+    const dismissToast = useCallback((id: number) => {
+        setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t));
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 350);
     }, []);
 
     const loadData = useCallback(async () => {
@@ -646,17 +666,23 @@ export default function RoomManagement() {
         <div style={{ minHeight: "100vh", background: "#f0f4f8", fontFamily: "'Sarabun', sans-serif" }}>
             <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
-            {/* Toast notifications */}
-            <div style={{ position: "fixed", top: 20, right: 20, zIndex: 9999, display: "flex", flexDirection: "column", gap: 10 }}>
+            {/* Premium Toast */}
+            <div className="toast-container" aria-live="polite">
                 {toasts.map(t => (
-                    <div key={t.id} style={{
-                        background: t.type === 'success' ? '#10b981' : '#ef4444',
-                        color: '#fff', padding: '14px 24px', borderRadius: 10,
-                        boxShadow: '0 10px 25px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: 12,
-                        fontWeight: 600, fontSize: 15, maxWidth: 400
-                    }}>
-                        <span style={{ fontSize: 18 }}>{t.type === 'success' ? '✓' : '✕'}</span>
-                        <span>{t.text}</span>
+                    <div
+                        key={t.id}
+                        className={`toast ${t.type} ${t.exiting ? "toast-exit" : ""}`}
+                        onClick={() => dismissToast(t.id)}
+                        role="status"
+                        title="คลิกเพื่อปิด"
+                    >
+                        <div className="toast-icon">
+                            {t.type === 'success' ? '✓' : '✕'}
+                        </div>
+                        <div className="toast-body">
+                            <div className="toast-text">{t.text}</div>
+                            <div className="toast-progress" />
+                        </div>
                     </div>
                 ))}
             </div>
@@ -792,6 +818,114 @@ export default function RoomManagement() {
             )}
 
             <style>{`
+                /* =========================
+                   PREMIUM TOAST SYSTEM
+                ========================= */
+                .toast-container{
+                    position:fixed;
+                    top:24px;
+                    right:24px;
+                    z-index:9999;
+                    display:flex;
+                    flex-direction:column;
+                    gap:12px;
+                    pointer-events: none; /* allow clicks only on toasts themselves */
+                }
+
+                .toast{
+                    pointer-events: auto;
+                    display:flex;
+                    align-items:center;
+                    gap:14px;
+
+                    min-width:260px;
+                    max-width:420px;
+
+                    padding:14px 18px;
+
+                    border-radius:14px;
+
+                    backdrop-filter:blur(12px);
+
+                    color:white;
+
+                    font-size:14px;
+                    font-weight:600;
+
+                    box-shadow:
+                        0 15px 35px rgba(0,0,0,0.35),
+                        0 4px 10px rgba(0,0,0,0.2);
+
+                    animation:toastSlideIn .35s ease;
+
+                    overflow:hidden;
+                    cursor: pointer;
+                }
+
+                .toast.success{
+                    background:linear-gradient(135deg,#10b981,#059669);
+                }
+
+                .toast.error{
+                    background:linear-gradient(135deg,#ef4444,#dc2626);
+                }
+
+                .toast-icon{
+                    font-size:20px;
+                    font-weight:800;
+                    width:30px;
+                    text-align:center;
+                }
+
+                .toast-body{
+                    flex:1;
+                }
+
+                .toast-text{
+                    line-height:1.4;
+                }
+
+                .toast-progress{
+                    margin-top:8px;
+                    height:3px;
+                    background:rgba(255,255,255,0.9);
+                    border-radius:3px;
+                    animation:toastProgress 3s linear forwards;
+                }
+
+                @keyframes toastSlideIn{
+                    from{
+                        opacity:0;
+                        transform:translateX(60px) scale(.95);
+                    }
+                    to{
+                        opacity:1;
+                        transform:translateX(0) scale(1);
+                    }
+                }
+
+                .toast-exit{
+                    animation:toastExit .35s forwards;
+                }
+
+                @keyframes toastExit{
+                    to{
+                        opacity:0;
+                        transform:translateX(40px) scale(.98);
+                        height:0;
+                        margin:0;
+                        padding:0;
+                    }
+                }
+
+                @keyframes toastProgress{
+                    from{width:100%}
+                    to{width:0%}
+                }
+
+                /* -------------------------
+                   SweetAlert custom styles
+                ------------------------- */
                 .premium-swal-popup {
                     box-shadow: 0 0 0 1px rgba(255,255,255,0.1), 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
                     font-family: 'Sarabun', sans-serif !important;
