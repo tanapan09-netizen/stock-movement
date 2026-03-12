@@ -1,11 +1,112 @@
 import { prisma } from '@/lib/prisma';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle, Printer, Lock, Box } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Printer, Lock, Box, FilePlus, Hourglass, BadgeCheck, Truck, Warehouse } from 'lucide-react';
 import { receivePO } from '@/actions/poActions';
 import { auth } from '@/auth';
 import { getRolePermissions } from '@/actions/roleActions';
 import { PERMISSIONS } from '@/lib/permissions';
+
+
+const PO_STEPS = [
+    { key: 'draft',    label: 'Draft',    Icon: FilePlus },
+    { key: 'pending',  label: 'Pending',  Icon: Hourglass },
+    { key: 'approved', label: 'Approved', Icon: BadgeCheck },
+    { key: 'ordered',  label: 'Ordered',  Icon: Truck },
+    { key: 'received', label: 'Received', Icon: Warehouse },
+];
+
+
+function POWorkflowSteps({
+    currentStatus,
+    steps,
+}: {
+    currentStatus: string;
+    steps: { status: string | null; created_at: Date | null; notes?: string | null; note?: string | null }[];
+}) {
+    const currentIndex = PO_STEPS.findIndex(s => s.key === currentStatus);
+
+    
+    const stepMap = new Map(steps.filter(s => s.status != null).map(s => [s.status!, s]));
+
+    return (
+        <div className="bg-white shadow rounded-lg px-8 py-6 mb-6">
+            <h2 className="text-sm font-semibold text-gray-500 uppercase mb-6 tracking-wide">
+                Document Workflow
+            </h2>
+
+            <div className="relative flex items-start justify-between">
+
+                {PO_STEPS.map((step, index) => {
+                    const isDone    = index < currentIndex;
+                    const isCurrent = index === currentIndex;
+                    const record    = stepMap.get(step.key);
+                    const isLast    = index === PO_STEPS.length - 1;
+
+                    return (
+                        <div key={step.key} className="relative z-10 flex flex-col items-center flex-1">
+                            {/* Connector line — from right edge of this circle to left edge of next */}
+                            {!isLast && (
+                                <div
+                                    className="absolute h-0.5 z-0"
+                                    style={{
+                                        top: '20px',
+                                        left: 'calc(50% + 22px)',
+                                        right: 'calc(-50% + 22px)',
+                                        backgroundColor: isDone ? '#6366f1' : '#e5e7eb',
+                                    }}
+                                />
+                            )}
+
+                            {/* Circle */}
+                            <div
+                                className={`
+                                    w-10 h-10 rounded-full flex items-center justify-center border-2 font-bold text-sm
+                                    transition-all duration-200
+                                    ${isDone
+                                        ? 'bg-indigo-500 border-indigo-500 text-white'
+                                        : isCurrent
+                                            ? 'bg-white border-indigo-500 text-indigo-600 shadow-md shadow-indigo-100'
+                                            : 'bg-white border-gray-200 text-gray-300'}
+                                `}
+                            >
+                                {isDone ? (
+                                    <CheckCircle className="w-5 h-5" />
+                                ) : isCurrent ? (
+                                    <step.Icon className="w-5 h-5" />
+                                ) : (
+                                    <span className="text-base leading-none">—</span>
+                                )}
+                            </div>
+
+                            {/* Label */}
+                            <div className={`mt-2 text-xs font-semibold text-center leading-tight
+                                ${isCurrent ? 'text-indigo-600' : isDone ? 'text-gray-600' : 'text-gray-400'}`}>
+                                {step.label}
+                            </div>
+
+                            {/* Date from tbl_purchase_orders_status */}
+                            {record?.created_at && (
+                                <div className="text-[10px] text-gray-400 mt-0.5 text-center">
+                                    {new Date(record.created_at).toLocaleDateString('th-TH', {
+                                        day: '2-digit', month: 'short', year: '2-digit',
+                                    })}
+                                </div>
+                            )}
+
+                            {/* Note (optional) */}
+                            {record?.notes && (
+                                <div className="text-[10px] text-gray-400 mt-0.5 max-w-[80px] text-center truncate" title={record.notes ?? ''}>
+                                    {record.notes}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
 
 export default async function PODetailPage(props: { params: Promise<{ id: string }> }) {
     const params = await props.params;
@@ -16,7 +117,6 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
     const userRole = (session?.user as { role?: string })?.role || '';
     const rolePermissions = await getRolePermissions(userRole);
 
-    // Check View Permission
     if (!rolePermissions[PERMISSIONS.PO_VIEW]) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
@@ -33,20 +133,25 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
 
     if (!po) return <div>ไม่พบใบสั่งซื้อ</div>;
 
-    const items = await prisma.tbl_po_items.findMany({
-        where: { po_id: poId }
-    });
-
-    // Merge items into PO object for compatibility if needed, or pass separately
+    const items = await prisma.tbl_po_items.findMany({ where: { po_id: poId } });
     const poWithItems = { ...po, tbl_po_items: items };
 
-    // Get Product Names
     const pIds = poWithItems.tbl_po_items.map(i => i.p_id);
-    const products = await prisma.tbl_products.findMany({ where: { p_id: { in: pIds } }, select: { p_id: true, p_name: true } });
+    const products = await prisma.tbl_products.findMany({
+        where: { p_id: { in: pIds } },
+        select: { p_id: true, p_name: true },
+    });
     const productMap = new Map(products.map(p => [p.p_id, p.p_name]));
 
-    // Get Supplier
-    const supplier = po.supplier_id ? await prisma.tbl_suppliers.findUnique({ where: { id: po.supplier_id } }) : null;
+    const supplier = po.supplier_id
+        ? await prisma.tbl_suppliers.findUnique({ where: { id: po.supplier_id } })
+        : null;
+
+    
+    const workflowSteps = await prisma.tbl_purchase_orders.findMany({
+        where: { po_id: poId },
+        orderBy: { created_at: 'asc' },
+    });
 
     async function handleReceive() {
         'use server';
@@ -54,20 +159,24 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
         redirect(`/purchase-orders/${poId}`);
     }
 
-    // Calculate real subtotal and tax in case DB fields are 0 for older records
-    const calculatedSubtotal = poWithItems.tbl_po_items.reduce((sum, item) => sum + Number(item.line_total || 0), 0);
+    const calculatedSubtotal = poWithItems.tbl_po_items.reduce(
+        (sum, item) => sum + Number(item.line_total || 0), 0
+    );
     const displaySubtotal = Number(po.subtotal) > 0 ? Number(po.subtotal) : calculatedSubtotal;
-    const calculatedTax = Number(po.total_amount) - displaySubtotal;
-    const displayTax = Number(po.tax_amount) > 0 ? Number(po.tax_amount) : (calculatedTax > 0 ? calculatedTax : 0);
+    const calculatedTax    = Number(po.total_amount) - displaySubtotal;
+    const displayTax       = Number(po.tax_amount) > 0
+        ? Number(po.tax_amount)
+        : calculatedTax > 0 ? calculatedTax : 0;
 
     return (
         <div className="max-w-4xl mx-auto py-6">
+
+            {/* ── Top bar ── */}
             <div className="mb-6 flex justify-between items-center">
                 <Link href="/purchase-orders" className="flex items-center text-gray-500 hover:text-gray-700">
                     <ArrowLeft className="w-5 h-5 mr-1" /> กลับ
                 </Link>
                 <div className="space-x-2 flex">
-                    {/* Edit Permission */}
                     {po.status !== 'received' && rolePermissions[PERMISSIONS.PO_EDIT] && (
                         <Link
                             href={`/purchase-orders/${poId}/edit`}
@@ -76,7 +185,6 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
                             <Box className="w-4 h-4 mr-2" /> Edit
                         </Link>
                     )}
-                    {/* Print Permission */}
                     {rolePermissions[PERMISSIONS.PO_PRINT] && (
                         <Link
                             href={`/print/purchase-orders/${poId}`}
@@ -89,6 +197,13 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
                 </div>
             </div>
 
+            {/* ── Workflow Step Bar (ใต้ปุ่ม Print) ── */}
+            <POWorkflowSteps
+                currentStatus={po.status ?? 'draft'}
+                steps={workflowSteps}
+            />
+
+            {/* ── PO Card ── */}
             <div className="bg-white shadow rounded-lg overflow-hidden mb-6">
                 <div className={`px-6 py-4 border-b flex justify-between items-center ${po.status === 'received' ? 'bg-green-50' : 'bg-gray-50'}`}>
                     <div>
@@ -139,7 +254,7 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
                     </table>
                 </div>
 
-                {/* Summary Section */}
+                {/* Summary */}
                 <div className="bg-gray-50 p-6 border-t flex justify-end">
                     <div className="w-64 space-y-3">
                         <div className="flex justify-between text-gray-600">
@@ -160,7 +275,7 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
                 </div>
             </div>
 
-            {/* Receive Permission */}
+            {/* Receive */}
             {po.status !== 'received' && rolePermissions[PERMISSIONS.PO_RECEIVE] && (
                 <form action={handleReceive} className="bg-white p-6 rounded-lg shadow flex flex-col items-center justify-center text-center">
                     <h3 className="font-bold text-gray-800 mb-2">ดำเนินการรับสินค้า</h3>
