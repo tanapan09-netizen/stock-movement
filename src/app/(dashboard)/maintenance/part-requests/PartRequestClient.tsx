@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Filter, ShoppingCart, CheckCircle, XCircle, Clock, Upload, Link as LinkIcon, X } from 'lucide-react';
 import { getPartRequests, createPartRequest, updatePartRequestStatus, deletePartRequest, approvePartRequest } from '@/actions/partRequestActions';
 import { getMaintenanceRequests } from '@/actions/maintenanceActions';
+import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 
 interface PartRequest {
     request_id: number;
@@ -239,13 +240,13 @@ export default function PartRequestClient() {
                                             </td>
                                             <td className="px-4 py-3 text-sm font-mono text-blue-600">{req.request_number || '-'}</td>
                                             <td className="px-4 py-3">{req.quantity}</td>
-                                            <td className="px-4 py-3">
-                                                {/* Stage Badge */}
-                                                {req.status === 'pending' && (
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStageLabel(req.current_stage).color}`}>
-                                                        {getStageLabel(req.current_stage).label}
-                                                    </span>
-                                                )}
+                                            <td className="px-4 py-3 min-w-[120px]">
+                                                <WorkflowStepper
+                                                    currentStep={(req.current_stage ?? 0) + 1}
+                                                    totalSteps={3}
+                                                    status={req.status as WorkflowStatus}
+                                                    size="sm"
+                                                />
                                             </td>
                                             <td className="px-4 py-3 text-sm">
                                                 {req.tbl_maintenance_requests ? (

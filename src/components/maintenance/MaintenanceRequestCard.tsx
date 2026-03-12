@@ -1,6 +1,7 @@
 'use client';
 
 import { Wrench, Clock, CheckCircle, XCircle, MapPin, User, Calendar, AlertTriangle } from 'lucide-react';
+import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 
 interface MaintenanceRequestCardProps {
     request: any; // Using any for now to avoid duplicative typing, ideally import from types
@@ -41,10 +42,14 @@ export default function MaintenanceRequestCard({ request, onClick }: Maintenance
                         {request.title}
                     </h3>
                 </div>
-                <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${status.color}`}>
-                    <StatusIcon size={12} />
-                    {status.label}
-                </span>
+                <div className="w-[100px]">
+                    <WorkflowStepper
+                        currentStep={request.status === 'completed' ? 3 : request.status === 'in_progress' ? 2 : 1}
+                        totalSteps={3}
+                        status={request.status === 'pending' ? 'pending' : request.status as WorkflowStatus}
+                        size="sm"
+                    />
+                </div>
             </div>
 
             {/* Details: Location & Date */}

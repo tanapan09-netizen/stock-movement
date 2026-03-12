@@ -5,6 +5,7 @@ import { useToast } from '@/components/ToastProvider';
 import { Plus, CheckCircle, XCircle, Clock, FileText, Calendar, DollarSign, Search } from 'lucide-react';
 import { createApprovalRequest, updateApprovalStatus } from '@/actions/approvalActions';
 import SearchableSelect from '@/components/SearchableSelect';
+import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 
 interface ApprovalClientProps {
     initialRequests: any[];
@@ -101,20 +102,17 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
 
     const StatusBadge = ({ req }: { req: any }) => {
         const { status, current_step, total_steps } = req;
-        const stepText = total_steps > 1 ? ` (ขั้นที่ ${current_step}/${total_steps})` : '';
-
-        switch (status) {
-            case 'approved':
-                return <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium flex items-center gap-1 w-max"><CheckCircle size={12} /> อนุมัติแล้ว</span>;
-            case 'rejected':
-                return <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium flex items-center gap-1 w-max"><XCircle size={12} /> ไม่อนุมัติ</span>;
-            default:
-                return (
-                    <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium flex items-center gap-1 w-max">
-                        <Clock size={12} /> รอพิจารณา{stepText}
-                    </span>
-                );
-        }
+        
+        return (
+            <div className="min-w-[120px]">
+                <WorkflowStepper
+                    currentStep={current_step || 1}
+                    totalSteps={total_steps || 1}
+                    status={status as WorkflowStatus}
+                    size="sm"
+                />
+            </div>
+        );
     };
 
     const getTypeLabel = (type: string) => {
