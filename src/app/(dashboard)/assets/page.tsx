@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { Plus, Search, MapPin, Tag } from 'lucide-react';
 import { auth } from '@/auth';
 import AssetActions from '@/components/AssetActions';
+import AssetImage from '@/components/AssetImage';
 
 export default async function AssetsPage() {
     const session = await auth();
@@ -16,6 +17,10 @@ export default async function AssetsPage() {
 
     const getImageUrl = (url: string | null) => {
         if (!url) return null;
+        try {
+            const parsed = JSON.parse(url);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
+        } catch (e) { /* not JSON */ }
         if (url.startsWith('http') || url.startsWith('/uploads/')) return url;
         return `/uploads/${url}`;
     };
@@ -79,7 +84,12 @@ export default async function AssetsPage() {
                                         <td className="px-6 py-4">
                                             <div className="flex items-center">
                                                 {asset.image_url && (
-                                                    <img src={getImageUrl(asset.image_url)!} className="h-8 w-8 rounded mr-2 object-cover" alt="" />
+                                                    <AssetImage 
+                                                        src={getImageUrl(asset.image_url)!} 
+                                                        className="h-8 w-8 rounded mr-2 object-cover" 
+                                                        alt="" 
+                                                        fallbackText="Asset"
+                                                    />
                                                 )}
                                                 {asset.asset_name}
                                             </div>

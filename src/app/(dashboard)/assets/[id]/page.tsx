@@ -6,6 +6,7 @@ import { addAssetHistory } from '@/actions/assetActions';
 import AssetActions from '@/components/AssetActions';
 import PrintButton from '@/components/PrintButton';
 import { auth } from '@/auth';
+import AssetImage from '@/components/AssetImage';
 
 const translateActionType = (type: string) => {
     switch (type) {
@@ -162,7 +163,12 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                     <div className="bg-white rounded-lg shadow-lg overflow-hidden">
                         <div className="h-64 bg-gray-100 flex items-center justify-center">
                             {asset.image_url ? (
-                                <img src={getImageUrl(asset.image_url)!} className="h-full w-full object-cover" />
+                                <AssetImage 
+                                    src={getImageUrl(asset.image_url)!} 
+                                    className="h-full w-full object-cover" 
+                                    alt={asset.asset_name}
+                                    fallbackText="Asset Image"
+                                />
                             ) : (
                                 <span className="text-gray-400">No Image</span>
                             )}
