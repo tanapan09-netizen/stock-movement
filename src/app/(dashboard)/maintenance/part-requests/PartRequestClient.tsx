@@ -242,8 +242,13 @@ export default function PartRequestClient() {
                                             <td className="px-4 py-3">{req.quantity}</td>
                                             <td className="px-4 py-3 min-w-[120px]">
                                                 <WorkflowStepper
-                                                    currentStep={(req.current_stage ?? 0) + 1}
-                                                    totalSteps={3}
+                                                    currentStep={
+                                                        req.status === 'pending' ? 1 :
+                                                        req.status === 'approved' ? 2 :
+                                                        req.status === 'ordered' ? 3 :
+                                                        req.status === 'received' ? 4 : 1
+                                                    }
+                                                    totalSteps={4}
                                                     status={req.status as WorkflowStatus}
                                                     size="sm"
                                                 />

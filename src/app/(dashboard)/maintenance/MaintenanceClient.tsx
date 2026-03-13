@@ -6,8 +6,27 @@ import Swal from 'sweetalert2';
 import { useToast } from '@/components/ToastProvider';
 import Link from 'next/link';
 import {
-    Wrench, Plus, Search, Filter, X, History, User, DollarSign, Printer, Clock, CheckCircle, XCircle, Image as ImageIcon, ShoppingCart, Package, AlertTriangle, Bell, AlertCircle
+    Search,
+    Plus,
+    Filter,
+    MoreVertical,
+    Eye,
+    Wrench,
+    CheckCircle2,
+    Clock,
+    AlertCircle,
+    XCircle,
+    Download,
+    Calendar,
+    MapPin,
+    Smartphone,
+    LayoutGrid,
+    Table as TableIcon,
+    History as HistoryIcon, User, DollarSign, Printer, Image as ImageIcon, ShoppingCart, Package, AlertTriangle, Bell, X, Hash,
+    Activity, Loader2, ShieldCheck, ChevronDown, Check, ArrowRight, MessageSquare
 } from 'lucide-react';
+import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
+import MaintenanceRequestCard from '@/components/maintenance/MaintenanceRequestCard';
 import { useSession } from 'next-auth/react';
 import {
     getMaintenanceRequests,
@@ -32,6 +51,7 @@ import { searchAssets } from '@/actions/assetActions';
 import { createPartRequest } from '@/actions/partRequestActions';
 import { getActiveTechnicians } from '@/actions/technicianActions';
 import { getLineUsers } from '@/actions/lineUserActions';
+import { format } from 'date-fns';
 
 interface Room {
     room_id: number;
@@ -103,11 +123,13 @@ interface Technician {
     status: string;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon?: React.ElementType }> = {
-    pending: { label: 'รอดำเนินการ', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
-    in_progress: { label: 'กำลังซ่อม', color: 'bg-blue-100 text-blue-800', icon: Wrench },
-    completed: { label: 'เสร็จสิ้น', color: 'bg-green-100 text-green-800', icon: CheckCircle },
-    cancelled: { label: 'ยกเลิก', color: 'bg-gray-100 text-gray-800', icon: XCircle }
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any; bg?: string }> = {
+    pending: { label: 'รอรับเรื่อง', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: Clock },
+    in_progress: { label: 'กำลังดำเนินการ', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Loader2 },
+    confirmed: { label: 'ยืนยันงานเสร็จ', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: CheckCircle2 },
+    completed: { label: 'เสร็จสิ้น', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle2 },
+    cancelled: { label: 'ยกเลิก', color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle },
+    verified: { label: 'ตรวจสอบแล้ว', color: 'bg-cyan-100 text-cyan-700 border-cyan-200', icon: ShieldCheck },
 };
 
 const formatAcceptedTime = (req: MaintenanceRequestItem): Date | null => {
@@ -136,11 +158,11 @@ const getElapsedTime = (startDate: Date, now: Date): string => {
     return `${diffMins} นาที`;
 };
 
-const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-    low: { label: 'ต่ำ', color: 'bg-gray-100 text-gray-600' },
-    normal: { label: 'ปกติ', color: 'bg-blue-100 text-blue-600' },
-    high: { label: 'สูง', color: 'bg-orange-100 text-orange-600' },
-    urgent: { label: 'เร่งด่วน', color: 'bg-red-100 text-red-600' }
+const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+    low: { label: 'ต่ำ', color: 'text-gray-600', bg: 'bg-gray-100' },
+    normal: { label: 'ปกติ', color: 'text-blue-600', bg: 'bg-blue-100' },
+    high: { label: 'สูง', color: 'text-orange-600', bg: 'bg-orange-100' },
+    urgent: { label: 'เร่งด่วน', color: 'text-red-600', bg: 'bg-red-100' }
 };
 interface MaintenanceClientProps {
     userPermissions?: Record<string, boolean>;
@@ -171,7 +193,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     const [assetResults, setAssetResults] = useState<any[]>([]);
     const [showAssetDropdown, setShowAssetDropdown] = useState(false);
     const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
-    const [searchText, setSearchText] = useState('');
+    const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+    const [searchTerm, setSearchTerm] = useState('');
     const [summary, setSummary] = useState({
         total: 0,
         pending: 0,
@@ -768,14 +791,18 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     }
 
     const filteredRequests = requests.filter(req => {
-        if (!searchText) return true;
-        const search = searchText.toLowerCase();
+        if (!searchTerm) return true;
+        const search = searchTerm.toLowerCase();
         return (
             req.title.toLowerCase().includes(search) ||
             req.request_number.toLowerCase().includes(search) ||
             req.tbl_rooms.room_name.toLowerCase().includes(search)
         );
     });
+
+    const handleViewRequest = (request: MaintenanceRequestItem) => {
+        openDetailModal(request);
+    };
 
     return (
         <div className="space-y-6">
@@ -802,6 +829,32 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             <DollarSign size={16} /> เบิก/คืนอะไหล่
                         </a>
                     )}
+                    {/* View Toggle */}
+                    <div className="flex items-center bg-gray-100 rounded-lg p-1 mr-4">
+                        <button
+                            onClick={() => setViewMode('table')}
+                            className={`p-2 rounded-md transition-all ${
+                                viewMode === 'table'
+                                ? 'bg-white text-blue-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                            title="Table View"
+                        >
+                            <TableIcon size={20} />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('grid')}
+                            className={`p-2 rounded-md transition-all ${
+                                viewMode === 'grid'
+                                ? 'bg-white text-blue-600 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                            title="Grid View"
+                        >
+                            <LayoutGrid size={20} />
+                        </button>
+                    </div>
+
                     {userPermissions['admin:rooms'] && (
                         <button
                             onClick={() => setShowRoomForm(true)}
@@ -919,8 +972,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                         type="text"
                         title="Search Requests"
                         placeholder="ค้นหาใบงาน..."
-                        value={searchText}
-                        onChange={(e) => setSearchText(e.target.value)}
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600"
                         aria-label="ค้นหา"
                     />
@@ -928,189 +981,133 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             </div>
 
             {/* Request List */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm overflow-hidden">
-                {loading ? (
-                    <div className="p-8 text-center text-gray-500">กำลังโหลด...</div>
-                ) : filteredRequests.length === 0 ? (
-                    <div className="p-8 text-center text-gray-500">ไม่พบรายการแจ้งซ่อม</div>
-                ) : (
+            {viewMode === 'table' ? (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-gray-50 dark:bg-slate-700">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 border-b border-gray-100">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">เลขที่</th>
-                                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">ห้อง</th>
-                                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">รายละเอียด</th>
-                                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">ผู้รับผิดชอบ</th>
-                                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">เวลารับงาน (ผ่านไป)</th>
-                                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">สถานะ</th>
-                                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-600 dark:text-gray-300">จัดการ</th>
+                                    <th className="px-6 py-4 text-sm font-semibold text-gray-600">Request Details</th>
+                                    <th className="px-6 py-4 text-sm font-semibold text-gray-600">Room/Zone</th>
+                                    <th className="px-6 py-4 text-sm font-semibold text-gray-600">Reporter</th>
+                                    <th className="px-6 py-4 text-sm font-semibold text-gray-600">Priority</th>
+                                    <th className="px-6 py-4 text-sm font-semibold text-gray-600">Status</th>
+                                    <th className="px-6 py-4 text-sm font-semibold text-gray-600">Date</th>
+                                    <th className="px-6 py-4 text-sm font-semibold text-gray-600 text-right">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y dark:divide-slate-700">
-                                {filteredRequests.map(req => {
-                                    const status = STATUS_CONFIG[req.status] || STATUS_CONFIG.pending;
-                                    const priority = PRIORITY_CONFIG[req.priority] || PRIORITY_CONFIG.normal;
-                                    const StatusIcon = status.icon || Clock;
-
-                                    return (
-                                        <tr key={req.request_id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 cursor-pointer" onClick={() => openDetailModal(req)}>
-                                            <td className="px-4 py-3 text-sm font-mono text-gray-600 dark:text-gray-300">
-                                                {req.request_number}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                                    {req.tbl_rooms.room_code}
+                            <tbody className="divide-y divide-gray-50">
+                                {filteredRequests.length > 0 ? (
+                                    filteredRequests.map((request) => (
+                                        <tr key={request.request_id} className="hover:bg-gray-50/50 transition-colors">
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col">
+                                                    <span className="font-medium text-gray-900 line-clamp-1">{request.title}</span>
+                                                    <span className="text-xs text-gray-500 font-mono mt-0.5">{request.request_number}</span>
                                                 </div>
-                                                <div className="text-xs text-gray-500">{req.tbl_rooms.room_name}</div>
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-6 py-4">
                                                 <div className="flex items-center gap-2">
-                                                    {req.image_url && <ImageIcon size={16} className="text-blue-500" />}
-                                                    <div>
-                                                        <div className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                                                            {req.title}
-                                                            <span className={`px-2 py-0.5 rounded text-xs ${priority.color}`}>{priority.label}</span>
-                                                        </div>
-                                                        {req.description && (
-                                                            <div className="text-xs text-gray-500 truncate max-w-xs">{req.description}</div>
-                                                        )}
+                                                    <div className="p-1.5 bg-blue-50 text-blue-600 rounded-md">
+                                                        <MapPin size={14} />
+                                                    </div>
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-medium text-gray-700 uppercase tracking-tight">
+                                                            {request.tbl_rooms?.room_code}
+                                                        </span>
+                                                        <span className="text-xs text-gray-500">
+                                                            {request.tbl_rooms?.room_name}
+                                                        </span>
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                                                {req.assigned_to || <span className="text-gray-400">-</span>}
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-7 h-7 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center text-xs font-bold border border-indigo-100">
+                                                        {request.reported_by?.[0]?.toUpperCase() || 'U'}
+                                                    </div>
+                                                    <span className="text-sm text-gray-600">{request.reported_by}</span>
+                                                </div>
                                             </td>
-                                            <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                                                {(() => {
-                                                    const acceptedTime = formatAcceptedTime(req);
-
-                                                    // If accepted or completed, show accepted time
-                                                    if (req.status === 'in_progress' || req.status === 'completed') {
-                                                        if (!acceptedTime) return <span className="text-gray-400">-</span>;
-                                                        return (
-                                                            <div className="flex flex-col gap-1">
-                                                                <span className="text-xs text-gray-500">รับงานเมื่อ:</span>
-                                                                <span>{acceptedTime.toLocaleDateString('th-TH')} {acceptedTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>
-                                                                {req.status === 'in_progress' && (
-                                                                    <span className="text-xs text-orange-600 bg-orange-50 dark:bg-orange-500/10 px-1.5 py-0.5 rounded w-fit flex items-center gap-1">
-                                                                        <Clock size={12} />
-                                                                        {getElapsedTime(acceptedTime, currentTime)}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    // If pending or cancelled, show reported time
-                                                    const createdTime = new Date(req.created_at);
-                                                    return (
-                                                        <div className="flex flex-col gap-1">
-                                                            <span className="text-xs text-gray-500">แจ้งเมื่อ:</span>
-                                                            <span>{createdTime.toLocaleDateString('th-TH')} {createdTime.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>
-                                                            {req.status === 'pending' && (
-                                                                <span className="text-xs text-yellow-600 bg-yellow-50 dark:bg-yellow-500/10 px-1.5 py-0.5 rounded w-fit flex items-center gap-1">
-                                                                    <Clock size={12} />
-                                                                    รอช่างมาแล้ว {getElapsedTime(createdTime, currentTime)}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })()}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 w-fit ${status.color}`}>
-                                                    <StatusIcon size={14} />
-                                                    {status.label}
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${PRIORITY_CONFIG[request.priority as keyof typeof PRIORITY_CONFIG].bg} ${PRIORITY_CONFIG[request.priority as keyof typeof PRIORITY_CONFIG].color}`}>
+                                                    {PRIORITY_CONFIG[request.priority as keyof typeof PRIORITY_CONFIG].label}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                                                <div className="flex items-center gap-2 justify-end">
-                                                    {/* Status action buttons based on current status */}
-                                                    {req.status === 'pending' && (
-                                                        <>
-                                                            <button
-                                                                onClick={() => openStatusChangeModal(req, 'in_progress')}
-                                                                className="px-3 py-1.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition flex items-center gap-1"
-                                                                title="เริ่มซ่อม"
-                                                            >
-                                                                <Wrench size={14} />
-                                                                เริ่มซ่อม
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleResendNotification(req.request_id)}
-                                                                className="px-3 py-1.5 text-xs font-medium bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition flex items-center gap-1"
-                                                                title="ส่งแจ้งซ่อมซ้ำเดี๋ยวนี้"
-                                                            >
-                                                                <Bell size={14} />
-                                                                แจ้งซ้ำ
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleSimpleStatusChange(req.request_id, 'cancelled')}
-                                                                className="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition"
-                                                                title="ยกเลิก"
-                                                            >
-                                                                ยกเลิก
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                    {req.status === 'in_progress' && (
-                                                        <>
-                                                            <button
-                                                                onClick={() => openStatusChangeModal(req, 'completed')}
-                                                                className="px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition flex items-center gap-1"
-                                                                title="เสร็จแล้ว"
-                                                            >
-                                                                <CheckCircle size={14} />
-                                                                เสร็จแล้ว
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleSimpleStatusChange(req.request_id, 'pending')}
-                                                                className="px-3 py-1.5 text-xs font-medium bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition"
-                                                                title="พักงาน"
-                                                            >
-                                                                พักงาน
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                    {req.status === 'completed' && (
-                                                        <button
-                                                            onClick={() => openStatusChangeModal(req, 'in_progress')}
-                                                            className="px-3 py-1.5 text-xs font-medium bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition flex items-center gap-1"
-                                                            title="ซ่อมใหม่"
-                                                        >
-                                                            <History size={14} />
-                                                            ซ่อมใหม่
-                                                        </button>
-                                                    )}
-                                                    {req.status === 'cancelled' && (
-                                                        <button
-                                                            onClick={() => handleSimpleStatusChange(req.request_id, 'pending')}
-                                                            className="px-3 py-1.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition"
-                                                            title="เปิดใหม่"
-                                                        >
-                                                            เปิดใหม่
-                                                        </button>
-                                                    )}
-                                                    {/* Delete button */}
-                                                    {((session?.user as any)?.is_approver || (session?.user as any)?.role?.toLowerCase() === 'admin') && (
-                                                        <button
-                                                            onClick={() => handleDelete(req.request_id)}
-                                                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"
-                                                            title="ลบ"
-                                                        >
-                                                            <X size={16} />
-                                                        </button>
-                                                    )}
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG]?.bg || 'bg-gray-50'} ${STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG]?.color || 'text-gray-600'}`}>
+                                                    {(() => {
+                                                        const Config = STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending;
+                                                        const Icon = Config.icon;
+                                                        return (
+                                                            <>
+                                                                <Icon size={12} />
+                                                                {Config.label}
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm text-gray-600">{format(new Date(request.created_at), 'MMM d, yyyy')}</span>
+                                                    <span className="text-xs text-gray-400 font-mono mt-0.5">{format(new Date(request.created_at), 'HH:mm')}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <button
+                                                        onClick={() => handleViewRequest(request)}
+                                                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all border border-transparent hover:border-blue-100"
+                                                        title="View Details"
+                                                    >
+                                                        <Eye size={18} />
+                                                    </button>
+                                                    <button
+                                                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all"
+                                                        title="More Options"
+                                                    >
+                                                        <MoreVertical size={18} />
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
-                                    );
-                                })}
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                                            <div className="flex flex-col items-center gap-2">
+                                                <Filter size={40} className="text-gray-200" />
+                                                <p className="text-lg font-medium text-gray-400">No requests found matching your filters</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
-                )}
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {filteredRequests.length > 0 ? (
+                        filteredRequests.map((request) => (
+                            <MaintenanceRequestCard
+                                key={request.request_id}
+                                request={request}
+                                onClick={() => handleViewRequest(request)}
+                                onResend={() => handleResendNotification(request.request_id)}
+                            />
+                        ))
+                    ) : (
+                        <div className="col-span-full py-20 text-center bg-white rounded-xl border border-dashed border-gray-200">
+                            <div className="flex flex-col items-center gap-2">
+                                <Filter size={40} className="text-gray-200" />
+                                <p className="text-lg font-medium text-gray-400">No requests found matching your filters</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
                 {/* Premium Swal Styles */}
                 <style>{`
@@ -1125,7 +1122,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                         border: none !important; cursor: pointer !important; margin: 0 8px !important; transition: all 0.2s !important;
                     }
                     .premium-swal-confirm:hover { background: #dc2626 !important; transform: translateY(-2px) !important; box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.3) !important; }
-                    
+
                     .premium-swal-confirm-blue {
                         padding: 12px 32px !important; border-radius: 12px !important; background: #2563eb !important;
                         color: white !important; font-weight: 700 !important; font-size: 15px !important;
@@ -1140,7 +1137,6 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                     }
                     .premium-swal-cancel:hover { background: #1f2937 !important; color: white !important; }
                 `}</style>
-            </div>
 
             {/* New Request Form Modal */}
             {showForm && (
@@ -1836,7 +1832,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     <div className="flex flex-col items-center gap-2 pointer-events-none">
                                         <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
                                             {selectedFile ? (
-                                                <CheckCircle className="w-6 h-6 text-green-500" />
+                                                <CheckCircle2 className="text-green-500" />
                                             ) : (
                                                 <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -1981,6 +1977,26 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         <X size={24} />
                                     </button>
                                 </div>
+                            </div>
+
+                            {/* Workflow Stepper at Top of Modal */}
+                            <div className="px-6 py-8 border-b border-gray-100 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-900/10 mb-6 -mx-6 -mt-6 rounded-t-xl">
+                                <WorkflowStepper 
+                                    currentStep={
+                                        selectedRequest.status === 'pending' ? 1 :
+                                        selectedRequest.status === 'in_progress' ? 2 :
+                                        selectedRequest.status === 'confirmed' ? 3 :
+                                        (selectedRequest.status === 'completed' || selectedRequest.status === 'verified') ? 4 : 4
+                                    }
+                                    totalSteps={4}
+                                    status={
+                                        selectedRequest.status === 'confirmed' ? 'in_progress' : 
+                                        selectedRequest.status === 'verified' ? 'completed' : 
+                                        selectedRequest.status as any
+                                    }
+                                    labels={['รอรับเรื่อง', 'ดำเนินการ', 'ยืนยันผล', 'เสร็จสมบูรณ์']}
+                                    size="md"
+                                />
                             </div>
 
                             <div className="grid grid-cols-2 gap-6">
@@ -2328,7 +2344,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                 }}
                                                                 className="text-xs text-yellow-700 hover:text-yellow-900 flex items-center gap-1 font-medium"
                                                             >
-                                                                <CheckCircle size={12} /> ตรวจนับสินค้า
+                                                                <CheckCircle2 size={12} /> ตรวจนับสินค้า
                                                             </button>
                                                         )}
                                                     </div>
@@ -2343,9 +2359,39 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             {selectedRequest.status === 'completed' && (
                                 <div className="mt-6 pt-4 border-t">
                                     <h3 className="font-medium mb-3 flex items-center gap-2">
-                                        <CheckCircle size={18} className="text-green-600" /> ข้อมูลการซ่อมเสร็จสิ้น
+                                        <CheckCircle2 size={18} className="text-green-600" /> ข้อมูลการซ่อมเสร็จสิ้น
                                     </h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm mb-6">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                                                <Activity className="w-4 h-4 text-blue-500" />
+                                                สถานะขั้นตอนการทำงาน
+                                            </h3>
+                                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${STATUS_CONFIG[selectedRequest.status as keyof typeof STATUS_CONFIG]?.color || 'bg-slate-100'}`}>
+                                                {STATUS_CONFIG[selectedRequest.status as keyof typeof STATUS_CONFIG]?.label || selectedRequest.status}
+                                            </span>
+                                        </div>
+                                        <div className="p-4 bg-green-50/50 dark:bg-green-900/10 rounded-xl border border-green-100 dark:border-green-900/20">
+                                            <h4 className="flex items-center gap-2 text-sm font-bold text-green-700 dark:text-green-400 mb-3">
+                                                <CheckCircle2 size={16} />
+                                                ดำเนินการเสร็จสิ้น
+                                            </h4>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1">
+                                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">ช่างผู้ร้บผิดชอบ</p>
+                                                    <p className="text-sm font-semibold">{selectedRequest.assigned_to || '-'}</p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">วันที่ดำเนินการเสร็จ</p>
+                                                    <p className="text-sm font-semibold">
+                                                        {selectedRequest.completed_at ? new Date(selectedRequest.completed_at).toLocaleString('th-TH') : '-'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         {selectedRequest.completion_image_url && (
                                             <div>
                                                 <div className="text-sm text-gray-500 mb-2">รูปถ่ายหลังซ่อมเสร็จ</div>
@@ -2380,7 +2426,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             {historyItems.length > 0 && (
                                 <div className="mt-6 pt-4 border-t">
                                     <h3 className="font-medium mb-3 flex items-center gap-2">
-                                        <History size={18} /> ประวัติการเปลี่ยนแปลง
+                                        <HistoryIcon size={18} /> ประวัติการเปลี่ยนแปลง
                                     </h3>
                                     <div className="space-y-2 max-h-40 overflow-y-auto">
                                         {historyItems.map(h => (
@@ -2455,7 +2501,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         {statusChangeData.newStatus === 'in_progress' ? (
                                             <Wrench className="text-white" size={24} />
                                         ) : statusChangeData.newStatus === 'completed' ? (
-                                            <CheckCircle className="text-white" size={24} />
+                                            <CheckCircle2 className="text-white" size={24} />
                                         ) : (
                                             <Clock className="text-white" size={24} />
                                         )}
@@ -2466,9 +2512,17 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             {statusChangeData.newStatus === 'completed' && 'ยืนยันการซ่อมเสร็จ'}
                                             {statusChangeData.newStatus === 'pending' && 'ยืนยันการเปลี่ยนสถานะ'}
                                         </h3>
-                                        <p className="text-white/80 text-sm">
+                                        <p className="text-white/80 text-sm mb-2">
                                             ใบงาน: {statusChangeData.request.request_number}
                                         </p>
+                                        <div className="w-[120px]">
+                                            <WorkflowStepper
+                                                currentStep={statusChangeData.newStatus === 'completed' ? 3 : statusChangeData.newStatus === 'in_progress' ? 2 : 1}
+                                                totalSteps={3}
+                                                status={statusChangeData.newStatus === 'pending' ? 'pending' : statusChangeData.newStatus as WorkflowStatus}
+                                                size="sm"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -2536,7 +2590,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         {/* Work Summary */}
                                         <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
                                             <h4 className="font-medium text-green-800 dark:text-green-300 mb-2 flex items-center gap-2">
-                                                <CheckCircle size={16} />
+                                                <CheckCircle2 size={16} />
                                                 สรุปการซ่อม
                                             </h4>
                                             <div className="text-sm text-green-700 dark:text-green-400 space-y-1">
@@ -2701,7 +2755,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     )}
                                     {statusChangeData.newStatus === 'completed' && (
                                         <>
-                                            <CheckCircle size={18} />
+                                            <CheckCircle2 size={18} />
                                             ยืนยันเสร็จสิ้น
                                         </>
                                     )}

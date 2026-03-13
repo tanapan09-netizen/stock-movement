@@ -101,14 +101,14 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
     };
 
     const StatusBadge = ({ req }: { req: any }) => {
-        const { status, current_step, total_steps } = req;
+        const { status } = req;
         
         return (
             <div className="min-w-[120px]">
                 <WorkflowStepper
-                    currentStep={current_step || 1}
-                    totalSteps={total_steps || 1}
-                    status={status as WorkflowStatus}
+                    currentStep={status === 'pending' ? 1 : 2}
+                    totalSteps={2}
+                    status={(status === 'rejected' ? 'rejected' : status) as WorkflowStatus}
                     size="sm"
                 />
             </div>
