@@ -1035,18 +1035,26 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">
-                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG]?.bg || 'bg-gray-50'} ${STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG]?.color || 'text-gray-600'}`}>
-                                                    {(() => {
-                                                        const Config = STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending;
-                                                        const Icon = Config.icon;
-                                                        return (
-                                                            <>
-                                                                <Icon size={12} />
-                                                                {Config.label}
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </span>
+                                                <div className="flex flex-col gap-1.5">
+                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG]?.bg || 'bg-gray-50'} ${STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG]?.color || 'text-gray-600'} w-fit`}>
+                                                        {(() => {
+                                                            const Config = STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending;
+                                                            const Icon = Config.icon;
+                                                            return (
+                                                                <>
+                                                                    <Icon size={12} />
+                                                                    {Config.label}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </span>
+                                                    {request.status === 'in_progress' && request.assigned_to && (
+                                                        <div className="flex items-center gap-1.5 text-[10px] text-blue-600 font-bold bg-blue-50/50 px-1.5 py-0.5 rounded border border-blue-100/50 w-fit">
+                                                            <ShieldCheck size={10} />
+                                                            <span>ช่าง: {request.assigned_to}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col">
