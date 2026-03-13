@@ -254,6 +254,7 @@ export default function LineUserClient() {
                                                 className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2 dark:text-white"
                                             >
                                                 <option value="general">General (ทั่วไป)</option>
+                                                <option value="employee">employee (พนักงาน)</option>
                                                 <option value="technician">Technician (ช่างซ่อมบำรุง)</option>
                                                 <option value="maid">Maid (แม่บ้าน)</option>
                                                 <option value="driver">Driver (คนขับรถ)</option>
