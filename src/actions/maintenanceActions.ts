@@ -235,6 +235,7 @@ export async function getMaintenanceRequests(filters?: {
     status?: string | string[];
     room_id?: number;
     priority?: string;
+    category?: string;
     startDate?: string;
     endDate?: string;
 }) {
@@ -253,6 +254,9 @@ export async function getMaintenanceRequests(filters?: {
         }
         if (filters?.priority && filters.priority !== 'all') {
             where.priority = filters.priority;
+        }
+        if (filters?.category && filters.category !== 'all') {
+            where.category = filters.category;
         }
 
         // Handle Date Range Filtering
@@ -2228,3 +2232,17 @@ export async function storeVerifyParts(data: {
         return { success: false, error: 'Failed to verify parts' };
     }
 }
+
+export async function getGeneralRequests() {
+    try {
+        const requests = await prisma.tbl_maintenance_requests.findMany({
+            where: { category: 'general', status: 'pending' },
+            orderBy: { created_at: 'desc' }
+        });
+        return { success: true, data: requests };
+    } catch (error: any) {
+        console.error('Error getting general requests:', error);
+        return { success: false, error: error.message };
+    }
+}
+

@@ -30,6 +30,7 @@ import MaintenanceRequestCard from '@/components/maintenance/MaintenanceRequestC
 import { useSession } from 'next-auth/react';
 import {
     getMaintenanceRequests,
+    getGeneralRequests,
     createMaintenanceRequest,
     updateMaintenanceRequest,
     deleteMaintenanceRequest,
@@ -95,6 +96,10 @@ interface MaintenanceRequestItem {
     created_at: Date;
     tbl_rooms: Room;
     tbl_maintenance_history?: HistoryItem[];
+    category?: string | null;
+    department?: string | null;
+    contact_info?: string | null;
+    tags?: string | null;
 }
 
 interface MaintenancePart {
@@ -260,6 +265,10 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
         tagInput: '', // Temporary state for tag input
         target_role: 'technician' // Default explicitly to technician
     });
+    const [pullFromGeneral, setPullFromGeneral] = useState(false);
+    const [generalRequests, setGeneralRequests] = useState<MaintenanceRequestItem[]>([]);
+    const [fetchingGeneral, setFetchingGeneral] = useState(false);
+    const [selectedGeneralRequestId, setSelectedGeneralRequestId] = useState<number | null>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [roomSearch, setRoomSearch] = useState('');
     const [showReopenModal, setShowReopenModal] = useState(false);
@@ -294,6 +303,45 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
         }, 60000);
         return () => clearInterval(timer);
     }, []);
+
+    const fetchGeneralRequests = async () => {
+        setFetchingGeneral(true);
+        try {
+            const result = await getMaintenanceRequests({
+                category: 'general',
+                status: 'pending'
+            });
+            if (result) {
+                setGeneralRequests(result as any);
+            }
+        } catch (error) {
+            console.error('Failed to fetch general requests:', error);
+        } finally {
+            setFetchingGeneral(false);
+        }
+    };
+
+    const handleGeneralRequestSelect = (requestId: number) => {
+        const selected = generalRequests.find(r => r.request_id === requestId);
+        if (selected) {
+            setSelectedGeneralRequestId(requestId);
+            setFormData(prev => ({
+                ...prev,
+                title: selected.title,
+                description: selected.description || '',
+                room_id: selected.room_id,
+                reported_by: selected.reported_by,
+                department: selected.department || '',
+                contact_info: selected.contact_info || '',
+                category: selected.category || 'general',
+                priority: selected.priority,
+                tags: selected.tags || ''
+            }));
+            // If room search is needed
+            const room = rooms.find(r => r.room_id === selected.room_id);
+            if (room) setRoomSearch(room.room_code);
+        }
+    };
 
     // Handle submenu positioning
     useEffect(() => {
@@ -449,12 +497,24 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
         try {
             const result = await createMaintenanceRequest(data);
             if (result.success) {
+                // Update general request status if pulled
+                if (pullFromGeneral && selectedGeneralRequestId) {
+                    await updateMaintenanceRequest(
+                        selectedGeneralRequestId,
+                        {
+                            status: 'completed',
+                            notes: `ใบงานถูกสร้างใหม่เลขที่: ${(result.data as any)?.request_number}`
+                        },
+                        formData.reported_by
+                    );
+                }
+
                 setShowForm(false);
                 setFormData({
                     room_id: 0,
                     title: '',
                     description: '',
-                    category: 'general',
+                    category: 'electrical',
                     image_url: '',
                     priority: 'normal',
                     reported_by: '',
@@ -468,6 +528,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                     tagInput: '',
                     target_role: 'technician'
                 });
+                setPullFromGeneral(false);
+                setSelectedGeneralRequestId(null);
                 setSelectedFile(null);
                 setSelectedAsset(null);
                 setAssetSearchQuery('');
@@ -1178,6 +1240,55 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-4">
+                            {/* General Request Pull */}
+                            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-4">
+                                <label className="flex items-center gap-3 cursor-pointer group">
+                                    <input
+                                        type="checkbox"
+                                        checked={pullFromGeneral}
+                                        onChange={(e) => {
+                                            setPullFromGeneral(e.target.checked);
+                                            if (e.target.checked) fetchGeneralRequests();
+                                        }}
+                                        className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300 transition-all cursor-pointer"
+                                    />
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-semibold text-blue-800">ดึงข้อมูลจากการแจ้งเหตุด่วน/ทั่วไป</span>
+                                        <span className="text-xs text-blue-600">กดที่นี่หากต้องการสร้างใบงานจากการแจ้งเคสด่วนออนไลน์</span>
+                                    </div>
+                                </label>
+
+                                {pullFromGeneral && (
+                                    <div className="mt-4 pt-4 border-t border-blue-200">
+                                        <label className="block text-sm font-medium mb-1.5 text-blue-800">เลือกรายการที่แจ้งเข้ามา</label>
+                                        <div className="relative">
+                                            <select
+                                                value={selectedGeneralRequestId || ''}
+                                                onChange={(e) => handleGeneralRequestSelect(Number(e.target.value))}
+                                                className="w-full border border-blue-300 rounded-lg px-4 py-2 bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                                disabled={fetchingGeneral}
+                                                title="เลือกรายการแจ้งซ่อมทั่วไป"
+                                            >
+                                                <option value="">-- เลือกรายการ --</option>
+                                                {generalRequests.map(req => (
+                                                    <option key={req.request_id} value={req.request_id}>
+                                                        {req.title} ({req.reported_by})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {fetchingGeneral && (
+                                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                    <Loader2 className="animate-spin text-blue-500" size={18} />
+                                                </div>
+                                            )}
+                                        </div>
+                                        {generalRequests.length === 0 && !fetchingGeneral && (
+                                            <p className="mt-2 text-xs text-orange-600 font-medium">ไม่พบรายการแจ้งใหม่ในขณะนี้</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Problem Title */}
                             <div>
                                 <label className="block text-sm font-medium mb-2 text-gray-700">หัวข้อปัญหา <span className="text-red-500">*</span></label>
@@ -1367,7 +1478,12 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             if (!typeMap.has(tCode)) typeMap.set(tCode, { code: tCode, name: typeNameMap.get(tCode) || tCode, floors: [] });
                                             const tNode = typeMap.get(tCode)!;
                                             let fNode = tNode.floors.find(f => f.code === fCode);
-                                            if (!fNode) { fNode = { code: fCode, name: floorNameMap.get(`${tCode}__${fCode}`) || fCode, rooms: [] }; tNode.floors.push(fNode); }
+                                            if (!fNode) {
+                                                let fName = floorNameMap.get(`${tCode}__${fCode}`) || fCode;
+                                                if (fName.startsWith('ชั้น ชั้น')) fName = fName.replace('ชั้น ชั้น', 'ชั้น');
+                                                fNode = { code: fCode, name: fName, rooms: [] };
+                                                tNode.floors.push(fNode);
+                                            }
                                             if (r.zone) {
                                                 const parentCode = r.building || r.room_code;
                                                 let parentRoom = fNode.rooms.find(rm => rm.code === parentCode);
@@ -1387,7 +1503,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                 const bLabel = r.building || '';
                                                 const fLabel = r.floor || '';
                                                 const locInfo = [bLabel, fLabel].filter(Boolean).join(' ');
-                                                return locInfo ? `${locInfo} › ${r.room_name} (${r.room_code})` : `${r.room_name} (${r.room_code})`;
+                                                const namePart = (!r.room_name || r.room_name === r.room_code) ? r.room_code : `${r.room_name} (${r.room_code})`;
+                                                return locInfo ? `${locInfo} › ${namePart}` : namePart;
                                             })()
                                             : '';
 
@@ -1632,12 +1749,12 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                                                     fontSize: 11, flexShrink: 0,
                                                                                 }}>{loc.type === 'zone' ? '📍' : '🚪'}</span>
-                                                                                <span>{loc.code} – {loc.name}</span>
+                                                                                <span>{loc.code === loc.name ? loc.code : `${loc.code} – ${loc.name}`}</span>
                                                                                 <Badge label={loc.type === 'zone' ? 'ZONE' : 'RM'} type={loc.type as any} />
                                                                             </div>
                                                                             <div style={{ fontSize: 10, color: '#94a3b8', marginLeft: 30, display: 'flex', alignItems: 'center', gap: 4 }}>
                                                                                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" /><circle cx="12" cy="10" r="3" /></svg>
-                                                                                {loc.path}
+                                                                                {loc.path.replace(/ชั้น ชั้น/g, 'ชั้น')}
                                                                             </div>
                                                                         </div>
                                                                     ))
@@ -1746,7 +1863,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                                                                                         fontSize: 11, flexShrink: 0,
                                                                                                                     }}>🚪</span>
-                                                                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{rm.code} – {rm.name}</span>
+                                                                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{rm.code === rm.name ? rm.code : `${rm.code} – ${rm.name}`}</span>
                                                                                                                     <Badge label="RM" type="room" />
                                                                                                                 </span>
                                                                                                                 <Chevron />
@@ -1774,7 +1891,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                                                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                                                                                                     fontSize: 10, flexShrink: 0,
                                                                                                                                 }}>📍</span>
-                                                                                                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{z.code} – {z.name}</span>
+                                                                                                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{z.code === z.name ? z.code : `${z.code} – ${z.name}`}</span>
                                                                                                                                 <Badge label="ZONE" type="zone" />
                                                                                                                             </span>
                                                                                                                         </div>
@@ -1795,7 +1912,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                                                                                         fontSize: 11, flexShrink: 0,
                                                                                                                     }}>🚪</span>
-                                                                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{rm.code} – {rm.name}</span>
+                                                                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{rm.code === rm.name ? rm.code : `${rm.code} – ${rm.name}`}</span>
                                                                                                                     <Badge label="RM" type="room" />
                                                                                                                 </span>
                                                                                                             </div>
