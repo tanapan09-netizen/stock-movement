@@ -258,7 +258,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
         contact_info: '',
         tags: '',
         tagInput: '', // Temporary state for tag input
-        target_role: 'general' // Default explicitly to General
+        target_role: 'technician' // Default explicitly to technician
     });
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [roomSearch, setRoomSearch] = useState('');
@@ -466,7 +466,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                     contact_info: '',
                     tags: '',
                     tagInput: '',
-                    target_role: 'general'
+                    target_role: 'technician'
                 });
                 setSelectedFile(null);
                 setSelectedAsset(null);
