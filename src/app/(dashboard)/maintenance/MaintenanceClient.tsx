@@ -855,7 +855,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                         </button>
                     </div>
 
-                    {userPermissions['admin:rooms'] && (
+                    {userPermissions['admin_rooms'] && (
                         <button
                             onClick={() => setShowRoomForm(true)}
                             className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-2"
@@ -863,7 +863,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             <Plus size={18} /> เพิ่มห้อง
                         </button>
                     )}
-                    {userPermissions['maintenance'] && (
+                    {true && ( // Anyone can request maintenance
                         <button
                             onClick={() => setShowForm(true)}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
