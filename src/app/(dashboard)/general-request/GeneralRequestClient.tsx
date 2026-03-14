@@ -6,7 +6,7 @@ import { useToast } from '@/components/ToastProvider';
 import {
     Search, Plus, CheckCircle2, Clock, AlertCircle, XCircle,
     Wrench, Eye, Calendar, MapPin, ShieldCheck, Loader2,
-    ChevronDown, X, Filter, ClipboardList
+    ChevronDown, X, Filter, ClipboardList, LayoutGrid, TableProperties
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import {
@@ -93,6 +93,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
     const [statusFilter, setStatusFilter] = useState('all');
     const [selectedRequest, setSelectedRequest] = useState<MaintenanceRequestItem | null>(null);
     const [showDetail, setShowDetail] = useState(false);
+    const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
 
     // Room selector
     const [roomSearch, setRoomSearch] = useState('');
@@ -259,13 +260,31 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                             </h1>
                             <p className="text-sm text-gray-500 mt-0.5">ส่งคำขอซ่อม — ระบบจะแจ้งเตือนฝ่ายธุรการโดยตรง</p>
                         </div>
-                        <button
-                            onClick={() => setShowForm(true)}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                        >
-                            <Plus className="w-4 h-4" />
-                            <span className="hidden sm:inline">แจ้งซ่อม</span>
-                        </button>
+                        <div className="flex items-center gap-3">
+                            <div className="flex bg-gray-100 p-1 rounded-lg">
+                                <button
+                                    onClick={() => setViewMode('grid')}
+                                    className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                    title="Grid View"
+                                >
+                                    <LayoutGrid className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('table')}
+                                    className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                    title="Table View"
+                                >
+                                    <TableProperties className="w-4 h-4" />
+                                </button>
+                            </div>
+                            <button
+                                onClick={() => setShowForm(true)}
+                                className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium border-0"
+                            >
+                                <Plus className="w-4 h-4" />
+                                <span className="hidden sm:inline">แจ้งซ่อม</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -321,13 +340,79 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
                     </div>
                 ) : filteredRequests.length === 0 ? (
-                    <div className="text-center py-20 text-gray-500">
+                    <div className="text-center py-20 text-gray-500 border-2 border-dashed border-gray-200 rounded-2xl">
                         <ClipboardList className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                         <p className="font-medium">ยังไม่มีรายการแจ้งซ่อม</p>
                         <p className="text-sm mt-1">กดปุ่ม &quot;แจ้งซ่อม&quot; เพื่อสร้างรายการใหม่</p>
                     </div>
+                ) : viewMode === 'table' ? (
+                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-gray-50 border-b border-gray-100">
+                                    <tr>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">ใบงาน</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">สถานที่</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">ความเร่งด่วน</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">สถานะ</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">การจัดการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {filteredRequests.map(req => {
+                                        const statusCfg = STATUS_CONFIG[req.status] || STATUS_CONFIG.pending;
+                                        const priorityCfg = PRIORITY_CONFIG[req.priority] || PRIORITY_CONFIG.normal;
+                                        return (
+                                            <tr 
+                                                key={req.request_id} 
+                                                className="hover:bg-gray-50/80 transition-colors cursor-pointer"
+                                                onClick={() => { setSelectedRequest(req); setShowDetail(true); }}
+                                            >
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-semibold text-gray-900">{req.title}</span>
+                                                        <span className="text-[10px] font-mono text-gray-400 mt-0.5">{req.request_number}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-start gap-2">
+                                                        <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
+                                                        <div className="flex flex-col">
+                                                            <span className="text-sm text-gray-700 font-medium">[{req.tbl_rooms?.room_code}] {req.tbl_rooms?.room_name}</span>
+                                                            <span className="text-[10px] text-gray-500">
+                                                                {[req.tbl_rooms?.zone, req.tbl_rooms?.building, req.tbl_rooms?.floor ? `ชั้น ${req.tbl_rooms.floor}` : null]
+                                                                    .filter(Boolean).join(' • ')}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${priorityCfg.color}`}>
+                                                        {priorityCfg.label}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border ${statusCfg.color}`}>
+                                                        {statusCfg.label}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <button 
+                                                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                                        onClick={e => { e.stopPropagation(); setSelectedRequest(req); setShowDetail(true); }}
+                                                    >
+                                                        <Eye className="w-4 h-4" />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 ) : (
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filteredRequests.map(req => {
                             const statusCfg = STATUS_CONFIG[req.status] || STATUS_CONFIG.pending;
                             const priorityCfg = PRIORITY_CONFIG[req.priority] || PRIORITY_CONFIG.normal;
@@ -335,37 +420,42 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                             return (
                                 <div
                                     key={req.request_id}
-                                    className="bg-white rounded-xl border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer"
+                                    className="bg-white rounded-xl border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer group"
                                     onClick={() => { setSelectedRequest(req); setShowDetail(true); }}
                                 >
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 flex-wrap mb-1">
-                                                <span className="text-xs font-mono text-gray-400">{req.request_number}</span>
-                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${statusCfg.color}`}>
+                                            <div className="flex items-center gap-2 flex-wrap mb-2">
+                                                <span className="text-[10px] font-mono text-gray-400">{req.request_number}</span>
+                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusCfg.color}`}>
                                                     <StatusIcon className="w-3 h-3" />
                                                     {statusCfg.label}
                                                 </span>
-                                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${priorityCfg.color}`}>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${priorityCfg.color}`}>
                                                     {priorityCfg.label}
                                                 </span>
                                             </div>
-                                            <h3 className="font-semibold text-gray-900 truncate">{req.title}</h3>
-                                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
-                                                <span className="flex items-center gap-1">
-                                                    <MapPin className="w-3 h-3" />
-                                                    {req.tbl_rooms?.room_code} — {req.tbl_rooms?.room_name}
-                                                </span>
-                                                <span className="flex items-center gap-1">
+                                            <h3 className="font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors">{req.title}</h3>
+                                            <div className="mt-2 space-y-1">
+                                                <div className="flex items-start gap-1.5 text-[11px] text-gray-500">
+                                                    <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                                                    <span className="leading-tight">
+                                                        [{req.tbl_rooms?.room_code}] {req.tbl_rooms?.room_name}
+                                                        <br />
+                                                        <span className="text-[10px] text-gray-400">
+                                                            {[req.tbl_rooms?.zone, req.tbl_rooms?.building, req.tbl_rooms?.floor ? `ชั้น ${req.tbl_rooms.floor}` : null].filter(Boolean).join(' • ')}
+                                                        </span>
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
                                                     <Calendar className="w-3 h-3" />
                                                     {formatDate(req.created_at)}
-                                                </span>
+                                                </div>
                                             </div>
                                         </div>
                                         <button
-                                            className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                                            className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors self-start"
                                             onClick={e => { e.stopPropagation(); setSelectedRequest(req); setShowDetail(true); }}
-                                            title="ดูรายละเอียด"
                                         >
                                             <Eye className="w-4 h-4" />
                                         </button>
@@ -482,11 +572,22 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                         setRoomSearch('');
                                                         setShowRoomDropdown(false);
                                                     }}
-                                                    className="w-full text-left px-4 py-2.5 hover:bg-blue-50 text-sm border-b last:border-0"
+                                                    className="w-full text-left px-4 py-3 hover:bg-blue-50 text-sm border-b last:border-0 group transition-colors"
                                                 >
-                                                    <span className="font-medium text-blue-700">{room.room_code}</span>
-                                                    <span className="text-gray-600 ml-2">{room.room_name}</span>
-                                                    {room.floor && <span className="text-gray-400 ml-1 text-xs">ชั้น {room.floor}</span>}
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex flex-col">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-bold text-blue-700">{room.room_code}</span>
+                                                                <span className="text-gray-900 font-medium">{room.room_name}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-500">
+                                                                <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">{room.zone || 'ไม่ระบุโซน'}</span>
+                                                                <span>{room.building}</span>
+                                                                {room.floor && <span className="text-blue-600">ชั้น {room.floor}</span>}
+                                                            </div>
+                                                        </div>
+                                                        <Plus className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                                                    </div>
                                                 </button>
                                             ))}
                                         </div>

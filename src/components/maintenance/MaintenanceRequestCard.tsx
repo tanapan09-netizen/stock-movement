@@ -59,9 +59,21 @@ export default function MaintenanceRequestCard({ request, onClick, onResend }: M
                         <div className="p-1.5 bg-gray-50 dark:bg-slate-700 rounded-lg text-gray-400">
                             <MapPin size={16} />
                         </div>
-                        <span className="text-gray-700 dark:text-gray-300 font-medium">
-                            {request.tbl_rooms?.room_code} - {request.tbl_rooms?.room_name}
-                        </span>
+                        <div className="flex flex-col">
+                            <span className="text-gray-900 dark:text-white font-bold leading-none mb-0.5">
+                                {request.tbl_rooms?.room_code}
+                            </span>
+                            <div className="flex flex-wrap gap-1 mb-0.5">
+                                {[request.tbl_rooms?.zone, request.tbl_rooms?.building, request.tbl_rooms?.floor].filter(Boolean).map((text, i) => (
+                                    <span key={i} className="text-[9px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1 rounded uppercase tracking-tighter">
+                                        {text}
+                                    </span>
+                                ))}
+                            </div>
+                            <span className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-1">
+                                {request.tbl_rooms?.room_name}
+                            </span>
+                        </div>
                     </div>
                     <div className="flex items-center gap-2.5 text-sm">
                         <div className="p-1.5 bg-gray-50 dark:bg-slate-700 rounded-lg text-gray-400">

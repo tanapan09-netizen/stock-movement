@@ -992,6 +992,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     <th className="px-6 py-4 text-sm font-semibold text-gray-600">Reporter</th>
                                     <th className="px-6 py-4 text-sm font-semibold text-gray-600">Priority</th>
                                     <th className="px-6 py-4 text-sm font-semibold text-gray-600">Status</th>
+                                    <th className="px-6 py-4 text-sm font-semibold text-gray-600">Technician</th>
                                     <th className="px-6 py-4 text-sm font-semibold text-gray-600">Date</th>
                                     <th className="px-6 py-4 text-sm font-semibold text-gray-600 text-right">Actions</th>
                                 </tr>
@@ -1012,10 +1013,17 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                         <MapPin size={14} />
                                                     </div>
                                                     <div className="flex flex-col">
-                                                        <span className="text-sm font-medium text-gray-700 uppercase tracking-tight">
+                                                        <span className="text-sm font-bold text-gray-900 uppercase tracking-tight">
                                                             {request.tbl_rooms?.room_code}
                                                         </span>
-                                                        <span className="text-xs text-gray-500">
+                                                        <div className="flex gap-1 my-0.5">
+                                                            {[request.tbl_rooms?.zone, request.tbl_rooms?.building, request.tbl_rooms?.floor].filter(Boolean).map((text, i) => (
+                                                                <span key={i} className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1 rounded uppercase tracking-tighter">
+                                                                    {text}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                        <span className="text-xs text-gray-500 line-clamp-1">
                                                             {request.tbl_rooms?.room_name}
                                                         </span>
                                                     </div>
@@ -1034,8 +1042,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                     {PRIORITY_CONFIG[request.priority as keyof typeof PRIORITY_CONFIG].label}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col gap-1.5">
+                                            <td className="px-6 py-4 text-center">
+                                                <div className="flex flex-col gap-1.5 ">
                                                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG]?.bg || 'bg-gray-50'} ${STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG]?.color || 'text-gray-600'} w-fit`}>
                                                         {(() => {
                                                             const Config = STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending;
@@ -1048,13 +1056,19 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                             );
                                                         })()}
                                                     </span>
-                                                    {request.status === 'in_progress' && request.assigned_to && (
-                                                        <div className="flex items-center gap-1.5 text-[10px] text-blue-600 font-bold bg-blue-50/50 px-1.5 py-0.5 rounded border border-blue-100/50 w-fit">
-                                                            <ShieldCheck size={10} />
-                                                            <span>ช่าง: {request.assigned_to}</span>
-                                                        </div>
-                                                    )}
                                                 </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {request.assigned_to ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-7 h-7 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold border border-blue-100">
+                                                            {request.assigned_to[0].toUpperCase()}
+                                                        </div>
+                                                        <span className="text-sm font-medium text-gray-700">{request.assigned_to}</span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-gray-400 italic">ยังไม่ได้มอบหมาย</span>
+                                                )}
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col">
@@ -1367,7 +1381,14 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         const types = Array.from(typeMap.values());
 
                                         const selectedText = formData.room_id
-                                            ? (() => { const r = rooms.find(rm => rm.room_id === formData.room_id); return r ? `${r.room_code} – ${r.room_name}` : ''; })()
+                                            ? (() => {
+                                                const r = rooms.find(rm => rm.room_id === formData.room_id);
+                                                if (!r) return '';
+                                                const bLabel = r.building || '';
+                                                const fLabel = r.floor || '';
+                                                const locInfo = [bLabel, fLabel].filter(Boolean).join(' ');
+                                                return locInfo ? `${locInfo} › ${r.room_name} (${r.room_code})` : `${r.room_name} (${r.room_code})`;
+                                            })()
                                             : '';
 
                                         const selectRoom = (id: number, code: string, name: string) => {
@@ -1614,7 +1635,10 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                 <span>{loc.code} – {loc.name}</span>
                                                                                 <Badge label={loc.type === 'zone' ? 'ZONE' : 'RM'} type={loc.type as any} />
                                                                             </div>
-                                                                            <div style={{ fontSize: 10, color: '#94a3b8', marginLeft: 30 }}>{loc.path}</div>
+                                                                            <div style={{ fontSize: 10, color: '#94a3b8', marginLeft: 30, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                                                                                {loc.path}
+                                                                            </div>
                                                                         </div>
                                                                     ))
                                                                 )
@@ -2012,7 +2036,9 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                 <div className="space-y-4">
                                     <div>
                                         <div className="text-sm text-gray-500">ห้อง</div>
-                                        <div className="font-medium">{selectedRequest.tbl_rooms?.room_code} - {selectedRequest.tbl_rooms?.room_name}</div>
+                                        <div className="font-medium">
+                                            {[selectedRequest.tbl_rooms?.building, selectedRequest.tbl_rooms?.floor].filter(Boolean).join(' ')} {selectedRequest.tbl_rooms?.room_name} ({selectedRequest.tbl_rooms?.room_code})
+                                        </div>
                                     </div>
                                     <div>
                                         <div className="text-sm text-gray-500">หัวข้อ</div>
@@ -2543,7 +2569,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         {statusChangeData.request.title}
                                     </h4>
                                     <p className="text-sm text-gray-600 dark:text-gray-300">
-                                        สถานที่: {statusChangeData.request.tbl_rooms.room_name} ({statusChangeData.request.tbl_rooms.room_code})
+                                        สถานที่: {[statusChangeData.request.tbl_rooms.building, statusChangeData.request.tbl_rooms.floor].filter(Boolean).join(' ')} {statusChangeData.request.tbl_rooms.room_name} ({statusChangeData.request.tbl_rooms.room_code})
                                     </p>
                                     {statusChangeData.request.description && (
                                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
