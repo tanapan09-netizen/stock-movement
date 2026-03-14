@@ -311,11 +311,14 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                 category: 'general',
                 status: 'pending'
             });
-            if (result) {
-                setGeneralRequests(result as any);
+            if (result && result.success) {
+                setGeneralRequests(Array.isArray(result.data) ? result.data as any : []);
+            } else {
+                setGeneralRequests([]);
             }
         } catch (error) {
             console.error('Failed to fetch general requests:', error);
+            setGeneralRequests([]);
         } finally {
             setFetchingGeneral(false);
         }
@@ -380,25 +383,40 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             ]);
 
             if (reqResult.success) {
-                setRequests(reqResult.data as MaintenanceRequestItem[]);
+                setRequests(Array.isArray(reqResult.data) ? reqResult.data as MaintenanceRequestItem[] : []);
             } else {
                 console.error('Failed to load requests:', reqResult.error);
                 showToast('Failed to load requests: ' + reqResult.error, 'error');
+                setRequests([]);
             }
-            if (roomResult.success) setRooms(roomResult.data as Room[]);
+            
+            if (roomResult.success) setRooms(Array.isArray(roomResult.data) ? roomResult.data as Room[] : []);
+            else setRooms([]);
+
             if (summaryResult.success) setSummary(summaryResult.data as typeof summary);
-            if (techResult.success) setTechnicians(techResult.data as Technician[]);
+            
+            if (techResult.success) setTechnicians(Array.isArray(techResult.data) ? techResult.data as Technician[] : []);
+            else setTechnicians([]);
+            
             if (lineUserResult.success) {
-                const lineTechs = (lineUserResult.data as any[]).filter(u => u.role === 'technician' && u.display_name && u.is_active);
+                const lineTechs = Array.isArray(lineUserResult.data) ? (lineUserResult.data as any[]).filter(u => u.role === 'technician' && u.display_name && u.is_active) : [];
                 setLineTechnicians(lineTechs);
-            }
+            } else setLineTechnicians([]);
+            
             if (productResult && productResult.success) {
-                setProducts(productResult.data as any[]);
-            }
+                setProducts(Array.isArray(productResult.data) ? productResult.data as any[] : []);
+            } else setProducts([]);
+            
         } catch (error) {
             console.error('Error loading data:', error);
+            setRequests([]);
+            setRooms([]);
+            setTechnicians([]);
+            setLineTechnicians([]);
+            setProducts([]);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     }
 
     useEffect(() => {
@@ -745,13 +763,13 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
         const historyResult = await getMaintenanceHistory(request.request_id);
         if (historyResult.success) {
-            setHistoryItems(historyResult.data as HistoryItem[]);
-        }
+            setHistoryItems(Array.isArray(historyResult.data) ? historyResult.data as HistoryItem[] : []);
+        } else setHistoryItems([]);
 
         const partsResult = await getMaintenanceParts(request.request_id);
         if (partsResult.success) {
-            setParts(partsResult.data as MaintenancePart[]);
-        }
+            setParts(Array.isArray(partsResult.data) ? partsResult.data as MaintenancePart[] : []);
+        } else setParts([]);
 
         setShowDetailModal(true);
     }
@@ -773,7 +791,9 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                 // Refresh parts
                 if (selectedRequest) {
                     const partsResult = await getMaintenanceParts(selectedRequest.request_id);
-                    if (partsResult.success) setParts(partsResult.data as MaintenancePart[]);
+                    if (partsResult.success) {
+                        setParts(Array.isArray(partsResult.data) ? partsResult.data as MaintenancePart[] : []);
+                    } else setParts([]);
                 }
             } else {
                 showToast(result.error || 'Verification failed', 'error');
