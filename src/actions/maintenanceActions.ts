@@ -1125,7 +1125,7 @@ export async function getProducts() {
             where: { warehouse_code: 'WH-01' }
         });
 
-        let wh01StockMap = new Map<string, number>();
+        const wh01StockMap = new Map<string, number>();
         if (mainWarehouse) {
             const stocks = await prisma.tbl_warehouse_stock.findMany({
                 where: { warehouse_id: mainWarehouse.warehouse_id }
@@ -1151,8 +1151,9 @@ export async function getProducts() {
         const productsWithAvailability = products.map(p => {
             const reserved = reservedMap.get(p.p_id) || 0;
             const wh01Qty = wh01StockMap.get(p.p_id);
-            // If explicitly present in WH-01, use it. Otherwise, assume unreserved p_count is in WH-01.
-            const available_stock = wh01Qty !== undefined ? wh01Qty : Math.max(0, p.p_count - reserved);
+            const fallbackQty = Math.max(0, p.p_count - reserved);
+            // Use the larger value to tolerate legacy products whose WH-01 rows were never initialized.
+            const available_stock = wh01Qty !== undefined ? Math.max(wh01Qty, fallbackQty) : fallbackQty;
 
             return {
                 ...p,
@@ -1276,14 +1277,18 @@ export async function withdrawPartForMaintenance(data: {
 
         let availableQty: number | null | undefined = wh01Stock?.quantity;
 
-        // Auto-heal: if WH-01 stock record is missing, assume unreserved p_count is in WH-01
+        const reservedAgg = await prisma.tbl_maintenance_parts.aggregate({
+            where: { p_id: data.p_id, status: 'withdrawn' },
+            _sum: { quantity: true }
+        });
+        const reservedQty = reservedAgg._sum.quantity || 0;
+        const fallbackQty = Math.max(0, product.p_count - reservedQty);
+
+        // Auto-heal: if WH-01 stock is missing or stale, fall back to logical stock from product balance.
         if (availableQty === undefined || availableQty === null) {
-            const reservedAgg = await prisma.tbl_maintenance_parts.aggregate({
-                where: { p_id: data.p_id, status: 'withdrawn' },
-                _sum: { quantity: true }
-            });
-            const reservedQty = reservedAgg._sum.quantity || 0;
-            availableQty = Math.max(0, product.p_count - reservedQty);
+            availableQty = fallbackQty;
+        } else {
+            availableQty = Math.max(availableQty, fallbackQty);
         }
 
         const resolvedQty = availableQty as number;

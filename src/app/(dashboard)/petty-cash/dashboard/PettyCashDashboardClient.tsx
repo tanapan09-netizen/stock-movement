@@ -112,7 +112,13 @@ export default function PettyCashDashboardClient({ initialData }: DashboardProps
                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                         ))}
                                     </Pie>
-                                    <RechartsTooltip formatter={(value: number | undefined) => [value ? `฿${value.toLocaleString()}` : `฿0`, 'ยอดเงิน']} />
+                                    <RechartsTooltip
+                                        formatter={(value: string | number | readonly (string | number)[] | undefined) => {
+                                            const rawValue = Array.isArray(value) ? value[0] : value;
+                                            const amount = typeof rawValue === 'number' ? rawValue : Number(rawValue ?? 0);
+                                            return [`฿${amount.toLocaleString()}`, 'ยอดเงิน'];
+                                        }}
+                                    />
                                     <Legend />
                                 </PieChart>
                             </ResponsiveContainer>

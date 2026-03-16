@@ -112,6 +112,16 @@ export default function PartsManagementClient() {
             return;
         }
 
+        if (availableStock <= 0) {
+            alert('สินค้าในคลังหลักไม่พอสำหรับการเบิก');
+            return;
+        }
+
+        if (withdrawForm.quantity > availableStock) {
+            alert(`เบิกได้สูงสุด ${availableStock} ${selectedProduct?.p_unit || 'ชิ้น'}`);
+            return;
+        }
+
         const dataToSubmit = {
             ...withdrawForm,
             withdrawn_by: session?.user?.name || 'System'
@@ -356,7 +366,11 @@ export default function PartsManagementClient() {
                                                 label: `${p.p_name} (คงเหลือ: ${p.available_stock ?? p.p_count} ${p.p_unit || 'ชิ้น'})`
                                             }))}
                                         value={withdrawForm.p_id}
-                                        onChange={(val: string) => setWithdrawForm({ ...withdrawForm, p_id: val })}
+                                        onChange={(val: string) => setWithdrawForm(prev => ({
+                                            ...prev,
+                                            p_id: val,
+                                            quantity: 1
+                                        }))}
                                         placeholder="เลือกสินค้า"
                                         required
                                     />
@@ -369,7 +383,11 @@ export default function PartsManagementClient() {
                                     <input
                                         type="number"
                                         value={withdrawForm.quantity}
-                                        onChange={(e) => setWithdrawForm({ ...withdrawForm, quantity: Number(e.target.value) })}
+                                        onChange={(e) => {
+                                            const nextQty = Number(e.target.value);
+                                            const safeQty = Math.max(1, availableStock > 0 ? Math.min(nextQty, availableStock) : nextQty);
+                                            setWithdrawForm({ ...withdrawForm, quantity: safeQty });
+                                        }}
                                         className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
                                         min="1"
                                         max={availableStock}
@@ -401,6 +419,7 @@ export default function PartsManagementClient() {
                                     </button>
                                     <button
                                         type="submit"
+                                        disabled={availableStock <= 0}
                                         className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
                                     >
                                         เบิก

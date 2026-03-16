@@ -193,6 +193,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     const [filterRoom, setFilterRoom] = useState<number | null>(null);
     const [filterStartDate, setFilterStartDate] = useState('');
     const [filterEndDate, setFilterEndDate] = useState('');
+    const [showCompleted, setShowCompleted] = useState(false);
 
     const [assetSearchQuery, setAssetSearchQuery] = useState('');
     const [assetResults, setAssetResults] = useState<any[]>([]);
@@ -873,13 +874,28 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     }
 
     const filteredRequests = requests.filter(req => {
-        if (!searchTerm) return true;
-        const search = searchTerm.toLowerCase();
-        return (
-            req.title.toLowerCase().includes(search) ||
-            req.request_number.toLowerCase().includes(search) ||
-            req.tbl_rooms.room_name.toLowerCase().includes(search)
-        );
+        // Handle search
+        if (searchTerm) {
+            const search = searchTerm.toLowerCase();
+            const matchesSearch = 
+                req.title.toLowerCase().includes(search) ||
+                req.request_number.toLowerCase().includes(search) ||
+                req.tbl_rooms.room_name.toLowerCase().includes(search);
+            if (!matchesSearch) return false;
+        }
+
+        // Show completed logic
+        if (!showCompleted) {
+            // Only hide if the user hasn't explicitly filtered by "completed" or "verified"
+            const isCompletedStatus = req.status === 'completed' || req.status === 'verified';
+            const isExplicitlyFilteringCompleted = filterStatus === 'completed' || filterStatus === 'verified';
+            
+            if (isCompletedStatus && !isExplicitlyFilteringCompleted) {
+                return false;
+            }
+        }
+
+        return true;
     });
 
     const handleViewRequest = (request: MaintenanceRequestItem) => {
@@ -937,15 +953,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                         </button>
                     </div>
 
-                    {userPermissions['admin_rooms'] && (
-                        <button
-                            onClick={() => setShowRoomForm(true)}
-                            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-2"
-                        >
-                            <Plus size={18} /> เพิ่มห้อง
-                        </button>
-                    )}
-                    {true && ( // Anyone can request maintenance
+                        {true && ( // Anyone can request maintenance
                         <button
                             onClick={() => setShowForm(true)}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
@@ -1016,6 +1024,19 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                         </option>
                     ))}
                 </select>
+
+                <div className="flex items-center gap-2 pl-4 border-l border-gray-200 dark:border-slate-700">
+                    <label className="inline-flex items-center cursor-pointer group">
+                        <input 
+                            type="checkbox" 
+                            className="sr-only peer"
+                            checked={showCompleted}
+                            onChange={(e) => setShowCompleted(e.target.checked)}
+                        />
+                        <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 shadow-inner"></div>
+                        <span className="ms-3 text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-blue-600 transition-colors">แสดงงานที่เสร็จแล้ว</span>
+                    </label>
+                </div>
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-gray-600 dark:text-gray-300">ตั้งแต่:</span>
                     <input
@@ -1048,6 +1069,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                         </button>
                     )}
                 </div>
+
                 <div className="flex-1 relative">
                     <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
@@ -1317,7 +1339,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     value={formData.title}
                                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                    placeholder="เช่น คอมพิวเตอร์ที่ L-Lab-05 ไม่บูต, เครื่องปรับอากาศห้อง ไม่เย็น"
+                                    placeholder="เช่น  เครื่องปรับอากาศห้อง ไม่เย็น"
                                     title="ระบุหัวข้อปัญหา"
                                     required
                                 />
@@ -1416,30 +1438,27 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             {/* Reporter Name and Department and Target Role */}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-2 text-gray-700">ชื่อผู้แจ้ง <span className="text-red-500">*</span></label>
+                                      <label className="block text-sm font-medium mb-1">ผู้เแจ้ง *</label>
                                     <input
                                         type="text"
-                                        value={formData.reported_by}
-                                        onChange={(e) => setFormData({ ...formData, reported_by: e.target.value })}
-                                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                        placeholder="ชื่อ-นามสกุล"
-                                        title="ชื่อผู้แจ้ง"
-                                        required
+                                        value={session?.user?.name || ''}
+                                        readOnly
+                                        className="w-full border rounded-lg px-3 py-2 bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-gray-400 dark:border-slate-600 cursor-not-allowed"
+                                        placeholder="ชื่อแจ้ง"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2 text-gray-700">แผนก (ผู้แจ้ง)</label>
+                                      <label className="block text-sm font-medium mb-1">แผนก *</label>
                                     <input
                                         type="text"
-                                        value={formData.department}
-                                        onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                        value={session?.user?.role || ''}
+                                        readOnly
+                                        className="w-full border rounded-lg px-3 py-2 bg-gray-100 text-gray-500 dark:bg-slate-600 dark:text-gray-300 dark:border-slate-400 cursor-not-allowed"
                                         placeholder="ชื่อแผนก/หน่วยงาน"
-                                        title="แผนก"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2 text-gray-700">แผนกงานที่ต้องการแจ้ง <span className="text-red-500">*</span></label>
+                                    <label className="block text-sm font-medium mb-2 text-gray-700">แผนกงานที่ต้องการแจ้งไปหา <span className="text-red-500">*</span></label>
                                     <select
                                         value={formData.target_role}
                                         onChange={(e) => setFormData({ ...formData, target_role: e.target.value })}
@@ -2148,22 +2167,11 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                 </div>
                             </div>
 
-                            {/* Workflow Stepper at Top of Modal */}
                             <div className="px-6 py-8 border-b border-gray-100 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-900/10 mb-6 -mx-6 -mt-6 rounded-t-xl">
                                 <WorkflowStepper 
-                                    currentStep={
-                                        selectedRequest.status === 'pending' ? 1 :
-                                        selectedRequest.status === 'in_progress' ? 2 :
-                                        selectedRequest.status === 'confirmed' ? 3 :
-                                        (selectedRequest.status === 'completed' || selectedRequest.status === 'verified') ? 4 : 4
-                                    }
                                     totalSteps={4}
-                                    status={
-                                        selectedRequest.status === 'confirmed' ? 'in_progress' : 
-                                        selectedRequest.status === 'verified' ? 'completed' : 
-                                        selectedRequest.status as any
-                                    }
-                                    labels={['รอรับเรื่อง', 'ดำเนินการ', 'ยืนยันผล', 'เสร็จสมบูรณ์']}
+                                    status={selectedRequest.status as WorkflowStatus}
+                                    labels={['รอรับเรื่อง', 'ดำเนินการ', 'ยืนยันงาน', 'เสร็จสมบูรณ์']}
                                     size="md"
                                 />
                             </div>
@@ -2688,8 +2696,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         </p>
                                         <div className="w-[120px]">
                                             <WorkflowStepper
-                                                currentStep={statusChangeData.newStatus === 'completed' ? 3 : statusChangeData.newStatus === 'in_progress' ? 2 : 1}
-                                                totalSteps={3}
+                                                totalSteps={4}
+                                                labels={['รอรับเรื่อง', 'ดำเนินการ', 'ยืนยันงาน', 'เสร็จสมบูรณ์']}
                                                 status={statusChangeData.newStatus === 'pending' ? 'pending' : statusChangeData.newStatus as WorkflowStatus}
                                                 size="sm"
                                             />

@@ -9,12 +9,12 @@ export default function AutoLogout() {
     const router = useRouter();
     const timeoutId = useRef<NodeJS.Timeout>(null);
 
-    // 30 minutes in milliseconds
-    const TIMEOUT_MS = 30 * 60 * 1000;
+    // 10 minutes in milliseconds
+    const TIMEOUT_MS = 10 * 60 * 1000;
 
     const handleLogout = useCallback(async () => {
         if (session) {
-            console.log('Use inactive for 30 mins, logging out...');
+            console.log('Use inactive for 10 mins, logging out...');
             await signOut({ redirect: false });
             router.push('/login?reason=timeout');
         }

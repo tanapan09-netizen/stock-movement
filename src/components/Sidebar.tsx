@@ -233,18 +233,6 @@ export default function Sidebar(props: SidebarProps) {
 
                         {can(PERMISSIONS.MAINTENANCE) && (
                             <Link
-                                href="/maintenance"
-                                onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/maintenance') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
-                                title={collapsed ? 'แจ้งซ่อม' : undefined}
-                            >
-                                <Wrench className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/maintenance') && 'group-hover:scale-110 group-hover:text-cyan-400'}`} />
-                                {!collapsed && <span className="truncate">แจ้งซ่อม (ช่าง)</span>}
-                            </Link>
-                        )}
-
-                        {can(PERMISSIONS.MAINTENANCE) && (
-                            <Link
                                 href="/general-request"
                                 onClick={handleLinkClick}
                                 className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/general-request') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
@@ -253,9 +241,23 @@ export default function Sidebar(props: SidebarProps) {
                                 <svg className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/general-request') && 'group-hover:scale-110 group-hover:text-cyan-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                                 </svg>
-                                {!collapsed && <span className="truncate">รับแจ้งซ่อม</span>}
+                                {!collapsed && <span className="truncate">รับเรื่อง</span>}
                             </Link>
                         )}
+
+                        {can(PERMISSIONS.MAINTENANCE) && (
+                            <Link
+                                href="/maintenance"
+                                onClick={handleLinkClick}
+                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/maintenance') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                title={collapsed ? 'แจ้งซ่อม' : undefined}
+                            >
+                                <Wrench className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/maintenance') && 'group-hover:scale-110 group-hover:text-cyan-400'}`} />
+                                {!collapsed && <span className="truncate">แจ้งซ่อม </span>}
+                            </Link>
+                        )}
+
+                        
 
                         {can(PERMISSIONS.MAINTENANCE_DASHBOARD) && (
                             <Link
