@@ -422,20 +422,21 @@ export async function createMaintenanceRequest(formData: FormData) {
             }
         });
 
-        // Send Notifications (LINE & Email)
+        // Send Notifications
         try {
-            // 1. Notify Target Role via LINE (Broadcast)
-            const { notifyRoleViaLine } = await import('@/lib/lineNotify');
-            await notifyRoleViaLine(
-                target_role,
-                validData.title,
-                request.tbl_rooms?.room_code || '',
-                request.tbl_rooms?.room_name || '',
-                validData.priority || 'normal',
-                reported_by
-            );
+            if (target_role !== 'general') {
+                const { notifyRoleViaLine } = await import('@/lib/lineNotify');
+                await notifyRoleViaLine(
+                    target_role,
+                    validData.title,
+                    request.tbl_rooms?.room_code || '',
+                    request.tbl_rooms?.room_name || '',
+                    validData.priority || 'normal',
+                    reported_by
+                );
+            }
 
-            // 2. Notify Admin/Approvers via Email
+            // General role uses web notifications from /api/notifications instead of LINE.
             const { notifyNewMaintenanceRequest } = await import('@/lib/notifications/notificationManager');
             // Run in background
             notifyNewMaintenanceRequest({
@@ -448,6 +449,8 @@ export async function createMaintenanceRequest(formData: FormData) {
                 reported_by: request.reported_by,
                 created_at: request.created_at,
                 image_url: uploadedImageUrls.length > 0 ? uploadedImageUrls[0] : null
+            }, {
+                disableLine: target_role === 'general'
             });
 
         } catch (notifyError) {

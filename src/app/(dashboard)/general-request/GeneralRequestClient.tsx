@@ -9,6 +9,7 @@ import {
     ChevronDown, X, Filter, ClipboardList, LayoutGrid, TableProperties
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 import {
     getMaintenanceRequests,
     createMaintenanceRequest,
@@ -80,6 +81,8 @@ interface Props {
 export default function GeneralRequestClient({ userPermissions }: Props) {
     const { data: session } = useSession();
     const { showToast } = useToast();
+    const searchParams = useSearchParams();
+    const reqQueryParam = searchParams.get('req');
 
     // Data
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
@@ -94,6 +97,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
     const [selectedRequest, setSelectedRequest] = useState<MaintenanceRequestItem | null>(null);
     const [showDetail, setShowDetail] = useState(false);
     const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+    const [hasOpenedFromUrl, setHasOpenedFromUrl] = useState(false);
 
     // Room selector
     const [roomSearch, setRoomSearch] = useState('');
@@ -144,6 +148,21 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             setFormData(f => ({ ...f, reported_by: user.name || user.email || '' }));
         }
     }, [loadData, session]);
+
+    useEffect(() => {
+        if (!reqQueryParam || requests.length === 0 || hasOpenedFromUrl) return;
+
+        const targetReq = requests.find(r => r.request_id === Number(reqQueryParam));
+        if (!targetReq) return;
+
+        setSelectedRequest(targetReq);
+        setShowDetail(true);
+        setHasOpenedFromUrl(true);
+
+        const url = new URL(window.location.href);
+        url.searchParams.delete('req');
+        window.history.replaceState({}, '', url.toString());
+    }, [reqQueryParam, requests, hasOpenedFromUrl]);
 
     // Filtered rooms for search
     const filteredRooms = rooms.filter(r =>
@@ -753,8 +772,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                             <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
                                 <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                                 <div className="text-sm text-blue-800">
-                                    <p className="font-medium">ระบบจะแจ้งเตือนฝ่ายธุรการผ่าน LINE อัตโนมัติ</p>
-                                    <p className="text-blue-600 mt-0.5">เมื่อบันทึกสำเร็จ ฝ่ายธุรการจะได้รับการแจ้งเตือนทันที</p>
+                                    <p className="font-medium">ระบบจะแจ้งเตือนฝ่ายธุรการผ่านหน้าเว็บแทน LINE</p>
+                                    <p className="text-blue-600 mt-0.5">เมื่อบันทึกสำเร็จ ผู้ใช้ role general จะได้รับการแจ้งเตือนพร้อมเสียงบนเว็บ</p>
                                 </div>
                             </div>
 

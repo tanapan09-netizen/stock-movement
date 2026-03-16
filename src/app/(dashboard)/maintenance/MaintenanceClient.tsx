@@ -427,7 +427,9 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
     useEffect(() => {
         if (reqQueryParam && requests.length > 0 && !hasOpenedFromUrl) {
-            const targetReq = requests.find(r => r.request_number === reqQueryParam);
+            const targetReq = requests.find(r =>
+                r.request_number === reqQueryParam || r.request_id === Number(reqQueryParam)
+            );
             if (targetReq) {
                 openDetailModal(targetReq);
                 setHasOpenedFromUrl(true);

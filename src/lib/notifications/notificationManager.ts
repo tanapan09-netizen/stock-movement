@@ -209,13 +209,15 @@ export async function notifyNewMaintenanceRequest(request: {
     reported_by: string;
     created_at: Date;
     image_url?: string | null;
+}, options?: {
+    disableLine?: boolean;
 }): Promise<void> {
     console.log('[Notification] Sending notifications for new maintenance request:', request.request_number);
 
     const results = await Promise.allSettled([
         // LINE Messaging API (To Admin/Manager/Technician)
         (async () => {
-            if (process.env.LINE_MESSAGING_ENABLED !== 'false') {
+            if (!options?.disableLine && process.env.LINE_MESSAGING_ENABLED !== 'false') {
                 const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
                 // Target: Technician and Manager for new maintenance requests
                 const lineIds = await getLineIdsByRoles(['technician', 'manager']);

@@ -127,11 +127,40 @@ export async function GET() {
         // MAINTENANCE / PART REQUESTS — Technician, Head Tech, Approver
         // ===================================================
         if (isAdminOrManager || role === 'technician' || role === 'head_technician' || isApprover) {
-            const pendingMaintenance = await prisma.tbl_maintenance_requests.count({
-                where: { status: 'pending' },
+            const pendingMaintenance = await prisma.tbl_maintenance_requests.findMany({
+                where: {
+                    status: 'pending',
+                    category: { not: 'general' },
+                },
+                orderBy: { created_at: 'desc' },
+                take: 10,
+                select: {
+                    request_id: true,
+                    request_number: true,
+                    title: true,
+                    reported_by: true,
+                    created_at: true,
+                    tbl_rooms: {
+                        select: {
+                            room_code: true,
+                            room_name: true,
+                        }
+                    }
+                }
             });
 
-            if (pendingMaintenance > 0) {
+            pendingMaintenance.forEach(request => {
+                notifications.push({
+                    id: `maintenance_request_${request.request_id}`,
+                    type: 'maintenance',
+                    title: `งานแจ้งซ่อม ${request.request_number}`,
+                    message: `${request.title} - ${request.tbl_rooms?.room_code || '-'} ${request.tbl_rooms?.room_name || ''} โดย ${request.reported_by}`,
+                    time: request.created_at || new Date(),
+                    read: false,
+                });
+            });
+
+            if (pendingMaintenance.length < 0) {
                 notifications.push({
                     id: `maintenance_pending`,
                     type: 'maintenance',
@@ -144,6 +173,38 @@ export async function GET() {
         }
 
         // Part requests — Approvers only
+        if (isAdminOrManager || role === 'general') {
+            const generalRequests = await prisma.tbl_maintenance_requests.findMany({
+                where: { category: 'general', status: 'pending' },
+                orderBy: { created_at: 'desc' },
+                take: 10,
+                select: {
+                    request_id: true,
+                    request_number: true,
+                    title: true,
+                    reported_by: true,
+                    created_at: true,
+                    tbl_rooms: {
+                        select: {
+                            room_code: true,
+                            room_name: true,
+                        }
+                    }
+                }
+            });
+
+            generalRequests.forEach(request => {
+                notifications.push({
+                    id: `general_request_${request.request_id}`,
+                    type: 'maintenance',
+                    title: `งานแจ้งซ่อมทั่วไป ${request.request_number}`,
+                    message: `${request.title} - ${request.tbl_rooms?.room_code || '-'} ${request.tbl_rooms?.room_name || ''} โดย ${request.reported_by}`,
+                    time: request.created_at || new Date(),
+                    read: false,
+                });
+            });
+        }
+
         if (isAdminOrManager || isApprover || role === 'head_technician' || role === 'purchasing') {
             const pendingParts = await prisma.tbl_part_requests.count({
                 where: { status: 'pending' },
