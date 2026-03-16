@@ -89,7 +89,7 @@ export default function PartsManagementClient() {
             const [partsResult, productsResult, requestsResult] = await Promise.all([
                 getWithdrawnPartsForMaintenance(),
                 getProducts(),
-                getMaintenanceRequests({ status: 'in_progress' })
+                getMaintenanceRequests({ status: ['in_progress', 'confirmed'] })
             ]);
 
             if (partsResult.success) setWithdrawnParts(partsResult.data as MaintenancePart[]);
@@ -104,6 +104,9 @@ export default function PartsManagementClient() {
     useEffect(() => {
         loadData();
     }, []);
+
+    const selectedProduct = products.find(p => p.p_id === withdrawForm.p_id);
+    const availableStock = selectedProduct?.available_stock ?? selectedProduct?.p_count ?? 0;
 
     async function handleWithdraw(e: React.FormEvent) {
         e.preventDefault();
@@ -177,8 +180,8 @@ export default function PartsManagementClient() {
             alert(`เคลียร์ข้อมูลเรียบร้อย (${result.count || 0} รายการ)`);
         } else {
             alert('เกิดข้อผิดพลาด: ' + result.error);
-            setLoading(false);
         }
+        setLoading(false);
     }
 
     const filteredParts = withdrawnParts.filter(part => {
@@ -190,9 +193,6 @@ export default function PartsManagementClient() {
             part.request?.title?.toLowerCase().includes(search)
         );
     });
-
-    const selectedProduct = products.find(p => p.p_id === withdrawForm.p_id);
-    const availableStock = selectedProduct?.available_stock ?? selectedProduct?.p_count ?? 0;
 
     return (
         <div className="space-y-6">
@@ -478,6 +478,6 @@ export default function PartsManagementClient() {
                     </div>
                 )
             }
-        </div >
+        </div>
     );
 }

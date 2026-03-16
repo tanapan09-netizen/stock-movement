@@ -11,19 +11,31 @@ export default async function TechnicianDashboard() {
     const userRole = (session?.user as any)?.role || '';
     const isApprover = (session?.user as any)?.is_approver || false;
 
-    const assignedJobs = await prisma.tbl_maintenance_requests.count({
-        where: { assigned_to: userName, status: 'in_progress' }
-    });
-
-    const pendingJobs = await prisma.tbl_maintenance_requests.count({
+    // --- Global Stats (All Tasks) ---
+    const globalPending = await prisma.tbl_maintenance_requests.count({
         where: { status: 'pending' }
     });
 
-    const completedJobs = await prisma.tbl_maintenance_requests.count({
-        where: { assigned_to: userName, status: 'completed' }
+    const globalInProgress = await prisma.tbl_maintenance_requests.count({
+        where: { status: 'in_progress' }
     });
 
-    const totalJobs = await prisma.tbl_maintenance_requests.count({
+    const globalConfirmed = await prisma.tbl_maintenance_requests.count({
+        where: { status: 'confirmed' }
+    });
+
+    const globalCompleted = await prisma.tbl_maintenance_requests.count({
+        where: { status: { in: ['completed', 'verified'] } }
+    });
+
+    const globalTotal = await prisma.tbl_maintenance_requests.count();
+
+    // --- User Specific Stats ---
+    const userAssigned = await prisma.tbl_maintenance_requests.count({
+        where: { assigned_to: userName, status: 'in_progress' }
+    });
+
+    const userTotal = await prisma.tbl_maintenance_requests.count({
         where: { assigned_to: userName }
     });
 
@@ -38,26 +50,17 @@ export default async function TechnicianDashboard() {
     }
 
     const chartData = [
-        { label: 'กำลังดำเนินการ', value: assignedJobs, color: '#3B82F6' },
-        { label: 'รอดำเนินการ',    value: pendingJobs,  color: '#F59E0B' },
-        { label: 'เสร็จสิ้นแล้ว',  value: completedJobs, color: '#10B981' },
+        { label: 'รอดำเนินการ',    value: globalPending,  color: '#F59E0B' },
+        { label: 'กำลังดำเนินการ', value: globalInProgress, color: '#3B82F6' },
+        { label: 'รอตรวจรับ',      value: globalConfirmed, color: '#8B5CF6' },
+        { label: 'เสร็จสิ้นแล้ว',  value: globalCompleted, color: '#10B981' },
     ].filter(d => d.value > 0);
 
     const statsCards = [
         {
-            href: '/maintenance',
-            label: 'งานกำลังดำเนินการ',
-            value: assignedJobs,
-            icon: Clock,
-            colorClass: 'text-blue-600 dark:text-blue-400',
-            bgClass: 'bg-blue-50 dark:bg-blue-900/30',
-            borderClass: 'border-blue-100 dark:border-blue-800/40',
-            iconColor: 'text-blue-600',
-        },
-        {
-            href: '/maintenance',
+            href: '/maintenance?status=pending',
             label: 'งานใหม่รอดำเนินการ',
-            value: pendingJobs,
+            value: globalPending,
             icon: AlertCircle,
             colorClass: 'text-amber-600 dark:text-amber-400',
             bgClass: 'bg-amber-50 dark:bg-amber-900/30',
@@ -65,24 +68,34 @@ export default async function TechnicianDashboard() {
             iconColor: 'text-amber-600',
         },
         {
-            href: '/maintenance?status=completed',
-            label: 'งานที่เสร็จสิ้นแล้ว',
-            value: completedJobs,
-            icon: CheckCircle2,
+            href: '/maintenance?status=in_progress',
+            label: 'งานกำลังดำเนินการ',
+            value: globalInProgress,
+            icon: Clock,
+            colorClass: 'text-blue-600 dark:text-blue-400',
+            bgClass: 'bg-blue-50 dark:bg-blue-900/30',
+            borderClass: 'border-blue-100 dark:border-blue-800/40',
+            iconColor: 'text-blue-600',
+        },
+        {
+            href: '/maintenance?status=confirmed',
+            label: 'งานรอตรวจรับ',
+            value: globalConfirmed,
+            icon: Wrench,
+            colorClass: 'text-purple-600 dark:text-purple-400',
+            bgClass: 'bg-purple-50 dark:bg-purple-900/30',
+            borderClass: 'border-purple-100 dark:border-purple-800/40',
+            iconColor: 'text-purple-600',
+        },
+        {
+            href: '/maintenance',
+            label: 'งานทั้งหมดในระบบ',
+            value: globalTotal,
+            icon: TrendingUp,
             colorClass: 'text-emerald-600 dark:text-emerald-400',
             bgClass: 'bg-emerald-50 dark:bg-emerald-900/30',
             borderClass: 'border-emerald-100 dark:border-emerald-800/40',
             iconColor: 'text-emerald-600',
-        },
-        {
-            href: '/maintenance',
-            label: 'งานทั้งหมดของฉัน',
-            value: totalJobs,
-            icon: TrendingUp,
-            colorClass: 'text-violet-600 dark:text-violet-400',
-            bgClass: 'bg-violet-50 dark:bg-violet-900/30',
-            borderClass: 'border-violet-100 dark:border-violet-800/40',
-            iconColor: 'text-violet-600',
         },
     ];
 
@@ -154,15 +167,16 @@ export default async function TechnicianDashboard() {
                 <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
                     <div className="flex items-center gap-2 mb-5">
                         <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                        <h3 className="font-semibold text-gray-800 dark:text-gray-200 text-sm">สรุปภาพรวมงานของฉัน</h3>
+                        <h3 className="font-semibold text-gray-800 dark:text-gray-200 text-sm">สรุปภาพรวมงานทั้งหมด</h3>
                     </div>
                     <div className="space-y-4">
                         {[
-                            { label: 'กำลังดำเนินการ', value: assignedJobs, total: totalJobs || 1, color: 'bg-blue-500' },
-                            { label: 'รอดำเนินการ',    value: pendingJobs,  total: totalJobs || 1, color: 'bg-amber-400' },
-                            { label: 'เสร็จสิ้น',      value: completedJobs, total: totalJobs || 1, color: 'bg-emerald-500' },
+                            { label: 'รอดำเนินการ',    value: globalPending,  total: globalTotal || 1, color: 'bg-amber-400' },
+                            { label: 'กำลังดำเนินการ', value: globalInProgress, total: globalTotal || 1, color: 'bg-blue-500' },
+                            { label: 'รอตรวจรับ',      value: globalConfirmed,  total: globalTotal || 1, color: 'bg-purple-500' },
+                            { label: 'เสร็จสิ้น',      value: globalCompleted, total: globalTotal || 1, color: 'bg-emerald-500' },
                         ].map(item => {
-                            const pct = totalJobs > 0 ? Math.round((item.value / totalJobs) * 100) : 0;
+                            const pct = globalTotal > 0 ? Math.round((item.value / globalTotal) * 100) : 0;
                             return (
                                 <div key={item.label}>
                                     <div className="flex justify-between text-sm mb-1.5">
@@ -180,8 +194,8 @@ export default async function TechnicianDashboard() {
                         })}
                     </div>
                     <div className="mt-6 pt-4 border-t border-gray-100 dark:border-slate-700 flex items-center justify-between">
-                        <span className="text-xs text-gray-400">งานทั้งหมดที่ได้รับมอบหมาย</span>
-                        <span className="text-lg font-bold text-gray-800 dark:text-white">{totalJobs} งาน</span>
+                        <span className="text-xs text-gray-400">งานทั้งหมดในระบบ</span>
+                        <span className="text-lg font-bold text-gray-800 dark:text-white">{globalTotal} งาน</span>
                     </div>
                 </div>
             </div>
