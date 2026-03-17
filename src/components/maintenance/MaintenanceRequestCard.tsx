@@ -1,12 +1,22 @@
 'use client';
 
-import { Wrench, Clock, CheckCircle, XCircle, MapPin, User, Calendar, AlertTriangle, ArrowRight, BellRing, ShieldCheck } from 'lucide-react';
+import { Wrench, Clock, CheckCircle, XCircle, MapPin, User, Calendar, AlertTriangle, ArrowRight, BellRing, ShieldCheck, AlertCircle } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
+
+// ── AgeBadgeInfo type (ต้อง match กับที่ define ใน MaintenanceClient.tsx) ──
+export interface AgeBadgeInfo {
+    label: string;
+    isOverSLA: boolean;
+    isWarning: boolean;
+    colorClass: string;
+}
 
 interface MaintenanceRequestCardProps {
     request: any;
     onClick: (request: any) => void;
     onResend?: (request: any) => void;
+    /** ส่งมาจาก MaintenanceClient — null หมายถึงงานปิดแล้ว ไม่ต้องแสดง */
+    ageBadge?: AgeBadgeInfo | null;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
@@ -23,7 +33,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string
     urgent: { label: 'เร่งด่วน', color: 'text-red-500', bg: 'bg-red-50', icon: AlertTriangle }
 };
 
-export default function MaintenanceRequestCard({ request, onClick, onResend }: MaintenanceRequestCardProps) {
+export default function MaintenanceRequestCard({ request, onClick, onResend, ageBadge }: MaintenanceRequestCardProps) {
     const status = STATUS_CONFIG[request.status] || STATUS_CONFIG.pending;
     const priority = PRIORITY_CONFIG[request.priority] || PRIORITY_CONFIG.normal;
 
@@ -53,6 +63,31 @@ export default function MaintenanceRequestCard({ request, onClick, onResend }: M
                         {request.description}
                     </p>
                 )}
+
+                {/* ── Age Badge (เพิ่มใหม่) ───────────────────────────────── */}
+                {ageBadge && (
+                    <div className="flex items-center gap-2 flex-wrap pt-1.5">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${ageBadge.colorClass}`}>
+                            <Clock size={11} />
+                            {ageBadge.label}
+                        </span>
+
+                        {ageBadge.isOverSLA && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-black text-red-600 animate-pulse">
+                                <AlertTriangle size={11} />
+                                เกิน SLA
+                            </span>
+                        )}
+
+                        {ageBadge.isWarning && !ageBadge.isOverSLA && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-orange-500">
+                                <AlertCircle size={11} />
+                                ใกล้เกิน SLA
+                            </span>
+                        )}
+                    </div>
+                )}
+                {/* ─────────────────────────────────────────────────────────── */}
             </div>
 
             {/* Main Info Grid */}
