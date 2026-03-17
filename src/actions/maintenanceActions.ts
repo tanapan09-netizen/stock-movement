@@ -540,33 +540,52 @@ export async function completeMaintenanceWithParts(request_id: number, changed_b
 export async function submitRepairCompletion(formData: FormData) {
     try {
         const request_id = parseInt(formData.get('request_id') as string);
-        const changed_by = formData.get('changed_by') as string;
-        const completionNotes = formData.get('notes') as string;
+        const session = await auth();
+        const changed_by = (formData.get('changed_by') as string) || session?.user?.name || 'System';
+        const completionNotes = (formData.get('completionNotes') as string) || (formData.get('notes') as string) || '';
         const technician_signature = formData.get('technician_signature') as string;
         const customer_signature = formData.get('customer_signature') as string;
 
-        await prisma.tbl_maintenance_requests.update({
+        const request = await prisma.tbl_maintenance_requests.update({
             where: { request_id },
             data: {
-                status: 'completed',
-                completed_at: new Date(),
+                status: 'confirmed',
+                completed_at: null,
                 notes: completionNotes,
                 technician_signature,
                 customer_signature
+            },
+            include: {
+                tbl_rooms: {
+                    select: { room_code: true, room_name: true }
+                }
             }
         });
 
         await prisma.tbl_maintenance_history.create({
             data: {
                 request_id,
-                action: 'COMPLETED',
-                new_value: 'completed',
+                action: 'SUBMITTED_FOR_HEAD_TECH_APPROVAL',
+                new_value: 'confirmed',
                 changed_by
             }
         });
 
+        try {
+            await notifyRoleViaLine(
+                'head_technician',
+                request.title,
+                request.tbl_rooms.room_code,
+                request.tbl_rooms.room_name,
+                request.priority,
+                changed_by
+            );
+        } catch (notifyError) {
+            console.error('Failed to notify head technician for approval:', notifyError);
+        }
+
         revalidatePath('/maintenance');
-        return { success: true };
+        return { success: true, data: request };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
@@ -774,8 +793,9 @@ export async function updateMaintenanceRequest(
 
         if (data.status && data.status !== current.status) {
             updateData.status = data.status;
+            const isHeadTechApproval = current.status === 'confirmed' && data.status === 'completed';
             historyActions.push({
-                action: 'status_change',
+                action: isHeadTechApproval ? 'HEAD_TECH_APPROVED' : 'status_change',
                 old_value: current.status || '',
                 new_value: data.status
             });

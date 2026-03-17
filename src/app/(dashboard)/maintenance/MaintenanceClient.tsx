@@ -163,6 +163,35 @@ const getElapsedTime = (startDate: Date, now: Date): string => {
     return `${diffMins} นาที`;
 };
 
+const getHistoryActionLabel = (action: string): string => {
+    switch (action) {
+        case 'HEAD_TECH_APPROVED':
+            return 'หัวหน้าช่างตรวจรับงาน';
+        case 'SUBMITTED_FOR_HEAD_TECH_APPROVAL':
+            return 'ช่างส่งงานให้หัวหน้าช่างตรวจรับ';
+        case 'status_change':
+            return 'เปลี่ยนสถานะ';
+        case 'priority_change':
+            return 'เปลี่ยนความเร่งด่วน';
+        case 'category_change':
+            return 'เปลี่ยนหมวดงาน';
+        case 'assignment_change':
+            return 'มอบหมายงาน';
+        case 'schedule_change':
+            return 'เปลี่ยนวันนัดหมาย';
+        case 'actual_cost_change':
+            return 'บันทึกค่าใช้จ่ายจริง';
+        case 'parts_verification':
+            return 'ตรวจนับอะไหล่';
+        case 'reopen_request':
+            return 'เปิดใบงานใหม่';
+        case 'reopen_reason':
+            return 'เหตุผลการเปิดงานใหม่';
+        default:
+            return action;
+    }
+};
+
 const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
     low: { label: 'ต่ำ', color: 'text-gray-600', bg: 'bg-gray-100' },
     normal: { label: 'ปกติ', color: 'text-blue-600', bg: 'bg-blue-100' },
@@ -673,6 +702,34 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             if (result.success) {
                 setShowStatusModal(false);
                 loadData();
+                showToast('ส่งงานให้หัวหน้าช่างตรวจรับแล้ว', 'success');
+            } else {
+                showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
+            }
+            return;
+        }
+
+        if (statusChangeData.newStatus === 'completed') {
+            const formData = new FormData();
+            formData.append('request_id', statusChangeData.request.request_id.toString());
+            formData.append('completionNotes', statusChangeData.completionNotes);
+            if (statusChangeData.technicianSignature) {
+                formData.append('technician_signature', statusChangeData.technicianSignature);
+            }
+            if (statusChangeData.customerSignature) {
+                formData.append('customer_signature', statusChangeData.customerSignature);
+            }
+            if (statusChangeData.completionPhoto) {
+                formData.append('completion_image', statusChangeData.completionPhoto);
+            }
+            if (statusChangeData.partsUsed.length > 0) {
+                formData.append('parts_used', JSON.stringify(statusChangeData.partsUsed));
+            }
+
+            const result = await submitRepairCompletion(formData);
+            if (result.success) {
+                setShowStatusModal(false);
+                loadData();
                 showToast('บันทึกการซ่อมเสร็จสิ้น', 'success');
             } else {
                 showToast('เกิดข้อผิดพลาด: ' + result.error, 'error');
@@ -871,6 +928,10 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             notes: editData.notes || undefined
         };
 
+        if ((session?.user as any)?.role === 'technician' && submitData.status === 'completed') {
+            submitData.status = 'confirmed';
+        }
+
         const result = await updateMaintenanceRequest(
             selectedRequest.request_id,
             submitData,
@@ -883,6 +944,27 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             showToast('อัปเดตข้อมูลเรียบร้อยแล้ว', 'success');
         } else {
             alert('เกิดข้อผิดพลาด: ' + result.error);
+        }
+    }
+
+    async function handleHeadTechnicianApproval() {
+        if (!selectedRequest || !session?.user?.name) return;
+
+        const result = await updateMaintenanceRequest(
+            selectedRequest.request_id,
+            {
+                status: 'completed',
+                notes: editData.notes || selectedRequest.notes || 'หัวหน้าช่างตรวจรับงานแล้ว'
+            },
+            session.user.name
+        );
+
+        if (result.success) {
+            setShowDetailModal(false);
+            loadData();
+            showToast('หัวหน้าช่างตรวจรับงานเรียบร้อยแล้ว', 'success');
+        } else {
+            showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
         }
     }
 
@@ -2548,8 +2630,13 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             )}
 
                             {/* Completion Details */}
-                            {selectedRequest.status === 'completed' && (
+                            {['confirmed', 'completed'].includes(selectedRequest.status) && (
                                 <div className="mt-6 pt-4 border-t">
+                                    {selectedRequest.status === 'confirmed' && (
+                                        <div className="mb-3 rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-sm font-medium text-purple-800">
+                                            งานนี้ถูกส่งให้หัวหน้าช่างตรวจรับแล้ว และยังไม่ปิดใบงาน
+                                        </div>
+                                    )}
                                     <h3 className="font-medium mb-3 flex items-center gap-2">
                                         <CheckCircle2 size={18} className="text-green-600" /> ข้อมูลการซ่อมเสร็จสิ้น
                                     </h3>
@@ -2560,7 +2647,9 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                 สถานะขั้นตอนการทำงาน
                                             </h3>
                                             <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${STATUS_CONFIG[selectedRequest.status as keyof typeof STATUS_CONFIG]?.color || 'bg-slate-100'}`}>
-                                                {STATUS_CONFIG[selectedRequest.status as keyof typeof STATUS_CONFIG]?.label || selectedRequest.status}
+                                                {selectedRequest.status === 'confirmed'
+                                                    ? 'รอหัวหน้าช่างตรวจรับ'
+                                                    : (STATUS_CONFIG[selectedRequest.status as keyof typeof STATUS_CONFIG]?.label || selectedRequest.status)}
                                             </span>
                                         </div>
                                         <div className="p-4 bg-green-50/50 dark:bg-green-900/10 rounded-xl border border-green-100 dark:border-green-900/20">
@@ -2624,7 +2713,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         {historyItems.map(h => (
                                             <div key={h.history_id} className="text-sm flex justify-between bg-gray-50 dark:bg-slate-700/50 px-3 py-2 rounded">
                                                 <div>
-                                                    <span className="font-medium">{h.action}</span>
+                                                    <span className="font-medium">{getHistoryActionLabel(h.action)}</span>
                                                     {h.old_value && h.new_value && (
                                                         <span className="text-gray-500"> ({h.old_value} → {h.new_value})</span>
                                                     )}
@@ -2660,7 +2749,18 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     </button>
                                 )}
 
-                                {!['completed', 'cancelled'].includes(selectedRequest.status) && (
+                                {['head_technician', 'admin', 'manager'].includes((session?.user as any)?.role || '') && selectedRequest.status === 'confirmed' && (
+                                    <button
+                                        onClick={handleHeadTechnicianApproval}
+                                        className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium flex items-center justify-center gap-2"
+                                    >
+                                        <CheckCircle2 size={18} />
+                                        ตรวจรับงาน
+                                    </button>
+                                )}
+
+                                {!['completed', 'cancelled'].includes(selectedRequest.status)
+                                    && !((session?.user as any)?.role === 'head_technician' && selectedRequest.status === 'confirmed') && (
                                     <button
                                         onClick={handleUpdateRequest}
                                         className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
