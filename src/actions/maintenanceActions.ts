@@ -6,7 +6,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { logSystemAction } from '@/lib/logger';
 import { auth } from '@/auth';
 import { uploadFile } from '@/lib/gcs';
-import { notifyRoleViaLine, sendLineMessage } from '@/lib/lineNotify';
+import { notifyRoleViaLine, sendLineMessage, sendLineNotify } from '@/lib/lineNotify';
 import { validateData, createMaintenanceRequestSchema } from '@/lib/validation';
 
 // ==================== ROOMS ====================
@@ -57,17 +57,26 @@ export async function createRoom(data: {
         revalidatePath('/maintenance');
         revalidatePath('/admin/rooms');
         return { success: true, data: room };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error creating room:', error);
-        if (error?.code === 'P2002') {
-            const field = error.meta?.target?.[0] || 'room_code';
+        if (typeof error === 'object' && error && 'code' in error && error.code === 'P2002') {
+            const field = 'meta' in error
+                ? ((error.meta as { target?: string[] })?.target?.[0] || 'room_code')
+                : 'room_code';
             return { success: false, error: `รหัส "${data.room_code}" ซ้ำกับที่มีอยู่แล้ว (${field})` };
         }
-        return { success: false, error: `สร้างห้องไม่สำเร็จ: ${error?.message || 'ข้อผิดพลาดไม่ทราบสาเหตุ'}` };
+        return { success: false, error: `สร้างห้องไม่สำเร็จ: ${getErrorMessage(error, 'ข้อผิดพลาดไม่ทราบสาเหตุ')}` };
     }
 }
 
-export async function createRoomsBulk(roomsData: any[]) {
+export async function createRoomsBulk(roomsData: Array<{
+    room_code: string;
+    room_name: string;
+    room_type?: string | null;
+    building?: string | null;
+    floor?: string | null;
+    zone?: string | null;
+}>) {
     try {
         const session = await auth();
         if (!session) return { success: false, error: 'Unauthorized' };
@@ -98,12 +107,12 @@ export async function createRoomsBulk(roomsData: any[]) {
         revalidatePath('/maintenance');
         revalidatePath('/admin/rooms');
         return { success: true, count: created.count };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error bulk creating rooms:', error);
-        if (error?.code === 'P2002') {
+        if (typeof error === 'object' && error && 'code' in error && error.code === 'P2002') {
             return { success: false, error: 'พบรหัสซ้ำในรายการที่กำลังเพิ่ม หรือมีรหัสนี้อยู่ในระบบแล้ว' };
         }
-        return { success: false, error: `เพิ่มข้อมูลไม่สำเร็จ: ${error?.message || 'ข้อผิดพลาดไม่ทราบสาเหตุ'}` };
+        return { success: false, error: `เพิ่มข้อมูลไม่สำเร็จ: ${getErrorMessage(error, 'ข้อผิดพลาดไม่ทราบสาเหตุ')}` };
     }
 }
 
@@ -146,12 +155,12 @@ export async function updateRoom(room_id: number, data: {
         revalidatePath('/maintenance');
         revalidatePath('/admin/rooms');
         return { success: true, data: room };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error updateRoom:', error);
-        if (error?.code === 'P2002') {
+        if (typeof error === 'object' && error && 'code' in error && error.code === 'P2002') {
             return { success: false, error: `รหัสห้องซ้ำกับที่มีอยู่แล้ว` };
         }
-        return { success: false, error: `แก้ไขห้องไม่สำเร็จ: ${error?.message || 'ข้อผิดพลาดไม่ทราบสาเหตุ'}` };
+        return { success: false, error: `แก้ไขห้องไม่สำเร็จ: ${getErrorMessage(error, 'ข้อผิดพลาดไม่ทราบสาเหตุ')}` };
     }
 }
 
@@ -171,9 +180,9 @@ export async function deleteRoom(room_id: number) {
         revalidatePath('/maintenance');
         revalidatePath('/admin/rooms');
         return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error deleting room:', error);
-        return { success: false, error: `ลบห้องไม่สำเร็จ: ${error?.message}` };
+        return { success: false, error: `ลบห้องไม่สำเร็จ: ${getErrorMessage(error, 'Unknown error')}` };
     }
 }
 
@@ -206,14 +215,48 @@ function generateRequestNumber(): string {
     return `MR${year}${month}${day}-${random}`;
 }
 
-export async function getMaintenanceRequests(filters?: any) {
+function getErrorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error ? error.message : fallback;
+}
+
+export async function getMaintenanceRequests(filters?: {
+    status?: string | string[];
+    room_id?: number;
+    startDate?: string | Date;
+    endDate?: string | Date;
+    category?: string;
+}) {
     try {
-        const where: any = {};
-        if (filters?.status && filters.status !== 'all') {
+        const where: {
+            status?: string | { in: string[] };
+            room_id?: number;
+            category?: string;
+            created_at?: {
+                gte?: Date;
+                lte?: Date;
+            };
+        } = {};
+        if (Array.isArray(filters?.status) && filters.status.length > 0) {
+            where.status = { in: filters.status };
+        } else if (typeof filters?.status === 'string' && filters.status !== 'all') {
             where.status = filters.status;
         }
         if (filters?.room_id) {
             where.room_id = filters.room_id;
+        }
+        if (filters?.category) {
+            where.category = filters.category;
+        }
+        if (filters?.startDate || filters?.endDate) {
+            where.created_at = {};
+            if (filters.startDate) {
+                where.created_at.gte = new Date(filters.startDate);
+            }
+            if (filters.endDate) {
+                const end = new Date(filters.endDate);
+                end.setHours(23, 59, 59, 999);
+                where.created_at.lte = end;
+            }
         }
 
         const requests = await prisma.tbl_maintenance_requests.findMany({
@@ -225,9 +268,9 @@ export async function getMaintenanceRequests(filters?: any) {
             orderBy: { created_at: 'desc' }
         });
         return { success: true, data: requests };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error getMaintenanceRequests:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: getErrorMessage(error, 'Failed to fetch maintenance requests') };
     }
 }
 
@@ -332,9 +375,9 @@ export async function createMaintenanceRequest(formData: FormData) {
 
         revalidatePath('/maintenance');
         return { success: true, data: request };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error createMaintenanceRequest:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: getErrorMessage(error, 'Failed to create maintenance request') };
     }
 }
 
@@ -356,8 +399,8 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
 
         revalidatePath('/maintenance');
         return { success: true, data: request };
-    } catch (error: any) {
-        return { success: false, error: error.message };
+    } catch (error: unknown) {
+        return { success: false, error: getErrorMessage(error, 'Failed to update maintenance request status') };
     }
 }
 
@@ -412,8 +455,8 @@ export async function withdrawPartForMaintenance(data: {
         revalidatePath('/maintenance');
         revalidatePath('/products');
         return { success: true, data: result };
-    } catch (error: any) {
-        return { success: false, error: error.message };
+    } catch (error: unknown) {
+        return { success: false, error: getErrorMessage(error, 'Failed to withdraw part for maintenance') };
     }
 }
 
@@ -448,8 +491,8 @@ export async function confirmPartsUsed(data: {
 
         revalidatePath('/maintenance');
         return { success: true, data: result, message: 'Confirmed successfully' };
-    } catch (error: any) {
-        return { success: false, error: error.message };
+    } catch (error: unknown) {
+        return { success: false, error: getErrorMessage(error, 'Failed to confirm parts used') };
     }
 }
 
@@ -487,8 +530,8 @@ export async function returnPartToStock(data: { part_id: number; returned_qty: n
         revalidatePath('/maintenance');
         revalidatePath('/products');
         return { success: true };
-    } catch (error: any) {
-        return { success: false, error: error.message };
+    } catch (error: unknown) {
+        return { success: false, error: getErrorMessage(error, 'Failed to return part to stock') };
     }
 }
 
@@ -532,8 +575,8 @@ export async function completeMaintenanceWithParts(request_id: number, changed_b
         revalidatePath('/maintenance');
         revalidatePath('/products');
         return { success: true };
-    } catch (error: any) {
-        return { success: false, error: error.message };
+    } catch (error: unknown) {
+        return { success: false, error: getErrorMessage(error, 'Failed to complete maintenance with parts') };
     }
 }
 
@@ -586,8 +629,8 @@ export async function submitRepairCompletion(formData: FormData) {
 
         revalidatePath('/maintenance');
         return { success: true, data: request };
-    } catch (error: any) {
-        return { success: false, error: error.message };
+    } catch (error: unknown) {
+        return { success: false, error: getErrorMessage(error, 'Failed to submit repair completion') };
     }
 }
 
@@ -746,9 +789,9 @@ export async function clearAllReservedParts(adminName: string) {
 
         revalidatePath('/maintenance');
         return { success: true, count: pendingParts.length };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error clearing reserved parts:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: getErrorMessage(error, 'Failed to clear reserved parts') };
     }
 }
 
@@ -759,8 +802,8 @@ export async function getGeneralRequests() {
             orderBy: { created_at: 'desc' }
         });
         return { success: true, data: requests };
-    } catch (error: any) {
-        return { success: false, error: error.message };
+    } catch (error: unknown) {
+        return { success: false, error: getErrorMessage(error, 'Failed to fetch general requests') };
     }
 }
 
@@ -887,9 +930,9 @@ export async function updateMaintenanceRequest(
         revalidatePath('/maintenance');
         revalidatePath('/maintenance/dashboard');
         return { success: true, data: request };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error updating maintenance request:', error);
-        return { success: false, error: error.message || 'Failed to update request' };
+        return { success: false, error: getErrorMessage(error, 'Failed to update request') };
     }
 }
 
@@ -902,9 +945,9 @@ export async function deleteMaintenanceRequest(request_id: number) {
         revalidatePath('/maintenance');
         revalidatePath('/maintenance/dashboard');
         return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error deleting maintenance request:', error);
-        return { success: false, error: error.message || 'Failed to delete request' };
+        return { success: false, error: getErrorMessage(error, 'Failed to delete request') };
     }
 }
 
@@ -916,12 +959,24 @@ export async function getMaintenanceReportByRoom(filters?: {
     endDate?: Date;
 }) {
     try {
-        const where: any = { active: true };
+        const where: {
+            active: boolean;
+            room_id?: number;
+        } = { active: true };
         if (filters?.roomId) {
             where.room_id = filters.roomId;
         }
 
-        const requestWhere: any = {};
+        const requestWhere: {
+            assigned_to?: { contains: string };
+            created_at?: {
+                gte?: Date;
+                lte?: Date;
+            };
+            tbl_maintenance_parts?: {
+                some: { p_id: string };
+            };
+        } = {};
         if (filters?.technician) {
             requestWhere.assigned_to = { contains: filters.technician };
         }
@@ -996,9 +1051,9 @@ export async function getMaintenanceReportByRoom(filters?: {
         });
 
         return { success: true, data: report };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error generating maintenance report:', error);
-        return { success: false, error: error.message || 'Failed to generate report' };
+        return { success: false, error: getErrorMessage(error, 'Failed to generate report') };
     }
 }
 
@@ -1024,9 +1079,9 @@ export async function getMaintenanceSummary() {
                 pending_verification: pendingVerification
             }
         };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching maintenance summary:', error);
-        return { success: false, error: error.message || 'Failed to fetch summary' };
+        return { success: false, error: getErrorMessage(error, 'Failed to fetch summary') };
     }
 }
 
@@ -1037,9 +1092,9 @@ export async function getMaintenanceHistory(request_id: number) {
             orderBy: { changed_at: 'desc' }
         });
         return { success: true, data: history };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching maintenance history:', error);
-        return { success: false, error: error.message || 'Failed to fetch history' };
+        return { success: false, error: getErrorMessage(error, 'Failed to fetch history') };
     }
 }
 
@@ -1061,9 +1116,9 @@ export async function getMaintenanceParts(request_id: number) {
         }));
 
         return { success: true, data };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching maintenance parts:', error);
-        return { success: false, error: error.message || 'Failed to fetch parts' };
+        return { success: false, error: getErrorMessage(error, 'Failed to fetch parts') };
     }
 }
 
@@ -1111,9 +1166,9 @@ export async function storeVerifyParts(data: {
             data: updated,
             message: nextStatus === 'verified' ? 'Verification successful' : 'Verification mismatch recorded'
         };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error verifying maintenance parts:', error);
-        return { success: false, error: error.message || 'Failed to verify parts' };
+        return { success: false, error: getErrorMessage(error, 'Failed to verify parts') };
     }
 }
 
@@ -1173,9 +1228,9 @@ export async function reopenMaintenanceRequest(request_id: number, reason: strin
 
         revalidatePath('/maintenance');
         return { success: true, data: updated };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error reopening maintenance request:', error);
-        return { success: false, error: error.message || 'Failed to reopen maintenance request' };
+        return { success: false, error: getErrorMessage(error, 'Failed to reopen maintenance request') };
     }
 }
 
@@ -1191,6 +1246,14 @@ export async function resendMaintenanceNotification(request_id: number) {
         }
 
         let sentCount = 0;
+        const repeatMessage = [
+            '[แจ้งเตือนซ้ำ]',
+            'รายการนี้เป็นการแจ้งเตือนซ้ำ',
+            `เลขที่: ${request.request_number}`,
+            `ห้อง: ${request.tbl_rooms.room_code} - ${request.tbl_rooms.room_name}`,
+            `เรื่อง: ${request.title}`,
+            `สถานะ: ${request.status}`
+        ].join('\n');
 
         if (request.assigned_to) {
             const [user, technician] = await Promise.all([
@@ -1206,10 +1269,7 @@ export async function resendMaintenanceNotification(request_id: number) {
 
             const lineId = user?.line_user_id || technician?.line_user_id;
             if (lineId) {
-                const ok = await sendLineMessage(
-                    lineId,
-                    `แจ้งเตือนงานซ่อม ${request.request_number}\nห้อง: ${request.tbl_rooms.room_code} - ${request.tbl_rooms.room_name}\nเรื่อง: ${request.title}\nสถานะ: ${request.status}`
-                );
+                const ok = await sendLineMessage(lineId, repeatMessage);
                 if (ok) sentCount++;
             }
         }
@@ -1221,28 +1281,57 @@ export async function resendMaintenanceNotification(request_id: number) {
             });
 
             if (reporter?.line_user_id) {
-                const ok = await sendLineMessage(
-                    reporter.line_user_id,
-                    `อัปเดตงานซ่อม ${request.request_number}\nห้อง: ${request.tbl_rooms.room_code} - ${request.tbl_rooms.room_name}\nเรื่อง: ${request.title}\nสถานะ: ${request.status}`
-                );
+                const ok = await sendLineMessage(reporter.line_user_id, repeatMessage);
                 if (ok) sentCount++;
             }
         }
 
         if (sentCount === 0) {
-            sentCount += await notifyRoleViaLine(
-                'technician',
-                request.title,
-                request.tbl_rooms.room_code,
-                request.tbl_rooms.room_name,
-                request.priority,
-                request.reported_by
-            );
+            const [lineUsers, users, technicians] = await Promise.all([
+                prisma.tbl_line_users.findMany({
+                    where: {
+                        role: 'technician',
+                        is_active: true,
+                        line_user_id: { not: '' }
+                    },
+                    select: { line_user_id: true }
+                }),
+                prisma.tbl_users.findMany({
+                    where: {
+                        role: 'technician',
+                        deleted_at: null,
+                        line_user_id: { not: null }
+                    },
+                    select: { line_user_id: true }
+                }),
+                prisma.tbl_technicians.findMany({
+                    where: {
+                        status: 'active',
+                        line_user_id: { not: null }
+                    },
+                    select: { line_user_id: true }
+                })
+            ]);
+
+            const technicianLineIds = new Set<string>();
+            lineUsers.forEach((user) => user.line_user_id && technicianLineIds.add(user.line_user_id));
+            users.forEach((user) => user.line_user_id && technicianLineIds.add(user.line_user_id));
+            technicians.forEach((tech) => tech.line_user_id && technicianLineIds.add(tech.line_user_id));
+
+            for (const lineId of technicianLineIds) {
+                const ok = await sendLineMessage(lineId, repeatMessage);
+                if (ok) sentCount++;
+            }
+
+            await sendLineNotify(repeatMessage);
         }
 
         return { success: true, message: 'Notification resent', sentCount };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error resending maintenance notification:', error);
-        return { success: false, error: error.message || 'Failed to resend notification' };
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to resend notification'
+        };
     }
 }
