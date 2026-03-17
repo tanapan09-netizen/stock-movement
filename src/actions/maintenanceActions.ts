@@ -266,19 +266,21 @@ export async function createMaintenanceRequest(formData: FormData) {
         const department = formData.get('department') as string;
         const contact_info = formData.get('contact_info') as string;
         const tags = formData.get('tags') as string;
+        const target_role = ((formData.get('target_role') as string) || 'technician').trim();
 
-        const imageFiles = formData.getAll('images') as File[];
+        const imageFiles = [
+            ...(formData.getAll('images') as File[]),
+            ...(formData.getAll('image_file') as File[])
+        ].filter(file => file && file.size > 0);
         const uploadedImageUrls: string[] = [];
 
-        if (imageFiles && imageFiles.length > 0) {
+        if (imageFiles.length > 0) {
             for (const file of imageFiles) {
-                if (file.size > 0) {
-                    try {
-                        const url = await uploadFile(file, 'maintenance');
-                        uploadedImageUrls.push(url);
-                    } catch (error) {
-                        console.error('Failed upload:', error);
-                    }
+                try {
+                    const url = await uploadFile(file, 'maintenance');
+                    uploadedImageUrls.push(url);
+                } catch (error) {
+                    console.error('Failed upload:', error);
                 }
             }
         }
@@ -302,6 +304,26 @@ export async function createMaintenanceRequest(formData: FormData) {
                 tags: tags || null
             }
         });
+
+        try {
+            const room = await prisma.tbl_rooms.findUnique({
+                where: { room_id: validData.room_id },
+                select: { room_code: true, room_name: true }
+            });
+
+            if (room) {
+                await notifyRoleViaLine(
+                    target_role,
+                    validData.title,
+                    room.room_code,
+                    room.room_name,
+                    validData.priority,
+                    reported_by
+                );
+            }
+        } catch (notifyError) {
+            console.error('Failed to send maintenance LINE notification:', notifyError);
+        }
 
         revalidatePath('/maintenance');
         return { success: true, data: request };
