@@ -426,6 +426,17 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     }, [filterStatus, filterRoom, filterStartDate, filterEndDate]);
 
     useEffect(() => {
+        const reporterName = session?.user?.name?.trim();
+        if (!reporterName) return;
+
+        setFormData(prev => (
+            prev.reported_by === reporterName
+                ? prev
+                : { ...prev, reported_by: reporterName }
+        ));
+    }, [session?.user?.name]);
+
+    useEffect(() => {
         if (reqQueryParam && requests.length > 0 && !hasOpenedFromUrl) {
             const targetReq = requests.find(r =>
                 r.request_number === reqQueryParam || r.request_id === Number(reqQueryParam)
@@ -1443,7 +1454,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                       <label className="block text-sm font-medium mb-1">ผู้เแจ้ง *</label>
                                     <input
                                         type="text"
-                                        value={session?.user?.name || ''}
+                                        value={formData.reported_by}
                                         readOnly
                                         className="w-full border rounded-lg px-3 py-2 bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-gray-400 dark:border-slate-600 cursor-not-allowed"
                                         placeholder="ชื่อแจ้ง"

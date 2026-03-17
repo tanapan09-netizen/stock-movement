@@ -15,44 +15,50 @@ export default async function WarehousePage() {
     }
 
     return (
-        <div className="max-w-4xl mx-auto py-6">
-            <h1 className="text-2xl font-bold text-gray-800 mb-6">จัดการคลังสินค้า (Warehouses)</h1>
+        <div className="mx-auto max-w-4xl py-6">
+            <h1 className="mb-6 text-2xl font-bold text-gray-800">จัดการคลังสินค้า (Warehouses)</h1>
 
-            {/* Create Form */}
-            <div className="bg-white p-6 rounded-lg shadow mb-8">
-                <h3 className="font-bold text-gray-700 mb-4 flex items-center">
-                    <Plus className="w-5 h-5 mr-2" /> เพิ่มคลังสินค้าใหม่
+            <div className="mb-8 rounded-lg bg-white p-6 shadow">
+                <h3 className="mb-4 flex items-center font-bold text-gray-700">
+                    <Plus className="mr-2 h-5 w-5" /> เพิ่มคลังสินค้าใหม่
                 </h3>
-                <form action={handleCreate} className="flex gap-4">
+                <form action={handleCreate} className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <input
+                        type="text"
+                        name="warehouse_code"
+                        placeholder="รหัสคลัง เช่น WH-01"
+                        required
+                        className="border rounded-lg px-4 py-2"
+                    />
                     <input
                         type="text"
                         name="warehouse_name"
-                        placeholder="ชื่อคลังสินค้า (เช่น A, B, Main)"
+                        placeholder="ชื่อคลังสินค้า"
                         required
-                        className="flex-1 border rounded-lg px-4 py-2"
+                        className="border rounded-lg px-4 py-2"
                     />
                     <input
                         type="text"
                         name="location"
-                        placeholder="สถานที่ตั้ง (Optional)"
-                        className="flex-1 border rounded-lg px-4 py-2"
+                        placeholder="สถานที่ตั้ง (ไม่บังคับ)"
+                        className="border rounded-lg px-4 py-2"
                     />
-                    <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700">
+                    <button type="submit" className="rounded-lg bg-blue-600 px-6 py-2 font-bold text-white hover:bg-blue-700 md:col-span-3">
                         บันทึก
                     </button>
                 </form>
             </div>
 
-            {/* List */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {warehouses.map(w => (
-                    <div key={w.warehouse_id} className="bg-white p-6 rounded-lg shadow flex justify-between items-center">
+                    <div key={w.warehouse_id} className="flex items-center justify-between rounded-lg bg-white p-6 shadow">
                         <div className="flex items-center">
-                            <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mr-4">
-                                <Warehouse className="w-6 h-6" />
+                            <div className="mr-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                                <Warehouse className="h-6 w-6" />
                             </div>
                             <div>
-                                <h3 className="font-bold text-lg text-gray-900">{w.warehouse_name}</h3>
+                                <h3 className="text-lg font-bold text-gray-900">{w.warehouse_name}</h3>
+                                <p className="text-sm text-gray-600">{w.warehouse_code || 'ไม่มีรหัสคลัง'}</p>
                                 <p className="text-sm text-gray-500">{w.location || 'ไม่ระบุสถานที่'}</p>
                             </div>
                         </div>
@@ -61,8 +67,8 @@ export default async function WarehousePage() {
                                 'use server';
                                 await deleteWarehouse(w.warehouse_id);
                             }}>
-                                <button className="text-gray-400 hover:text-red-600 p-2" title="ลบ">
-                                    <Trash2 className="w-5 h-5" />
+                                <button className="p-2 text-gray-400 hover:text-red-600" title="ลบ">
+                                    <Trash2 className="h-5 w-5" />
                                 </button>
                             </form>
                         )}

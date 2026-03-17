@@ -1,5 +1,5 @@
 /**
- * Next.js Middleware
+ * Next.js Proxy
  * Applies security checks: CSRF, Rate Limiting, IP Whitelisting
  */
 
@@ -104,7 +104,7 @@ function checkCSRF(request: NextRequest): boolean {
     return headerToken === cookieToken;
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
     const clientIP = getClientIP(request);
 

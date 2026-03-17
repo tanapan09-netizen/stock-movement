@@ -9,40 +9,41 @@ services:
       - "3002:3000"
     environment:
       # Database connection (External sg.sugoidev.com)
-      - DATABASE_URL=mysql://root:ks6EexfddKHmjdJoc4y36S1a4Vxwj43G@sg.sugoidev.com:5012/stock_db?ssl-mode=DISABLED
+      - DATABASE_URL=${DATABASE_URL}
 
       # NextAuth
-      - AUTH_SECRET=secure-secret-key-123
-      - NEXTAUTH_SECRET=secure-secret-key-123
-      - NEXTAUTH_URL=https://mpstock.sugoidev.com
-      - AUTH_URL=https://mpstock.sugoidev.com/api/auth
-      - AUTH_TRUST_HOST=true
-      - CSRF_COOKIE_SECURE=false
+      - AUTH_SECRET=${AUTH_SECRET}
+      - NEXTAUTH_SECRET=${AUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - AUTH_URL=${AUTH_URL}
+      - AUTH_TRUST_HOST=${AUTH_TRUST_HOST:-true}
+      - MAINTENANCE_REOPEN_PASSWORD=${MAINTENANCE_REOPEN_PASSWORD}
+      - CSRF_COOKIE_SECURE=${CSRF_COOKIE_SECURE:-false}
 
       # Application URL (for notifications and links)
-      - NEXT_PUBLIC_APP_URL=https://mpstock.sugoidev.com
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 
       # LINE Login
-      - AUTH_LINE_ID=2009265965
-      - AUTH_LINE_SECRET=2af2043594a8653da078b0fd7a819155
+      - AUTH_LINE_ID=${AUTH_LINE_ID}
+      - AUTH_LINE_SECRET=${AUTH_LINE_SECRET}
 
       # LINE Notifications (Phase 2)
-      - LINE_MESSAGING_ENABLED=true
-      - LINE_ADMIN_ID=U66936d74f38893ecd650169ce57c0500
-      - LINE_CHANNEL_SECRET=0b16e520632e86c73b75d5927164ce4a
-      - LINE_CHANNEL_ACCESS_TOKEN=LqtCttYrj7jfXeFJg1wz88Sno0jTW3HblTf4sqeKeE9U9saODwHv8MW7bAtrLbQUso3V4jOX8M85m/EVlF01l+OzZ38XsSFR4w5297nDPn3RR6ZQ14SlAeE4OkIvm0w9LeUqlmZ8uMT+c41g/v6p8AdB04t89/1O/w1cDnyilFU=
+      - LINE_MESSAGING_ENABLED=${LINE_MESSAGING_ENABLED:-true}
+      - LINE_ADMIN_ID=${LINE_ADMIN_ID}
+      - LINE_CHANNEL_SECRET=${LINE_CHANNEL_SECRET}
+      - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN}
 
       # Email Notifications (Optional)
-      - EMAIL_ENABLED=true
-      - APPROVER_EMAILS=admin@example.com
-      - SMTP_HOST=smtp.gmail.com
-      - SMTP_PORT=587
-      - SMTP_USER=tanapan09@gmail.com
-      - SMTP_PASS=fwfz gioj fwim ughv
-      - SMTP_FROM=noreply@stock-app.com
+      - EMAIL_ENABLED=${EMAIL_ENABLED:-true}
+      - APPROVER_EMAILS=${APPROVER_EMAILS}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM=${SMTP_FROM}
 
       # Cron Job Secret (for auto-escalation API)
-      - CRON_SECRET=your_cron_secret_token_change_in_production
+      - CRON_SECRET=${CRON_SECRET}
       # GCS (Optional - if set, uses GCS. If not, uses local public/uploads volume)
       # - GCP_PROJECT_ID=...
       # - GCP_BUCKET_NAME=...
@@ -58,10 +59,10 @@ services:
     container_name: stock-db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: stockpassword
-      MYSQL_DATABASE: stock_db
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-stockpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-stock_db}
     healthcheck:
-      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pstockpassword" ]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-stockpassword}" ]
       interval: 10s
       timeout: 5s
       retries: 5

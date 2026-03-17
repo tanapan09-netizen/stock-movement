@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, Package, AlertTriangle, FileText, Wrench, Wallet } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { useToast } from './ToastProvider';
+import { getReadNotificationsKey, getStoredReadNotificationIds, storeReadNotificationIds } from '@/lib/notifications/clientReadState';
 
 type Notification = {
     id: string;
@@ -16,6 +18,7 @@ type Notification = {
 
 export default function NotificationBell() {
     const router = useRouter();
+    const { data: session } = useSession();
     const { showToast } = useToast();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isOpen, setIsOpen] = useState(false);
@@ -28,6 +31,7 @@ export default function NotificationBell() {
         }
         return 'default';
     });
+    const readNotificationsKey = getReadNotificationsKey(session?.user?.id, session?.user?.name);
 
     const getNotificationHref = useCallback((notification: Notification) => {
         if (notification.id.startsWith('general_request_')) {
@@ -98,8 +102,9 @@ export default function NotificationBell() {
         setNotifications(prev =>
             prev.map(n => n.id === id ? { ...n, read: true } : n)
         );
+        storeReadNotificationIds(readNotificationsKey, [id]);
         // Optionally call API to mark as read
-    }, []);
+    }, [readNotificationsKey]);
 
     const openNotificationTarget = useCallback((notification: Notification) => {
         setIsOpen(false);
@@ -133,11 +138,17 @@ export default function NotificationBell() {
             try {
                 const res = await fetch('/api/notifications');
                 if (res.ok) {
-                    const data: Notification[] = await res.json();
+                    const storedReadIds = getStoredReadNotificationIds(readNotificationsKey);
+                    const data: Notification[] = (await res.json()).map((notification: Notification) => ({
+                        ...notification,
+                        read: notification.read || storedReadIds.has(notification.id),
+                    }));
                     const latestIds = new Set(data.map(notification => notification.id));
 
                     if (knownIdsRef.current.size > 0) {
-                        const newNotifications = data.filter(notification => !knownIdsRef.current.has(notification.id));
+                        const newNotifications = data.filter(notification =>
+                            !knownIdsRef.current.has(notification.id) && !storedReadIds.has(notification.id)
+                        );
                         if (newNotifications.length > 0) {
                             newNotifications.slice(0, 3).forEach(notification => {
                                 showToast(notification.title, 'info');
@@ -160,7 +171,11 @@ export default function NotificationBell() {
         // Poll every 30 seconds
         const interval = setInterval(fetchNotifications, 30000);
         return () => clearInterval(interval);
-    }, [playNotificationSound, showBrowserNotification, showToast]);
+    }, [playNotificationSound, readNotificationsKey, showBrowserNotification, showToast]);
+
+    useEffect(() => {
+        knownIdsRef.current = new Set();
+    }, [readNotificationsKey]);
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -178,6 +193,7 @@ export default function NotificationBell() {
 
     const markAllAsRead = () => {
         setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        storeReadNotificationIds(readNotificationsKey, notifications.map(notification => notification.id));
     };
 
     const getIcon = (type: string) => {

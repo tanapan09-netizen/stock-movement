@@ -17,6 +17,7 @@ services:
       - AUTH_SECRET=${AUTH_SECRET}
       - AUTH_URL=${AUTH_URL}
       - AUTH_TRUST_HOST=true
+      - MAINTENANCE_REOPEN_PASSWORD=${MAINTENANCE_REOPEN_PASSWORD}
       
       # Legacy NextAuth v4 (Keep for compatibility if needed, though v5 uses AUTH_*)
       - NEXTAUTH_SECRET=${AUTH_SECRET}

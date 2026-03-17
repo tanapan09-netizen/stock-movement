@@ -15,10 +15,10 @@ export const createProductSchema = z.object({
 // Maintenance Validation
 export const createMaintenanceRequestSchema = z.object({
     title: z.string().min(1, 'Title is required'),
-    description: z.string().min(1, 'Description is required'),
+    description: z.string().optional().nullable(),
     room_id: z.number().positive('Room ID is required'),
     assigned_to: z.number().optional().nullable(),
-    priority: z.enum(['low', 'medium', 'high', 'urgent']).default('low')
+    priority: z.enum(['low', 'medium', 'normal', 'high', 'urgent']).default('low')
 });
 
 // Approval Validation

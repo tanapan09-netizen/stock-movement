@@ -313,13 +313,7 @@ export default function PartsManagementClient() {
                                                         className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded flex items-center gap-1"
                                                     >
                                                         <Undo2 size={12} /> คืน
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleCompleteWithParts(part.request_id)}
-                                                        className="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded flex items-center gap-1"
-                                                    >
-                                                        <CheckCircle size={12} /> เสร็จสิ้น
-                                                    </button>
+                                                    </button>                                                    
                                                 </div>
                                             )}
                                         </td>

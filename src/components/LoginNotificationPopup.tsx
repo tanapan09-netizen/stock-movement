@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Bell, Package, AlertTriangle, FileText, X, CheckCheck } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+import { getReadNotificationsKey, getStoredReadNotificationIds, storeReadNotificationIds } from '@/lib/notifications/clientReadState';
 
 type Notification = {
     id: string;
@@ -17,6 +18,7 @@ export default function LoginNotificationPopup() {
     const { data: session } = useSession();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isVisible, setIsVisible] = useState(false);
+    const readNotificationsKey = getReadNotificationsKey(session?.user?.id, session?.user?.name);
 
     useEffect(() => {
         if (!session?.user) return;
@@ -30,8 +32,9 @@ export default function LoginNotificationPopup() {
             try {
                 const res = await fetch('/api/notifications');
                 if (res.ok) {
+                    const storedReadIds = getStoredReadNotificationIds(readNotificationsKey);
                     const data: Notification[] = await res.json();
-                    const unread = data.filter(n => !n.read);
+                    const unread = data.filter(n => !n.read && !storedReadIds.has(n.id));
                     if (unread.length > 0) {
                         setNotifications(unread);
                         setIsVisible(true);
@@ -46,9 +49,14 @@ export default function LoginNotificationPopup() {
         // Small delay so the page loads first
         const timer = setTimeout(fetchAndShow, 1000);
         return () => clearTimeout(timer);
-    }, [session]);
+    }, [readNotificationsKey, session]);
 
-    const handleClose = () => setIsVisible(false);
+    const handleClose = () => {
+        if (notifications.length > 0) {
+            storeReadNotificationIds(readNotificationsKey, notifications.map(notification => notification.id));
+        }
+        setIsVisible(false);
+    };
 
     const getIcon = (type: string) => {
         switch (type) {
