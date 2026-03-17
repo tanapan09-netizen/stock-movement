@@ -312,6 +312,9 @@ export async function createMaintenanceRequest(formData: FormData) {
             });
 
             if (room) {
+                console.log(
+                    `[Maintenance] notifying LINE target_role=${target_role} title="${validData.title}" room=${room.room_code}`
+                );
                 await notifyRoleViaLine(
                     target_role,
                     validData.title,
@@ -320,6 +323,8 @@ export async function createMaintenanceRequest(formData: FormData) {
                     validData.priority,
                     reported_by
                 );
+            } else {
+                console.warn(`[Maintenance] room not found for LINE notification room_id=${validData.room_id}`);
             }
         } catch (notifyError) {
             console.error('Failed to send maintenance LINE notification:', notifyError);

@@ -128,18 +128,33 @@ export async function notifyRoleViaLine(
 
     // Default to 'technician' if somehow missing
     const role = targetRole || 'technician';
+    console.log(`[LINE] notifyRoleViaLine start role=${role} title="${title}" room=${roomCode}`);
 
-    // Find users with the specific role and a line ID
+    // Primary source: LINE-linked users managed from Settings > LINE Users
+    const lineUsers = await prisma.tbl_line_users.findMany({
+        where: {
+            role: role,
+            is_active: true,
+            line_user_id: { not: '' }
+        },
+        select: { line_user_id: true }
+    });
+    console.log(`[LINE] role=${role} tbl_line_users matches=${lineUsers.length}`);
+
+    // Backward compatibility: also include application users with a matching role
     const users = await prisma.tbl_users.findMany({
         where: {
             role: role,
+            deleted_at: null,
             line_user_id: { not: null }
         },
-        select: { line_user_id: true, username: true }
+        select: { line_user_id: true }
     });
+    console.log(`[LINE] role=${role} tbl_users matches=${users.length}`);
 
     // Extract unique Line IDs
     const lineIds = new Set<string>();
+    lineUsers.forEach(u => u.line_user_id && lineIds.add(u.line_user_id));
     users.forEach(u => u.line_user_id && lineIds.add(u.line_user_id));
 
     // If role is technician, ALSO check tbl_technicians for backward compatibility
@@ -151,8 +166,10 @@ export async function notifyRoleViaLine(
             },
             select: { line_user_id: true }
         });
+        console.log(`[LINE] role=technician tbl_technicians matches=${techs.length}`);
         techs.forEach(t => t.line_user_id && lineIds.add(t.line_user_id));
     }
+    console.log(`[LINE] role=${role} unique lineIds=${lineIds.size}`);
 
     const priorityLabel = priority === 'urgent' ? '🚨 เร่งด่วน' : priority === 'high' ? '⚠️ สูง' : '';
     const message = `
@@ -175,6 +192,7 @@ export async function notifyRoleViaLine(
     }
 
     // Still send group notification as backup
+    console.log(`[LINE] role=${role} sent=${sentCount}, sending admin/group backup`);
     await sendLineNotify(message);
 
     return sentCount;

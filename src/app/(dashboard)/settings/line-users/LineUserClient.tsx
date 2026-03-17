@@ -259,6 +259,7 @@ export default function LineUserClient() {
                                                 <option value="maid">Maid (แม่บ้าน)</option>
                                                 <option value="driver">Driver (คนขับรถ)</option>
                                                 <option value="purchasing">Purchasing (จัดซื้อ)</option>
+                                                <option value="store">Store (คลังสินค้า)</option>
                                                 <option value="accounting">Accounting (บัญชี)</option>
                                                 <option value="manager">Manager (ผู้จัดการ)</option>
                                                 <option value="admin">Admin (ผู้ดูแลระบบ)</option>
