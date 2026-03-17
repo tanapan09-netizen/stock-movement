@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { getAllRooms, createRoom, createRoomsBulk, updateRoom, deleteRoom, toggleRoomActive } from '@/actions/maintenanceActions';
+import { getAllVehicles, createVehicle, updateVehicle, deleteVehicle, toggleVehicleActive, VehicleData } from '@/actions/vehicleActions';
 import Swal from 'sweetalert2';
 
 // --- Types ---
@@ -15,6 +16,24 @@ interface Room {
     zone: string | null;
     active: boolean;
     created_at: Date;
+}
+
+interface Vehicle {
+    vehicle_id: number;
+    license_plate: string;
+    province: string | null;
+    brand: string | null;
+    model_name: string | null;
+    color: string | null;
+    vehicle_type: string | null;
+    owner_name: string | null;
+    owner_room: string | null;
+    owner_phone: string | null;
+    parking_slot: string | null;
+    notes: string | null;
+    active: boolean;
+    created_at: Date;
+    updated_at: Date;
 }
 
 // Hierarchical Data Structures
@@ -394,10 +413,136 @@ function TypeRow({ type, onDelete, onAddFloor, onAddRoom, onAddZone, onAddZonesB
     );
 }
 
+// ---- Vehicle Components ----
+function VehicleSection({ vehicles, search, setSearch, onEdit, onAdd }: any) {
+    const filtered = vehicles.filter((v: any) => 
+        v.plate_number.toLowerCase().includes(search.toLowerCase()) ||
+        v.owner_name.toLowerCase().includes(search.toLowerCase()) ||
+        v.room_code.toLowerCase().includes(search.toLowerCase())
+    );
+
+    return (
+        <div style={{ background: "#fff", borderRadius: 16, padding: "24px", boxShadow: "0 4px 20px rgba(0,0,0,0.05)", border: "1.5px solid #e2e8f0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#1e293b" }}> รายการทะเบียนรถยนต์ ({filtered.length}) </h2>
+                <div style={{ display: "flex", gap: 10 }}>
+                    <div style={{ position: "relative" }}>
+                        <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 14 }}>🔍</span>
+                        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="ค้นหาทะเบียน, ชื่อ, ห้อง..." 
+                            style={{ padding: "8px 12px 8px 36px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13, minWidth: 260, outline: "none" }} />
+                    </div>
+                    <button onClick={onAdd} style={{ padding: "8px 16px", borderRadius: 8, background: "#10b981", color: "#fff", border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer" }}> + เพิ่มทะเบียนรถ </button>
+                </div>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                    <thead>
+                        <tr style={{ borderBottom: "1.5px solid #f1f5f9", textAlign: "left" }}>
+                            <th style={{ padding: "12px 16px", color: "#64748b" }}>เลขทะเบียน</th>
+                            <th style={{ padding: "12px 16px", color: "#64748b" }}>ประเภท</th>
+                            <th style={{ padding: "12px 16px", color: "#64748b" }}>สี</th>
+                            <th style={{ padding: "12px 16px", color: "#64748b" }}>ยี่ห้อ/รุ่น</th>
+                            <th style={{ padding: "12px 16px", color: "#64748b" }}>ห้อง</th>
+                            <th style={{ padding: "12px 16px", color: "#64748b" }}>เจ้าของ</th>
+                            <th style={{ padding: "12px 16px", color: "#64748b", textAlign: "center" }}>จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {filtered.length === 0 ? (
+                            <tr><td colSpan={7} style={{ padding: "40px", textAlign: "center", color: "#94a3b8" }}>ไม่พบข้อมูลรถยนต์</td></tr>
+                        ) : filtered.map((v: any) => (
+                            <tr key={v.vehicle_id} style={{ borderBottom: "1px solid #f8fafc", transition: "background 0.2s" }}>
+                                <td style={{ padding: "12px 16px", fontWeight: 700, color: "#1e293b" }}>{v.plate_number}</td>
+                                <td style={{ padding: "12px 16px" }}>{v.vehicle_type}</td>
+                                <td style={{ padding: "12px 16px" }}>{v.color || "-"}</td>
+                                <td style={{ padding: "12px 16px" }}>{v.brand} {v.model}</td>
+                                <td style={{ padding: "12px 16px" }}><span style={{ background: "#f1f5f9", padding: "2px 8px", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>{v.room_code}</span></td>
+                                <td style={{ padding: "12px 16px" }}>{v.owner_name}</td>
+                                <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                                    <button onClick={() => onEdit(v)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16 }}>✏️</button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
+function VehicleEditModal({ data, onClose, onSave }: any) {
+    const [form, setForm] = useState(data || {
+        plate_number: "",
+        vehicle_type: "รถยนต์",
+        brand: "",
+        model: "",
+        color: "",
+        owner_name: "",
+        room_code: "",
+        phone: ""
+    });
+
+    return (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000, backdropFilter: "blur(4px)" }}>
+            <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 500, padding: 28, boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)" }}>
+                <h3 style={{ margin: "0 0 20px", fontSize: 20, fontWeight: 800 }}>{data ? "แก้ไขข้อมูลรถ" : "เพิ่มทะเบียนรถใหม่"}</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                    <div style={{ gridColumn: "span 2" }}>
+                        <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>เลขทะเบียน (เช่น กก 1234 กทม)</label>
+                        <input value={form.plate_number} onChange={e => setForm({...form, plate_number: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1.5px solid #e2e8f0" }} />
+                    </div>
+                    <div>
+                        <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>ประเภท</label>
+                        <select value={form.vehicle_type} onChange={e => setForm({...form, vehicle_type: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1.5px solid #e2e8f0" }}>
+                            <option value="รถยนต์">รถยนต์</option>
+                            <option value="จักรยานยนต์">จักรยานยนต์</option>
+                            <option value="อื่นๆ">อื่นๆ</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>สี</label>
+                        <input value={form.color} onChange={e => setForm({...form, color: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1.5px solid #e2e8f0" }} />
+                    </div>
+                    <div>
+                        <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>ยี่ห้อ</label>
+                        <input value={form.brand} onChange={e => setForm({...form, brand: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1.5px solid #e2e8f0" }} />
+                    </div>
+                    <div>
+                        <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>รุ่น</label>
+                        <input value={form.model} onChange={e => setForm({...form, model: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1.5px solid #e2e8f0" }} />
+                    </div>
+                    <div style={{ gridColumn: "span 2" }}>
+                        <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>ชื่อเจ้าของ / ผู้ติดต่อ</label>
+                        <input value={form.owner_name} onChange={e => setForm({...form, owner_name: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1.5px solid #e2e8f0" }} />
+                    </div>
+                    <div>
+                        <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>เลขห้อง</label>
+                        <input value={form.room_code} onChange={e => setForm({...form, room_code: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1.5px solid #e2e8f0" }} />
+                    </div>
+                    <div>
+                        <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>เบอร์โทรศัพท์</label>
+                        <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1.5px solid #e2e8f0" }} />
+                    </div>
+                </div>
+                <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
+                    <button onClick={onClose} style={{ flex: 1, padding: "12px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "none", fontWeight: 700, cursor: "pointer" }}>ยกเลิก</button>
+                    <button onClick={() => onSave(form)} style={{ flex: 1, padding: "12px", borderRadius: 10, border: "none", background: "#1e3a5f", color: "#fff", fontWeight: 700, cursor: "pointer" }}>บันทึกข้อมูล</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ==================== MAIN COMPONENT ====================
 export default function RoomManagement() {
     const [rooms, setRooms] = useState<Room[]>([]);
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<"rooms" | "vehicles">("rooms");
+    
+    // Vehicle States
+    const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+    const [vehicleSearch, setVehicleSearch] = useState("");
+    const [vehicleModal, setVehicleModal] = useState<{ show: boolean; data?: Vehicle } | null>(null);
     const [search, setSearch] = useState("");
     const [expandAll, setExpandAll] = useState(false);
     const [modal, setModal] = useState(false);
@@ -437,12 +582,25 @@ export default function RoomManagement() {
 
     const loadData = useCallback(async () => {
         setLoading(true);
-        const res = await getAllRooms();
-        if (res.success && res.data) {
-            setRooms(res.data);
+        try {
+            const [roomsRes, vehiclesRes] = await Promise.all([
+                getAllRooms(),
+                getAllVehicles()
+            ]);
+            
+            if (roomsRes.success && roomsRes.data) {
+                setRooms(roomsRes.data);
+            }
+            if (vehiclesRes) {
+                setVehicles(vehiclesRes as Vehicle[]);
+            }
+        } catch (error) {
+            console.error("Failed to load data:", error);
+            showToast("error", "ไม่สามารถโหลดข้อมูลได้");
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
-    }, []);
+    }, [showToast]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -687,136 +845,237 @@ export default function RoomManagement() {
                 ))}
             </div>
 
-            {/* Header */}
-            <div style={{ background: "linear-gradient(135deg, #1e3a5f 0%, #1e4034 50%, #3b1f5e 100%)", padding: "28px 40px 24px", color: "#fff" }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
+            {/* Header Section */}
+            <div style={{ background: "linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%)", padding: "40px 40px 0", color: "#fff", boxShadow: "0 10px 30px rgba(0,0,0,0.15)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
                     <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                            <div style={{ fontSize: 32 }}>🏢</div>
-                            <div>
-                                <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: "-0.5px" }}>จัดการห้องพัก / ส่วนกลาง</h1>
-                                <p style={{ margin: "4px 0 0", opacity: 0.7, fontSize: 13 }}>จัดกลุ่ม 4 ชั้น: ประเภท → ชั้น → ห้อง → โซน</p>
-                            </div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 16, flexWrap: "wrap" }}>
-                            {["ประเภท", "ชั้น", "ห้อง", "โซน"].map((step, i) => (
-                                <div key={step} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.15)", borderRadius: 20, padding: "5px 14px", fontSize: 13, fontWeight: 700 }}>
-                                        <span style={{ fontSize: 16 }}>{Object.values(ICONS)[i]}</span>{step}
-                                    </div>
-                                    {i < 3 && <span style={{ opacity: 0.5, fontSize: 18 }}>→</span>}
-                                </div>
-                            ))}
-                        </div>
+                        <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800, letterSpacing: "-0.02em" }}> Admin Dashboard </h1>
+                        <p style={{ margin: "4px 0 0", opacity: 0.7, fontSize: 15 }}> จัดการโครงสร้างห้องพักและข้อมูลทะเบียนรถยนต์ </p>
                     </div>
-                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                        {[
-                            { label: "ประเภท", value: types.length, icon: "🏢", col: "#3b82f6" },
-                            { label: "ชั้นทั้งหมด", value: types.reduce((a, t) => a + t.floors.length, 0), icon: "📐", col: "#10b981" },
-                            { label: "ห้องทั้งหมด", value: totalRooms, icon: "🚪", col: "#8b5cf6" },
-                        ].map(s => (
-                            <div key={s.label} style={{ background: "rgba(255,255,255,0.12)", borderRadius: 12, padding: "12px 18px", textAlign: "center", minWidth: 80, border: `1px solid rgba(255,255,255,0.2)` }}>
-                                <div style={{ fontSize: 20 }}>{s.icon}</div>
-                                <div style={{ fontSize: 22, fontWeight: 800, color: s.col }}>{s.value}</div>
-                                <div style={{ fontSize: 11, opacity: 0.7 }}>{s.label}</div>
-                            </div>
-                        ))}
+                    <div style={{ textAlign: "right", opacity: 0.9 }}>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: "#10b981" }}> {totalRooms} </div>
+                        <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.6 }}> Total Rooms </div>
                     </div>
+                </div>
+                
+                {/* Tab Switcher */}
+                <div style={{ display: "flex", gap: 10, borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 0 }}>
+                    <button 
+                        onClick={() => setActiveTab("rooms")}
+                        style={{ 
+                            padding: "12px 24px", 
+                            background: activeTab === "rooms" ? "rgba(255,255,255,0.1)" : "transparent",
+                            border: "none",
+                            borderBottom: activeTab === "rooms" ? "3px solid #10b981" : "3px solid transparent",
+                            color: "#fff",
+                            cursor: "pointer",
+                            fontWeight: 700,
+                            fontSize: 15,
+                            transition: "all 0.2s"
+                        }}
+                    >
+                        🏢 จัดการห้องพัก
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab("vehicles")}
+                        style={{ 
+                            padding: "12px 24px", 
+                            background: activeTab === "vehicles" ? "rgba(255,255,255,0.1)" : "transparent",
+                            border: "none",
+                            borderBottom: activeTab === "vehicles" ? "3px solid #10b981" : "3px solid transparent",
+                            color: "#fff",
+                            cursor: "pointer",
+                            fontWeight: 700,
+                            fontSize: 15,
+                            transition: "all 0.2s"
+                        }}
+                    >
+                        🚗 ทะเบียนรถยนต์
+                    </button>
                 </div>
             </div>
 
-            {/* Toolbar */}
-            <div style={{ padding: "20px 40px 0", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
-                    <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16 }}>🔍</span>
-                    <input
-                        value={search} onChange={e => setSearch(e.target.value)}
-                        placeholder=" ค้นหารหัส, ชื่อ..."
-                        style={{ width: "100%", padding: "10px 14px 10px 38px", boxSizing: "border-box", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 14, background: "#fff", outline: "none", fontFamily: "'Sarabun', sans-serif" }}
-                    />
-                </div>
-                <button onClick={() => setExpandAll(v => !v)} style={{ padding: "10px 22px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#64748b", cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 600, fontSize: 14 }}>
-                    {expandAll ? 'พับทั้งหมด' : 'กางทั้งหมด'}
-                </button>
-                <button onClick={() => loadData()} style={{ padding: "10px 22px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#64748b", cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 600, fontSize: 14 }}>
-                    รีโหลดข้อมูล
-                </button>
-                <button onClick={() => setModal(true)} style={{ padding: "10px 22px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #1e3a5f, #3b82f6)", color: "#fff", cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", boxShadow: "0 4px 14px #3b82f633" }}>
-                    + เพิ่มประเภทใหม่
-                </button>
-            </div>
-
-            {/* Tree */}
-            <div style={{ padding: "20px 40px 40px" }}>
-                {loading ? (
-                    <div style={{ textAlign: "center", padding: "64px 20px", background: "#fff", borderRadius: 16, border: "1.5px dashed #e2e8f0" }}>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: "#374151" }}>กำลังโหลดข้อมูลห้อง...</div>
-                    </div>
-                ) : filteredTypes.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "64px 20px", background: "#fff", borderRadius: 16, border: "1.5px dashed #e2e8f0" }}>
-                        <div style={{ fontSize: 52, marginBottom: 12 }}>🏢</div>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: "#374151", marginBottom: 6 }}>
-                            {search ? "ไม่พบข้อมูลที่ค้นหา" : "ยังไม่มีข้อมูลห้อง"}
-                        </div>
-                        <div style={{ color: "#94a3b8", fontSize: 14, marginBottom: 20 }}>
-                            {search ? "ลองเปลี่ยนคำค้นหา" : "เริ่มต้นด้วยการเพิ่มประเภทห้องแรก"}
-                        </div>
-                        {!search && (
-                            <button onClick={() => setModal(true)} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: "#3b82f6", color: "#fff", cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 700 }}>
-                                + เพิ่มรายการแรก
+            <div style={{ padding: "24px 40px" }}>
+                {activeTab === "rooms" ? (
+                    <>
+                        {/* Toolbar */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+                            <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+                                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16 }}>🔍</span>
+                                <input
+                                    value={search} onChange={e => setSearch(e.target.value)}
+                                    placeholder=" ค้นหารหัส, ชื่อ..."
+                                    style={{ width: "100%", padding: "10px 14px 10px 38px", boxSizing: "border-box", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 14, background: "#fff", outline: "none", fontFamily: "'Sarabun', sans-serif" }}
+                                />
+                            </div>
+                            <button onClick={() => setExpandAll(v => !v)} style={{ padding: "10px 22px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#64748b", cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 600, fontSize: 14 }}>
+                                {expandAll ? 'พับทั้งหมด' : 'กางทั้งหมด'}
                             </button>
-                        )}
-                    </div>
+                            <button onClick={() => loadData()} style={{ padding: "10px 22px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#64748b", cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 600, fontSize: 14 }}>
+                                รีโหลดข้อมูล
+                            </button>
+                            <button onClick={() => setModal(true)} style={{ padding: "10px 22px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #1e3a5f, #3b82f6)", color: "#fff", cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", boxShadow: "0 4px 14px #3b82f633" }}>
+                                + เพิ่มประเภทใหม่
+                            </button>
+                        </div>
+
+                        {/* Tree */}
+                        <div>
+                            {loading ? (
+                                <div style={{ textAlign: "center", padding: "64px 20px", background: "#fff", borderRadius: 16, border: "1.5px dashed #e2e8f0" }}>
+                                    <div style={{ fontSize: 16, fontWeight: 700, color: "#374151" }}>กำลังโหลดข้อมูลห้อง...</div>
+                                </div>
+                            ) : filteredTypes.length === 0 ? (
+                                <div style={{ textAlign: "center", padding: "64px 20px", background: "#fff", borderRadius: 16, border: "1.5px dashed #e2e8f0" }}>
+                                    <div style={{ fontSize: 52, marginBottom: 12 }}>🏢</div>
+                                    <div style={{ fontSize: 16, fontWeight: 700, color: "#374151", marginBottom: 6 }}>
+                                        {search ? "ไม่พบข้อมูลที่ค้นหา" : "ยังไม่มีข้อมูลห้อง"}
+                                    </div>
+                                    <div style={{ color: "#94a3b8", fontSize: 14, marginBottom: 20 }}>
+                                        {search ? "ลองเปลี่ยนคำค้นหา" : "เริ่มต้นด้วยการเพิ่มประเภทห้องแรก"}
+                                    </div>
+                                    {!search && (
+                                        <button onClick={() => setModal(true)} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: "#3b82f6", color: "#fff", cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 700 }}>
+                                            + เพิ่มรายการแรก
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
+                                filteredTypes.map(type => (
+                                    <TypeRow
+                                        key={type.id} type={type}
+                                        onDelete={deleteNode}
+                                        onAddFloor={handleCreateFloor}
+                                        onAddRoom={handleCreateRoom}
+                                        onAddZone={handleCreateZone}
+                                        onAddZonesBulk={handleCreateZonesBulk}
+                                        onEdit={openEdit}
+                                        onDetail={openDetail}
+                                        expandAll={expandAll}
+                                    />
+                                ))
+                            )}
+                        </div>
+                    </>
                 ) : (
-                    filteredTypes.map(type => (
-                        <TypeRow
-                            key={type.id} type={type}
-                            onDelete={deleteNode}
-                            onAddFloor={handleCreateFloor}
-                            onAddRoom={handleCreateRoom}
-                            onAddZone={handleCreateZone}
-                            onAddZonesBulk={handleCreateZonesBulk}
-                            onEdit={openEdit}
-                            onDetail={openDetail}
-                            expandAll={expandAll}
-                        />
-                    ))
+                    <VehicleSection 
+                        vehicles={vehicles} 
+                        search={vehicleSearch} 
+                        setSearch={setVehicleSearch} 
+                        onEdit={(v: Vehicle) => setVehicleModal({ show: true, data: v })}
+                        onAdd={() => setVehicleModal({ show: true })}
+                    />
                 )}
             </div>
 
-            {/* Add Type Modal */}
+            {/* Modals */}
             {modal && (
-                <AddModal
-                    level="type" parentName={null}
-                    onAdd={(c, n) => { handleCreateType(c, n); setModal(false); }}
-                    onClose={() => setModal(false)}
-                />
+                <AddModal level="type" parentName={null} onAdd={handleCreateType} onClose={() => setModal(false)} />
             )}
-
-            {/* Edit Modal */}
+            
             {editModal && (
-                <EditModal
-                    level={editModal.level}
-                    initialCode={editModal.code}
-                    initialName={editModal.name}
-                    onSave={handleEditSave}
-                    onClose={() => setEditModal(null)}
-                />
+                <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, backdropFilter: "blur(4px)" }}>
+                    <div style={{ background: "#fff", borderRadius: 16, padding: 32, minWidth: 400, boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
+                        <h3 style={{ margin: "0 0 20px", fontSize: 20, fontWeight: 800 }}> แก้ไข {LEVEL_LABELS[editModal.level as keyof typeof LEVEL_LABELS]} </h3>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                            <div>
+                                <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>รหัส</label>
+                                <input value={editModal.code} onChange={e => setEditModal({ ...editModal, code: e.target.value })} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1.5px solid #e2e8f0" }} />
+                            </div>
+                            <div>
+                                <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>ชื่อ</label>
+                                <input value={editModal.name} onChange={e => setEditModal({ ...editModal, name: e.target.value })} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1.5px solid #e2e8f0" }} />
+                            </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
+                            <button onClick={() => setEditModal(null)} style={{ flex: 1, padding: 12, borderRadius: 10, border: "1.5px solid #e2e8f0", background: "none", fontWeight: 700, cursor: "pointer" }}> ยกเลิก </button>
+                            <button onClick={() => handleEditSave(editModal.code, editModal.name)} style={{ flex: 1, padding: 12, borderRadius: 10, border: "none", background: "#1e3a5f", color: "#fff", fontWeight: 700, cursor: "pointer" }}> บันทึก </button>
+                        </div>
+                    </div>
+                </div>
             )}
 
-            {/* Detail Modal */}
             {detailModal && (
-                <DetailModal
-                    level={detailModal.level}
-                    code={detailModal.code}
-                    name={detailModal.name}
-                    originalId={detailModal.originalId}
-                    active={detailModal.active}
-                    rooms={detailModal.children}
-                    onClose={() => setDetailModal(null)}
-                />
+                <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, backdropFilter: "blur(4px)" }}>
+                    <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 650, maxHeight: "85vh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
+                        <div style={{ background: "linear-gradient(135deg, #1e3a5f, #0f172a)", padding: "24px 32px", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                                <div style={{ fontSize: 13, fontWeight: 600, opacity: 0.7, textTransform: "uppercase" }}> {LEVEL_LABELS[detailModal.level as keyof typeof LEVEL_LABELS]} Details </div>
+                                <h3 style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 800 }}> {detailModal.code} - {detailModal.name} </h3>
+                            </div>
+                            <button onClick={() => setDetailModal(null)} style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", width: 36, height: 36, borderRadius: "50%", cursor: "pointer", fontSize: 20 }}> × </button>
+                        </div>
+                        
+                        <div style={{ padding: 32, overflowY: "auto", flex: 1 }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 32 }}>
+                                <div style={{ background: "#f8fafc", padding: 20, borderRadius: 16, border: "1.5px solid #f1f5f9" }}>
+                                    <div style={{ fontSize: 13, color: "#64748b", marginBottom: 4 }}>สถานะการใช้งาน</div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                        <div style={{ width: 10, height: 10, borderRadius: "50%", background: detailModal.active ? "#10b981" : "#ef4444" }}></div>
+                                        <span style={{ fontWeight: 700, fontSize: 16 }}> {detailModal.active ? "เปิดใช้งานอยู่ในระบบ" : "ปิดใช้งานชั่วคราว"} </span>
+                                    </div>
+                                </div>
+                                <div style={{ background: "#f8fafc", padding: 20, borderRadius: 16, border: "1.5px solid #f1f5f9" }}>
+                                    <div style={{ fontSize: 13, color: "#64748b", marginBottom: 4 }}>ID ในระบบ</div>
+                                    <div style={{ fontWeight: 800, fontSize: 16 }}> #{detailModal.originalId || "N/A"} </div>
+                                </div>
+                            </div>
+                            
+                            {detailModal.level === 'room' && detailModal.children && (
+                                <div>
+                                    <h4 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: "#334155", display: "flex", alignItems: "center", gap: 8 }}>
+                                        📍 โซนย่อยในห้องนี้ ({detailModal.children.length})
+                                    </h4>
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
+                                        {detailModal.children.map((z: any) => (
+                                            <div key={z.id} style={{ background: "#fff", border: "1.5px solid #e2e8f0", padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600 }}>
+                                                {z.code} - {z.name}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div style={{ padding: "20px 32px", borderTop: "1.5px solid #f1f5f9", display: "flex", justifyContent: "flex-end", gap: 12, background: "#f8fafc" }}>
+                            {detailModal.originalId && (
+                                <button
+                                    onClick={async () => {
+                                        const res = await toggleRoomActive(detailModal.originalId!);
+                                        if (res.success) {
+                                            showToast('success', 'เปลี่ยนสถานะเรียบร้อยแล้ว');
+                                            setDetailModal(null);
+                                            loadData();
+                                        }
+                                    }}
+                                    style={{ padding: "10px 20px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 }}
+                                >
+                                    {detailModal.active ? "🚫 ปิดใช้งาน" : "✅ เปิดใช้งาน"}
+                                </button>
+                            )}
+                            <button onClick={() => setDetailModal(null)} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: "#1e3a5f", color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 14 }}> ตกลง </button>
+                        </div>
+                    </div>
+                </div>
             )}
 
+            {/* Vehicle Edit Modal */}
+            {vehicleModal?.show && (
+                <VehicleEditModal 
+                    data={vehicleModal.data} 
+                    onClose={() => setVehicleModal(null)} 
+                    onSave={async (v: any) => {
+                        const res = v.vehicle_id 
+                            ? await updateVehicle(v.vehicle_id, v)
+                            : await createVehicle(v);
+                        if (res.success) {
+                            showToast('success', 'บันทึกข้อมูลสำเร็จ');
+                            setVehicleModal(null);
+                            loadData();
+                        } else showToast('error', res.error || 'บันทึกไม่สำเร็จ');
+                    }}
+                />
+            )}
             <style>{`
                 /* =========================
                    PREMIUM TOAST SYSTEM
@@ -915,7 +1174,7 @@ export default function RoomManagement() {
                         height:0;
                         margin:0;
                         padding:0;
-                    }
+                        }
                 }
 
                 @keyframes toastProgress{

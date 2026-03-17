@@ -441,6 +441,24 @@ model tbl_rooms {
   tbl_pm_plans             tbl_pm_plans[]
 }
 
+model tbl_vehicles {
+  vehicle_id      Int       @id @default(autoincrement())
+  license_plate   String    @unique @db.VarChar(20)
+  province        String?   @db.VarChar(100)
+  brand           String?   @db.VarChar(100)
+  model_name      String?   @db.VarChar(100)
+  color           String?   @db.VarChar(50)
+  vehicle_type    String?   @db.VarChar(50)
+  owner_name      String?   @db.VarChar(255)
+  owner_room      String?   @db.VarChar(100)
+  owner_phone     String?   @db.VarChar(20)
+  parking_slot    String?   @db.VarChar(50)
+  notes           String?   @db.Text
+  active          Boolean   @default(true)
+  created_at      DateTime  @default(now()) @db.Timestamp(0)
+  updated_at      DateTime  @default(now()) @db.Timestamp(0)
+}
+
 model tbl_stock_movements {
   id            Int          @id @default(autoincrement())
   p_id          String       @db.VarChar(50)
