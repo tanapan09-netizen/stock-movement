@@ -1,18 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import {
     Wrench, Clock, CheckCircle, AlertTriangle, TrendingUp,
-    Calendar, DollarSign, User, ArrowRight, BarChart3, ShoppingCart
+    Calendar, DollarSign, User, ArrowRight, BarChart3, ShoppingCart, PieChart as PieChartIcon
 } from 'lucide-react';
 import {
     getMaintenanceRequests,
     getMaintenanceStats,
     updateMaintenanceRequest
 } from '@/actions/maintenanceActions';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
 
 interface MaintenanceRequestItem {
     request_id: number;
@@ -57,6 +57,34 @@ export default function MaintenanceDashboardClient() {
     const [urgentTasks, setUrgentTasks] = useState<MaintenanceRequestItem[]>([]);
     const [todayTasks, setTodayTasks] = useState<MaintenanceRequestItem[]>([]);
     const [pendingPartTasks, setPendingPartTasks] = useState<any[]>([]);
+
+    const pieData = useMemo(() => {
+        const counts = requests.reduce<Record<string, number>>((acc, r) => {
+            const key = r.status || 'other';
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+        }, {});
+
+        const items = [
+            { key: 'pending', label: STATUS_LABELS.pending, color: '#f59e0b' },
+            { key: 'in_progress', label: STATUS_LABELS.in_progress, color: '#3b82f6' },
+            { key: 'completed', label: STATUS_LABELS.completed, color: '#22c55e' },
+            { key: 'cancelled', label: STATUS_LABELS.cancelled, color: '#94a3b8' },
+        ];
+
+        const knownKeys = new Set(items.map(i => i.key));
+        const otherCount = Object.entries(counts)
+            .filter(([k]) => !knownKeys.has(k))
+            .reduce((sum, [, v]) => sum + v, 0);
+
+        const data = items
+            .map(i => ({ name: i.label, value: counts[i.key] || 0, color: i.color }))
+            .filter(d => d.value > 0);
+
+        if (otherCount > 0) data.push({ name: 'อื่นๆ', value: otherCount, color: '#a855f7' });
+
+        return data;
+    }, [requests]);
 
     async function loadData() {
         setLoading(true);
@@ -346,6 +374,53 @@ export default function MaintenanceDashboardClient() {
                                 ))
                             )}
                         </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Overall Pie Chart */}
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6 mt-6">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">
+                        <PieChartIcon size={20} /> งานซ่อมทั้งหมด (แยกตามสถานะ)
+                    </h3>
+                    <div className="text-sm text-gray-500">รวม {requests.length} งาน</div>
+                </div>
+
+                {pieData.length === 0 ? (
+                    <div className="h-64 flex items-center justify-center text-gray-500">ไม่มีข้อมูล</div>
+                ) : (
+                    <div className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Tooltip
+                                    formatter={(value: any, _name: any, props: any) => {
+                                        const label = props?.payload?.name || '';
+                                        return [`${value} งาน`, label];
+                                    }}
+                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                />
+                                <Legend />
+                                <Pie
+                                    data={pieData}
+                                    dataKey="value"
+                                    nameKey="name"
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius="55%"
+                                    outerRadius="85%"
+                                    paddingAngle={2}
+                                    stroke="transparent"
+                                >
+                                    {pieData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={(entry as any).color} />
+                                    ))}
+                                </Pie>
+                                <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" fill="#334155" style={{ fontSize: 14, fontWeight: 700 }}>
+                                    {requests.length} งาน
+                                </text>
+                            </PieChart>
+                        </ResponsiveContainer>
                     </div>
                 )}
             </div>

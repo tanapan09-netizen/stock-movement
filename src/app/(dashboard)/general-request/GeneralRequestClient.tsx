@@ -6,15 +6,18 @@ import { useToast } from '@/components/ToastProvider';
 import {
     Search, Plus, CheckCircle2, Clock, AlertCircle, XCircle,
     Wrench, Eye, Calendar, MapPin, ShieldCheck, Loader2,
-    ChevronDown, X, Filter, ClipboardList, LayoutGrid, TableProperties
+    X, Filter, ClipboardList, LayoutGrid, TableProperties
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
+import HierarchicalRoomSelector from '@/components/HierarchicalRoomSelector';
+import VehicleLicensePlateSelector from '@/components/VehicleLicensePlateSelector';
 import {
     getMaintenanceRequests,
     createMaintenanceRequest,
     getRooms
 } from '@/actions/maintenanceActions';
+import { getAllVehicles } from '@/actions/vehicleActions';
 
 interface Room {
     room_id: number;
@@ -45,6 +48,16 @@ interface MaintenanceRequestItem {
     notes: string | null;
     created_at: Date;
     tbl_rooms: Room;
+}
+
+interface Vehicle {
+    vehicle_id: number;
+    license_plate: string;
+    province: string | null;
+    vehicle_type: string | null;
+    owner_name: string | null;
+    owner_room: string | null;
+    active: boolean;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -87,6 +100,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
     // Data
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
     const [rooms, setRooms] = useState<Room[]>([]);
+    const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
 
@@ -98,16 +112,15 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
     const [showDetail, setShowDetail] = useState(false);
     const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
     const [hasOpenedFromUrl, setHasOpenedFromUrl] = useState(false);
+    const [locationMode, setLocationMode] = useState<'location' | 'vehicle'>('location');
 
-    // Room selector
-    const [roomSearch, setRoomSearch] = useState('');
-    const [showRoomDropdown, setShowRoomDropdown] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
     // Form
     const [formData, setFormData] = useState({
         room_id: 0,
+        vehicle_id: 0,
         title: '',
         description: '',
         category: 'general',
@@ -123,15 +136,19 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
-            const [reqResult, roomResult] = await Promise.all([
+            const [reqResult, roomResult, vehicleResult] = await Promise.all([
                 getMaintenanceRequests(),
-                getRooms()
+                getRooms(),
+                getAllVehicles()
             ]);
             if (reqResult.success && reqResult.data) {
                 setRequests(reqResult.data as unknown as MaintenanceRequestItem[]);
             }
             if (roomResult.success && roomResult.data) {
                 setRooms(roomResult.data);
+            }
+            if (vehicleResult) {
+                setVehicles(vehicleResult as Vehicle[]);
             }
         } catch (err) {
             console.error('Failed to load data', err);
@@ -164,13 +181,23 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         window.history.replaceState({}, '', url.toString());
     }, [reqQueryParam, requests, hasOpenedFromUrl]);
 
-    // Filtered rooms for search
-    const filteredRooms = rooms.filter(r =>
-        r.active &&
-        (`${r.room_code} ${r.room_name}`.toLowerCase().includes(roomSearch.toLowerCase()))
-    );
+     useEffect(() => {
+        const handleSubmenuPosition = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            const parent = target.closest('.room-type-item, .floor-item, [data-has-submenu]');
+            if (!parent) return;
 
-    const selectedRoom = rooms.find(r => r.room_id === formData.room_id);
+            const submenu = parent.querySelector<HTMLElement>('.submenu-floor, .submenu-room, .submenu-zone');
+            if (submenu && submenu.style.display === 'block') {
+                const rect = parent.getBoundingClientRect();
+                submenu.style.left = (rect.right + 5) + 'px';
+                submenu.style.top = rect.top + 'px';
+            }
+        };
+
+        document.addEventListener('mouseenter', handleSubmenuPosition, true);
+        return () => document.removeEventListener('mouseenter', handleSubmenuPosition, true);
+    }, []);
 
     // Filtered requests
     const filteredRequests = requests.filter(req => {
@@ -208,15 +235,40 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             showToast('กรุณาระบุชื่อผู้แจ้ง', 'warning');
             return;
         }
-        if (!formData.room_id || formData.room_id === 0) {
-            showToast('กรุณาเลือกสถานที่จากรายการ', 'warning');
-            return;
+
+        const selectedVehicle = locationMode === 'vehicle'
+            ? (formData.vehicle_id ? vehicles.find(v => v.vehicle_id === formData.vehicle_id) : null)
+            : null;
+
+        const derivedRoomIdFromVehicle = (() => {
+            if (!selectedVehicle) return 0;
+            const ownerRoom = selectedVehicle.owner_room?.trim();
+            if (!ownerRoom) return 0;
+            const match = rooms.find(r => r.room_code.trim().toLowerCase() === ownerRoom.toLowerCase());
+            return match?.room_id ?? 0;
+        })();
+
+        if (locationMode === 'location') {
+            if (!formData.room_id || formData.room_id === 0) {
+                showToast('กรุณาเลือกสถานที่จากรายการ', 'warning');
+                return;
+            }
+        } else {
+            if (!formData.vehicle_id || formData.vehicle_id === 0) {
+                showToast('กรุณาเลือกทะเบียนรถจากรายการ', 'warning');
+                return;
+            }
+            if (!derivedRoomIdFromVehicle) {
+                showToast('ทะเบียนรถนี้ยังไม่ได้ผูกกับเลขห้อง (owner_room) กรุณาแก้ไขที่หน้า /admin/rooms หรือเลือกสถานที่แทน', 'warning');
+                return;
+            }
         }
 
         setSubmitting(true);
         try {
+            const roomIdToSend = locationMode === 'vehicle' ? derivedRoomIdFromVehicle : formData.room_id;
             const data = new FormData();
-            data.append('room_id', formData.room_id.toString());
+            data.append('room_id', roomIdToSend.toString());
             data.append('title', formData.title);
             data.append('description', formData.description);
             data.append('category', formData.category);
@@ -224,7 +276,21 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             data.append('reported_by', formData.reported_by);
             data.append('contact_info', formData.contact_info);
             data.append('department', formData.department);
-            data.append('tags', formData.tags);
+
+            const vehiclePlate = selectedVehicle?.license_plate?.trim() || '';
+            const vehicleTag = vehiclePlate ? `รถ:${vehiclePlate}` : '';
+
+            const tagsToSend = (() => {
+                const current = formData.tags ? formData.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+                if (vehicleTag && !current.some(t => t.toLowerCase() === vehicleTag.toLowerCase())) current.push(vehicleTag);
+                return current.join(',');
+            })();
+
+            data.append('tags', tagsToSend);
+            if (vehiclePlate) {
+                data.append('vehicle_id', formData.vehicle_id.toString());
+                data.append('vehicle_plate', vehiclePlate);
+            }
             data.append('target_role', 'general'); // Always 'general' for this page
 
             if (selectedFile) {
@@ -234,8 +300,10 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             const result = await createMaintenanceRequest(data);
             if (result.success) {
                 setShowForm(false);
+                setLocationMode('location');
                 setFormData({
                     room_id: 0,
+                    vehicle_id: 0,
                     title: '',
                     description: '',
                     category: 'general',
@@ -248,7 +316,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                     target_role: 'general',
                 });
                 setSelectedFile(null);
-                setRoomSearch('');
                 loadData();
                 showToast('บันทึกเรียบร้อย ระบบจะแจ้งเตือนฝ่ายธุรการ', 'success');
             } else {
@@ -561,58 +628,88 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         </div>
 
                         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-                            {/* Room Selection */}
+                            {/* Location Mode */}
                             <div>
-                                <label className="block text-sm font-medium mb-1.5 text-gray-700">
-                                    สถานที่ <span className="text-red-500">*</span>
-                                </label>
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        value={selectedRoom ? `${selectedRoom.room_code} — ${selectedRoom.room_name}` : roomSearch}
-                                        onChange={e => {
-                                            setRoomSearch(e.target.value);
-                                            setFormData({ ...formData, room_id: 0 });
-                                            setShowRoomDropdown(true);
+                                <label className="block text-sm font-medium mb-2 text-gray-700">เลือกอย่างใดอย่างหนึ่ง</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setLocationMode('location');
+                                            setFormData(prev => {
+                                                const currentTags = prev.tags ? prev.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+                                                const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('รถ:'));
+                                                return { ...prev, vehicle_id: 0, tags: nextTags.join(',') };
+                                            });
                                         }}
-                                        onFocus={() => setShowRoomDropdown(true)}
-                                        placeholder="ค้นหาสถานที่..."
-                                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none pr-8"
-                                    />
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                                    {showRoomDropdown && filteredRooms.length > 0 && (
-                                        <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl z-10 mt-1 max-h-48 overflow-y-auto">
-                                            {filteredRooms.slice(0, 20).map(room => (
-                                                <button
-                                                    key={room.room_id}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setFormData({ ...formData, room_id: room.room_id });
-                                                        setRoomSearch('');
-                                                        setShowRoomDropdown(false);
-                                                    }}
-                                                    className="w-full text-left px-4 py-3 hover:bg-blue-50 text-sm border-b last:border-0 group transition-colors"
-                                                >
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="flex flex-col">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="font-bold text-blue-700">{room.room_code}</span>
-                                                                <span className="text-gray-900 font-medium">{room.room_name}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-500">
-                                                                <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">{room.zone || 'ไม่ระบุโซน'}</span>
-                                                                <span>{room.building}</span>
-                                                                {room.floor && <span className="text-blue-600">ชั้น {room.floor}</span>}
-                                                            </div>
-                                                        </div>
-                                                        <Plus className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
+                                        className={`px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${locationMode === 'location' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                                    >
+                                        สถานที่
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setLocationMode('vehicle');
+                                            setFormData(prev => {
+                                                const currentTags = prev.tags ? prev.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+                                                const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('รถ:'));
+                                                return { ...prev, room_id: 0, vehicle_id: 0, tags: nextTags.join(',') };
+                                            });
+                                        }}
+                                        className={`px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${locationMode === 'vehicle' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                                    >
+                                        ทะเบียนรถ
+                                    </button>
                                 </div>
                             </div>
+
+                            {locationMode === 'location' ? (
+                                <div>
+                                    <label className="block text-sm font-medium mb-1.5 text-gray-700">
+                                        สถานที่ <span className="text-red-500">*</span>
+                                    </label>
+                                    <HierarchicalRoomSelector
+                                        rooms={rooms}
+                                        value={formData.room_id}
+                                        onChange={(roomId) => setFormData(prev => ({ ...prev, room_id: roomId }))}
+                                    />
+                                </div>
+                            ) : (
+                                <div>
+                                    <label className="block text-sm font-medium mb-1.5 text-gray-700">
+                                        ทะเบียนรถ <span className="text-red-500">*</span>
+                                    </label>
+                                    <VehicleLicensePlateSelector
+                                        vehicles={vehicles}
+                                        value={formData.vehicle_id}
+                                        onChange={(vehicleId) => {
+                                            const selected = vehicleId ? vehicles.find(v => v.vehicle_id === vehicleId) : null;
+                                            const plate = selected?.license_plate?.trim() || '';
+                                            const vehicleTag = plate ? `รถ:${plate}` : '';
+                                            setFormData(prev => {
+                                                const currentTags = prev.tags ? prev.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+                                                const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('รถ:'));
+                                                if (vehicleTag) nextTags.push(vehicleTag);
+                                                return { ...prev, vehicle_id: vehicleId, tags: nextTags.join(',') };
+                                            });
+                                        }}
+                                    />
+                                    {(() => {
+                                        if (!formData.vehicle_id) return null;
+                                        const v = vehicles.find(x => x.vehicle_id === formData.vehicle_id);
+                                        if (!v) return null;
+                                        const ownerRoom = v.owner_room?.trim();
+                                        if (!ownerRoom) {
+                                            return <p className="text-xs text-amber-600 mt-2">ทะเบียนรถนี้ยังไม่ระบุเลขห้อง (owner_room) ในระบบ</p>;
+                                        }
+                                        const matchedRoom = rooms.find(r => r.room_code.trim().toLowerCase() === ownerRoom.toLowerCase());
+                                        if (!matchedRoom) {
+                                            return <p className="text-xs text-amber-600 mt-2">ไม่พบห้องรหัส "{ownerRoom}" ที่ผูกกับทะเบียนรถนี้ (แก้ไขได้ที่หน้า /admin/rooms)</p>;
+                                        }
+                                        return <p className="text-xs text-gray-500 mt-2">ระบบจะใช้สถานที่อัตโนมัติ: {matchedRoom.room_code} — {matchedRoom.room_name}</p>;
+                                    })()}
+                                </div>
+                            )}
 
                             {/* Title */}
                             <div>
