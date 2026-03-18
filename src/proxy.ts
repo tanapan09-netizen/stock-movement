@@ -107,6 +107,8 @@ function checkCSRF(request: NextRequest): boolean {
 export function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
     const clientIP = getClientIP(request);
+    const forwardedHeaders = new Headers(request.headers);
+    forwardedHeaders.set('x-pathname', pathname);
 
     // Skip static files and Next.js internals
     if (
@@ -152,7 +154,11 @@ export function proxy(request: NextRequest) {
         }
 
         // Add rate limit headers to response
-        const response = NextResponse.next();
+        const response = NextResponse.next({
+            request: {
+                headers: forwardedHeaders,
+            },
+        });
         response.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining.toString());
         response.headers.set('X-RateLimit-Reset', Math.ceil(rateLimitResult.resetIn / 1000).toString());
 
@@ -166,7 +172,11 @@ export function proxy(request: NextRequest) {
     }
 
     // Add security headers to all responses
-    const response = NextResponse.next();
+    const response = NextResponse.next({
+        request: {
+            headers: forwardedHeaders,
+        },
+    });
     response.headers.set('X-Content-Type-Options', securityConfig.headers.xContentTypeOptions);
     response.headers.set('X-Frame-Options', securityConfig.headers.xFrameOptions);
     response.headers.set('X-XSS-Protection', securityConfig.headers.xXssProtection);

@@ -17,11 +17,19 @@ interface Props {
 
 export default function RolePermissionEditor({ roles }: Props) {
     // Parse initial permissions
+    const allPermissionKeys = Object.fromEntries(
+        PERMISSION_LIST.map((permission) => [permission.key, false])
+    ) as Record<string, boolean>;
+
     const initialPermissions = roles.reduce((acc, role) => {
         try {
-            acc[role.role_id] = JSON.parse(role.permissions || '{}');
+            const parsed = JSON.parse(role.permissions || '{}');
+            acc[role.role_id] = {
+                ...allPermissionKeys,
+                ...parsed
+            };
         } catch {
-            acc[role.role_id] = {};
+            acc[role.role_id] = { ...allPermissionKeys };
         }
         return acc;
     }, {} as Record<number, Record<string, boolean>>);

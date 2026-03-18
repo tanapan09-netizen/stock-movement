@@ -31,21 +31,24 @@ export async function getRoles() {
  */
 export async function getRolePermissions(roleName: string): Promise<RolePermissions> {
     try {
-        // For admin, always return the latest permissions from code to ensure they have access to new features
-        // if (roleName === 'admin') {
-        //     return DEFAULT_PERMISSIONS.admin;
-        // }
+        const defaultPermissions = DEFAULT_PERMISSIONS[roleName as keyof typeof DEFAULT_PERMISSIONS] || {};
 
         const role = await prisma.tbl_roles.findUnique({
             where: { role_name: roleName }
         });
 
         if (role && role.permissions) {
-            return JSON.parse(role.permissions);
+            try {
+                const dbPermissions = JSON.parse(role.permissions);
+                // Ensure new permission keys always exist (especially page-level keys)
+                return { ...defaultPermissions, ...dbPermissions };
+            } catch {
+                return defaultPermissions;
+            }
         }
 
         // Fallback to defaults if not found in DB
-        return DEFAULT_PERMISSIONS[roleName as keyof typeof DEFAULT_PERMISSIONS] || {};
+        return defaultPermissions;
     } catch (error) {
         console.error('Error fetching permissions for role:', roleName, error);
         return {};
@@ -77,9 +80,9 @@ export async function updateRolePermissions(roleId: number, permissions: RolePer
         });
 
         // Count changes for logging
-        const oldPerms = oldRole?.permissions ? JSON.parse(oldRole.permissions) : {};
-        const enabledKeys = Object.keys(permissions).filter(k => (permissions as any)[k] === true && !(oldPerms as any)[k]);
-        const disabledKeys = Object.keys(oldPerms).filter(k => (oldPerms as any)[k] === true && !(permissions as any)[k]);
+        const oldPerms: RolePermissions = oldRole?.permissions ? JSON.parse(oldRole.permissions) : {};
+        const enabledKeys = Object.keys(permissions).filter((key) => permissions[key] === true && !oldPerms[key]);
+        const disabledKeys = Object.keys(oldPerms).filter((key) => oldPerms[key] === true && !permissions[key]);
 
         const changeDetail = [
             enabledKeys.length > 0 ? `เปิด: ${enabledKeys.join(', ')}` : '',
