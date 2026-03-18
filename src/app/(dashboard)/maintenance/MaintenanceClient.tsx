@@ -2525,40 +2525,49 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             </h4>
                                             
                                             {newPartsUsed.map((part, index) => {
-                                                const product = products.find(p => p.p_id === part.p_id);
-                                                const avail = product ? product.p_count : 0;
-                                                return (
-                                                    <div key={index} className="flex flex-wrap items-center gap-2 bg-white dark:bg-slate-800 p-2 rounded border dark:border-slate-600">
-                                                        <span className="flex-1 text-xs font-medium truncate">{product?.p_name || part.p_id}</span>
-                                                        <div className="flex items-center gap-1">
-                                                            <input
-                                                                type="number"
-                                                                min="1"
-                                                                max={avail}
-                                                                value={part.quantity}
-                                                                onChange={(e) => {
-                                                                    const updated = [...newPartsUsed];
-                                                                    let val = parseInt(e.target.value) || 1;
-                                                                    if (val > avail) val = avail;
-                                                                    updated[index].quantity = val;
-                                                                    setNewPartsUsed(updated);
-                                                                }}
-                                                                className="w-12 px-1 py-0.5 text-xs border rounded dark:bg-slate-700 dark:border-slate-600 text-center"
-                                                            />
-                                                            <span className="text-[10px] text-gray-500">/{avail}</span>
-                                                        </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const updated = newPartsUsed.filter((_, i) => i !== index);
-                                                                setNewPartsUsed(updated);
-                                                            }}
-                                                            className="text-red-500 hover:text-red-700 p-1"
-                                                        >
-                                                            &times;
-                                                        </button>
-                                                    </div>
-                                                );
+                                            const product = products.find(p => p.p_id === part.p_id);
+                                            const avail = product ? product.p_count : 0;
+
+                                            return (
+                                                <div
+                                                key={index}
+                                                className="flex flex-col gap-1.5 px-3 py-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600"
+                                                >
+                                                {/* Row 1: Part name */}
+                                                <span className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">
+                                                    {product?.p_name || part.p_id}
+                                                </span>
+
+                                                {/* Row 2: Quantity + stock + remove */}
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                    type="number"
+                                                    min="1"
+                                                    max={avail}
+                                                    value={part.quantity}
+                                                    onChange={(e) => {
+                                                        const updated = [...newPartsUsed];
+                                                        let val = parseInt(e.target.value) || 1;
+                                                        if (val > avail) val = avail;
+                                                        updated[index].quantity = val;
+                                                        setNewPartsUsed(updated);
+                                                    }}
+                                                    className="w-16 px-2 py-0.5 text-sm text-center rounded-md border border-slate-300 dark:border-slate-500 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                                    />
+                                                    <span className="text-xs text-slate-400">
+                                                    คงเหลือ {avail} ชิ้น
+                                                    </span>
+                                                    <button
+                                                    type="button"
+                                                    onClick={() => setNewPartsUsed(newPartsUsed.filter((_, i) => i !== index))}
+                                                    className="ml-auto text-xs text-red-400 hover:text-red-600 hover:underline transition-colors"
+                                                    aria-label="Remove part"
+                                                    >
+                                                    ลบ
+                                                    </button>
+                                                </div>
+                                                </div>
+                                            );
                                             })}
                                             
                                             <div className="space-y-2">
