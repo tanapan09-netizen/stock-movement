@@ -112,6 +112,7 @@ async function handleFollowEvent(event: WebhookEvent) {
                 display_name: profile?.displayName || null,
                 picture_url: profile?.pictureUrl || null,
                 is_approver: false,
+                role: 'pending',
                 is_active: true,
                 last_interaction: new Date(),
             },
