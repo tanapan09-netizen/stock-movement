@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import MaintenanceRequestCard from '@/components/maintenance/MaintenanceRequestCard';
+import VehicleLicensePlateSelector from '@/components/VehicleLicensePlateSelector';
 import { useSession } from 'next-auth/react';
 import {
     getMaintenanceRequests,
@@ -46,6 +47,7 @@ import {
     getProducts,
     submitRepairCompletion
 } from '@/actions/maintenanceActions';
+import { getAllVehicles } from '@/actions/vehicleActions';
 import SignaturePad from '@/components/SignaturePad';
 import SearchableSelect from '@/components/SearchableSelect';
 import { searchAssets } from '@/actions/assetActions';
@@ -62,6 +64,16 @@ interface Room {
     building: string | null;
     floor: string | null;
     zone: string | null;
+    active: boolean;
+}
+
+interface Vehicle {
+    vehicle_id: number;
+    license_plate: string;
+    province: string | null;
+    vehicle_type: string | null;
+    owner_name: string | null;
+    owner_room: string | null;
     active: boolean;
 }
 
@@ -211,6 +223,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     const { showToast } = useToast();
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
     const [rooms, setRooms] = useState<Room[]>([]);
+    const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [showRoomForm, setShowRoomForm] = useState(false);
@@ -223,6 +236,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     const [filterStartDate, setFilterStartDate] = useState('');
     const [filterEndDate, setFilterEndDate] = useState('');
     const [showCompleted, setShowCompleted] = useState(false);
+    const [locationMode, setLocationMode] = useState<'location' | 'vehicle'>('location');
 
     const [assetSearchQuery, setAssetSearchQuery] = useState('');
     const [assetResults, setAssetResults] = useState<any[]>([]);
@@ -279,6 +293,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     // Form state
     const [formData, setFormData] = useState({
         room_id: 0,
+        vehicle_id: 0,
         title: '',
         description: '',
         category: 'general',
@@ -398,7 +413,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     async function loadData() {
         setLoading(true);
         try {
-            const [reqResult, roomResult, summaryResult, techResult, lineUserResult, productResult] = await Promise.all([
+            const [reqResult, roomResult, summaryResult, techResult, lineUserResult, productResult, vehicleResult] = await Promise.all([
                 getMaintenanceRequests({
                     status: filterStatus !== 'all' ? filterStatus : undefined,
                     room_id: filterRoom || undefined,
@@ -409,7 +424,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                 getMaintenanceSummary(),
                 getActiveTechnicians(),
                 getLineUsers(),
-                getProducts()
+                getProducts(),
+                getAllVehicles()
             ]);
 
             if (reqResult.success) {
@@ -436,7 +452,11 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             if (productResult && productResult.success) {
                 setProducts(Array.isArray(productResult.data) ? productResult.data as any[] : []);
             } else setProducts([]);
-            
+
+            if (vehicleResult) {
+                setVehicles(Array.isArray(vehicleResult) ? vehicleResult as Vehicle[] : []);
+            } else setVehicles([]);
+             
         } catch (error) {
             console.error('Error loading data:', error);
             setRequests([]);
@@ -444,6 +464,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             setTechnicians([]);
             setLineTechnicians([]);
             setProducts([]);
+            setVehicles([]);
         } finally {
             setLoading(false);
         }
@@ -528,16 +549,38 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             showToast('กรุณาระบุผู้แจ้ง', 'warning');
             return;
         }
-        // If room_id is 0 but user entered location text, we might want to allow it IF the backend allowed nullable room_id, 
-        // but schema says Int (not nullable). So we must enforce room selection or default room.
-        // For now, let's alert if invalid room.
-        if (!formData.room_id || formData.room_id === 0) {
-            showToast('กรุณาเลือกสถานที่จากรายการที่กำหนด', 'warning');
-            return;
+
+        const selectedVehicle = locationMode === 'vehicle'
+            ? (formData.vehicle_id ? vehicles.find(v => v.vehicle_id === formData.vehicle_id) : null)
+            : null;
+
+        const derivedRoomIdFromVehicle = (() => {
+            if (!selectedVehicle) return 0;
+            const ownerRoom = selectedVehicle.owner_room?.trim();
+            if (!ownerRoom) return 0;
+            const match = rooms.find(r => r.room_code.trim().toLowerCase() === ownerRoom.toLowerCase());
+            return match?.room_id ?? 0;
+        })();
+
+        if (locationMode === 'location') {
+            if (!formData.room_id || formData.room_id === 0) {
+                showToast('กรุณาเลือกสถานที่จากรายการที่กำหนด', 'warning');
+                return;
+            }
+        } else {
+            if (!formData.vehicle_id || formData.vehicle_id === 0) {
+                showToast('กรุณาเลือกทะเบียนรถจากรายการที่กำหนด', 'warning');
+                return;
+            }
+            if (!derivedRoomIdFromVehicle) {
+                showToast('ทะเบียนรถนี้ยังไม่ได้ผูกกับเลขห้อง (owner_room) กรุณาแก้ไขที่หน้า /admin/rooms หรือเลือกสถานที่แทน', 'warning');
+                return;
+            }
         }
 
+        const roomIdToSend = locationMode === 'vehicle' ? derivedRoomIdFromVehicle : formData.room_id;
         const data = new FormData();
-        data.append('room_id', formData.room_id.toString());
+        data.append('room_id', roomIdToSend.toString());
         data.append('title', formData.title);
         data.append('description', formData.description);
         data.append('category', formData.category);
@@ -548,7 +591,19 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
         data.append('estimated_cost', formData.estimated_cost.toString());
         data.append('department', formData.department);
         data.append('contact_info', formData.contact_info);
-        data.append('tags', formData.tags);
+
+        const vehiclePlate = selectedVehicle?.license_plate?.trim() || '';
+        const vehicleTag = vehiclePlate ? `รถ:${vehiclePlate}` : '';
+        const tagsToSend = (() => {
+            const current = formData.tags ? formData.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+            if (vehicleTag && !current.some(t => t.toLowerCase() === vehicleTag.toLowerCase())) current.push(vehicleTag);
+            return current.join(',');
+        })();
+        data.append('tags', tagsToSend);
+        if (vehiclePlate) {
+            data.append('vehicle_id', formData.vehicle_id.toString());
+            data.append('vehicle_plate', vehiclePlate);
+        }
         data.append('target_role', formData.target_role);
 
         if (selectedFile) {
@@ -571,8 +626,10 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                 }
 
                 setShowForm(false);
+                setLocationMode('location');
                 setFormData({
                     room_id: 0,
+                    vehicle_id: 0,
                     title: '',
                     description: '',
                     category: 'electrical',
@@ -1588,9 +1645,43 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2 text-gray-700">สถานที่ <span className="text-red-500">*</span></label>
-                                    {/* Hierarchical Room Selector - REDESIGNED */}
-                                    {(() => {
+                                    <label className="block text-sm font-medium mb-2 text-gray-700">สถานที่ / ทะเบียนรถ <span className="text-red-500">*</span></label>
+
+                                    <div className="grid grid-cols-2 gap-2 mb-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setLocationMode('location');
+                                                setFormData(prev => {
+                                                    const currentTags = prev.tags ? prev.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+                                                    const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('รถ:'));
+                                                    return { ...prev, vehicle_id: 0, tags: nextTags.join(',') };
+                                                });
+                                            }}
+                                            className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${locationMode === 'location' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                                        >
+                                            สถานที่
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setLocationMode('vehicle');
+                                                setFormData(prev => {
+                                                    const currentTags = prev.tags ? prev.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+                                                    const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('รถ:'));
+                                                    return { ...prev, room_id: 0, location: '', vehicle_id: 0, tags: nextTags.join(',') };
+                                                });
+                                            }}
+                                            className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${locationMode === 'vehicle' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                                        >
+                                            ทะเบียนรถ
+                                        </button>
+                                    </div>
+
+                                    {locationMode === 'location' ? (
+                                        <>
+                                            {/* Hierarchical Room Selector - REDESIGNED */}
+                                            {(() => {
                                         // ── Data preparation (unchanged logic) ──────────────────────────────
                                         const realRooms = rooms.filter(r => r.active && !r.room_code.startsWith('T-') && !r.room_code.startsWith('F-'));
                                         type TreeZone = { id: number; code: string; name: string };
@@ -2068,6 +2159,40 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             </>
                                         );
                                     })()}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <VehicleLicensePlateSelector
+                                                vehicles={vehicles}
+                                                value={formData.vehicle_id}
+                                                onChange={(vehicleId) => {
+                                                    const selected = vehicleId ? vehicles.find(v => v.vehicle_id === vehicleId) : null;
+                                                    const plate = selected?.license_plate?.trim() || '';
+                                                    const vehicleTag = plate ? `รถ:${plate}` : '';
+                                                    setFormData(prev => {
+                                                        const currentTags = prev.tags ? prev.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+                                                        const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('รถ:'));
+                                                        if (vehicleTag) nextTags.push(vehicleTag);
+                                                        return { ...prev, vehicle_id: vehicleId, tags: nextTags.join(',') };
+                                                    });
+                                                }}
+                                            />
+                                            {(() => {
+                                                if (!formData.vehicle_id) return null;
+                                                const v = vehicles.find(x => x.vehicle_id === formData.vehicle_id);
+                                                if (!v) return null;
+                                                const ownerRoom = v.owner_room?.trim();
+                                                if (!ownerRoom) {
+                                                    return <div className="text-xs text-amber-600 mt-2">ทะเบียนรถนี้ยังไม่ระบุเลขห้อง (owner_room) ในระบบ</div>;
+                                                }
+                                                const matchedRoom = rooms.find(r => r.room_code.trim().toLowerCase() === ownerRoom.toLowerCase());
+                                                if (!matchedRoom) {
+                                                    return <div className="text-xs text-amber-600 mt-2">ไม่พบห้องรหัส "{ownerRoom}" ที่ผูกกับทะเบียนรถนี้ (แก้ไขได้ที่หน้า /admin/rooms)</div>;
+                                                }
+                                                return <div className="text-xs text-gray-500 mt-2">ระบบจะใช้สถานที่อัตโนมัติ: {matchedRoom.room_code} — {matchedRoom.room_name}</div>;
+                                            })()}
+                                        </>
+                                    )}
                                 </div>
                             </div>
 
