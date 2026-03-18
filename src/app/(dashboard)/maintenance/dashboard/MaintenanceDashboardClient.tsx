@@ -225,6 +225,52 @@ export default function MaintenanceDashboardClient() {
                     </div>
                 </div>
             </div>
+            {/* Overall Pie Chart */}
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6 mt-6">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">
+                        <PieChartIcon size={20} /> งานซ่อมทั้งหมด (แยกตามสถานะ)
+                    </h3>
+                    <div className="text-sm text-gray-500">รวม {requests.length} งาน</div>
+                </div>
+
+                {pieData.length === 0 ? (
+                    <div className="h-64 flex items-center justify-center text-gray-500">ไม่มีข้อมูล</div>
+                ) : (
+                    <div className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Tooltip
+                                    formatter={(value: any, _name: any, props: any) => {
+                                        const label = props?.payload?.name || '';
+                                        return [`${value} งาน`, label];
+                                    }}
+                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                />
+                                <Legend />
+                                <Pie
+                                    data={pieData}
+                                    dataKey="value"
+                                    nameKey="name"
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius="55%"
+                                    outerRadius="85%"
+                                    paddingAngle={2}
+                                    stroke="transparent"
+                                >
+                                    {pieData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={(entry as any).color} />
+                                    ))}
+                                </Pie>
+                                <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" fill="#334155" style={{ fontSize: 14, fontWeight: 700 }}>
+                                    {requests.length} งาน
+                                </text>
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                )}
+            </div>
 
             {/* Charts & Quick Panels Grid */}
             <div className="grid lg:grid-cols-3 gap-6">
@@ -377,54 +423,7 @@ export default function MaintenanceDashboardClient() {
                     </div>
                 )}
             </div>
-
-            {/* Overall Pie Chart */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6 mt-6">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">
-                        <PieChartIcon size={20} /> งานซ่อมทั้งหมด (แยกตามสถานะ)
-                    </h3>
-                    <div className="text-sm text-gray-500">รวม {requests.length} งาน</div>
-                </div>
-
-                {pieData.length === 0 ? (
-                    <div className="h-64 flex items-center justify-center text-gray-500">ไม่มีข้อมูล</div>
-                ) : (
-                    <div className="h-72">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Tooltip
-                                    formatter={(value: any, _name: any, props: any) => {
-                                        const label = props?.payload?.name || '';
-                                        return [`${value} งาน`, label];
-                                    }}
-                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                />
-                                <Legend />
-                                <Pie
-                                    data={pieData}
-                                    dataKey="value"
-                                    nameKey="name"
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius="55%"
-                                    outerRadius="85%"
-                                    paddingAngle={2}
-                                    stroke="transparent"
-                                >
-                                    {pieData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={(entry as any).color} />
-                                    ))}
-                                </Pie>
-                                <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" fill="#334155" style={{ fontSize: 14, fontWeight: 700 }}>
-                                    {requests.length} งาน
-                                </text>
-                            </PieChart>
-                        </ResponsiveContainer>
-                    </div>
-                )}
-            </div>
-
+            
             {/* Recent Activities Table */}
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm overflow-hidden">
                 <div className="p-4 border-b flex items-center gap-2">
