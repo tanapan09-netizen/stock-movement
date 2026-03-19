@@ -135,6 +135,138 @@ function getSelectionState(total: number, checked: number): SelectionState {
     return 'partial';
 }
 
+const ROUTE_LABEL_TH: Record<string, string> = {
+    '/': 'หน้าหลัก',
+    '/admin/reports': 'แอดมิน / รายงาน',
+    '/admin/rooms': 'แอดมิน / ห้อง',
+    '/admin/security': 'แอดมิน / ความปลอดภัย',
+    '/api-docs': 'เอกสาร API',
+    '/approvals': 'อนุมัติรายการ',
+    '/approvals/workflows': 'อนุมัติรายการ / เวิร์กโฟลว์',
+    '/assets': 'ทรัพย์สิน',
+    '/assets/[id]': 'ทรัพย์สิน / รายละเอียด',
+    '/assets/[id]/edit': 'ทรัพย์สิน / แก้ไขรายการ',
+    '/assets/new': 'ทรัพย์สิน / เพิ่มใหม่',
+    '/audit-log': 'บันทึกตรวจสอบ',
+    '/borrow': 'ยืม-คืน',
+    '/borrow/[id]': 'ยืม-คืน / รายละเอียด',
+    '/borrow/new': 'ยืม-คืน / เพิ่มใหม่',
+    '/categories': 'หมวดหมู่',
+    '/categories/[id]/edit': 'หมวดหมู่ / แก้ไขรายการ',
+    '/categories/new': 'หมวดหมู่ / เพิ่มใหม่',
+    '/debug-auth': 'ดีบักสิทธิ์เข้าใช้งาน',
+    '/general-request': 'คำขอทั่วไป',
+    '/inventory-audit': 'ตรวจนับสต็อก',
+    '/inventory-audit/[id]': 'ตรวจนับสต็อก / รายละเอียด',
+    '/inventory-audit/new': 'ตรวจนับสต็อก / เพิ่มใหม่',
+    '/maintenance': 'งานซ่อมบำรุง',
+    '/maintenance/dashboard': 'งานซ่อมบำรุง / แดชบอร์ด',
+    '/maintenance/job-sheet/[id]': 'งานซ่อมบำรุง / ใบงาน / รายละเอียด',
+    '/maintenance/part-requests': 'งานซ่อมบำรุง / เบิกอะไหล่',
+    '/maintenance/parts': 'งานซ่อมบำรุง / อะไหล่',
+    '/maintenance/pm': 'งานซ่อมบำรุง / PM',
+    '/maintenance/technicians': 'งานซ่อมบำรุง / ช่าง',
+    '/movements': 'ความเคลื่อนไหวสต็อก',
+    '/petty-cash': 'เงินสดย่อย',
+    '/petty-cash/[id]/print': 'เงินสดย่อย / พิมพ์เอกสาร',
+    '/petty-cash/dashboard': 'เงินสดย่อย / แดชบอร์ด',
+    '/petty-cash/new': 'เงินสดย่อย / เพิ่มใหม่',
+    '/products': 'สินค้า',
+    '/products/[id]/edit': 'สินค้า / แก้ไขรายการ',
+    '/products/import': 'สินค้า / นำเข้า',
+    '/products/new': 'สินค้า / เพิ่มใหม่',
+    '/purchase-orders': 'ใบสั่งซื้อ',
+    '/purchase-orders/[id]': 'ใบสั่งซื้อ / รายละเอียด',
+    '/purchase-orders/[id]/edit': 'ใบสั่งซื้อ / แก้ไขรายการ',
+    '/purchase-orders/new': 'ใบสั่งซื้อ / เพิ่มใหม่',
+    '/reports': 'รายงาน',
+    '/reports/low-stock': 'รายงาน / สินค้าใกล้หมด',
+    '/reports/maintenance': 'รายงาน / งานซ่อมบำรุง',
+    '/roles': 'บทบาทสิทธิ์',
+    '/roles/[id]/edit': 'บทบาทสิทธิ์ / แก้ไขรายการ',
+    '/roles/new': 'บทบาทสิทธิ์ / เพิ่มใหม่',
+    '/settings': 'ตั้งค่า',
+    '/settings/line-users': 'ตั้งค่า / ผู้ใช้ LINE',
+    '/settings/system-logs': 'ตั้งค่า / บันทึกระบบ',
+    '/stock/adjust': 'ปรับยอดสต็อก',
+    '/suppliers': 'ผู้ขาย',
+    '/suppliers/[id]/edit': 'ผู้ขาย / แก้ไขรายการ',
+    '/suppliers/new': 'ผู้ขาย / เพิ่มใหม่',
+    '/system-log': 'บันทึกระบบ',
+    '/warehouses': 'คลังสินค้า',
+};
+
+const ROUTE_SEGMENT_LABEL_TH: Record<string, string> = {
+    admin: 'แอดมิน',
+    reports: 'รายงาน',
+    rooms: 'ห้อง',
+    security: 'ความปลอดภัย',
+    approvals: 'อนุมัติรายการ',
+    workflows: 'เวิร์กโฟลว์',
+    assets: 'ทรัพย์สิน',
+    borrow: 'ยืม-คืน',
+    categories: 'หมวดหมู่',
+    maintenance: 'งานซ่อมบำรุง',
+    dashboard: 'แดชบอร์ด',
+    technicians: 'ช่าง',
+    parts: 'อะไหล่',
+    'part-requests': 'เบิกอะไหล่',
+    movements: 'ความเคลื่อนไหวสต็อก',
+    'petty-cash': 'เงินสดย่อย',
+    products: 'สินค้า',
+    'purchase-orders': 'ใบสั่งซื้อ',
+    roles: 'บทบาทสิทธิ์',
+    settings: 'ตั้งค่า',
+    'line-users': 'ผู้ใช้ LINE',
+    'system-logs': 'บันทึกระบบ',
+    stock: 'สต็อก',
+    adjust: 'ปรับยอด',
+    suppliers: 'ผู้ขาย',
+    warehouses: 'คลังสินค้า',
+    pm: 'PM',
+    import: 'นำเข้า',
+    new: 'เพิ่มใหม่',
+    edit: 'แก้ไข',
+    print: 'พิมพ์เอกสาร',
+    'inventory-audit': 'ตรวจนับสต็อก',
+    'general-request': 'คำขอทั่วไป',
+    'api-docs': 'เอกสาร API',
+    'audit-log': 'บันทึกตรวจสอบ',
+    'system-log': 'บันทึกระบบ',
+    'debug-auth': 'ดีบักสิทธิ์เข้าใช้งาน',
+};
+
+function humanizeRouteSegment(segment: string): string {
+    if (segment === '[id]' || segment === 'id') return 'รายละเอียด';
+    if (ROUTE_SEGMENT_LABEL_TH[segment]) return ROUTE_SEGMENT_LABEL_TH[segment];
+
+    const words = segment
+        .split('-')
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1));
+
+    return words.join(' ');
+}
+
+function formatPagePermissionLabel(label: string): string {
+    const pageLabelMatch = label.match(/^หน้า\s+(.+)\s+\((อ่าน|แก้ไข)\)$/);
+
+    if (!pageLabelMatch) return label;
+
+    const [, route, access] = pageLabelMatch;
+    const normalizedRoute = route.trim();
+    const accessText = access === 'อ่าน' ? 'อ่าน' : 'แก้ไข';
+    const routeLabel =
+        ROUTE_LABEL_TH[normalizedRoute] ||
+        normalizedRoute
+            .split('/')
+            .filter(Boolean)
+            .map(humanizeRouteSegment)
+            .join(' / ');
+
+    return `${routeLabel} (${accessText})`;
+}
+
 /* ======================================== */
 /* UI Parts */
 /* ======================================== */
@@ -361,6 +493,19 @@ export default function RolePermissionEditor({ roles }: Props) {
         });
     };
 
+    const handleToggleAllByPermission = (permissionKey: string, checked: boolean) => {
+        setPermissions((prev) => {
+            const next = { ...prev };
+
+            visibleRoles.forEach((role) => {
+                next[role.role_id] = { ...next[role.role_id] };
+                next[role.role_id][permissionKey] = checked;
+            });
+
+            return next;
+        });
+    };
+
     const handleReset = () => {
         if (!isDirty) return;
 
@@ -442,7 +587,34 @@ export default function RolePermissionEditor({ roles }: Props) {
         return getSelectionState(totalCells, checkedCells);
     };
 
+    const getEnabledRoleCountByPermission = (permissionKey: string) => {
+        return visibleRoles.reduce((count, role) => {
+            if (permissions[role.role_id]?.[permissionKey]) {
+                return count + 1;
+            }
+            return count;
+        }, 0);
+    };
+
+    const getPermissionSelectionState = (permissionKey: string): SelectionState => {
+        const checkedCount = getEnabledRoleCountByPermission(permissionKey);
+        return getSelectionState(visibleRoles.length, checkedCount);
+    };
+
     const categoryNames = Object.keys(filteredGroupedPermissions);
+    const permissionOrderMap = useMemo(() => {
+        const orderMap: Record<string, number> = {};
+        let counter = 1;
+
+        Object.values(filteredGroupedPermissions).forEach((items) => {
+            items.forEach((item) => {
+                orderMap[item.key] = counter;
+                counter += 1;
+            });
+        });
+
+        return orderMap;
+    }, [filteredGroupedPermissions]);
 
     const collapseAllCategories = () => {
         setCollapsedCategories(
@@ -488,7 +660,7 @@ export default function RolePermissionEditor({ roles }: Props) {
                         <div className="mt-4 flex flex-wrap gap-2.5 sm:gap-3">
                             <div className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-700">
                                 <Users className="h-4 w-4" />
-                                <span>{roles.length} Roles</span>
+                                <span>{roles.length} บทบาท</span>
                             </div>
 
                             <div className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-700">
@@ -624,7 +796,7 @@ export default function RolePermissionEditor({ roles }: Props) {
                     </button>
 
                     <div className="ml-auto text-xs text-slate-500">
-                        แสดง {visibleRoles.length}/{roles.length} roles
+                        แสดง {visibleRoles.length}/{roles.length} บทบาท
                     </div>
                 </div>
             </div>
@@ -633,7 +805,7 @@ export default function RolePermissionEditor({ roles }: Props) {
                 <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
                     <thead className="sticky top-0 z-30">
                         <tr className="bg-slate-50">
-                            <th className="sticky left-0 z-40 w-[260px] sm:w-[280px] lg:w-[320px] border-b border-r border-slate-200 bg-slate-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-600">
+                            <th className="sticky left-0 z-40 w-[280px] sm:w-[320px] lg:w-[360px] border-b border-r border-slate-200 bg-slate-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-600">
                                 เมนู / รายการสิทธิ์
                             </th>
 
@@ -758,54 +930,105 @@ export default function RolePermissionEditor({ roles }: Props) {
                                             </td>
                                         </tr>
 
-                                        {!isCollapsed && items.map((permission, index) => (
-                                            <tr
-                                                key={permission.key}
-                                                className={`
-                                                    transition-colors duration-150 hover:bg-primary-50/40
-                                                    ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}
-                                                `}
-                                            >
-                                                <td className="sticky left-0 z-10 border-b border-r border-slate-200 bg-inherit px-4 py-3 align-middle">
-                                                    <div className="truncate text-sm font-semibold text-slate-800">
-                                                        {permission.label}
-                                                    </div>
-                                                    <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-500">
-                                                        {permission.description}
-                                                    </div>
-                                                    <div className="mt-1.5 inline-flex max-w-full truncate rounded-md bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
-                                                        {permission.key}
-                                                    </div>
-                                                </td>
+                                        {!isCollapsed && items.map((permission, index) => {
+                                            const selectionState = getPermissionSelectionState(permission.key);
+                                            const enabledRoleCount = getEnabledRoleCountByPermission(permission.key);
+                                            const isChanged = changedPermissionKeys.has(permission.key);
+                                            const orderNumber = permissionOrderMap[permission.key] || index + 1;
+                                            const displayLabel = formatPagePermissionLabel(permission.label);
 
-                                                {visibleRoles.map((role) => {
-                                                    const checked =
-                                                        permissions[role.role_id]?.[
-                                                            permission.key
-                                                        ] || false;
-
-                                                    return (
-                                                        <td
-                                                            key={role.role_id}
-                                                            className="border-b border-slate-200 px-2 py-3 text-center"
-                                                        >
-                                                            <div className="flex justify-center">
-                                                                <Toggle
-                                                                    checked={checked}
-                                                                    onChange={() =>
-                                                                        handleTogglePermission(
-                                                                            role.role_id,
-                                                                            permission.key
-                                                                        )
-                                                                    }
-                                                                    ariaLabel={`Toggle ${permission.label} for ${role.role_name}`}
-                                                                />
+                                            return (
+                                                <tr
+                                                    key={permission.key}
+                                                    className={`
+                                                        transition-colors duration-150 hover:bg-primary-50/40
+                                                        ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}
+                                                    `}
+                                                >
+                                                    <td className="sticky left-0 z-10 border-b border-r border-slate-200 bg-inherit px-4 py-3 align-middle">
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div className="min-w-0">
+                                                                <div className="mb-1.5 flex items-center gap-2">
+                                                                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-slate-200 px-1 text-[10px] font-bold text-slate-700">
+                                                                        {orderNumber}
+                                                                    </span>
+                                                                    <div className="truncate text-sm font-semibold text-slate-800">
+                                                                        {displayLabel}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="line-clamp-2 text-[11px] leading-relaxed text-slate-500">
+                                                                    {permission.description}
+                                                                </div>
                                                             </div>
-                                                        </td>
-                                                    );
-                                                })}
-                                            </tr>
-                                        ))}
+
+                                                            <div className="flex shrink-0 flex-col items-end gap-1.5">
+                                                                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                                                                    {enabledRoleCount}/{visibleRoles.length} บทบาท
+                                                                </span>
+                                                                {isChanged && (
+                                                                    <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                                                        แก้ไขแล้ว
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                            <span className="inline-flex max-w-full truncate rounded-md bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
+                                                                {permission.key}
+                                                            </span>
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    handleToggleAllByPermission(
+                                                                        permission.key,
+                                                                        selectionState !== 'all'
+                                                                    )
+                                                                }
+                                                                className="
+                                                                    inline-flex items-center gap-1 rounded-md border border-slate-200
+                                                                    bg-white px-2 py-1 text-[11px] font-medium text-slate-700
+                                                                    transition hover:bg-slate-50
+                                                                "
+                                                            >
+                                                                <SelectionIcon state={selectionState} />
+                                                                {selectionState === 'all'
+                                                                    ? 'ปิดทั้งแถว'
+                                                                    : 'เปิดทั้งแถว'}
+                                                            </button>
+                                                        </div>
+                                                    </td>
+
+                                                    {visibleRoles.map((role) => {
+                                                        const checked =
+                                                            permissions[role.role_id]?.[
+                                                                permission.key
+                                                            ] || false;
+
+                                                        return (
+                                                            <td
+                                                                key={role.role_id}
+                                                                className="border-b border-slate-200 px-2 py-3 text-center"
+                                                            >
+                                                                <div className="flex justify-center">
+                                                                    <Toggle
+                                                                        checked={checked}
+                                                                        onChange={() =>
+                                                                            handleTogglePermission(
+                                                                                role.role_id,
+                                                                                permission.key
+                                                                            )
+                                                                        }
+                                                                        ariaLabel={`Toggle ${displayLabel} for ${role.role_name}`}
+                                                                    />
+                                                                </div>
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            );
+                                        })}
                                     </Fragment>
                                 );
                             })
