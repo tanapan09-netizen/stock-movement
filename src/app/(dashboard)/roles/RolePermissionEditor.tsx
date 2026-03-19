@@ -1,171 +1,695 @@
 'use client';
 
-import { useState, Fragment } from 'react';
-import { PERMISSION_LIST, PermissionItem } from '@/lib/permissions';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import {
+    AlertCircle,
+    CheckSquare,
+    Loader2,
+    MinusSquare,
+    RotateCcw,
+    Save,
+    Search,
+    ShieldCheck,
+    Square,
+    Users,
+} from 'lucide-react';
+import { toast } from 'sonner';
+
 import { updateRolePermissions } from '@/actions/roleActions';
-import { Check, Loader2, Save } from 'lucide-react';
+import { PERMISSION_LIST, PermissionItem } from '@/lib/permissions';
 
 interface Role {
     role_id: number;
     role_name: string;
-    permissions: string | null; // JSON string
+    permissions: string | null;
 }
 
 interface Props {
     roles: Role[];
 }
 
-export default function RolePermissionEditor({ roles }: Props) {
-    // Parse initial permissions
-    const allPermissionKeys = Object.fromEntries(
+type PermissionMap = Record<string, boolean>;
+type PermissionState = Record<number, PermissionMap>;
+type SelectionState = 'all' | 'partial' | 'none';
+
+/* ======================================== */
+/* Hooks */
+/* ======================================== */
+function useDebouncedValue<T>(value: T, delay = 300) {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            setDebouncedValue(value);
+        }, delay);
+
+        return () => window.clearTimeout(timer);
+    }, [value, delay]);
+
+    return debouncedValue;
+}
+
+/* ======================================== */
+/* Helpers */
+/* ======================================== */
+function createDefaultPermissionMap(): PermissionMap {
+    return Object.fromEntries(
         PERMISSION_LIST.map((permission) => [permission.key, false])
-    ) as Record<string, boolean>;
+    ) as PermissionMap;
+}
 
-    const initialPermissions = roles.reduce((acc, role) => {
-        try {
-            const parsed = JSON.parse(role.permissions || '{}');
-            acc[role.role_id] = {
-                ...allPermissionKeys,
-                ...parsed
-            };
-        } catch {
-            acc[role.role_id] = { ...allPermissionKeys };
-        }
+function parseRolePermissions(
+    rawPermissions: string | null,
+    defaultMap: PermissionMap
+): PermissionMap {
+    try {
+        const parsed = JSON.parse(rawPermissions || '{}');
+        return {
+            ...defaultMap,
+            ...parsed,
+        };
+    } catch {
+        return { ...defaultMap };
+    }
+}
+
+function buildPermissionState(
+    roles: Role[],
+    defaultMap: PermissionMap
+): PermissionState {
+    return roles.reduce((acc, role) => {
+        acc[role.role_id] = parseRolePermissions(role.permissions, defaultMap);
         return acc;
-    }, {} as Record<number, Record<string, boolean>>);
+    }, {} as PermissionState);
+}
 
-    const [permissions, setPermissions] = useState(initialPermissions);
+function arePermissionMapsEqual(a: PermissionMap = {}, b: PermissionMap = {}) {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    for (const key of keys) {
+        if (Boolean(a[key]) !== Boolean(b[key])) return false;
+    }
+    return true;
+}
+
+function getChangedRoleIds(
+    current: PermissionState,
+    saved: PermissionState
+): number[] {
+    return Object.keys(current)
+        .map(Number)
+        .filter((roleId) => !arePermissionMapsEqual(current[roleId], saved[roleId]));
+}
+
+function getRoleColor(roleName: string) {
+    switch (roleName.toLowerCase()) {
+        case 'admin':
+            return 'from-purple-500 to-violet-600';
+        case 'manager':
+            return 'from-blue-500 to-sky-600';
+        case 'technician':
+            return 'from-orange-400 to-orange-600';
+        case 'operation':
+            return 'from-teal-400 to-emerald-600';
+        case 'general':
+            return 'from-slate-500 to-slate-600';
+        case 'maid':
+            return 'from-pink-400 to-rose-500';
+        case 'driver':
+            return 'from-indigo-500 to-blue-600';
+        case 'purchasing':
+            return 'from-amber-500 to-yellow-600';
+        case 'accounting':
+            return 'from-cyan-500 to-sky-600';
+        case 'employee':
+            return 'from-green-500 to-emerald-600';
+        default:
+            return 'from-gray-400 to-gray-500';
+    }
+}
+
+function getSelectionState(total: number, checked: number): SelectionState {
+    if (total === 0 || checked === 0) return 'none';
+    if (checked === total) return 'all';
+    return 'partial';
+}
+
+/* ======================================== */
+/* UI Parts */
+/* ======================================== */
+function Toggle({
+    checked,
+    onChange,
+    ariaLabel,
+}: {
+    checked: boolean;
+    onChange: () => void;
+    ariaLabel: string;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onChange}
+            aria-label={ariaLabel}
+            aria-pressed={checked}
+            title={checked ? 'Enabled' : 'Disabled'}
+            className={`
+                group relative inline-flex h-6 w-11 items-center rounded-full
+                transition-all duration-200 ease-out
+                focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-offset-1
+                active:scale-95
+                ${checked ? 'bg-green-500 shadow-sm shadow-green-200' : 'bg-slate-300'}
+            `}
+        >
+            <span
+                className={`
+                    absolute inset-0 rounded-full transition-opacity duration-200
+                    ${checked ? 'bg-green-400/20 opacity-100' : 'opacity-0'}
+                `}
+            />
+
+            <span
+                className={`
+                    relative z-10 inline-flex h-4 w-4 items-center justify-center rounded-full bg-white shadow-sm
+                    transition-all duration-200 ease-out
+                    ${checked ? 'translate-x-6' : 'translate-x-1'}
+                `}
+            >
+                <span
+                    className={`
+                        text-[9px] font-bold text-green-600 transition-all duration-200
+                        ${checked ? 'scale-100 opacity-100' : 'scale-75 opacity-0'}
+                    `}
+                >
+                    ✓
+                </span>
+            </span>
+
+            <span className="absolute inset-0 rounded-full bg-black/5 opacity-0 transition group-hover:opacity-100" />
+        </button>
+    );
+}
+
+function SelectionIcon({ state }: { state: SelectionState }) {
+    if (state === 'all') return <CheckSquare className="h-3.5 w-3.5" />;
+    if (state === 'partial') return <MinusSquare className="h-3.5 w-3.5" />;
+    return <Square className="h-3.5 w-3.5" />;
+}
+
+/* ======================================== */
+/* Main Component */
+/* ======================================== */
+export default function RolePermissionEditor({ roles }: Props) {
+    const defaultPermissionMap = useMemo(() => createDefaultPermissionMap(), []);
+
+    const initialPermissionState = useMemo(
+        () => buildPermissionState(roles, defaultPermissionMap),
+        [roles, defaultPermissionMap]
+    );
+
+    const groupedPermissions = useMemo(() => {
+        return PERMISSION_LIST.reduce((acc, item) => {
+            if (!acc[item.category]) acc[item.category] = [];
+            acc[item.category].push(item);
+            return acc;
+        }, {} as Record<string, PermissionItem[]>);
+    }, []);
+
+    const [savedPermissions, setSavedPermissions] =
+        useState<PermissionState>(initialPermissionState);
+    const [permissions, setPermissions] =
+        useState<PermissionState>(initialPermissionState);
     const [saving, setSaving] = useState(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [searchInput, setSearchInput] = useState('');
 
-    const handleToggle = (roleId: number, key: string) => {
-        setPermissions(prev => ({
+    const debouncedSearch = useDebouncedValue(searchInput, 300);
+
+    useEffect(() => {
+        setSavedPermissions(initialPermissionState);
+        setPermissions(initialPermissionState);
+    }, [initialPermissionState]);
+
+    const totalPermissions = PERMISSION_LIST.length;
+
+    const filteredGroupedPermissions = useMemo(() => {
+        const keyword = debouncedSearch.trim().toLowerCase();
+        if (!keyword) return groupedPermissions;
+
+        const next: Record<string, PermissionItem[]> = {};
+
+        Object.entries(groupedPermissions).forEach(([category, items]) => {
+            const filteredItems = items.filter((item) => {
+                const label = item.label.toLowerCase();
+                const description = item.description.toLowerCase();
+                const key = item.key.toLowerCase();
+                const categoryText = category.toLowerCase();
+
+                return (
+                    label.includes(keyword) ||
+                    description.includes(keyword) ||
+                    key.includes(keyword) ||
+                    categoryText.includes(keyword)
+                );
+            });
+
+            if (filteredItems.length > 0) {
+                next[category] = filteredItems;
+            }
+        });
+
+        return next;
+    }, [groupedPermissions, debouncedSearch]);
+
+    const visiblePermissionKeys = useMemo(() => {
+        return Object.values(filteredGroupedPermissions)
+            .flat()
+            .map((item) => item.key);
+    }, [filteredGroupedPermissions]);
+
+    const changedRoleIds = useMemo(
+        () => getChangedRoleIds(permissions, savedPermissions),
+        [permissions, savedPermissions]
+    );
+
+    const isDirty = changedRoleIds.length > 0;
+
+    const handleTogglePermission = (roleId: number, permissionKey: string) => {
+        setPermissions((prev) => ({
             ...prev,
             [roleId]: {
                 ...prev[roleId],
-                [key]: !prev[roleId]?.[key]
-            }
+                [permissionKey]: !prev[roleId]?.[permissionKey],
+            },
         }));
     };
 
+    const handleToggleAllByRole = (roleId: number, checked: boolean) => {
+        setPermissions((prev) => {
+            const nextRolePermissions = { ...prev[roleId] };
+
+            visiblePermissionKeys.forEach((key) => {
+                nextRolePermissions[key] = checked;
+            });
+
+            return {
+                ...prev,
+                [roleId]: nextRolePermissions,
+            };
+        });
+    };
+
+    const handleToggleAllByCategory = (category: string, checked: boolean) => {
+        const categoryKeys = (filteredGroupedPermissions[category] || []).map(
+            (item) => item.key
+        );
+
+        setPermissions((prev) => {
+            const next = { ...prev };
+
+            roles.forEach((role) => {
+                next[role.role_id] = { ...next[role.role_id] };
+                categoryKeys.forEach((key) => {
+                    next[role.role_id][key] = checked;
+                });
+            });
+
+            return next;
+        });
+    };
+
+    const handleReset = () => {
+        if (!isDirty) return;
+
+        const confirmed = window.confirm(
+            'คุณต้องการรีเซ็ตการเปลี่ยนแปลงทั้งหมดกลับเป็นค่าล่าสุดที่บันทึกไว้หรือไม่?'
+        );
+
+        if (!confirmed) return;
+
+        setPermissions(savedPermissions);
+        toast.info('รีเซ็ตกลับเป็นค่าล่าสุดที่บันทึกแล้ว');
+    };
+
     const handleSave = async () => {
+        if (!isDirty) return;
+
         setSaving(true);
-        setMessage(null);
+
         try {
-            // Save each role's permissions
-            const promises = Object.entries(permissions).map(([roleId, perms]) =>
-                updateRolePermissions(parseInt(roleId), perms)
+            const roleIdsToSave = getChangedRoleIds(permissions, savedPermissions);
+
+            if (roleIdsToSave.length === 0) {
+                toast.info('ไม่มีข้อมูลที่ต้องบันทึก');
+                return;
+            }
+
+            await Promise.all(
+                roleIdsToSave.map((roleId) =>
+                    updateRolePermissions(roleId, permissions[roleId])
+                )
             );
 
-            await Promise.all(promises);
-            setMessage({ type: 'success', text: 'บันทึกสิทธิ์เรียบร้อยแล้ว' });
+            setSavedPermissions((prev) => {
+                const next = { ...prev };
+                roleIdsToSave.forEach((roleId) => {
+                    next[roleId] = { ...permissions[roleId] };
+                });
+                return next;
+            });
+
+            toast.success(`บันทึกสำเร็จ ${roleIdsToSave.length} role`);
         } catch (error) {
             console.error(error);
-            setMessage({ type: 'error', text: 'เกิดข้อผิดพลาดในการบันทึก' });
+            toast.error('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
         } finally {
             setSaving(false);
         }
     };
 
-    // Group permissions by category
-    const groupedPermissions = PERMISSION_LIST.reduce((acc, item) => {
-        if (!acc[item.category]) acc[item.category] = [];
-        acc[item.category].push(item);
-        return acc;
-    }, {} as Record<string, PermissionItem[]>);
+    const getEnabledCountByRole = (roleId: number) => {
+        const rolePermissions = permissions[roleId] || {};
+        return Object.values(rolePermissions).filter(Boolean).length;
+    };
+
+    const getRoleSelectionState = (roleId: number): SelectionState => {
+        const checkedCount = visiblePermissionKeys.filter(
+            (key) => permissions[roleId]?.[key]
+        ).length;
+
+        return getSelectionState(visiblePermissionKeys.length, checkedCount);
+    };
+
+    const getCategorySelectionState = (category: string): SelectionState => {
+        const categoryKeys = (filteredGroupedPermissions[category] || []).map(
+            (item) => item.key
+        );
+
+        const totalCells = categoryKeys.length * roles.length;
+        let checkedCells = 0;
+
+        roles.forEach((role) => {
+            categoryKeys.forEach((key) => {
+                if (permissions[role.role_id]?.[key]) {
+                    checkedCells += 1;
+                }
+            });
+        });
+
+        return getSelectionState(totalCells, checkedCells);
+    };
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
-                <div>
-                    <h2 className="font-semibold text-gray-800">ตารางกำหนดสิทธิ์ (Permissions)</h2>
-                    <p className="text-sm text-gray-500">เลือกเมนูที่ต้องการให้แต่ละ Role มองเห็น</p>
-                </div>
-                <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                >
-                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    บันทึกการเปลี่ยนแปลง
-                </button>
-            </div>
-
-            {message && (
-                <div className={`p-3 text-sm text-center ${message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                    {message.text}
+        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-100">
+            {saving && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/70 backdrop-blur-sm">
+                    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-3 shadow-lg">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary-600" />
+                        <span className="text-sm font-medium text-slate-700">
+                            กำลังบันทึกข้อมูล...
+                        </span>
+                    </div>
                 </div>
             )}
 
-            <div className="overflow-auto max-h-[70vh]">
-                <table className="w-full text-sm text-left relative border-collapse">
-                    <thead className="bg-gray-50 text-gray-700 uppercase font-medium text-xs sticky top-0 z-20 shadow-sm">
-                        <tr>
-                            <th className="px-6 py-4 sticky left-0 top-0 bg-gray-50 z-30 w-64 shadow-sm border-b">เมนูใช้งาน</th>
-                            {roles.map(role => (
-                                <th key={role.role_id} className="px-6 py-4 text-center min-w-[100px] bg-gray-50 border-b">
-                                    <div className="flex flex-col items-center gap-1">
-                                        <span className={`px-2 py-0.5 rounded text-[10px] text-white uppercase font-semibold
-                                            ${role.role_name === 'admin' ? 'bg-purple-600' :
-                                                role.role_name === 'manager' ? 'bg-blue-500' :
-                                                    role.role_name === 'technician' ? 'bg-orange-500' :
-                                                        role.role_name === 'operation' ? 'bg-teal-500' :
-                                                            role.role_name === 'general' ? 'bg-gray-500' :
-                                                                role.role_name === 'maid' ? 'bg-pink-500' :
-                                                                    role.role_name === 'driver' ? 'bg-indigo-500' :
-                                                                        role.role_name === 'purchasing' ? 'bg-amber-600' :
-                                                                            role.role_name === 'accounting' ? 'bg-cyan-600' :
-                                                                                role.role_name === 'employee' ? 'bg-green-500' : 'bg-gray-400'}`
-                                        }>
-                                            {role.role_name}
-                                        </span>
-                                    </div>
-                                </th>
-                            ))}
+            <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-slate-50 px-4 py-4 sm:px-6 sm:py-5">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                    <div>
+                        <div className="mb-2 flex items-center gap-2">
+                            <div className="rounded-xl bg-primary-50 p-2 text-primary-600">
+                                <ShieldCheck className="h-5 w-5" />
+                            </div>
+                            <h2 className="text-lg font-bold text-slate-800 sm:text-xl">
+                                Permission Management
+                            </h2>
+                        </div>
+
+                        <p className="text-sm text-slate-500">
+                            จัดการสิทธิ์การเข้าถึงระบบของแต่ละ Role ได้แบบละเอียด
+                        </p>
+
+                        <div className="mt-4 flex flex-wrap gap-2.5 sm:gap-3">
+                            <div className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-700">
+                                <Users className="h-4 w-4" />
+                                <span>{roles.length} Roles</span>
+                            </div>
+
+                            <div className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-700">
+                                <ShieldCheck className="h-4 w-4" />
+                                <span>{totalPermissions} Permissions</span>
+                            </div>
+
+                            <div
+                                className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-sm ${
+                                    isDirty
+                                        ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                                        : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                                }`}
+                            >
+                                {isDirty ? (
+                                    <>
+                                        <AlertCircle className="h-4 w-4" />
+                                        <span>มีการเปลี่ยนแปลง {changedRoleIds.length} role</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckSquare className="h-4 w-4" />
+                                        <span>ไม่มีการเปลี่ยนแปลง</span>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                        <button
+                            type="button"
+                            onClick={handleReset}
+                            disabled={saving || !isDirty}
+                            className="
+                                inline-flex items-center justify-center gap-2 rounded-xl
+                                border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700
+                                transition hover:bg-slate-50 active:scale-[0.98]
+                                disabled:cursor-not-allowed disabled:opacity-50
+                            "
+                        >
+                            <RotateCcw className="h-4 w-4" />
+                            รีเซ็ต
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={handleSave}
+                            disabled={saving || !isDirty}
+                            className="
+                                inline-flex items-center justify-center gap-2 rounded-xl
+                                bg-primary-600 px-5 py-3 text-sm font-semibold text-white
+                                shadow-lg shadow-primary-200 transition-all duration-200
+                                hover:-translate-y-0.5 hover:bg-primary-700
+                                active:scale-[0.98]
+                                disabled:cursor-not-allowed disabled:opacity-60
+                            "
+                        >
+                            {saving ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                <Save className="h-4 w-4" />
+                            )}
+                            {saving ? 'กำลังบันทึก...' : 'บันทึกการเปลี่ยนแปลง'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div className="border-b border-slate-200 px-4 py-4 sm:px-6">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="relative w-full lg:max-w-sm">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                            type="text"
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            placeholder="ค้นหา permission, key, description, category..."
+                            className="
+                                w-full rounded-xl border border-slate-200 bg-white
+                                py-2.5 pl-10 pr-4 text-sm text-slate-700
+                                outline-none transition
+                                placeholder:text-slate-400
+                                focus:border-primary-400 focus:ring-4 focus:ring-primary-100
+                            "
+                        />
+                    </div>
+
+                    <div className="text-sm text-slate-500">
+                        แสดง {visiblePermissionKeys.length} รายการ
+                    </div>
+                </div>
+            </div>
+
+            <div className="w-full min-w-0 overflow-x-auto overflow-y-auto max-h-[70vh] overscroll-contain">
+                <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
+                    <thead className="sticky top-0 z-30">
+                        <tr className="bg-slate-50">
+                            <th className="sticky left-0 z-40 w-[260px] sm:w-[280px] lg:w-[320px] border-b border-r border-slate-200 bg-slate-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-600">
+                                เมนู / รายการสิทธิ์
+                            </th>
+
+                            {roles.map((role) => {
+                                const selectionState = getRoleSelectionState(role.role_id);
+                                const enabledCount = getEnabledCountByRole(role.role_id);
+
+                                return (
+                                    <th
+                                        key={role.role_id}
+                                        className="w-[118px] sm:w-[128px] lg:w-[140px] border-b border-slate-200 bg-slate-50 px-2 py-3 text-center align-top"
+                                    >
+                                        <div className="flex flex-col items-center gap-1.5">
+                                            <span
+                                                className={`
+                                                    inline-flex max-w-full truncate rounded-full bg-gradient-to-r px-2.5 py-1
+                                                    text-[11px] font-semibold text-white shadow-sm
+                                                    ${getRoleColor(role.role_name)}
+                                                `}
+                                            >
+                                                {role.role_name}
+                                            </span>
+
+                                            <span className="text-[11px] text-slate-500">
+                                                {enabledCount} / {totalPermissions}
+                                            </span>
+
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    handleToggleAllByRole(
+                                                        role.role_id,
+                                                        selectionState !== 'all'
+                                                    )
+                                                }
+                                                className="
+                                                    inline-flex items-center gap-1 rounded-md border border-slate-200
+                                                    bg-white px-2 py-1 text-[11px] font-medium text-slate-700
+                                                    transition hover:bg-slate-50
+                                                "
+                                            >
+                                                <SelectionIcon state={selectionState} />
+                                                {selectionState === 'all'
+                                                    ? 'ยกเลิก'
+                                                    : selectionState === 'partial'
+                                                      ? 'ให้ครบ'
+                                                      : 'ทั้งหมด'}
+                                            </button>
+                                        </div>
+                                    </th>
+                                );
+                            })}
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {Object.entries(groupedPermissions).map(([category, items]) => (
-                            <Fragment key={category}>
-                                <tr key={category} className="bg-gray-50/50">
-                                    <td colSpan={roles.length + 1} className="px-6 py-2 font-semibold text-gray-600 text-xs tracking-wider">
-                                        {category}
-                                    </td>
-                                </tr>
-                                {items.map(perm => (
-                                    <tr key={perm.key} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="px-6 py-3 sticky left-0 bg-white z-10 font-medium text-gray-900 border-r border-gray-100">
-                                            {perm.label}
-                                            <p className="text-xs text-gray-400 font-normal mt-0.5">{perm.description}</p>
-                                        </td>
-                                        {roles.map(role => {
-                                            const isChecked = permissions[role.role_id]?.[perm.key] || false;
-                                            const isAdmin = role.role_name === 'admin';
-                                            return (
-                                                <td key={role.role_id} className="px-6 py-3 text-center">
-                                                    <label className={`inline-flex items-center justify-center p-2 rounded-lg cursor-pointer transition-colors
-                                                        ${isChecked ? 'bg-blue-50 text-blue-600' : 'text-gray-300 hover:bg-gray-100'}
-                                                    `}>
-                                                        <input
-                                                            type="checkbox"
-                                                            className="sr-only"
-                                                            checked={isChecked}
-                                                            onChange={() => handleToggle(role.role_id, perm.key)}
-                                                        // disabled={isAdmin} // Admin always has full access (optional safeguard)
-                                                        />
-                                                        <div className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-colors
-                                                            ${isChecked ? 'border-blue-500 bg-blue-500' : 'border-gray-300'}
-                                                        `}>
-                                                            {isChecked && <Check className="w-3 h-3 text-white" />}
+
+                    <tbody>
+                        {Object.entries(filteredGroupedPermissions).length === 0 ? (
+                            <tr>
+                                <td
+                                    colSpan={roles.length + 1}
+                                    className="px-6 py-12 text-center text-sm text-slate-500"
+                                >
+                                    ไม่พบ permission ที่ค้นหา
+                                </td>
+                            </tr>
+                        ) : (
+                            Object.entries(filteredGroupedPermissions).map(([category, items]) => {
+                                const selectionState = getCategorySelectionState(category);
+
+                                return (
+                                    <Fragment key={category}>
+                                        <tr>
+                                            <td
+                                                colSpan={roles.length + 1}
+                                                className="sticky top-[49px] sm:top-[57px] z-20 border-b border-t border-slate-200 bg-slate-100/95 px-4 py-2.5 backdrop-blur"
+                                            >
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <div className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                                                            {category}
                                                         </div>
-                                                    </label>
+                                                        <div className="mt-1 text-xs text-slate-500">
+                                                            {items.length} permissions
+                                                        </div>
+                                                    </div>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleToggleAllByCategory(
+                                                                category,
+                                                                selectionState !== 'all'
+                                                            )
+                                                        }
+                                                        className="
+                                                            inline-flex items-center gap-1 rounded-md border border-slate-200
+                                                            bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700
+                                                            transition hover:bg-slate-50
+                                                        "
+                                                    >
+                                                        <SelectionIcon state={selectionState} />
+                                                        {selectionState === 'all'
+                                                            ? 'ยกเลิกทั้งหมวด'
+                                                            : 'เลือกทั้งหมวด'}
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+
+                                        {items.map((permission, index) => (
+                                            <tr
+                                                key={permission.key}
+                                                className={`
+                                                    transition-colors duration-150 hover:bg-primary-50/40
+                                                    ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}
+                                                `}
+                                            >
+                                                <td className="sticky left-0 z-10 border-b border-r border-slate-200 bg-inherit px-4 py-3 align-middle">
+                                                    <div className="truncate text-sm font-semibold text-slate-800">
+                                                        {permission.label}
+                                                    </div>
+                                                    <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-500">
+                                                        {permission.description}
+                                                    </div>
+                                                    <div className="mt-1.5 inline-flex max-w-full truncate rounded-md bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
+                                                        {permission.key}
+                                                    </div>
                                                 </td>
-                                            );
-                                        })}
-                                    </tr>
-                                ))}
-                            </Fragment>
-                        ))}
+
+                                                {roles.map((role) => {
+                                                    const checked =
+                                                        permissions[role.role_id]?.[
+                                                            permission.key
+                                                        ] || false;
+
+                                                    return (
+                                                        <td
+                                                            key={role.role_id}
+                                                            className="border-b border-slate-200 px-2 py-3 text-center"
+                                                        >
+                                                            <div className="flex justify-center">
+                                                                <Toggle
+                                                                    checked={checked}
+                                                                    onChange={() =>
+                                                                        handleTogglePermission(
+                                                                            role.role_id,
+                                                                            permission.key
+                                                                        )
+                                                                    }
+                                                                    ariaLabel={`Toggle ${permission.label} for ${role.role_name}`}
+                                                                />
+                                                            </div>
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                        ))}
+                                    </Fragment>
+                                );
+                            })
+                        )}
                     </tbody>
                 </table>
             </div>

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Home,
     Package,
@@ -36,11 +37,10 @@ import { QrCode } from 'lucide-react';
 interface SidebarProps {
     permissions?: RolePermissions;
 }
-
 export default function Sidebar(props: SidebarProps) {
     const pathname = usePathname();
     const { data: session } = useSession();
-    const user = session?.user as any;
+    const user = session?.user;
     const role = user?.role || 'user';
 
     // Default to empty permissions if not provided (will be fixed by layout)
@@ -76,6 +76,15 @@ export default function Sidebar(props: SidebarProps) {
 
     const isActive = (path: string) => pathname === path;
     const can = (key: string) => !!permissions[key];
+    const baseNavItemClass = `group relative flex items-center rounded-2xl ${
+        collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'
+    } text-sm font-medium transition-all duration-200 ease-out select-none border`;
+    const getNavItemClass = (active: boolean) =>
+        `${baseNavItemClass} ${
+            active
+                ? 'border-slate-400/30 bg-slate-700/80 text-white before:absolute before:-right-3 before:top-[-12px] before:h-7 before:w-7 before:rounded-full before:bg-[#0b1222] after:absolute after:-right-3 after:bottom-[-12px] after:h-7 after:w-7 after:rounded-full after:bg-[#0b1222] md:hover:translate-x-0.5 active:scale-[0.99]'
+                : 'border-transparent text-slate-300 hover:border-slate-500/30 hover:bg-slate-800/70 hover:text-white hover:translate-x-0.5 active:scale-[0.98]'
+        }`;
 
     const handleLogout = () => {
         setShowLogoutConfirm(true);
@@ -87,49 +96,47 @@ export default function Sidebar(props: SidebarProps) {
 
     return (
         <>
-            <div className={`flex flex-col h-full min-h-screen justify-between border-r border-white/5 bg-[#0f172a] text-white transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${collapsed ? 'w-20' : 'w-72 sm:w-64 md:w-72'}`}>
-                {/* Luxury ambient glow */}
-                <div className="absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-blue-500/10 via-purple-500/5 to-transparent blur-3xl pointer-events-none mix-blend-screen leading-none"></div>
-                <div className="absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-blue-500/20 to-transparent"></div>
+            <div className={`relative flex flex-col h-full min-h-screen justify-between border-r border-slate-700/70 bg-[#0b1222] text-white transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] ${collapsed ? 'w-20' : 'w-72 sm:w-64 md:w-72'}`}>
+                <div className="absolute inset-y-0 right-0 w-px bg-slate-700/60"></div>
 
                 <div className="overflow-y-auto relative z-10 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {/* Logo + Toggle */}
-                    <div className="flex h-20 items-center justify-between border-b border-white/10 px-4">
+                    <div className="flex h-20 items-center justify-between border-b border-slate-700/70 bg-slate-900/40 px-4">
                         {!collapsed && (
                             <div className="flex items-center gap-3 animate-in fade-in zoom-in duration-500">
-                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/30 ring-1 ring-white/20">
+                                <div className="w-10 h-10 rounded-xl bg-slate-700 flex items-center justify-center ring-1 ring-slate-500/40">
                                     <Package className="w-6 h-6 text-white drop-shadow-md" />
                                 </div>
                                 <div>
-                                    <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent drop-shadow-sm">
+                                    <h1 className="text-xl font-bold text-slate-100">
                                         Stock Pro
                                     </h1>
-                                    <p className="text-[10px] text-blue-200/70 uppercase tracking-widest font-medium mt-0.5">Management System</p>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-medium mt-0.5">Management System</p>
                                 </div>
                             </div>
                         )}
                         {collapsed && (
-                            <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/30 ring-1 ring-white/20 animate-in zoom-in duration-300">
+                            <div className="w-10 h-10 mx-auto rounded-xl bg-slate-700 flex items-center justify-center ring-1 ring-slate-500/40 animate-in zoom-in duration-300">
                                 <Package className="w-6 h-6 text-white" />
                             </div>
                         )}
                         <button
                             onClick={() => setCollapsed(!collapsed)}
-                            className={`group p-2 rounded-xl bg-slate-800/80 border border-slate-700/50 hover:bg-slate-700 hover:border-slate-500 hover:shadow-lg hover:shadow-blue-500/20 transition-all duration-300 active:scale-95 z-20 ${collapsed ? 'mx-auto mt-3' : ''}`}
+                            className={`group p-2 rounded-xl bg-slate-800/80 border border-slate-600/40 hover:bg-slate-700 hover:border-slate-500 transition-all duration-200 active:scale-95 z-20 ${collapsed ? 'mx-auto mt-3' : ''}`}
                             title={collapsed ? 'ขยาย' : 'ย่อ'}
                         >
                             {collapsed ? <ChevronRight className="w-4 h-4 text-blue-400 group-hover:text-white transition-colors" /> : <ChevronLeft className="w-4 h-4 text-blue-400 group-hover:text-white transition-colors" />}
                         </button>
                     </div>
 
-                    <nav className={`space-y-1 ${collapsed ? 'p-3' : 'p-4'}`}>
+                    <nav className={`space-y-1 overflow-visible ${collapsed ? 'p-3' : 'p-4'}`}>
 
                         {/* ─── หน้าหลัก ─── */}
                         {can(PERMISSIONS.DASHBOARD) && (
                             <Link
                                 href="/"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/'))}
                                 title={collapsed ? 'Dashboard' : undefined}
                             >
                                 <Home className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/') && 'group-hover:scale-110 group-hover:text-blue-400'}`} />
@@ -140,7 +147,7 @@ export default function Sidebar(props: SidebarProps) {
                         {/* ─── เครื่องมือ ─── */}
                         <button
                             onClick={() => setShowQrScanner(true)}
-                            className={`w-full group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out text-gray-300 hover:bg-white/10 hover:text-blue-400`}
+                            className={`w-full group flex items-center rounded-2xl border border-transparent ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-200 ease-out text-slate-300 hover:border-slate-500/30 hover:bg-slate-800/70 hover:text-white`}
                             title={collapsed ? 'สแกน QR' : undefined}
                         >
                             <QrCode className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 group-hover:scale-110`} />
@@ -163,7 +170,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/products"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/products') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/products'))}
                                 title={collapsed ? 'รายการสินค้า' : undefined}
                             >
                                 <Package className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/products') && 'group-hover:scale-110 group-hover:text-amber-400'}`} />
@@ -175,7 +182,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/movements"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/movements') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/movements'))}
                                 title={collapsed ? 'เคลื่อนไหวสินค้า' : undefined}
                             >
                                 <ArrowRightLeft className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/movements') && 'group-hover:scale-110 group-hover:text-green-400'}`} />
@@ -187,7 +194,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/stock/adjust"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/stock/adjust') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/stock/adjust'))}
                                 title={collapsed ? 'ปรับสต็อก' : undefined}
                             >
                                 <FileInput className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/stock/adjust') && 'group-hover:scale-110 group-hover:text-orange-400'}`} />
@@ -199,7 +206,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/borrow"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/borrow') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/borrow'))}
                                 title={collapsed ? 'ยืม/คืน สินค้า' : undefined}
                             >
                                 <Hand className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/borrow') && 'group-hover:scale-110 group-hover:text-purple-400'}`} />
@@ -211,7 +218,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/assets"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/assets') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/assets'))}
                                 title={collapsed ? 'ทะเบียนทรัพย์สิน' : undefined}
                             >
                                 <Briefcase className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/assets') && 'group-hover:scale-110 group-hover:text-teal-400'}`} />
@@ -235,7 +242,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/general-request"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/general-request') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/general-request'))}
                                 title={collapsed ? 'รับแจ้งซ่อม' : undefined}
                             >
                                 <svg className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/general-request') && 'group-hover:scale-110 group-hover:text-cyan-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -249,7 +256,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/maintenance"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/maintenance') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/maintenance'))}
                                 title={collapsed ? 'แจ้งซ่อม' : undefined}
                             >
                                 <Wrench className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/maintenance') && 'group-hover:scale-110 group-hover:text-cyan-400'}`} />
@@ -263,7 +270,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/maintenance/dashboard"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/maintenance/dashboard') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/maintenance/dashboard'))}
                                 title={collapsed ? 'Technician Dashboard' : undefined}
                             >
                                 <BarChart3 className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/maintenance/dashboard') && 'group-hover:scale-110 group-hover:text-blue-300'}`} />
@@ -275,7 +282,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/maintenance/technicians"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/maintenance/technicians') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/maintenance/technicians'))}
                                 title={collapsed ? 'จัดการช่าง' : undefined}
                             >
                                 <Briefcase className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/maintenance/technicians') && 'group-hover:scale-110 group-hover:text-teal-400'}`} />
@@ -287,7 +294,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/maintenance/parts"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/maintenance/parts') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/maintenance/parts'))}
                                 title={collapsed ? 'เบิก/คืนอะไหล่' : undefined}
                             >
                                 <Package className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/maintenance/parts') && 'group-hover:scale-110 group-hover:text-amber-400'}`} />
@@ -299,7 +306,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/maintenance/part-requests"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/maintenance/part-requests') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/maintenance/part-requests'))}
                                 title={collapsed ? 'ขอซื้ออะไหล่' : undefined}
                             >
                                 <FileText className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/maintenance/part-requests') && 'group-hover:scale-110 group-hover:text-rose-400'}`} />
@@ -311,7 +318,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/reports/maintenance"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/reports/maintenance') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/reports/maintenance'))}
                                 title={collapsed ? 'รายงานแจ้งซ่อม' : undefined}
                             >
                                 <ClipboardList className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/reports/maintenance') && 'group-hover:scale-110 group-hover:text-emerald-400'}`} />
@@ -335,7 +342,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/approvals"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/approvals') ? 'bg-gradient-to-r from-violet-600 to-violet-500 text-white shadow-lg shadow-violet-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-violet-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/approvals'))}
                                 title={collapsed ? 'คำขอทั่วไป (OT/ลา/เบิก)' : undefined}
                             >
                                 <FileText className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/approvals') && 'group-hover:scale-110 group-hover:text-violet-400'}`} />
@@ -359,7 +366,7 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/petty-cash"
                                 onClick={handleLinkClick}
-                                className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/petty-cash') ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-lg shadow-emerald-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-emerald-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                                className={getNavItemClass(isActive('/petty-cash'))}
                                 title={collapsed ? 'เบิกเงินสดย่อย' : undefined}
                             >
                                 <DollarSign className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/petty-cash') && 'group-hover:scale-110 group-hover:text-emerald-400 group-hover:rotate-12'}`} />
@@ -380,28 +387,28 @@ export default function Sidebar(props: SidebarProps) {
                         )}
 
                         {can(PERMISSIONS.ADMIN_PO) && (
-                            <Link href="/purchase-orders" onClick={handleLinkClick} className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/purchase-orders') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`} title={collapsed ? 'ใบสั่งซื้อ (PO)' : undefined}>
+                            <Link href="/purchase-orders" onClick={handleLinkClick} className={getNavItemClass(isActive('/purchase-orders'))}>
                                 <FileText className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/purchase-orders') && 'group-hover:scale-110 group-hover:text-indigo-400'}`} />
                                 {!collapsed && <span className="truncate">ใบสั่งซื้อ (PO)</span>}
                             </Link>
                         )}
 
                         {can(PERMISSIONS.ADMIN_SUPPLIERS) && (
-                            <Link href="/suppliers" onClick={handleLinkClick} className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/suppliers') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`} title={collapsed ? 'จัดการผู้ขาย' : undefined}>
+                            <Link href="/suppliers" onClick={handleLinkClick} className={getNavItemClass(isActive('/suppliers'))}>
                                 <Truck className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/suppliers') && 'group-hover:scale-110 group-hover:translate-x-1 group-hover:text-slate-400'}`} />
                                 {!collapsed && <span className="truncate">จัดการผู้ขาย</span>}
                             </Link>
                         )}
 
                         {can(PERMISSIONS.ADMIN_WAREHOUSES) && (
-                            <Link href="/warehouses" onClick={handleLinkClick} className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/warehouses') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`} title={collapsed ? 'คลังสินค้า' : undefined}>
+                            <Link href="/warehouses" onClick={handleLinkClick} className={getNavItemClass(isActive('/warehouses'))}>
                                 <Warehouse className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/warehouses') && 'group-hover:scale-110 group-hover:text-amber-500'}`} />
                                 {!collapsed && <span className="truncate">คลังสินค้า</span>}
                             </Link>
                         )}
 
                         {can(PERMISSIONS.ADMIN_CATEGORIES) && (
-                            <Link href="/categories" onClick={handleLinkClick} className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/categories') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`} title={collapsed ? 'หมวดหมู่สินค้า' : undefined}>
+                            <Link href="/categories" onClick={handleLinkClick} className={getNavItemClass(isActive('/categories'))}>
                                 <Tag className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/categories') && 'group-hover:scale-110 group-hover:text-pink-400 group-hover:rotate-12'}`} />
                                 {!collapsed && <span className="truncate">หมวดหมู่สินค้า</span>}
                             </Link>
@@ -420,14 +427,14 @@ export default function Sidebar(props: SidebarProps) {
                         )}
 
                         {can(PERMISSIONS.ADMIN_REPORTS) && (
-                            <Link href="/reports" onClick={handleLinkClick} className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/reports') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`} title={collapsed ? 'รายงานขั้นสูง' : undefined}>
+                            <Link href="/reports" onClick={handleLinkClick} className={getNavItemClass(isActive('/reports'))}>
                                 <BarChart3 className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/reports') && 'group-hover:scale-110 group-hover:text-fuchsia-400'}`} />
                                 {!collapsed && <span className="truncate">รายงานขั้นสูง</span>}
                             </Link>
                         )}
 
                         {can(PERMISSIONS.ADMIN_AUDIT) && (
-                            <Link href="/inventory-audit" onClick={handleLinkClick} className={`group flex items-center rounded-xl ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-300 ease-out hover:translate-x-1 ${isActive('/inventory-audit') ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/40 relative before:absolute before:inset-y-0 before:-left-3 before:w-1 before:bg-blue-400 before:rounded-r-full' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`} title={collapsed ? 'ตรวจนับสินค้า' : undefined}>
+                            <Link href="/inventory-audit" onClick={handleLinkClick} className={getNavItemClass(isActive('/inventory-audit'))}>
                                 <ClipboardList className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/inventory-audit') && 'group-hover:scale-110 group-hover:text-emerald-400'}`} />
                                 {!collapsed && <span className="truncate">ตรวจนับสินค้า</span>}
                             </Link>
@@ -537,15 +544,15 @@ export default function Sidebar(props: SidebarProps) {
                     </nav>
                 </div>
 
-                <div className={`border-t border-white/5 relative z-10 bg-slate-900/50 backdrop-blur-md ${collapsed ? 'p-3' : 'p-5'}`}>
-                    <div className={`flex items-center ${collapsed ? 'justify-center' : ''} mb-5 animate-in fade-in duration-500 delay-150`}>
-                        <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-lg shadow-md ring-2 ring-white/10" title={collapsed ? user?.name : undefined}>
+                <div className={`border-t border-slate-700/70 relative z-10 bg-slate-900/40 ${collapsed ? 'p-3' : 'p-5'}`}>
+                    <div className={`flex items-center rounded-2xl border border-slate-600/40 bg-slate-800/40 ${collapsed ? 'justify-center p-2' : 'p-3'} mb-4 animate-in fade-in duration-500 delay-150`}>
+                        <div className="h-10 w-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-lg ring-1 ring-slate-500/40" title={collapsed ? (user?.name ?? undefined) : undefined}>
                             {user?.name?.[0]?.toUpperCase() || 'U'}
                         </div>
                         {!collapsed && (
                             <div className="ml-4 overflow-hidden">
                                 <div className="text-sm font-bold text-white truncate drop-shadow-sm">{user?.name}</div>
-                                <div className="text-[11px] text-blue-300/80 uppercase tracking-widest font-medium mt-0.5">{role}</div>
+                                <div className="text-[11px] text-slate-400 uppercase tracking-widest font-medium mt-0.5">{role}</div>
                             </div>
                         )}
                     </div>
@@ -561,9 +568,9 @@ export default function Sidebar(props: SidebarProps) {
             </div>
 
             {/* Logout Confirmation Dialog */}
-            {showLogoutConfirm && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden animate-in zoom-in-95 duration-200">
+            {showLogoutConfirm && typeof document !== 'undefined' && createPortal(
+                <div className="fixed inset-0 z-[9999] grid place-items-center bg-black/50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-200">
                         {/* Header */}
                         <div className="p-6 bg-red-500 text-center">
                             <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -594,7 +601,8 @@ export default function Sidebar(props: SidebarProps) {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* QR Scanner Modal */}
@@ -605,4 +613,5 @@ export default function Sidebar(props: SidebarProps) {
         </>
     );
 }
+
 
