@@ -540,9 +540,9 @@ export default function RolePermissionEditor({ roles }: Props) {
                             disabled={saving || !isDirty}
                             className="
                                 inline-flex items-center justify-center gap-2 rounded-xl
-                                bg-primary-600 px-5 py-3 text-sm font-semibold text-white
-                                shadow-lg shadow-primary-200 transition-all duration-200
-                                hover:-translate-y-0.5 hover:bg-primary-700
+                                bg-blue-600 px-5 py-3 text-sm font-semibold text-white
+                                shadow-lg shadow-blue-200 transition-all duration-200
+                                hover:-translate-y-0.5 hover:bg-blue-700
                                 active:scale-[0.98]
                                 disabled:cursor-not-allowed disabled:opacity-60
                             "
