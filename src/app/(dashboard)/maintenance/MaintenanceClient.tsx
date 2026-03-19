@@ -2569,7 +2569,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                     className="w-16 px-2 py-0.5 text-sm text-center rounded-md border border-slate-300 dark:border-slate-500 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400"
                                                     />
                                                     <span className="text-xs text-slate-400">
-                                                    คงเหลือ {avail} ชิ้น
+                                                    คงเหลือใน WH-01 {avail} ชิ้น
                                                     </span>
                                                     <button
                                                     type="button"
@@ -3119,7 +3119,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                 >
                                                     <option value="">+ เลือกอะไหล่</option>
                                                     {products.filter(p => !statusChangeData.partsUsed.some(pu => pu.p_id === p.p_id) && (p.available_stock ?? p.p_count) > 0).map(p => (
-                                                        <option key={p.p_id} value={p.p_id}>{p.p_name} (คงเหลือ {p.available_stock ?? p.p_count})</option>
+                                                        <option key={p.p_id} value={p.p_id}>{p.p_name} (คงเหลือใน WH-01 {p.available_stock ?? p.p_count})</option>
                                                     ))}
                                                 </select>
                                             </div>

@@ -690,14 +690,30 @@ export async function getMaintenanceStats() {
 
 export async function getProducts() {
     try {
+        const wh01 = await prisma.tbl_warehouses.findFirst({
+            where: { warehouse_code: 'WH-01' },
+            select: { warehouse_id: true }
+        });
+
         const products = await prisma.tbl_products.findMany({
             where: { active: true },
             orderBy: { p_name: 'asc' }
         });
-        
+
+        const warehouseStock = wh01
+            ? await prisma.tbl_warehouse_stock.findMany({
+                where: { warehouse_id: wh01.warehouse_id },
+                select: { p_id: true, quantity: true }
+            })
+            : [];
+
+        const stockByProduct = new Map(
+            warehouseStock.map((stock) => [stock.p_id, stock.quantity ?? 0])
+        );
+
         const data = products.map(p => ({
             ...p,
-            available_stock: p.p_count
+            available_stock: stockByProduct.get(p.p_id) ?? 0
         }));
 
         return { success: true, data };

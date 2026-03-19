@@ -116,12 +116,12 @@ export default function PartsManagementClient() {
         }
 
         if (availableStock <= 0) {
-            alert('สินค้าในคลังหลักไม่พอสำหรับการเบิก');
+            alert('สินค้าในคลัง WH-01 ไม่พอสำหรับการเบิก');
             return;
         }
 
         if (withdrawForm.quantity > availableStock) {
-            alert(`เบิกได้สูงสุด ${availableStock} ${selectedProduct?.p_unit || 'ชิ้น'}`);
+            alert(`เบิกได้สูงสุดจาก WH-01 ${availableStock} ${selectedProduct?.p_unit || 'ชิ้น'}`);
             return;
         }
 
@@ -357,7 +357,7 @@ export default function PartsManagementClient() {
                                             .filter(p => (p.available_stock ?? p.p_count) > 0)
                                             .map(p => ({
                                                 value: p.p_id,
-                                                label: `${p.p_name} (คงเหลือ: ${p.available_stock ?? p.p_count} ${p.p_unit || 'ชิ้น'})`
+                                                label: `${p.p_name} (คงเหลือ WH-01: ${p.available_stock ?? p.p_count} ${p.p_unit || 'ชิ้น'})`
                                             }))}
                                         value={withdrawForm.p_id}
                                         onChange={(val: string) => setWithdrawForm(prev => ({
@@ -389,7 +389,7 @@ export default function PartsManagementClient() {
                                     />
                                     {selectedProduct && (
                                         <div className="text-xs text-gray-500 mt-1 text-right">
-                                            เบิกได้สูงสุด: {availableStock}
+                                            เบิกได้สูงสุดจาก WH-01: {availableStock}
                                         </div>
                                     )}
                                 </div>
