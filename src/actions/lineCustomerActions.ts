@@ -13,6 +13,7 @@ export async function registerLineCustomer(input: {
     line_user_id: string;
     full_name: string;
     phone_number: string;
+    room_number?: string | null;
     display_name?: string | null;
     picture_url?: string | null;
     notes?: string | null;
@@ -21,6 +22,7 @@ export async function registerLineCustomer(input: {
         const lineUserId = input.line_user_id.trim();
         const fullName = input.full_name.trim();
         const phone = normalizePhone(input.phone_number);
+        const roomNumber = input.room_number?.trim() || null;
 
         if (!lineUserId) return { success: false, error: 'กรุณาระบุ LINE User ID' };
         if (!fullName) return { success: false, error: 'กรุณาระบุชื่อ-นามสกุล' };
@@ -31,6 +33,7 @@ export async function registerLineCustomer(input: {
             update: {
                 full_name: fullName,
                 phone_number: phone,
+                room_number: roomNumber,
                 display_name: input.display_name ?? undefined,
                 picture_url: input.picture_url ?? undefined,
                 notes: input.notes ?? undefined,
@@ -41,6 +44,7 @@ export async function registerLineCustomer(input: {
                 line_user_id: lineUserId,
                 full_name: fullName,
                 phone_number: phone,
+                room_number: roomNumber,
                 display_name: input.display_name ?? null,
                 picture_url: input.picture_url ?? null,
                 notes: input.notes ?? null,
@@ -95,6 +99,7 @@ export async function updateLineCustomer(data: {
     id: number;
     full_name: string;
     phone_number: string;
+    room_number?: string | null;
     notes?: string | null;
 }) {
     try {
@@ -103,6 +108,7 @@ export async function updateLineCustomer(data: {
 
         const fullName = data.full_name.trim();
         const phone = normalizePhone(data.phone_number);
+        const roomNumber = data.room_number?.trim() || null;
 
         if (!fullName) return { success: false, error: 'กรุณาระบุชื่อ-นามสกุล' };
         if (!phone) return { success: false, error: 'กรุณาระบุเบอร์โทร' };
@@ -112,6 +118,7 @@ export async function updateLineCustomer(data: {
             data: {
                 full_name: fullName,
                 phone_number: phone,
+                room_number: roomNumber,
                 notes: data.notes ?? null
             }
         });

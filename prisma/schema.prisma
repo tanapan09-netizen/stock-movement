@@ -678,6 +678,7 @@ model tbl_line_customers {
   display_name     String?   @db.VarChar(255)
   full_name        String    @db.VarChar(255)
   phone_number     String?   @db.VarChar(30)
+  room_number      String?   @db.VarChar(50)
   picture_url      String?   @db.VarChar(500)
   notes            String?   @db.Text
   is_active        Boolean   @default(true)
@@ -688,6 +689,7 @@ model tbl_line_customers {
 
   @@index([line_user_id], map: "idx_line_customer_user_id")
   @@index([phone_number], map: "idx_line_customer_phone")
+  @@index([room_number], map: "idx_line_customer_room")
   @@index([is_active], map: "idx_line_customer_active")
 }
 

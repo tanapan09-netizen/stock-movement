@@ -15,6 +15,7 @@ interface LineCustomer {
     display_name: string | null;
     full_name: string;
     phone_number: string | null;
+    room_number: string | null;
     picture_url: string | null;
     notes: string | null;
     is_active: boolean;
@@ -52,6 +53,7 @@ export default function LineCustomersClient() {
         return customers.filter((c) =>
             c.full_name.toLowerCase().includes(q) ||
             (c.phone_number || '').toLowerCase().includes(q) ||
+            (c.room_number || '').toLowerCase().includes(q) ||
             c.line_user_id.toLowerCase().includes(q) ||
             (c.display_name || '').toLowerCase().includes(q)
         );
@@ -62,6 +64,7 @@ export default function LineCustomersClient() {
             id: c.id,
             full_name: c.full_name,
             phone_number: c.phone_number || '',
+            room_number: c.room_number || '',
             notes: c.notes || null
         });
         if (!result.success) {
@@ -138,6 +141,7 @@ export default function LineCustomersClient() {
                                     <th className="px-4 py-3 text-left">ชื่อบน LINE</th>
                                     <th className="px-4 py-3 text-left">ชื่อลูกค้า</th>
                                     <th className="px-4 py-3 text-left">เบอร์โทร</th>
+                                    <th className="px-4 py-3 text-left">เบอร์ห้อง</th>
                                     <th className="px-4 py-3 text-left">บันทึก</th>
                                     <th className="px-4 py-3 text-left">สถานะ</th>
                                     <th className="px-4 py-3 text-left">แก้ไขล่าสุด</th>
@@ -176,6 +180,20 @@ export default function LineCustomersClient() {
                                                 onBlur={() => handleSave(c)}
                                                 className="w-full border rounded px-2 py-1 dark:bg-slate-700 dark:border-slate-600"
                                                 placeholder="ระบุเบอร์โทร"
+                                            />
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <input
+                                                type="text"
+                                                value={c.room_number || ''}
+                                                onChange={(e) =>
+                                                    setCustomers((prev) =>
+                                                        prev.map((row) => (row.id === c.id ? { ...row, room_number: e.target.value } : row))
+                                                    )
+                                                }
+                                                onBlur={() => handleSave(c)}
+                                                className="w-full border rounded px-2 py-1 dark:bg-slate-700 dark:border-slate-600"
+                                                placeholder="เช่น A-1205"
                                             />
                                         </td>
                                         <td className="px-4 py-3">

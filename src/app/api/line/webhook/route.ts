@@ -129,6 +129,7 @@ async function handleFollowEvent(event: WebhookEvent) {
                 display_name: profile?.displayName || null,
                 full_name: profile?.displayName || 'ลูกค้า',
                 phone_number: null,
+                room_number: null,
                 picture_url: profile?.pictureUrl || null,
                 is_active: true,
                 registered_at: new Date(),
