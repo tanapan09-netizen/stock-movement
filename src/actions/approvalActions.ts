@@ -1,12 +1,80 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { notifyApprovalEvent } from '@/lib/notifications/notificationManager';
 import { validateData, createApprovalRequestSchema } from '@/lib/validation';
 
-export async function createApprovalRequest(data: any) {
+type ApprovalAction = 'pending' | 'approved' | 'rejected';
+
+interface CreateApprovalRequestInput {
+    request_type: string;
+    request_date?: string | Date | null;
+    start_time?: string | Date | null;
+    end_time?: string | Date | null;
+    amount?: string | number | null;
+    reason: string;
+    reference_job?: string | null;
+}
+
+interface ApprovalNotificationRequest {
+    request_number: string;
+    request_type: string;
+    reason?: string | null;
+    amount?: unknown;
+    start_time?: Date | string | null;
+    end_time?: Date | string | null;
+    reference_job?: string | null;
+    rejection_reason?: string | null;
+    tbl_users?: {
+        username?: string | null;
+        line_user_id?: string | null;
+    } | null;
+}
+
+interface SaveWorkflowStepInput {
+    approver_role: string;
+    approver_id?: string | number | null;
+}
+
+interface SaveApprovalWorkflowInput {
+    id?: number;
+    workflow_name: string;
+    request_type: string;
+    condition_field?: string | null;
+    condition_op?: string | null;
+    condition_value?: string | null;
+    active?: boolean;
+    steps: SaveWorkflowStepInput[];
+}
+
+function getErrorMessage(error: unknown): string {
+    if (error instanceof Error && error.message) return error.message;
+    return 'Unexpected error';
+}
+
+function toIntOrNull(value: string | number | null | undefined): number | null {
+    if (value === null || value === undefined || value === '') return null;
+    const n = typeof value === 'number' ? value : parseInt(String(value), 10);
+    return Number.isFinite(n) ? n : null;
+}
+
+function toNumber(value: string | number | null | undefined): number {
+    if (value === null || value === undefined || value === '') return 0;
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? n : 0;
+}
+
+function toDateOrNull(value: Date | string | null | undefined): Date | null {
+    if (!value) return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export async function createApprovalRequest(data: CreateApprovalRequestInput) {
     try {
         const session = await auth();
         if (!session?.user?.id) {
@@ -24,7 +92,7 @@ export async function createApprovalRequest(data: any) {
         const rawData = {
             request_type: data.request_type,
             reason: data.reason,
-            amount: data.amount ? parseFloat(data.amount) : 0,
+            amount: toNumber(data.amount),
             reference_job: data.reference_job,
             start_time: data.start_time ? new Date(data.start_time) : null,
             end_time: data.end_time ? new Date(data.end_time) : null,
@@ -40,7 +108,7 @@ export async function createApprovalRequest(data: any) {
         const request_number = `${prefix}-${dateStr}-${(count + 1).toString().padStart(3, '0')}`;
 
         // Find matching workflow
-        const amountNum = data.amount ? parseFloat(data.amount) : 0;
+        const amountNum = toNumber(data.amount);
         const matchingWorkflows = await prisma.tbl_approval_workflows.findMany({
             where: {
                 request_type: data.request_type,
@@ -80,7 +148,10 @@ export async function createApprovalRequest(data: any) {
                 workflow_id: matchedWorkflow ? matchedWorkflow.id : null
             },
             include: {
-                tbl_users: true // To get requester details for line notification
+                tbl_users: true, // To get requester details for line notification
+                tbl_approver: {
+                    select: { username: true }
+                }
             }
         });
 
@@ -89,9 +160,9 @@ export async function createApprovalRequest(data: any) {
 
         revalidatePath('/approvals');
         return { success: true, data: newRequest };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error creating approval request:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: getErrorMessage(error) };
     }
 }
 
@@ -129,9 +200,9 @@ export async function getApprovalRequests() {
         });
 
         return { success: true, data: requests };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching approval requests:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: getErrorMessage(error) };
     }
 }
 
@@ -180,7 +251,7 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
         }
 
         // Update the request
-        const updateData: any = {
+        const updateData: Prisma.tbl_approval_requestsUncheckedUpdateInput = {
             status: newStatus,
             current_step: nextStep,
             rejection_reason: rejectionReason || currentRequest.rejection_reason
@@ -194,7 +265,12 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
         const updated = await prisma.tbl_approval_requests.update({
             where: { request_id: requestId },
             data: updateData,
-            include: { tbl_users: true }
+            include: {
+                tbl_users: true,
+                tbl_approver: {
+                    select: { username: true }
+                }
+            }
         });
 
         // Insert step log
@@ -219,13 +295,13 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
 
         revalidatePath('/approvals');
         return { success: true, data: updated };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error updating approval status:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: getErrorMessage(error) };
     }
 }
 
-async function sendLineNotification(request: any, action: 'pending' | 'approved' | 'rejected') {
+async function sendLineNotification(request: ApprovalNotificationRequest, action: ApprovalAction) {
     try {
         const requesterName = request.tbl_users?.username || 'พนักงาน';
 
@@ -236,9 +312,9 @@ async function sendLineNotification(request: any, action: 'pending' | 'approved'
             requested_by: requesterName,
             requester_line_id: request.tbl_users?.line_user_id || null,
             reason: request.reason || '',
-            amount: request.amount,
-            start_time: request.start_time,
-            end_time: request.end_time,
+            amount: request.amount === null || request.amount === undefined ? null : Number(request.amount),
+            start_time: toDateOrNull(request.start_time),
+            end_time: toDateOrNull(request.end_time),
             reference_job: request.reference_job,
             rejection_reason: request.rejection_reason,
         });
@@ -269,13 +345,13 @@ export async function getApprovalWorkflows() {
         });
 
         return { success: true, data: workflows };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error fetching workflows:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: getErrorMessage(error) };
     }
 }
 
-export async function saveApprovalWorkflow(data: any) {
+export async function saveApprovalWorkflow(data: SaveApprovalWorkflowInput) {
     try {
         const session = await auth();
         if (session?.user?.role !== 'admin') {
@@ -310,11 +386,11 @@ export async function saveApprovalWorkflow(data: any) {
                     where: { workflow_id: data.id }
                 });
 
-                const stepRecords = data.steps.map((s: any, idx: number) => ({
+                const stepRecords = data.steps.map((s: SaveWorkflowStepInput, idx: number) => ({
                     workflow_id: wf.id,
                     step_order: idx + 1,
                     approver_role: s.approver_role,
-                    approver_id: s.approver_id ? parseInt(s.approver_id) : null
+                    approver_id: toIntOrNull(s.approver_id)
                 }));
 
                 await tx.tbl_approval_workflow_steps.createMany({
@@ -329,10 +405,10 @@ export async function saveApprovalWorkflow(data: any) {
                 data: {
                     ...workflowData,
                     steps: {
-                        create: data.steps.map((s: any, idx: number) => ({
+                        create: data.steps.map((s: SaveWorkflowStepInput, idx: number) => ({
                             step_order: idx + 1,
                             approver_role: s.approver_role,
-                            approver_id: s.approver_id ? parseInt(s.approver_id) : null
+                            approver_id: toIntOrNull(s.approver_id)
                         }))
                     }
                 }
@@ -341,9 +417,9 @@ export async function saveApprovalWorkflow(data: any) {
 
         revalidatePath('/approvals/workflows');
         return { success: true, data: result };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error saving workflow:', error);
-        return { success: false, error: error.message };
+        return { success: false, error: getErrorMessage(error) };
     }
 }
 
@@ -361,7 +437,7 @@ export async function toggleWorkflowStatus(id: number, active: boolean) {
 
         revalidatePath('/approvals/workflows');
         return { success: true, data: updated };
-    } catch (error: any) {
-        return { success: false, error: error.message };
+    } catch (error: unknown) {
+        return { success: false, error: getErrorMessage(error) };
     }
 }

@@ -1,49 +1,184 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { FileDown, FileText, Plus, Search } from 'lucide-react';
 import { useToast } from '@/components/ToastProvider';
-import { Plus, CheckCircle, XCircle, Clock, FileText, Calendar, DollarSign, Search } from 'lucide-react';
 import { createApprovalRequest, updateApprovalStatus } from '@/actions/approvalActions';
-import SearchableSelect from '@/components/SearchableSelect';
-import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
+import ApprovalTable from './components/ApprovalTable';
+import CreateApprovalModal from './components/CreateApprovalModal';
+import RejectApprovalModal from './components/RejectApprovalModal';
+import { ActiveJob, ApprovalFormData, ApprovalRequest } from './types';
 
 interface ApprovalClientProps {
-    initialRequests: any[];
-    activeJobs: any[];
+    initialRequests: ApprovalRequest[];
+    activeJobs: ActiveJob[];
     canApprove: boolean;
     currentUserId: number;
 }
 
+const PAGE_SIZE = 10;
+
+const defaultFormData = (): ApprovalFormData => ({
+    request_type: 'ot',
+    request_date: new Date().toISOString().slice(0, 10),
+    start_time: '',
+    end_time: '',
+    amount: '',
+    reason: '',
+    reference_job: ''
+});
+
 export default function ApprovalClient({ initialRequests, activeJobs, canApprove, currentUserId }: ApprovalClientProps) {
     const { showToast } = useToast();
-    const [requests, setRequests] = useState(initialRequests);
+    const [requests, setRequests] = useState<ApprovalRequest[]>(initialRequests);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [filterStatus, setFilterStatus] = useState('all');
 
-    // Reject Modal state
+    const [viewMode, setViewMode] = useState<'all' | 'mine' | 'pending_review'>('all');
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [searchText, setSearchText] = useState('');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
+
+    const [currentPage, setCurrentPage] = useState(1);
+    const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [processingIds, setProcessingIds] = useState<number[]>([]);
+    const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+
     const [rejectModalOpen, setRejectModalOpen] = useState(false);
     const [rejectId, setRejectId] = useState<number | null>(null);
     const [rejectionReason, setRejectionReason] = useState('');
 
-    const [formData, setFormData] = useState({
-        request_type: 'ot',
-        request_date: new Date().toISOString().slice(0, 10),
-        start_time: '',
-        end_time: '',
-        amount: '',
-        reason: '',
-        reference_job: ''
-    });
+    const [formData, setFormData] = useState<ApprovalFormData>(defaultFormData());
 
-    // Handle form submit
+    const jobOptions = useMemo(
+        () => activeJobs.map(j => ({
+            value: j.request_number,
+            label: `${j.request_number} - ห้อง ${j.tbl_rooms?.room_code || '-'}: ${j.title || '-'}`
+        })),
+        [activeJobs]
+    );
+
+    const filteredRequests = useMemo(() => {
+        const q = searchText.trim().toLowerCase();
+
+        return requests.filter((r) => {
+            if (viewMode === 'mine') {
+                const ownerId = r.requested_by || r.tbl_users?.p_id || 0;
+                if (ownerId !== currentUserId) return false;
+            }
+
+            if (viewMode === 'pending_review' && !(canApprove && r.status === 'pending')) {
+                return false;
+            }
+
+            if (filterStatus !== 'all' && r.status !== filterStatus) return false;
+
+            if (dateFrom || dateTo) {
+                const sourceDate = r.created_at ? new Date(r.created_at) : null;
+                if (sourceDate) {
+                    if (dateFrom && sourceDate < new Date(`${dateFrom}T00:00:00`)) return false;
+                    if (dateTo && sourceDate > new Date(`${dateTo}T23:59:59`)) return false;
+                }
+            }
+
+            if (q) {
+                const haystack = [
+                    r.request_number,
+                    r.tbl_users?.username,
+                    r.reason,
+                    r.reference_job
+                ].join(' ').toLowerCase();
+                if (!haystack.includes(q)) return false;
+            }
+
+            return true;
+        });
+    }, [requests, viewMode, currentUserId, canApprove, filterStatus, dateFrom, dateTo, searchText]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE));
+    const safePage = Math.min(currentPage, totalPages);
+    const paginatedRequests = filteredRequests.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+    const resetToFirstPage = () => setCurrentPage(1);
+
+    const patchFormData = (patch: Partial<ApprovalFormData>) => {
+        setFormData(prev => ({ ...prev, ...patch }));
+    };
+
+    const setRowsProcessing = (ids: number[], processing: boolean) => {
+        setProcessingIds(prev => {
+            if (processing) return Array.from(new Set([...prev, ...ids]));
+            return prev.filter(id => !ids.includes(id));
+        });
+    };
+
+    const applyUpdatedRequest = (updated: ApprovalRequest) => {
+        setRequests(prev => prev.map(r => (r.request_id === updated.request_id ? updated : r)));
+    };
+
+    const runStatusUpdate = async (ids: number[], status: 'approved' | 'rejected', reason?: string) => {
+        const targetIds = ids.filter(Boolean);
+        if (!targetIds.length) return;
+
+        setRowsProcessing(targetIds, true);
+        if (targetIds.length > 1) setIsBulkProcessing(true);
+
+        let successCount = 0;
+        try {
+            for (const id of targetIds) {
+                const res = await updateApprovalStatus(id, status, reason);
+                if (res.success && res.data) {
+                    successCount += 1;
+                    applyUpdatedRequest(res.data as ApprovalRequest);
+                }
+            }
+        } finally {
+            setRowsProcessing(targetIds, false);
+            if (targetIds.length > 1) setIsBulkProcessing(false);
+            setSelectedIds(prev => prev.filter(id => !targetIds.includes(id)));
+        }
+
+        if (successCount === targetIds.length) {
+            showToast('ดำเนินการสำเร็จ', 'success');
+        } else if (successCount > 0) {
+            showToast(`สำเร็จ ${successCount}/${targetIds.length} รายการ`, 'success');
+        } else {
+            showToast('เกิดข้อผิดพลาด', 'error');
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (formData.request_type === 'ot') {
+            if (!formData.start_time || !formData.end_time) {
+                showToast('กรุณาระบุเวลาเริ่มและเวลาสิ้นสุด', 'error');
+                return;
+            }
+            if (formData.end_time <= formData.start_time) {
+                showToast('เวลาสิ้นสุดต้องมากกว่าเวลาเริ่ม', 'error');
+                return;
+            }
+        }
+
+        if (formData.request_type === 'expense') {
+            const amount = Number(formData.amount);
+            if (!Number.isFinite(amount) || amount <= 0) {
+                showToast('จำนวนเงินต้องมากกว่า 0', 'error');
+                return;
+            }
+        }
+
+        if (!formData.reason.trim()) {
+            showToast('กรุณาระบุเหตุผล', 'error');
+            return;
+        }
+
         setIsSubmitting(true);
         try {
-            // Setup times
-            let st = null;
-            let et = null;
+            let st: Date | null = null;
+            let et: Date | null = null;
             if (formData.start_time && formData.request_date) {
                 st = new Date(`${formData.request_date}T${formData.start_time}:00`);
             }
@@ -53,87 +188,123 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
 
             const res = await createApprovalRequest({
                 ...formData,
+                reason: formData.reason.trim(),
                 start_time: st,
                 end_time: et
             });
 
-            if (res.success) {
+            if (res.success && res.data) {
                 showToast('ส่งคำขอสำเร็จ', 'success');
                 setIsModalOpen(false);
-                // Simple optimstic push
-                setRequests([{ ...res.data, tbl_users: { username: 'ฉันเอง' } }, ...requests]);
-                // reset form
-                setFormData({
-                    request_type: 'ot',
-                    request_date: new Date().toISOString().slice(0, 10),
-                    start_time: '',
-                    end_time: '',
-                    amount: '',
-                    reason: '',
-                    reference_job: ''
-                });
+                setRequests(prev => [{ ...res.data, tbl_users: { username: 'ฉันเอง', p_id: currentUserId } }, ...prev]);
+                setFormData(defaultFormData());
+                resetToFirstPage();
             } else {
                 showToast(res.error || 'เกิดข้อผิดพลาด', 'error');
             }
-        } catch (err: any) {
-            showToast(err.message, 'error');
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'เกิดข้อผิดพลาด';
+            showToast(message, 'error');
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    const handleAction = async (id: number, status: 'approved' | 'rejected', reason?: string) => {
-        if (!confirm(`ยืนยันที่จะ ${status === 'approved' ? 'อนุมัติ' : 'ไม่อนุมัติ'} คำขอนี้?`)) return;
+    const handleApprove = async (id: number) => {
+        if (!confirm('ยืนยันที่จะอนุมัติคำขอนี้?')) return;
+        await runStatusUpdate([id], 'approved');
+    };
 
-        try {
-            const res = await updateApprovalStatus(id, status, reason);
-            if (res.success) {
-                showToast('ดำเนินการสำเร็จ', 'success');
-                setRequests(requests.map(r => r.request_id === id ? { ...r, status, rejection_reason: reason, approved_at: new Date() } : r));
-                setRejectModalOpen(false);
-                setRejectionReason('');
-            } else {
-                showToast(res.error || 'เกิดข้อผิดพลาด', 'error');
+    const handleOpenReject = (id: number) => {
+        setRejectId(id);
+        setRejectionReason('');
+        setRejectModalOpen(true);
+    };
+
+    const handleConfirmReject = async () => {
+        const reason = rejectionReason.trim();
+        if (!rejectId) return;
+        if (!reason) {
+            alert('โปรดระบุเหตุผล');
+            return;
+        }
+        if (!confirm('ยืนยันที่จะไม่อนุมัติคำขอนี้?')) return;
+        await runStatusUpdate([rejectId], 'rejected', reason);
+        setRejectModalOpen(false);
+        setRejectId(null);
+        setRejectionReason('');
+    };
+
+    const handleToggleSelect = (id: number) => {
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    const handleToggleSelectAllPage = () => {
+        const pagePendingIds = paginatedRequests.filter(r => r.status === 'pending').map(r => r.request_id);
+        if (!pagePendingIds.length) return;
+
+        const allSelected = pagePendingIds.every(id => selectedIds.includes(id));
+        setSelectedIds(prev => {
+            if (allSelected) {
+                return prev.filter(id => !pagePendingIds.includes(id));
             }
-        } catch (err: any) {
-            showToast(err.message, 'error');
-        }
+            return Array.from(new Set([...prev, ...pagePendingIds]));
+        });
     };
 
-    const StatusBadge = ({ req }: { req: any }) => {
-        const { status } = req;
-        
-        return (
-            <div className="min-w-[120px]">
-                <WorkflowStepper
-                    currentStep={status === 'pending' ? 1 : 2}
-                    totalSteps={2}
-                    status={(status === 'rejected' ? 'rejected' : status) as WorkflowStatus}
-                    size="sm"
-                />
-            </div>
-        );
+    const handleBulkApprove = async () => {
+        if (!selectedIds.length) return;
+        if (!confirm(`ยืนยันอนุมัติ ${selectedIds.length} รายการ?`)) return;
+        await runStatusUpdate(selectedIds, 'approved');
     };
 
-    const getTypeLabel = (type: string) => {
-        switch (type) {
-            case 'ot': return 'ล่วงเวลา (OT)';
-            case 'leave': return 'ลาหยุด';
-            case 'expense': return 'เบิกค่าใช้จ่าย';
-            case 'other': return 'อื่นๆ';
-            default: return type;
-        }
+    const handleBulkReject = async () => {
+        if (!selectedIds.length) return;
+        const reason = prompt('ระบุเหตุผลสำหรับการไม่อนุมัติหลายรายการ:')?.trim();
+        if (!reason) return;
+        if (!confirm(`ยืนยันไม่อนุมัติ ${selectedIds.length} รายการ?`)) return;
+        await runStatusUpdate(selectedIds, 'rejected', reason);
     };
 
-    const filteredRequests = requests.filter(r => {
-        if (filterStatus !== 'all' && r.status !== filterStatus) return false;
-        return true;
-    });
+    const handleExportCsv = () => {
+        const headers = [
+            'เลขที่คำขอ',
+            'ผู้ขอ',
+            'ประเภท',
+            'สถานะ',
+            'เหตุผล',
+            'จำนวนเงิน',
+            'งานอ้างอิง',
+            'อนุมัติโดย',
+            'วันที่สร้าง',
+            'วันที่อนุมัติ'
+        ];
 
-    const jobOptions = activeJobs.map(j => ({
-        value: j.request_number,
-        label: `${j.request_number} - ห้อง ${j.tbl_rooms?.room_code}: ${j.title}`
-    }));
+        const lines = filteredRequests.map((r) => [
+            r.request_number || '',
+            r.tbl_users?.username || '',
+            r.request_type || '',
+            r.status || '',
+            (r.reason || '').replace(/\r?\n/g, ' '),
+            r.amount ?? '',
+            r.reference_job || '',
+            r.tbl_approver?.username || '',
+            r.created_at ? new Date(r.created_at).toISOString() : '',
+            r.approved_at ? new Date(r.approved_at).toISOString() : ''
+        ]);
+
+        const csv = [headers, ...lines]
+            .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
+            .join('\n');
+
+        const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `approvals-${new Date().toISOString().slice(0, 10)}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+    };
 
     return (
         <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
@@ -143,281 +314,157 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
                         <FileText className="text-indigo-500" />
                         ระบบขออนุมัติทั่วไป (OT/ลา/เบิก)
                     </h1>
-                    <p className="text-gray-500 dark:text-gray-400 mt-1">จัดการคำขออนุมัติต่างๆ และส่งแจ้งเตือนผ่าน LINE</p>
+                    <p className="text-gray-500 dark:text-gray-400 mt-1">จัดการคำขออนุมัติ และติดตามสถานะได้ในหน้าเดียว</p>
                 </div>
-                <button
-                    onClick={() => setIsModalOpen(true)}
-                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition shadow-sm"
-                >
-                    <Plus size={20} />
-                    สร้างคำขอใหม่
-                </button>
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        onClick={handleExportCsv}
+                        className="flex items-center gap-2 bg-white dark:bg-slate-800 border dark:border-slate-700 px-4 py-2 rounded-lg font-medium transition shadow-sm"
+                    >
+                        <FileDown size={18} />
+                        Export CSV
+                    </button>
+                    <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition shadow-sm"
+                    >
+                        <Plus size={20} />
+                        สร้างคำขอใหม่
+                    </button>
+                </div>
             </div>
 
-            {/* Filters */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+                <button
+                    onClick={() => { setViewMode('all'); resetToFirstPage(); }}
+                    className={`px-3 py-1.5 rounded-lg text-sm border ${viewMode === 'all' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700'}`}
+                >
+                    ทั้งหมด
+                </button>
+                <button
+                    onClick={() => { setViewMode('mine'); resetToFirstPage(); }}
+                    className={`px-3 py-1.5 rounded-lg text-sm border ${viewMode === 'mine' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700'}`}
+                >
+                    ของฉัน
+                </button>
+                {canApprove && (
+                    <button
+                        onClick={() => { setViewMode('pending_review'); resetToFirstPage(); }}
+                        className={`px-3 py-1.5 rounded-lg text-sm border ${viewMode === 'pending_review' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700'}`}
+                    >
+                        รอฉันอนุมัติ
+                    </button>
+                )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+                <div className="md:col-span-2 relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                        value={searchText}
+                        onChange={(e) => { setSearchText(e.target.value); resetToFirstPage(); }}
+                        placeholder="ค้นหาเลขที่คำขอ / ผู้ขอ / เหตุผล / งานอ้างอิง"
+                        className="w-full border rounded-lg pl-9 pr-3 py-2 text-sm dark:bg-slate-800 dark:border-slate-700"
+                    />
+                </div>
                 <select
                     className="border rounded-lg px-3 py-2 text-sm dark:bg-slate-800 dark:border-slate-700"
                     value={filterStatus}
-                    onChange={e => setFilterStatus(e.target.value)}
+                    onChange={e => { setFilterStatus(e.target.value); resetToFirstPage(); }}
                 >
                     <option value="all">สถานะทั้งหมด</option>
                     <option value="pending">รอพิจารณา</option>
                     <option value="approved">อนุมัติแล้ว</option>
                     <option value="rejected">ไม่อนุมัติ</option>
                 </select>
+                <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => { setDateFrom(e.target.value); resetToFirstPage(); }}
+                    className="border rounded-lg px-3 py-2 text-sm dark:bg-slate-800 dark:border-slate-700"
+                />
+                <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => { setDateTo(e.target.value); resetToFirstPage(); }}
+                    className="border rounded-lg px-3 py-2 text-sm dark:bg-slate-800 dark:border-slate-700"
+                />
             </div>
 
-            {/* Table */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border dark:border-slate-700 overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm whitespace-nowrap">
-                        <thead className="bg-gray-50 dark:bg-slate-700/50 text-gray-500 dark:text-gray-400 font-medium">
-                            <tr>
-                                <th className="px-6 py-4">เลขที่/วันที่</th>
-                                <th className="px-6 py-4">รายละเอียดคำขอ</th>
-                                <th className="px-6 py-4">ข้อมูลอ้างอิง</th>
-                                <th className="px-6 py-4">สถานะ</th>
-                                {canApprove && <th className="px-6 py-4 text-right">จัดการ</th>}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y dark:divide-slate-700">
-                            {filteredRequests.length > 0 ? filteredRequests.map((req) => (
-                                <tr key={req.request_id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition">
-                                    <td className="px-6 py-4">
-                                        <div className="font-medium text-indigo-600 dark:text-indigo-400">{req.request_number}</div>
-                                        <div className="text-xs text-gray-500 mt-1">ผู้ขอ: {req.tbl_users?.username}</div>
-                                        <div className="text-xs text-gray-500">{new Date(req.created_at).toLocaleDateString('th-TH')}</div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-normal min-w-[250px]">
-                                        <div className="font-medium flex items-center gap-1 mb-1">
-                                            {req.request_type === 'ot' && <Clock size={14} className="text-blue-500" />}
-                                            {req.request_type === 'leave' && <Calendar size={14} className="text-orange-500" />}
-                                            {req.request_type === 'expense' && <DollarSign size={14} className="text-green-500" />}
-                                            {getTypeLabel(req.request_type)}
-                                        </div>
-                                        <div className="text-gray-700 dark:text-gray-300">{req.reason}</div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        {req.request_type === 'ot' && req.start_time && req.end_time && (
-                                            <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                                                เวลา: {new Date(req.start_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} - {new Date(req.end_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
-                                            </div>
-                                        )}
-                                        {req.request_type === 'expense' && req.amount && (
-                                            <div className="text-sm font-semibold text-green-600 dark:text-green-400">
-                                                ฿ {Number(req.amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                                            </div>
-                                        )}
-                                        {req.reference_job && (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-slate-700 dark:text-gray-300">
-                                                อ้างอิง: {req.reference_job}
-                                            </span>
-                                        )}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <StatusBadge req={req} />
-                                        {req.status === 'rejected' && req.rejection_reason && (
-                                            <div className="text-xs text-red-500 mt-1 whitespace-normal max-w-[200px] italic">
-                                                เหตุผล: {req.rejection_reason}
-                                            </div>
-                                        )}
-                                    </td>
-                                    {canApprove && (
-                                        <td className="px-6 py-4 text-right">
-                                            {req.status === 'pending' && (
-                                                <div className="flex justify-end gap-2">
-                                                    <button
-                                                        onClick={() => handleAction(req.request_id, 'approved')}
-                                                        className="px-3 py-1.5 bg-green-50 text-green-600 hover:bg-green-100 rounded-md font-medium text-xs transition"
-                                                    >
-                                                        อนุมัติ
-                                                    </button>
-                                                    <button
-                                                        onClick={() => {
-                                                            setRejectId(req.request_id);
-                                                            setRejectModalOpen(true);
-                                                        }}
-                                                        className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-md font-medium text-xs transition"
-                                                    >
-                                                        ไม่อนุมัติ
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </td>
-                                    )}
-                                </tr>
-                            )) : (
-                                <tr>
-                                    <td colSpan={canApprove ? 5 : 4} className="px-6 py-12 text-center text-gray-500">
-                                        ไม่พบข้อมูลคำขอ
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            {/* Create Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-8 px-4">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-lg my-auto overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        <div className="px-6 py-4 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-800/50">
-                            <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                                <Plus size={20} className="text-indigo-600" />
-                                สร้างคำขออนุมัติ
-                            </h2>
-                            <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition">
-                                <XCircle size={24} />
-                            </button>
-                        </div>
-                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">ประเภทคำขอ *</label>
-                                    <select
-                                        className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                        value={formData.request_type}
-                                        onChange={e => setFormData({ ...formData, request_type: e.target.value })}
-                                        required
-                                    >
-                                        <option value="ot">ทำงานล่วงเวลา (OT)</option>
-                                        <option value="leave">ลาหยุด</option>
-                                        <option value="expense">เบิกค่าใช้จ่ายอื่นๆ</option>
-                                        <option value="other">อื่นๆ</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">วันที่ *</label>
-                                    <input
-                                        type="date"
-                                        className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                        value={formData.request_date}
-                                        onChange={e => setFormData({ ...formData, request_date: e.target.value })}
-                                        required
-                                    />
-                                </div>
-                            </div>
-
-                            {formData.request_type === 'ot' && (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">เวลาเริ่ม *</label>
-                                        <input
-                                            type="time"
-                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                            value={formData.start_time}
-                                            onChange={e => setFormData({ ...formData, start_time: e.target.value })}
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">เวลาสิ้นสุด *</label>
-                                        <input
-                                            type="time"
-                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                            value={formData.end_time}
-                                            onChange={e => setFormData({ ...formData, end_time: e.target.value })}
-                                            required
-                                        />
-                                    </div>
-                                </div>
-                            )}
-
-                            {formData.request_type === 'expense' && (
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">จำนวนเงิน (บาท) *</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        min="1"
-                                        className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                        value={formData.amount}
-                                        onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                                        required
-                                    />
-                                </div>
-                            )}
-
-                            <div>
-                                <label className="block text-sm font-medium mb-1">เหตุผล/รายละเอียด *</label>
-                                <textarea
-                                    className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                    rows={3}
-                                    placeholder="อธิบายเหตุผลในการขออนุมัติ"
-                                    value={formData.reason}
-                                    onChange={e => setFormData({ ...formData, reason: e.target.value })}
-                                    required
-                                ></textarea>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium mb-1 flex items-center justify-between">
-                                    <span>อ้างอิงงานซ่อม (ถ้ามี)</span>
-                                    <span className="text-xs text-gray-500 font-normal">ตัวเลือก</span>
-                                </label>
-                                <SearchableSelect
-                                    options={jobOptions}
-                                    value={formData.reference_job}
-                                    onChange={(val) => setFormData({ ...formData, reference_job: val })}
-                                    placeholder="เว้นว่างได้ หรือ ค้นหารหัสงาน"
-                                />
-                            </div>
-
-                            <div className="pt-4 flex justify-end gap-3 border-t dark:border-slate-700">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsModalOpen(false)}
-                                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-slate-700 rounded-lg transition"
-                                >
-                                    ยกเลิก
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isSubmitting}
-                                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-medium transition disabled:bg-indigo-400"
-                                >
-                                    {isSubmitting ? 'กำลังบันทึก...' : 'ส่งคำขอ'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
+            {canApprove && (
+                <div className="flex flex-wrap items-center gap-2">
+                    <button
+                        onClick={handleBulkApprove}
+                        disabled={!selectedIds.length || isBulkProcessing}
+                        className="px-3 py-1.5 rounded-md text-sm bg-emerald-600 text-white disabled:opacity-50"
+                    >
+                        อนุมัติที่เลือก ({selectedIds.length})
+                    </button>
+                    <button
+                        onClick={handleBulkReject}
+                        disabled={!selectedIds.length || isBulkProcessing}
+                        className="px-3 py-1.5 rounded-md text-sm bg-rose-600 text-white disabled:opacity-50"
+                    >
+                        ไม่อนุมัติที่เลือก
+                    </button>
                 </div>
             )}
 
-            {/* Reject Modal */}
-            {rejectModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-8 px-4">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-sm my-auto overflow-hidden p-6 space-y-4">
-                        <h2 className="text-lg font-bold text-gray-800 dark:text-white">ไม่อนุมัติคำขอ</h2>
-                        <textarea
-                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                            rows={3}
-                            placeholder="โปรดระบุเหตุผลที่ไม่อนุมัติ"
-                            value={rejectionReason}
-                            onChange={(e) => setRejectionReason(e.target.value)}
-                        ></textarea>
-                        <div className="flex justify-end gap-2 pt-2">
-                            <button
-                                onClick={() => {
-                                    setRejectModalOpen(false);
-                                    setRejectionReason('');
-                                }}
-                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
-                            >ยกเลิก</button>
-                            <button
-                                onClick={() => {
-                                    if (!rejectionReason) return alert('โปรดระบุเหตุผล');
-                                    handleAction(rejectId!, 'rejected', rejectionReason);
-                                }}
-                                className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg transition"
-                            >ยืนยันไม่อนุมัติ</button>
-                        </div>
-                    </div>
+            <ApprovalTable
+                requests={paginatedRequests}
+                canApprove={canApprove}
+                selectedIds={selectedIds}
+                processingIds={processingIds}
+                onToggleSelect={handleToggleSelect}
+                onToggleSelectAllPage={handleToggleSelectAllPage}
+                onApprove={handleApprove}
+                onOpenReject={handleOpenReject}
+            />
+
+            <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-500">
+                    แสดง {filteredRequests.length ? ((safePage - 1) * PAGE_SIZE + 1) : 0}-{Math.min(safePage * PAGE_SIZE, filteredRequests.length)} จาก {filteredRequests.length} รายการ
+                </p>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={safePage <= 1}
+                        className="px-3 py-1.5 rounded border disabled:opacity-50 dark:border-slate-700"
+                    >
+                        ก่อนหน้า
+                    </button>
+                    <span className="text-sm">{safePage}/{totalPages}</span>
+                    <button
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={safePage >= totalPages}
+                        className="px-3 py-1.5 rounded border disabled:opacity-50 dark:border-slate-700"
+                    >
+                        ถัดไป
+                    </button>
                 </div>
-            )}
+            </div>
+
+            <CreateApprovalModal
+                isOpen={isModalOpen}
+                isSubmitting={isSubmitting}
+                formData={formData}
+                jobOptions={jobOptions}
+                onClose={() => setIsModalOpen(false)}
+                onSubmit={handleSubmit}
+                onChange={patchFormData}
+            />
+
+            <RejectApprovalModal
+                isOpen={rejectModalOpen}
+                reason={rejectionReason}
+                onReasonChange={setRejectionReason}
+                onCancel={() => {
+                    setRejectModalOpen(false);
+                    setRejectionReason('');
+                    setRejectId(null);
+                }}
+                onConfirm={handleConfirmReject}
+            />
         </div>
     );
 }

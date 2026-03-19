@@ -3,6 +3,8 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
     AlertCircle,
+    ChevronDown,
+    ChevronRight,
     CheckSquare,
     Loader2,
     MinusSquare,
@@ -220,6 +222,9 @@ export default function RolePermissionEditor({ roles }: Props) {
         useState<PermissionState>(initialPermissionState);
     const [saving, setSaving] = useState(false);
     const [searchInput, setSearchInput] = useState('');
+    const [focusedRoleId, setFocusedRoleId] = useState<number | 'all'>('all');
+    const [showChangedOnly, setShowChangedOnly] = useState(false);
+    const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
     const debouncedSearch = useDebouncedValue(searchInput, 300);
 
@@ -228,11 +233,46 @@ export default function RolePermissionEditor({ roles }: Props) {
         setPermissions(initialPermissionState);
     }, [initialPermissionState]);
 
+    useEffect(() => {
+        if (
+            focusedRoleId !== 'all' &&
+            !roles.some((role) => role.role_id === focusedRoleId)
+        ) {
+            setFocusedRoleId('all');
+        }
+    }, [focusedRoleId, roles]);
+
     const totalPermissions = PERMISSION_LIST.length;
+    const visibleRoles = useMemo(
+        () =>
+            focusedRoleId === 'all'
+                ? roles
+                : roles.filter((role) => role.role_id === focusedRoleId),
+        [roles, focusedRoleId]
+    );
+
+    const changedPermissionKeys = useMemo(() => {
+        const changedKeys = new Set<string>();
+
+        PERMISSION_LIST.forEach((permission) => {
+            const key = permission.key;
+            const changedInAnyVisibleRole = visibleRoles.some((role) => {
+                const current = Boolean(permissions[role.role_id]?.[key]);
+                const saved = Boolean(savedPermissions[role.role_id]?.[key]);
+                return current !== saved;
+            });
+
+            if (changedInAnyVisibleRole) {
+                changedKeys.add(key);
+            }
+        });
+
+        return changedKeys;
+    }, [permissions, savedPermissions, visibleRoles]);
 
     const filteredGroupedPermissions = useMemo(() => {
         const keyword = debouncedSearch.trim().toLowerCase();
-        if (!keyword) return groupedPermissions;
+        const hasSearch = keyword.length > 0;
 
         const next: Record<string, PermissionItem[]> = {};
 
@@ -242,13 +282,18 @@ export default function RolePermissionEditor({ roles }: Props) {
                 const description = item.description.toLowerCase();
                 const key = item.key.toLowerCase();
                 const categoryText = category.toLowerCase();
+                const isChanged = changedPermissionKeys.has(item.key);
 
-                return (
+                const matchSearch =
+                    !hasSearch ||
                     label.includes(keyword) ||
                     description.includes(keyword) ||
                     key.includes(keyword) ||
-                    categoryText.includes(keyword)
-                );
+                    categoryText.includes(keyword);
+
+                const matchChanged = !showChangedOnly || isChanged;
+
+                return matchSearch && matchChanged;
             });
 
             if (filteredItems.length > 0) {
@@ -257,7 +302,7 @@ export default function RolePermissionEditor({ roles }: Props) {
         });
 
         return next;
-    }, [groupedPermissions, debouncedSearch]);
+    }, [groupedPermissions, debouncedSearch, showChangedOnly, changedPermissionKeys]);
 
     const visiblePermissionKeys = useMemo(() => {
         return Object.values(filteredGroupedPermissions)
@@ -305,7 +350,7 @@ export default function RolePermissionEditor({ roles }: Props) {
         setPermissions((prev) => {
             const next = { ...prev };
 
-            roles.forEach((role) => {
+            visibleRoles.forEach((role) => {
                 next[role.role_id] = { ...next[role.role_id] };
                 categoryKeys.forEach((key) => {
                     next[role.role_id][key] = checked;
@@ -383,10 +428,10 @@ export default function RolePermissionEditor({ roles }: Props) {
             (item) => item.key
         );
 
-        const totalCells = categoryKeys.length * roles.length;
+        const totalCells = categoryKeys.length * visibleRoles.length;
         let checkedCells = 0;
 
-        roles.forEach((role) => {
+        visibleRoles.forEach((role) => {
             categoryKeys.forEach((key) => {
                 if (permissions[role.role_id]?.[key]) {
                     checkedCells += 1;
@@ -395,6 +440,20 @@ export default function RolePermissionEditor({ roles }: Props) {
         });
 
         return getSelectionState(totalCells, checkedCells);
+    };
+
+    const categoryNames = Object.keys(filteredGroupedPermissions);
+
+    const collapseAllCategories = () => {
+        setCollapsedCategories(
+            Object.fromEntries(categoryNames.map((name) => [name, true]))
+        );
+    };
+
+    const expandAllCategories = () => {
+        setCollapsedCategories(
+            Object.fromEntries(categoryNames.map((name) => [name, false]))
+        );
     };
 
     return (
@@ -522,6 +581,52 @@ export default function RolePermissionEditor({ roles }: Props) {
                         แสดง {visiblePermissionKeys.length} รายการ
                     </div>
                 </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <select
+                        value={focusedRoleId}
+                        onChange={(e) =>
+                            setFocusedRoleId(
+                                e.target.value === 'all' ? 'all' : Number(e.target.value)
+                            )
+                        }
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                    >
+                        <option value="all">ทุก Role</option>
+                        {roles.map((role) => (
+                            <option key={role.role_id} value={role.role_id}>
+                                {role.role_name}
+                            </option>
+                        ))}
+                    </select>
+
+                    <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                        <input
+                            type="checkbox"
+                            checked={showChangedOnly}
+                            onChange={(e) => setShowChangedOnly(e.target.checked)}
+                        />
+                        เฉพาะที่แก้ไข
+                    </label>
+
+                    <button
+                        type="button"
+                        onClick={collapseAllCategories}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                        พับทั้งหมด
+                    </button>
+                    <button
+                        type="button"
+                        onClick={expandAllCategories}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                        ขยายทั้งหมด
+                    </button>
+
+                    <div className="ml-auto text-xs text-slate-500">
+                        แสดง {visibleRoles.length}/{roles.length} roles
+                    </div>
+                </div>
             </div>
 
             <div className="w-full min-w-0 overflow-x-auto overflow-y-auto max-h-[70vh] overscroll-contain">
@@ -532,7 +637,7 @@ export default function RolePermissionEditor({ roles }: Props) {
                                 เมนู / รายการสิทธิ์
                             </th>
 
-                            {roles.map((role) => {
+                            {visibleRoles.map((role) => {
                                 const selectionState = getRoleSelectionState(role.role_id);
                                 const enabledCount = getEnabledCountByRole(role.role_id);
 
@@ -588,7 +693,7 @@ export default function RolePermissionEditor({ roles }: Props) {
                         {Object.entries(filteredGroupedPermissions).length === 0 ? (
                             <tr>
                                 <td
-                                    colSpan={roles.length + 1}
+                                    colSpan={visibleRoles.length + 1}
                                     className="px-6 py-12 text-center text-sm text-slate-500"
                                 >
                                     ไม่พบ permission ที่ค้นหา
@@ -597,23 +702,38 @@ export default function RolePermissionEditor({ roles }: Props) {
                         ) : (
                             Object.entries(filteredGroupedPermissions).map(([category, items]) => {
                                 const selectionState = getCategorySelectionState(category);
+                                const isCollapsed = collapsedCategories[category] ?? false;
 
                                 return (
                                     <Fragment key={category}>
                                         <tr>
                                             <td
-                                                colSpan={roles.length + 1}
+                                                colSpan={visibleRoles.length + 1}
                                                 className="sticky top-[49px] sm:top-[57px] z-20 border-b border-t border-slate-200 bg-slate-100/95 px-4 py-2.5 backdrop-blur"
                                             >
                                                 <div className="flex items-center justify-between gap-3">
-                                                    <div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setCollapsedCategories((prev) => ({
+                                                                ...prev,
+                                                                [category]: !isCollapsed,
+                                                            }))
+                                                        }
+                                                        className="inline-flex items-center gap-2 text-left"
+                                                    >
+                                                        {isCollapsed ? (
+                                                            <ChevronRight className="h-4 w-4 text-slate-500" />
+                                                        ) : (
+                                                            <ChevronDown className="h-4 w-4 text-slate-500" />
+                                                        )}
                                                         <div className="text-xs font-bold uppercase tracking-wide text-slate-700">
                                                             {category}
                                                         </div>
                                                         <div className="mt-1 text-xs text-slate-500">
                                                             {items.length} permissions
                                                         </div>
-                                                    </div>
+                                                    </button>
 
                                                     <button
                                                         type="button"
@@ -638,7 +758,7 @@ export default function RolePermissionEditor({ roles }: Props) {
                                             </td>
                                         </tr>
 
-                                        {items.map((permission, index) => (
+                                        {!isCollapsed && items.map((permission, index) => (
                                             <tr
                                                 key={permission.key}
                                                 className={`
@@ -658,7 +778,7 @@ export default function RolePermissionEditor({ roles }: Props) {
                                                     </div>
                                                 </td>
 
-                                                {roles.map((role) => {
+                                                {visibleRoles.map((role) => {
                                                     const checked =
                                                         permissions[role.role_id]?.[
                                                             permission.key

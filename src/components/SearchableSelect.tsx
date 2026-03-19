@@ -84,7 +84,10 @@ export default function SearchableSelect({ options, value, onChange, placeholder
                             />
                         </div>
                     </div>
-                    <div className="overflow-y-auto p-1 flex-1">
+                    <div
+                        className="overflow-y-auto overscroll-contain p-1 flex-1"
+                        style={{ WebkitOverflowScrolling: 'touch' }}
+                    >
                         {filteredOptions.length > 0 ? (
                             filteredOptions.map((opt) => (
                                 <div
