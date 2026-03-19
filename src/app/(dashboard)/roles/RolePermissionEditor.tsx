@@ -801,11 +801,184 @@ export default function RolePermissionEditor({ roles }: Props) {
                 </div>
             </div>
 
-            <div className="w-full min-w-0 overflow-x-auto overflow-y-auto max-h-[70vh] overscroll-contain">
-                <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
+            <div className="space-y-3 lg:hidden">
+                {Object.entries(filteredGroupedPermissions).length === 0 ? (
+                    <div className="rounded-xl border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500">
+                        ไม่พบ permission ที่ค้นหา
+                    </div>
+                ) : (
+                    Object.entries(filteredGroupedPermissions).map(([category, items]) => {
+                        const selectionState = getCategorySelectionState(category);
+                        const isCollapsed = collapsedCategories[category] ?? false;
+
+                        return (
+                            <section
+                                key={category}
+                                className="overflow-hidden rounded-2xl border border-slate-200 bg-white"
+                            >
+                                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                                    <div className="flex flex-col gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setCollapsedCategories((prev) => ({
+                                                    ...prev,
+                                                    [category]: !isCollapsed,
+                                                }))
+                                            }
+                                            className="flex items-start gap-2 text-left"
+                                        >
+                                            {isCollapsed ? (
+                                                <ChevronRight className="mt-0.5 h-4 w-4 text-slate-500" />
+                                            ) : (
+                                                <ChevronDown className="mt-0.5 h-4 w-4 text-slate-500" />
+                                            )}
+                                            <div>
+                                                <div className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                                                    {category}
+                                                </div>
+                                                <div className="mt-1 text-xs text-slate-500">
+                                                    {items.length} permissions
+                                                </div>
+                                            </div>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleToggleAllByCategory(
+                                                    category,
+                                                    selectionState !== 'all'
+                                                )
+                                            }
+                                            className="
+                                                inline-flex w-fit items-center gap-1 rounded-md border border-slate-200
+                                                bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700
+                                                transition hover:bg-slate-50
+                                            "
+                                        >
+                                            <SelectionIcon state={selectionState} />
+                                            {selectionState === 'all'
+                                                ? 'ยกเลิกทั้งหมวด'
+                                                : 'เลือกทั้งหมวด'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {!isCollapsed && (
+                                    <div className="divide-y divide-slate-200">
+                                        {items.map((permission, index) => {
+                                            const selectionState = getPermissionSelectionState(permission.key);
+                                            const enabledRoleCount = getEnabledRoleCountByPermission(permission.key);
+                                            const isChanged = changedPermissionKeys.has(permission.key);
+                                            const orderNumber = permissionOrderMap[permission.key] || index + 1;
+                                            const displayLabel = formatPagePermissionLabel(permission.label);
+
+                                            return (
+                                                <div key={permission.key} className="space-y-3 p-4">
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="min-w-0">
+                                                            <div className="mb-1.5 flex items-center gap-2">
+                                                                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-slate-200 px-1 text-[10px] font-bold text-slate-700">
+                                                                    {orderNumber}
+                                                                </span>
+                                                                <div className="text-sm font-semibold text-slate-800">
+                                                                    {displayLabel}
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-[11px] leading-relaxed text-slate-500">
+                                                                {permission.description}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex shrink-0 flex-col items-end gap-1.5">
+                                                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                                                                {enabledRoleCount}/{visibleRoles.length} บทบาท
+                                                            </span>
+                                                            {isChanged && (
+                                                                <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                                                    แก้ไขแล้ว
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <span className="inline-flex max-w-full truncate rounded-md bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
+                                                            {permission.key}
+                                                        </span>
+
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                handleToggleAllByPermission(
+                                                                    permission.key,
+                                                                    selectionState !== 'all'
+                                                                )
+                                                            }
+                                                            className="
+                                                                inline-flex items-center gap-1 rounded-md border border-slate-200
+                                                                bg-white px-2 py-1 text-[11px] font-medium text-slate-700
+                                                                transition hover:bg-slate-50
+                                                            "
+                                                        >
+                                                            <SelectionIcon state={selectionState} />
+                                                            {selectionState === 'all'
+                                                                ? 'ปิดทั้งแถว'
+                                                                : 'เปิดทั้งแถว'}
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                        {visibleRoles.map((role) => {
+                                                            const checked =
+                                                                permissions[role.role_id]?.[permission.key] || false;
+
+                                                            return (
+                                                                <div
+                                                                    key={role.role_id}
+                                                                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                                                                >
+                                                                    <div className="min-w-0 pr-3">
+                                                                        <div
+                                                                            className={`
+                                                                                inline-flex max-w-full truncate rounded-full bg-gradient-to-r px-2 py-0.5
+                                                                                text-[11px] font-semibold text-white ${getRoleColor(role.role_name)}
+                                                                            `}
+                                                                        >
+                                                                            {role.role_name}
+                                                                        </div>
+                                                                    </div>
+                                                                    <Toggle
+                                                                        checked={checked}
+                                                                        onChange={() =>
+                                                                            handleTogglePermission(
+                                                                                role.role_id,
+                                                                                permission.key
+                                                                            )
+                                                                        }
+                                                                        ariaLabel={`Toggle ${displayLabel} for ${role.role_name}`}
+                                                                    />
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </section>
+                        );
+                    })
+                )}
+            </div>
+
+            <div className="hidden w-full min-w-0 overflow-auto max-h-[72vh] overscroll-contain rounded-b-2xl lg:block">
+                <table className="min-w-[920px] w-full table-auto border-separate border-spacing-0 text-sm">
                     <thead className="sticky top-0 z-30">
                         <tr className="bg-slate-50">
-                            <th className="sticky left-0 z-40 w-[280px] sm:w-[320px] lg:w-[360px] border-b border-r border-slate-200 bg-slate-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-600">
+                            <th className="z-40 w-[300px] min-w-[300px] border-b border-r border-slate-200 bg-slate-50 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-600 lg:sticky lg:left-0">
                                 เมนู / รายการสิทธิ์
                             </th>
 
@@ -816,9 +989,9 @@ export default function RolePermissionEditor({ roles }: Props) {
                                 return (
                                     <th
                                         key={role.role_id}
-                                        className="w-[118px] sm:w-[128px] lg:w-[140px] border-b border-slate-200 bg-slate-50 px-2 py-3 text-center align-top"
+                                        className="min-w-[120px] border-b border-slate-200 bg-slate-50 px-3 py-3 text-center align-top"
                                     >
-                                        <div className="flex flex-col items-center gap-1.5">
+                                        <div className="flex flex-col items-center gap-2">
                                             <span
                                                 className={`
                                                     inline-flex max-w-full truncate rounded-full bg-gradient-to-r px-2.5 py-1
@@ -829,7 +1002,7 @@ export default function RolePermissionEditor({ roles }: Props) {
                                                 {role.role_name}
                                             </span>
 
-                                            <span className="text-[11px] text-slate-500">
+                                            <span className="text-[11px] leading-none text-slate-500">
                                                 {enabledCount} / {totalPermissions}
                                             </span>
 
@@ -881,9 +1054,9 @@ export default function RolePermissionEditor({ roles }: Props) {
                                         <tr>
                                             <td
                                                 colSpan={visibleRoles.length + 1}
-                                                className="sticky top-[49px] sm:top-[57px] z-20 border-b border-t border-slate-200 bg-slate-100/95 px-4 py-2.5 backdrop-blur"
+                                                className="border-b border-t border-slate-200 bg-slate-100 px-4 py-3"
                                             >
-                                                <div className="flex items-center justify-between gap-3">
+                                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                     <button
                                                         type="button"
                                                         onClick={() =>
@@ -892,18 +1065,20 @@ export default function RolePermissionEditor({ roles }: Props) {
                                                                 [category]: !isCollapsed,
                                                             }))
                                                         }
-                                                        className="inline-flex items-center gap-2 text-left"
+                                                        className="inline-flex items-start gap-2 text-left"
                                                     >
                                                         {isCollapsed ? (
                                                             <ChevronRight className="h-4 w-4 text-slate-500" />
                                                         ) : (
                                                             <ChevronDown className="h-4 w-4 text-slate-500" />
                                                         )}
-                                                        <div className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                                                            {category}
-                                                        </div>
-                                                        <div className="mt-1 text-xs text-slate-500">
-                                                            {items.length} permissions
+                                                        <div>
+                                                            <div className="text-xs font-bold uppercase tracking-wide text-slate-700">
+                                                                {category}
+                                                            </div>
+                                                            <div className="mt-1 text-xs text-slate-500">
+                                                                {items.length} permissions
+                                                            </div>
                                                         </div>
                                                     </button>
 
@@ -945,7 +1120,7 @@ export default function RolePermissionEditor({ roles }: Props) {
                                                         ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}
                                                     `}
                                                 >
-                                                    <td className="sticky left-0 z-10 border-b border-r border-slate-200 bg-inherit px-4 py-3 align-middle">
+                                                    <td className={`${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'} z-10 border-b border-r border-slate-200 px-4 py-3 align-middle lg:sticky lg:left-0`}>
                                                         <div className="flex items-start justify-between gap-2">
                                                             <div className="min-w-0">
                                                                 <div className="mb-1.5 flex items-center gap-2">
