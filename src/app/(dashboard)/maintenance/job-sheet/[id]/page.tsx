@@ -2,12 +2,48 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { getMaintenanceRequestById } from '@/actions/maintenanceActions';
+import { getMaintenanceRequestById, updateMaintenanceRequest } from '@/actions/maintenanceActions';
 import { getSystemSettings } from '@/actions/settingActions';
-import { Printer, ArrowLeft } from 'lucide-react';
+import { Printer, ArrowLeft, Wrench } from 'lucide-react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 
-// Helper to format date
+interface SessionUser {
+    role?: string;
+    username?: string;
+    name?: string;
+}
+
+interface MaintenancePart {
+    p_id: string;
+    quantity: number;
+    unit: string | null;
+    status: string;
+    tbl_products?: {
+        p_name?: string | null;
+    } | null;
+}
+
+interface JobSheetRequest {
+    request_id: number;
+    request_number: string;
+    created_at: Date | string;
+    priority: string;
+    status: string;
+    title: string;
+    description: string | null;
+    reported_by: string;
+    assigned_to: string | null;
+    scheduled_date: Date | string | null;
+    notes: string | null;
+    tbl_rooms?: {
+        room_code?: string | null;
+        room_name?: string | null;
+        building?: string | null;
+    } | null;
+    tbl_maintenance_parts?: MaintenancePart[] | null;
+}
+
 const formatDate = (date: Date | string | null) => {
     if (!date) return '-';
     return new Date(date).toLocaleDateString('th-TH', {
@@ -15,57 +51,113 @@ const formatDate = (date: Date | string | null) => {
         month: 'long',
         day: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
     });
 };
 
 export default function JobSheetPage() {
     const params = useParams();
-    const [request, setRequest] = useState<any>(null);
+    const { data: session } = useSession();
+    const sessionUser = (session?.user || {}) as SessionUser;
+
+    const [request, setRequest] = useState<JobSheetRequest | null>(null);
     const [settings, setSettings] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
+    const [accepting, setAccepting] = useState(false);
 
     useEffect(() => {
-        if (params.id) {
-            Promise.all([
-                getMaintenanceRequestById(Number(params.id)),
-                getSystemSettings()
-            ]).then(([requestResult, settingsResult]) => {
-                if (requestResult.success) {
-                    setRequest(requestResult.data);
-                }
-                if (settingsResult.success && settingsResult.data) {
-                    setSettings(settingsResult.data);
-                }
-                setLoading(false);
-            });
-        }
+        if (!params.id) return;
+
+        Promise.all([
+            getMaintenanceRequestById(Number(params.id)),
+            getSystemSettings(),
+        ]).then(([requestResult, settingsResult]) => {
+            if (requestResult.success) {
+                setRequest((requestResult.data ?? null) as JobSheetRequest | null);
+            }
+            if (settingsResult.success && settingsResult.data) {
+                setSettings(settingsResult.data);
+            }
+            setLoading(false);
+        });
     }, [params.id]);
+
+    const currentRole = (sessionUser.role || '').toLowerCase();
+    const canAcceptJob = currentRole === 'technician' && request?.status === 'pending';
+
+    const handleAcceptJob = async () => {
+        if (!canAcceptJob || !request?.request_id) return;
+
+        const assignedName =
+            (sessionUser.name || sessionUser.username || 'technician').toString();
+
+        setAccepting(true);
+        try {
+            const result = await updateMaintenanceRequest(
+                request.request_id,
+                {
+                    status: 'in_progress',
+                    assigned_to: assignedName,
+                    scheduled_date: new Date().toISOString().split('T')[0],
+                    notes: request?.notes || 'Technician accepted this job from job-sheet page',
+                },
+                assignedName
+            );
+
+            if (!result.success) {
+                window.alert(result.error || 'Unable to accept this job');
+                return;
+            }
+
+            setRequest((prev) => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    status: 'in_progress',
+                    assigned_to: assignedName,
+                };
+            });
+        } catch (error) {
+            console.error(error);
+            window.alert('Unable to accept this job');
+        } finally {
+            setAccepting(false);
+        }
+    };
 
     if (loading) return <div className="p-8 text-center">กำลังโหลด...</div>;
     if (!request) return <div className="p-8 text-center text-red-500">ไม่พบข้อมูลใบงาน</div>;
 
     return (
         <div className="min-h-screen bg-gray-100 p-8 print:p-0 print:bg-white text-black">
-            {/* Toolbar - Hidden when printing */}
             <div className="mb-8 flex justify-between items-center print:hidden max-w-4xl mx-auto">
                 <Link href="/maintenance/dashboard" className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
                     <ArrowLeft size={20} /> กลับหน้าหลัก
                 </Link>
-                <button
-                    onClick={() => window.print()}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 shadow-sm"
-                >
-                    <Printer size={20} /> พิมพ์ใบงาน
-                </button>
+
+                <div className="flex items-center gap-2">
+                    {canAcceptJob && (
+                        <button
+                            onClick={handleAcceptJob}
+                            disabled={accepting}
+                            className="bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-emerald-700 shadow-sm disabled:opacity-60"
+                        >
+                            <Wrench size={18} /> {accepting ? 'Accepting...' : 'รับงาน'}
+                        </button>
+                    )}
+
+                    <button
+                        onClick={() => window.print()}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 shadow-sm"
+                    >
+                        <Printer size={20} /> พิมพ์ใบงาน
+                    </button>
+                </div>
             </div>
 
-            {/* A4 Content Area */}
             <div id="job-sheet" className="bg-white shadow-lg print:shadow-none max-w-4xl mx-auto p-10 print:p-4 rounded-xl print:w-full">
-                {/* Header */}
                 <div className="border-b-2 border-gray-800 pb-4 mb-6 flex justify-between items-start">
                     <div className="flex items-center gap-4">
-                        {/* Logo placeholder */}
                         <div className="w-16 h-16 bg-gray-200 flex items-center justify-center rounded text-gray-400">
                             Logo
                         </div>
@@ -79,12 +171,11 @@ export default function JobSheetPage() {
                         <div className="text-xl font-mono font-bold text-blue-600">{request.request_number}</div>
                         <div className="text-sm text-gray-500">วันที่แจ้ง: {formatDate(request.created_at)}</div>
                         <div className="mt-2 inline-block px-3 py-1 border rounded text-sm font-semibold uppercase">
-                            {request.priority === 'urgent' ? '🚨 เร่งด่วน' : request.priority === 'high' ? '⚠️ สูง' : 'ปกติ'}
+                            {request.priority === 'urgent' ? 'เร่งด่วนมาก' : request.priority === 'high' ? 'สูง' : 'ปกติ'}
                         </div>
                     </div>
                 </div>
 
-                {/* Job Info */}
                 <div className="grid grid-cols-2 gap-6 mb-6">
                     <div className="space-y-2">
                         <h3 className="font-bold border-b pb-1 mb-2">ข้อมูลงานซ่อม</h3>
@@ -115,13 +206,12 @@ export default function JobSheetPage() {
                             <span className="col-span-2 font-medium">{request.assigned_to || '-'}</span>
                         </div>
                         <div className="grid grid-cols-3">
-                            <span className="text-gray-600">วันที่นัดหมาย:</span>
+                            <span className="text-gray-600">วันนัดหมาย:</span>
                             <span className="col-span-2 font-medium">{formatDate(request.scheduled_date)}</span>
                         </div>
                     </div>
                 </div>
 
-                {/* Parts Used */}
                 <div className="mb-8">
                     <h3 className="font-bold border-b pb-1 mb-2">รายการอะไหล่ที่ใช้ (Parts Used)</h3>
                     <table className="w-full text-sm border-collapse border border-gray-300">
@@ -135,11 +225,9 @@ export default function JobSheetPage() {
                         </thead>
                         <tbody>
                             {request.tbl_maintenance_parts && request.tbl_maintenance_parts.length > 0 ? (
-                                request.tbl_maintenance_parts.map((part: any, index: number) => (
+                                request.tbl_maintenance_parts.map((part, index: number) => (
                                     <tr key={index}>
-                                        <td className="border border-gray-300 px-3 py-2">
-                                            {part.tbl_products?.p_name || part.p_id}
-                                        </td>
+                                        <td className="border border-gray-300 px-3 py-2">{part.tbl_products?.p_name || part.p_id}</td>
                                         <td className="border border-gray-300 px-3 py-2 text-center">{part.quantity}</td>
                                         <td className="border border-gray-300 px-3 py-2 text-center">{part.unit || '-'}</td>
                                         <td className="border border-gray-300 px-3 py-2 text-center">
@@ -158,13 +246,10 @@ export default function JobSheetPage() {
                     </table>
                 </div>
 
-                {/* Operations & Resolution */}
                 <div className="mb-8 border border-gray-300 rounded p-4 h-32">
                     <h3 className="font-bold mb-2 text-sm">บันทึกการซ่อม / สาเหตุปัญหา:</h3>
-                    {/* Space for handwriting */}
                 </div>
 
-                {/* Signatures */}
                 <div className="grid grid-cols-3 gap-8 mt-12">
                     <div className="text-center">
                         <div className="border-b border-gray-400 h-8 mb-2"></div>
@@ -183,14 +268,12 @@ export default function JobSheetPage() {
                     </div>
                 </div>
 
-                {/* Footer */}
                 <div className="mt-12 pt-4 border-t text-xs text-gray-500 flex justify-between">
                     <span>พิมพ์เมื่อ: {formatDate(new Date())}</span>
                     <span>ระบบบริหารจัดการพัสดุและงานซ่อมบำรุง v1.0</span>
                 </div>
             </div>
 
-            {/* CSS for printing to hide dashboard elements */}
             <style jsx global>{`
                 @media print {
                     @page { margin: 0; }
@@ -210,8 +293,6 @@ export default function JobSheetPage() {
                         box-shadow: none;
                         border-radius: 0;
                     }
-                    /* Attempts to hide Dashboard Sidebar/Navbar if they are outside Body content flow in a weird way, 
-                       though 'body * visibility: hidden' usually catches them. */
                 }
             `}</style>
         </div>

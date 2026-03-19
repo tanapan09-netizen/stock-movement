@@ -141,12 +141,12 @@ interface Technician {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any; bg?: string }> = {
-    pending: { label: 'รอรับเรื่อง', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: Clock },
-    in_progress: { label: 'กำลังดำเนินการ', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Loader2 },
-    confirmed: { label: 'ยืนยันงานเสร็จ', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: CheckCircle2 },
-    completed: { label: 'เสร็จสิ้น', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle2 },
-    cancelled: { label: 'ยกเลิก', color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle },
-    verified: { label: 'ตรวจสอบแล้ว', color: 'bg-cyan-100 text-cyan-700 border-cyan-200', icon: ShieldCheck },
+    pending: { label: 'เธฃเธญเธฃเธฑเธเน€เธฃเธทเนเธญเธ', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: Clock },
+    in_progress: { label: 'เธเธณเธฅเธฑเธเธ”เธณเน€เธเธดเธเธเธฒเธฃ', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Loader2 },
+    confirmed: { label: 'เธขเธทเธเธขเธฑเธเธเธฒเธเน€เธชเธฃเนเธ', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: CheckCircle2 },
+    completed: { label: 'เน€เธชเธฃเนเธเธชเธดเนเธ', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle2 },
+    cancelled: { label: 'เธขเธเน€เธฅเธดเธ', color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle },
+    verified: { label: 'เธ•เธฃเธงเธเธชเธญเธเนเธฅเนเธง', color: 'bg-cyan-100 text-cyan-700 border-cyan-200', icon: ShieldCheck },
 };
 
 const formatAcceptedTime = (req: MaintenanceRequestItem): Date | null => {
@@ -155,7 +155,7 @@ const formatAcceptedTime = (req: MaintenanceRequestItem): Date | null => {
     }
     // Find the latest history item where status was changed to 'in_progress'
     const acceptedEvent = req.tbl_maintenance_history.find(h =>
-        (h.action === 'เปลี่ยนสถานะ' || h.action === 'status_change') &&
+        (h.action === 'เน€เธเธฅเธตเนเธขเธเธชเธ–เธฒเธเธฐ' || h.action === 'status_change') &&
         h.new_value === 'in_progress'
     );
     return acceptedEvent ? new Date(acceptedEvent.changed_at) : null;
@@ -163,59 +163,63 @@ const formatAcceptedTime = (req: MaintenanceRequestItem): Date | null => {
 
 const getElapsedTime = (startDate: Date, now: Date): string => {
     const diffMs = now.getTime() - startDate.getTime();
-    if (diffMs < 0) return 'เพิ่งรับงาน';
+    if (diffMs < 0) return 'เน€เธเธดเนเธเธฃเธฑเธเธเธฒเธ';
 
     const diffMins = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffDays > 0) return `${diffDays} วัน ${diffHours % 24} ชม.`;
-    if (diffHours > 0) return `${diffHours} ชม. ${diffMins % 60} นาที`;
-    if (diffMins === 0) return `ไม่ถึง 1 นาที`;
-    return `${diffMins} นาที`;
+    if (diffDays > 0) return `${diffDays} เธงเธฑเธ ${diffHours % 24} เธเธก.`;
+    if (diffHours > 0) return `${diffHours} เธเธก. ${diffMins % 60} เธเธฒเธ—เธต`;
+    if (diffMins === 0) return `เนเธกเนเธ–เธถเธ 1 เธเธฒเธ—เธต`;
+    return `${diffMins} เธเธฒเธ—เธต`;
 };
 
 const getHistoryActionLabel = (action: string): string => {
     switch (action) {
         case 'HEAD_TECH_APPROVED':
-            return 'หัวหน้าช่างตรวจรับงาน';
+            return 'เธซเธฑเธงเธซเธเนเธฒเธเนเธฒเธเธ•เธฃเธงเธเธฃเธฑเธเธเธฒเธ';
         case 'SUBMITTED_FOR_HEAD_TECH_APPROVAL':
-            return 'ช่างส่งงานให้หัวหน้าช่างตรวจรับ';
+            return 'เธเนเธฒเธเธชเนเธเธเธฒเธเนเธซเนเธซเธฑเธงเธซเธเนเธฒเธเนเธฒเธเธ•เธฃเธงเธเธฃเธฑเธ';
         case 'status_change':
-            return 'เปลี่ยนสถานะ';
+            return 'เน€เธเธฅเธตเนเธขเธเธชเธ–เธฒเธเธฐ';
         case 'priority_change':
-            return 'เปลี่ยนความเร่งด่วน';
+            return 'เน€เธเธฅเธตเนเธขเธเธเธงเธฒเธกเน€เธฃเนเธเธ”เนเธงเธ';
         case 'category_change':
-            return 'เปลี่ยนหมวดงาน';
+            return 'เน€เธเธฅเธตเนเธขเธเธซเธกเธงเธ”เธเธฒเธ';
         case 'assignment_change':
-            return 'มอบหมายงาน';
+            return 'เธกเธญเธเธซเธกเธฒเธขเธเธฒเธ';
         case 'schedule_change':
-            return 'เปลี่ยนวันนัดหมาย';
+            return 'เน€เธเธฅเธตเนเธขเธเธงเธฑเธเธเธฑเธ”เธซเธกเธฒเธข';
         case 'actual_cost_change':
-            return 'บันทึกค่าใช้จ่ายจริง';
+            return 'เธเธฑเธเธ—เธถเธเธเนเธฒเนเธเนเธเนเธฒเธขเธเธฃเธดเธ';
         case 'parts_verification':
-            return 'ตรวจนับอะไหล่';
+            return 'เธ•เธฃเธงเธเธเธฑเธเธญเธฐเนเธซเธฅเน';
         case 'reopen_request':
-            return 'เปิดใบงานใหม่';
+            return 'เน€เธเธดเธ”เนเธเธเธฒเธเนเธซเธกเน';
         case 'reopen_reason':
-            return 'เหตุผลการเปิดงานใหม่';
+            return 'เน€เธซเธ•เธธเธเธฅเธเธฒเธฃเน€เธเธดเธ”เธเธฒเธเนเธซเธกเน';
         default:
             return action;
     }
 };
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-    low: { label: 'ต่ำ', color: 'text-gray-600', bg: 'bg-gray-100' },
-    normal: { label: 'ปกติ', color: 'text-blue-600', bg: 'bg-blue-100' },
-    high: { label: 'สูง', color: 'text-orange-600', bg: 'bg-orange-100' },
-    urgent: { label: 'เร่งด่วน', color: 'text-red-600', bg: 'bg-red-100' }
+    low: { label: 'เธ•เนเธณ', color: 'text-gray-600', bg: 'bg-gray-100' },
+    normal: { label: 'เธเธเธ•เธด', color: 'text-blue-600', bg: 'bg-blue-100' },
+    high: { label: 'เธชเธนเธ', color: 'text-orange-600', bg: 'bg-orange-100' },
+    urgent: { label: 'เน€เธฃเนเธเธ”เนเธงเธ', color: 'text-red-600', bg: 'bg-red-100' }
 };
 interface MaintenanceClientProps {
     userPermissions?: Record<string, boolean>;
 }
 
+const resolveDepartmentFromRole = (role: string) => role.trim().toLowerCase();
+
 export default function MaintenanceClient({ userPermissions = {} }: MaintenanceClientProps) {
     const { data: session } = useSession();
+    const loggedInRole = ((session?.user as any)?.role || '').toString();
+    const derivedDepartment = resolveDepartmentFromRole(loggedInRole);
     const isApprover = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'manager' || userPermissions.can_approve;
     const searchParams = useSearchParams();
     const reqQueryParam = searchParams.get('req');
@@ -487,6 +491,16 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     }, [session?.user?.name]);
 
     useEffect(() => {
+        if (!derivedDepartment) return;
+
+        setFormData(prev => (
+            prev.department === derivedDepartment
+                ? prev
+                : { ...prev, department: derivedDepartment }
+        ));
+    }, [derivedDepartment]);
+
+    useEffect(() => {
         if (reqQueryParam && requests.length > 0 && !hasOpenedFromUrl) {
             const targetReq = requests.find(r =>
                 r.request_number === reqQueryParam || r.request_id === Number(reqQueryParam)
@@ -505,13 +519,13 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
     async function handleResendNotification(requestId: number) {
         const result = await Swal.fire({
-            title: '<div style="font-size: 20px; font-weight: 800; margin-bottom: 8px;">ส่งแจ้งเตือนซ้ำ?</div>',
-            html: '<div style="font-size: 15px; opacity: 0.8;">คุณต้องการส่งการแจ้งเตือนไปยังผู้รับผิดชอบ<br/>สำหรับรายการนี้อีกครั้งใช่หรือไม่?</div>',
+            title: '<div style="font-size: 20px; font-weight: 800; margin-bottom: 8px;">เธชเนเธเนเธเนเธเน€เธ•เธทเธญเธเธเนเธณ?</div>',
+            html: '<div style="font-size: 15px; opacity: 0.8;">เธเธธเธ“เธ•เนเธญเธเธเธฒเธฃเธชเนเธเธเธฒเธฃเนเธเนเธเน€เธ•เธทเธญเธเนเธเธขเธฑเธเธเธนเนเธฃเธฑเธเธเธดเธ”เธเธญเธ<br/>เธชเธณเธซเธฃเธฑเธเธฃเธฒเธขเธเธฒเธฃเธเธตเนเธญเธตเธเธเธฃเธฑเนเธเนเธเนเธซเธฃเธทเธญเนเธกเน?</div>',
             icon: 'question',
             iconColor: '#f63b3b',
             showCancelButton: true,
-            confirmButtonText: 'ส่งเลย',
-            cancelButtonText: 'ยกเลิก',
+            confirmButtonText: 'เธชเนเธเน€เธฅเธข',
+            cancelButtonText: 'เธขเธเน€เธฅเธดเธ',
             confirmButtonColor: '#ff0004',
             cancelButtonColor: 'transparent',
             background: '#111827',
@@ -526,14 +540,14 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
         try {
             const resultAction = await resendMaintenanceNotification(requestId);
             if (resultAction.success) {
-                showToast('ส่งแจ้งเตือนซ้ำสำเร็จ', 'success');
+                showToast('เธชเนเธเนเธเนเธเน€เธ•เธทเธญเธเธเนเธณเธชเธณเน€เธฃเนเธ', 'success');
                 loadData();
             } else {
-                showToast(resultAction.error || 'ส่งแจ้งเตือนซ้ำไม่สำเร็จ', 'error');
+                showToast(resultAction.error || 'เธชเนเธเนเธเนเธเน€เธ•เธทเธญเธเธเนเธณเนเธกเนเธชเธณเน€เธฃเนเธ', 'error');
             }
         } catch (error) {
             console.error('Error resending notification:', error);
-            showToast('เกิดข้อผิดพลาดในการส่งแจ้งเตือนซ้ำ', 'error');
+            showToast('เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”เนเธเธเธฒเธฃเธชเนเธเนเธเนเธเน€เธ•เธทเธญเธเธเนเธณ', 'error');
         }
     }
 
@@ -542,11 +556,11 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
         // Validation
         if (!formData.title) {
-            showToast('กรุณาระบุหัวข้อแจ้งซ่อม', 'warning');
+            showToast('เธเธฃเธธเธ“เธฒเธฃเธฐเธเธธเธซเธฑเธงเธเนเธญเนเธเนเธเธเนเธญเธก', 'warning');
             return;
         }
         if (!formData.reported_by) {
-            showToast('กรุณาระบุผู้แจ้ง', 'warning');
+            showToast('เธเธฃเธธเธ“เธฒเธฃเธฐเธเธธเธเธนเนเนเธเนเธ', 'warning');
             return;
         }
 
@@ -564,16 +578,16 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
         if (locationMode === 'location') {
             if (!formData.room_id || formData.room_id === 0) {
-                showToast('กรุณาเลือกสถานที่จากรายการที่กำหนด', 'warning');
+                showToast('เธเธฃเธธเธ“เธฒเน€เธฅเธทเธญเธเธชเธ–เธฒเธเธ—เธตเนเธเธฒเธเธฃเธฒเธขเธเธฒเธฃเธ—เธตเนเธเธณเธซเธเธ”', 'warning');
                 return;
             }
         } else {
             if (!formData.vehicle_id || formData.vehicle_id === 0) {
-                showToast('กรุณาเลือกทะเบียนรถจากรายการที่กำหนด', 'warning');
+                showToast('เธเธฃเธธเธ“เธฒเน€เธฅเธทเธญเธเธ—เธฐเน€เธเธตเธขเธเธฃเธ–เธเธฒเธเธฃเธฒเธขเธเธฒเธฃเธ—เธตเนเธเธณเธซเธเธ”', 'warning');
                 return;
             }
             if (!derivedRoomIdFromVehicle) {
-                showToast('ทะเบียนรถนี้ยังไม่ได้ผูกกับเลขห้อง (owner_room) กรุณาแก้ไขที่หน้า /admin/rooms หรือเลือกสถานที่แทน', 'warning');
+                showToast('เธ—เธฐเน€เธเธตเธขเธเธฃเธ–เธเธตเนเธขเธฑเธเนเธกเนเนเธ”เนเธเธนเธเธเธฑเธเน€เธฅเธเธซเนเธญเธ (owner_room) เธเธฃเธธเธ“เธฒเนเธเนเนเธเธ—เธตเนเธซเธเนเธฒ /admin/rooms เธซเธฃเธทเธญเน€เธฅเธทเธญเธเธชเธ–เธฒเธเธ—เธตเนเนเธ—เธ', 'warning');
                 return;
             }
         }
@@ -593,7 +607,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
         data.append('contact_info', formData.contact_info);
 
         const vehiclePlate = selectedVehicle?.license_plate?.trim() || '';
-        const vehicleTag = vehiclePlate ? `รถ:${vehiclePlate}` : '';
+        const vehicleTag = vehiclePlate ? `เธฃเธ–:${vehiclePlate}` : '';
         const tagsToSend = (() => {
             const current = formData.tags ? formData.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
             if (vehicleTag && !current.some(t => t.toLowerCase() === vehicleTag.toLowerCase())) current.push(vehicleTag);
@@ -619,7 +633,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                         selectedGeneralRequestId,
                         {
                             status: 'completed',
-                            notes: `ใบงานถูกสร้างใหม่เลขที่: ${(result.data as any)?.request_number}`
+                            notes: `เนเธเธเธฒเธเธ–เธนเธเธชเธฃเนเธฒเธเนเธซเธกเนเน€เธฅเธเธ—เธตเน: ${(result.data as any)?.request_number}`
                         },
                         formData.reported_by
                     );
@@ -635,12 +649,12 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                     category: 'electrical',
                     image_url: '',
                     priority: 'normal',
-                    reported_by: '',
+                    reported_by: (session?.user?.name || '') as string,
                     assigned_to: '',
                     scheduled_date: '',
                     estimated_cost: 0,
                     location: '',
-                    department: '',
+                    department: derivedDepartment,
                     contact_info: '',
                     tags: '',
                     tagInput: '',
@@ -653,13 +667,13 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                 setAssetSearchQuery('');
                 setAssetResults([]);
                 loadData();
-                showToast('สร้างรายการแจ้งซ่อมสำเร็จ', 'success');
+                showToast('เธชเธฃเนเธฒเธเธฃเธฒเธขเธเธฒเธฃเนเธเนเธเธเนเธญเธกเธชเธณเน€เธฃเนเธ', 'success');
             } else {
-                showToast('เกิดข้อผิดพลาด: ' + result.error, 'error');
+                showToast('เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”: ' + result.error, 'error');
             }
         } catch (error) {
             console.error(error);
-            showToast('เกิดข้อผิดพลาดในการส่งข้อมูล', 'error');
+            showToast('เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”เนเธเธเธฒเธฃเธชเนเธเธเนเธญเธกเธนเธฅ', 'error');
         }
     }
 
@@ -702,7 +716,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     async function handleRoomSubmit(e: React.FormEvent) {
         e.preventDefault();
         if (!roomFormData.room_code || !roomFormData.room_name) {
-            alert('กรุณากรอกรหัสและชื่อห้อง');
+            alert('เธเธฃเธธเธ“เธฒเธเธฃเธญเธเธฃเธซเธฑเธชเนเธฅเธฐเธเธทเนเธญเธซเนเธญเธ');
             return;
         }
 
@@ -712,7 +726,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             setRoomFormData({ room_code: '', room_name: '', building: '', floor: '' });
             loadData();
         } else {
-            alert('เกิดข้อผิดพลาด: ' + result.error);
+            alert('เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”: ' + result.error);
         }
     }
 
@@ -759,9 +773,9 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             if (result.success) {
                 setShowStatusModal(false);
                 loadData();
-                showToast('ส่งงานให้หัวหน้าช่างตรวจรับแล้ว', 'success');
+                showToast('เธชเนเธเธเธฒเธเนเธซเนเธซเธฑเธงเธซเธเนเธฒเธเนเธฒเธเธ•เธฃเธงเธเธฃเธฑเธเนเธฅเนเธง', 'success');
             } else {
-                showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
+                showToast(`เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”: ${result.error}`, 'error');
             }
             return;
         }
@@ -787,9 +801,9 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             if (result.success) {
                 setShowStatusModal(false);
                 loadData();
-                showToast('บันทึกการซ่อมเสร็จสิ้น', 'success');
+                showToast('เธเธฑเธเธ—เธถเธเธเธฒเธฃเธเนเธญเธกเน€เธชเธฃเนเธเธชเธดเนเธ', 'success');
             } else {
-                showToast('เกิดข้อผิดพลาด: ' + result.error, 'error');
+                showToast('เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”: ' + result.error, 'error');
             }
             return;
         }
@@ -807,11 +821,11 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
         // If changing to in_progress, require technician and schedule
         if (statusChangeData.newStatus === 'in_progress') {
             if (!statusChangeData.technician) {
-                showToast('กรุณาเลือกช่างที่รับผิดชอบ', 'warning');
+                showToast('เธเธฃเธธเธ“เธฒเน€เธฅเธทเธญเธเธเนเธฒเธเธ—เธตเนเธฃเธฑเธเธเธดเธ”เธเธญเธ', 'warning');
                 return;
             }
             if (!statusChangeData.scheduledDate) {
-                showToast('กรุณากำหนดวันที่คาดว่าจะเสร็จ', 'warning');
+                showToast('เธเธฃเธธเธ“เธฒเธเธณเธซเธเธ”เธงเธฑเธเธ—เธตเนเธเธฒเธ”เธงเนเธฒเธเธฐเน€เธชเธฃเนเธ', 'warning');
                 return;
             }
             updateData.assigned_to = statusChangeData.technician;
@@ -820,7 +834,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
         // If changing to completed, add completion notes and timestamp
         if (statusChangeData.newStatus === 'completed') {
-            updateData.notes = statusChangeData.completionNotes || 'ซ่อมเสร็จเรียบร้อย';
+            updateData.notes = statusChangeData.completionNotes || 'เธเนเธญเธกเน€เธชเธฃเนเธเน€เธฃเธตเธขเธเธฃเนเธญเธข';
             updateData.completed_at = new Date();
         }
 
@@ -835,12 +849,12 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             loadData();
             showToast(
                 statusChangeData.newStatus === 'completed'
-                    ? 'บันทึกการซ่อมเสร็จสิ้น'
-                    : 'เปลี่ยนสถานะสำเร็จ',
+                    ? 'เธเธฑเธเธ—เธถเธเธเธฒเธฃเธเนเธญเธกเน€เธชเธฃเนเธเธชเธดเนเธ'
+                    : 'เน€เธเธฅเธตเนเธขเธเธชเธ–เธฒเธเธฐเธชเธณเน€เธฃเนเธ',
                 'success'
             );
         } else {
-            showToast('เกิดข้อผิดพลาด: ' + result.error, 'error');
+            showToast('เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”: ' + result.error, 'error');
         }
     }
 
@@ -849,19 +863,19 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
         const result = await updateMaintenanceRequest(request_id, { status: newStatus }, 'System');
         if (result.success) {
             loadData();
-            showToast('เปลี่ยนสถานะสำเร็จ', 'success');
+            showToast('เน€เธเธฅเธตเนเธขเธเธชเธ–เธฒเธเธฐเธชเธณเน€เธฃเนเธ', 'success');
         }
     }
 
     async function handleDelete(request_id: number) {
         const result = await Swal.fire({
-            title: '<div style="font-size: 22px; font-weight: 800; margin-bottom: 8px;">ยืนยันการลบรายการ?</div>',
-            html: '<div style="font-size: 15px; opacity: 0.8; line-height: 1.6;">ข้อมูลรายการแจ้งซ่อมนี้จะถูกลบออกจากระบบ<br/><span style="color: #ef4444; font-weight: 600;">และไม่สามารถกู้คืนได้ในภายหลัง</span></div>',
+            title: '<div style="font-size: 22px; font-weight: 800; margin-bottom: 8px;">เธขเธทเธเธขเธฑเธเธเธฒเธฃเธฅเธเธฃเธฒเธขเธเธฒเธฃ?</div>',
+            html: '<div style="font-size: 15px; opacity: 0.8; line-height: 1.6;">เธเนเธญเธกเธนเธฅเธฃเธฒเธขเธเธฒเธฃเนเธเนเธเธเนเธญเธกเธเธตเนเธเธฐเธ–เธนเธเธฅเธเธญเธญเธเธเธฒเธเธฃเธฐเธเธ<br/><span style="color: #ef4444; font-weight: 600;">เนเธฅเธฐเนเธกเนเธชเธฒเธกเธฒเธฃเธ–เธเธนเนเธเธทเธเนเธ”เนเนเธเธ เธฒเธขเธซเธฅเธฑเธ</span></div>',
             icon: 'warning',
             iconColor: '#fbbf24',
             showCancelButton: true,
-            confirmButtonText: 'ใช่, ฉันต้องการลบ',
-            cancelButtonText: 'ยกเลิก',
+            confirmButtonText: 'เนเธเน, เธเธฑเธเธ•เนเธญเธเธเธฒเธฃเธฅเธ',
+            cancelButtonText: 'เธขเธเน€เธฅเธดเธ',
             confirmButtonColor: '#ef4444',
             cancelButtonColor: 'transparent',
             background: '#111827',
@@ -971,7 +985,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             const allVerified = parts.every(p => p.status === 'verified');
 
             if (hasParts && !allVerified) {
-                alert('ต้องตรวจนับอะไหล่ทุกชิ้นให้ครบถ้วนก่อนปิดงาน');
+                alert('เธ•เนเธญเธเธ•เธฃเธงเธเธเธฑเธเธญเธฐเนเธซเธฅเนเธ—เธธเธเธเธดเนเธเนเธซเนเธเธฃเธเธ–เนเธงเธเธเนเธญเธเธเธดเธ”เธเธฒเธ');
                 return;
             }
         }
@@ -998,9 +1012,9 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
         if (result.success) {
             setShowDetailModal(false);
             loadData();
-            showToast('อัปเดตข้อมูลเรียบร้อยแล้ว', 'success');
+            showToast('เธญเธฑเธเน€เธ”เธ•เธเนเธญเธกเธนเธฅเน€เธฃเธตเธขเธเธฃเนเธญเธขเนเธฅเนเธง', 'success');
         } else {
-            alert('เกิดข้อผิดพลาด: ' + result.error);
+            alert('เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”: ' + result.error);
         }
     }
 
@@ -1011,7 +1025,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             selectedRequest.request_id,
             {
                 status: 'completed',
-                notes: editData.notes || selectedRequest.notes || 'หัวหน้าช่างตรวจรับงานแล้ว'
+                notes: editData.notes || selectedRequest.notes || 'เธซเธฑเธงเธซเธเนเธฒเธเนเธฒเธเธ•เธฃเธงเธเธฃเธฑเธเธเธฒเธเนเธฅเนเธง'
             },
             session.user.name
         );
@@ -1019,9 +1033,9 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
         if (result.success) {
             setShowDetailModal(false);
             loadData();
-            showToast('หัวหน้าช่างตรวจรับงานเรียบร้อยแล้ว', 'success');
+            showToast('เธซเธฑเธงเธซเธเนเธฒเธเนเธฒเธเธ•เธฃเธงเธเธฃเธฑเธเธเธฒเธเน€เธฃเธตเธขเธเธฃเนเธญเธขเนเธฅเนเธง', 'success');
         } else {
-            showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
+            showToast(`เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”: ${result.error}`, 'error');
         }
     }
 
@@ -1059,8 +1073,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             {/* Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">ระบบแจ้งซ่อม</h1>
-                    <p className="text-gray-600 dark:text-gray-400">จัดการรายการแจ้งซ่อมและติดตามสถานะ</p>
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">เธฃเธฐเธเธเนเธเนเธเธเนเธญเธก</h1>
+                    <p className="text-gray-600 dark:text-gray-400">เธเธฑเธ”เธเธฒเธฃเธฃเธฒเธขเธเธฒเธฃเนเธเนเธเธเนเธญเธกเนเธฅเธฐเธ•เธดเธ”เธ•เธฒเธกเธชเธ–เธฒเธเธฐ</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     {userPermissions['maintenance:technicians'] && (
@@ -1068,7 +1082,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             href="/maintenance/technicians"
                             className="px-3 py-2 border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 flex items-center gap-2 text-sm"
                         >
-                            <User size={16} /> จัดการช่าง
+                            <User size={16} /> เธเธฑเธ”เธเธฒเธฃเธเนเธฒเธ
                         </a>
                     )}
                     {userPermissions['maintenance:parts'] && (
@@ -1076,7 +1090,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             href="/maintenance/parts"
                             className="px-3 py-2 border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50 flex items-center gap-2 text-sm"
                         >
-                            <DollarSign size={16} /> เบิก/คืนอะไหล่
+                            <DollarSign size={16} /> เน€เธเธดเธ/เธเธทเธเธญเธฐเนเธซเธฅเน
                         </a>
                     )}
                     {/* View Toggle */}
@@ -1110,7 +1124,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             onClick={() => setShowForm(true)}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
                         >
-                            <Wrench size={18} /> แจ้งใหม่
+                            <Wrench size={18} /> เนเธเนเธเนเธซเธกเน
                         </button>
                     )}
                 </div>
@@ -1121,27 +1135,27 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
                     <div className="text-2xl font-bold text-gray-900 dark:text-white">{summary.total}</div>
-                    <div className="text-gray-600 dark:text-gray-400 text-sm">ทั้งหมด</div>
+                    <div className="text-gray-600 dark:text-gray-400 text-sm">เธ—เธฑเนเธเธซเธกเธ”</div>
                 </div>
                 <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-4">
                     <div className="text-2xl font-bold text-yellow-600">{summary.pending}</div>
-                    <div className="text-yellow-600 text-sm">รอดำเนินการ</div>
+                    <div className="text-yellow-600 text-sm">เธฃเธญเธ”เธณเน€เธเธดเธเธเธฒเธฃ</div>
                 </div>
                 <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4">
                     <div className="text-2xl font-bold text-blue-600">{summary.in_progress}</div>
-                    <div className="text-blue-600 text-sm">กำลังซ่อม</div>
+                    <div className="text-blue-600 text-sm">เธเธณเธฅเธฑเธเธเนเธญเธก</div>
                 </div>
                 <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4">
                     <div className="text-2xl font-bold text-green-600">{summary.completed}</div>
-                    <div className="text-green-600 text-sm">เสร็จแล้ว</div>
+                    <div className="text-green-600 text-sm">เน€เธชเธฃเนเธเนเธฅเนเธง</div>
                 </div>
                 <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-4">
                     <div className="text-2xl font-bold text-orange-600">{summary.pending_verification || 0}</div>
-                    <div className="text-orange-600 text-sm">รอตรวจสอบ (WH-03)</div>
+                    <div className="text-orange-600 text-sm">เธฃเธญเธ•เธฃเธงเธเธชเธญเธ (WH-03)</div>
                 </div>
                 <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-4">
-                    <div className="text-2xl font-bold text-purple-600">฿{summary.total_cost.toLocaleString()}</div>
-                    <div className="text-purple-600 text-sm">ค่าใช้จ่ายรวม</div>
+                    <div className="text-2xl font-bold text-purple-600">เธฟ{summary.total_cost.toLocaleString()}</div>
+                    <div className="text-purple-600 text-sm">เธเนเธฒเนเธเนเธเนเธฒเธขเธฃเธงเธก</div>
                 </div>
             </div>
 
@@ -1154,22 +1168,22 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                         value={filterStatus}
                         onChange={(e) => setFilterStatus(e.target.value)}
                         className="border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
-                        aria-label="กรองตามสถานะ"
+                        aria-label="เธเธฃเธญเธเธ•เธฒเธกเธชเธ–เธฒเธเธฐ"
                     >
-                        <option value="all">ทุกสถานะ</option>
-                        <option value="pending">รอดำเนินการ</option>
-                        <option value="in_progress">กำลังซ่อม</option>
-                        <option value="completed">เสร็จแล้ว</option>
-                        <option value="cancelled">ยกเลิก</option>
+                        <option value="all">เธ—เธธเธเธชเธ–เธฒเธเธฐ</option>
+                        <option value="pending">เธฃเธญเธ”เธณเน€เธเธดเธเธเธฒเธฃ</option>
+                        <option value="in_progress">เธเธณเธฅเธฑเธเธเนเธญเธก</option>
+                        <option value="completed">เน€เธชเธฃเนเธเนเธฅเนเธง</option>
+                        <option value="cancelled">เธขเธเน€เธฅเธดเธ</option>
                     </select>
                 </div>
                 <select
                     value={filterRoom || ''}
                     onChange={(e) => setFilterRoom(e.target.value ? Number(e.target.value) : null)}
                     className="border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                    aria-label="กรองตามห้อง"
+                    aria-label="เธเธฃเธญเธเธ•เธฒเธกเธซเนเธญเธ"
                 >
-                    <option value="">ทุกห้อง</option>
+                    <option value="">เธ—เธธเธเธซเนเธญเธ</option>
                     {rooms.map(room => (
                         <option key={room.room_id} value={room.room_id}>
                             {room.room_code} - {room.room_name}
@@ -1186,27 +1200,27 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             onChange={(e) => setShowCompleted(e.target.checked)}
                         />
                         <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 shadow-inner"></div>
-                        <span className="ms-3 text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-blue-600 transition-colors">แสดงงานที่เสร็จแล้ว</span>
+                        <span className="ms-3 text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-blue-600 transition-colors">เนเธชเธ”เธเธเธฒเธเธ—เธตเนเน€เธชเธฃเนเธเนเธฅเนเธง</span>
                     </label>
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-600 dark:text-gray-300">ตั้งแต่:</span>
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-300">เธ•เธฑเนเธเนเธ•เน:</span>
                     <input
                         type="date"
                         value={filterStartDate}
                         onChange={(e) => setFilterStartDate(e.target.value)}
                         className="border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
-                        aria-label="ตั้งแต่วันที่"
-                        title="ตั้งแต่วันที่"
+                        aria-label="เธ•เธฑเนเธเนเธ•เนเธงเธฑเธเธ—เธตเน"
+                        title="เธ•เธฑเนเธเนเธ•เนเธงเธฑเธเธ—เธตเน"
                     />
-                    <span className="text-sm font-medium text-gray-600 dark:text-gray-300">ถึง:</span>
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-300">เธ–เธถเธ:</span>
                     <input
                         type="date"
                         value={filterEndDate}
                         onChange={(e) => setFilterEndDate(e.target.value)}
                         className="border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500"
-                        aria-label="ถึงวันที่"
-                        title="ถึงวันที่"
+                        aria-label="เธ–เธถเธเธงเธฑเธเธ—เธตเน"
+                        title="เธ–เธถเธเธงเธฑเธเธ—เธตเน"
                     />
                     {(filterStartDate || filterEndDate) && (
                         <button
@@ -1215,7 +1229,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                 setFilterEndDate('');
                             }}
                             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 ml-1"
-                            title="ล้างวันที่"
+                            title="เธฅเนเธฒเธเธงเธฑเธเธ—เธตเน"
                         >
                             <X size={16} />
                         </button>
@@ -1227,11 +1241,11 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                     <input
                         type="text"
                         title="Search Requests"
-                        placeholder="ค้นหาใบงาน..."
+                        placeholder="เธเนเธเธซเธฒเนเธเธเธฒเธ..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600"
-                        aria-label="ค้นหา"
+                        aria-label="เธเนเธเธซเธฒ"
                     />
                 </div>
             </div>
@@ -1323,7 +1337,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                         <span className="text-sm font-medium text-gray-700">{request.assigned_to}</span>
                                                     </div>
                                                 ) : (
-                                                    <span className="text-xs text-gray-400 italic">ยังไม่ได้มอบหมาย</span>
+                                                    <span className="text-xs text-gray-400 italic">เธขเธฑเธเนเธกเนเนเธ”เนเธกเธญเธเธซเธกเธฒเธข</span>
                                                 )}
                                             </td>
                                             <td className="px-6 py-4">
@@ -1424,10 +1438,10 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                         <div className="mb-6 pb-4 border-b bg-blue-600 -m-6 mb-6 p-6 rounded-t-xl">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <h2 className="text-2xl font-bold text-white mb-1">แจ้งซ่อมใหม่</h2>
-                                    <p className="text-blue-100 text-sm">กรอกรายละเอียดปัญหาหรือสิ่งที่ต้องการซ่อม</p>
+                                    <h2 className="text-2xl font-bold text-white mb-1">เนเธเนเธเธเนเธญเธกเนเธซเธกเน</h2>
+                                    <p className="text-blue-100 text-sm">เธเธฃเธญเธเธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”เธเธฑเธเธซเธฒเธซเธฃเธทเธญเธชเธดเนเธเธ—เธตเนเธ•เนเธญเธเธเธฒเธฃเธเนเธญเธก</p>
                                 </div>
-                                <button onClick={() => setShowForm(false)} className="text-white hover:text-blue-200" title="ปิด">
+                                <button onClick={() => setShowForm(false)} className="text-white hover:text-blue-200" title="เธเธดเธ”">
                                     <X size={24} />
                                 </button>
                             </div>
@@ -1447,23 +1461,23 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300 transition-all cursor-pointer"
                                     />
                                     <div className="flex flex-col">
-                                        <span className="text-sm font-semibold text-blue-800">ดึงข้อมูลจากการแจ้งเหตุด่วน/ทั่วไป</span>
-                                        <span className="text-xs text-blue-600">กดที่นี่หากต้องการสร้างใบงานจากการแจ้งเคสด่วนออนไลน์</span>
+                                        <span className="text-sm font-semibold text-blue-800">เธ”เธถเธเธเนเธญเธกเธนเธฅเธเธฒเธเธเธฒเธฃเนเธเนเธเน€เธซเธ•เธธเธ”เนเธงเธ/เธ—เธฑเนเธงเนเธ</span>
+                                        <span className="text-xs text-blue-600">เธเธ”เธ—เธตเนเธเธตเนเธซเธฒเธเธ•เนเธญเธเธเธฒเธฃเธชเธฃเนเธฒเธเนเธเธเธฒเธเธเธฒเธเธเธฒเธฃเนเธเนเธเน€เธเธชเธ”เนเธงเธเธญเธญเธเนเธฅเธเน</span>
                                     </div>
                                 </label>
 
                                 {pullFromGeneral && (
                                     <div className="mt-4 pt-4 border-t border-blue-200">
-                                        <label className="block text-sm font-medium mb-1.5 text-blue-800">เลือกรายการที่แจ้งเข้ามา</label>
+                                        <label className="block text-sm font-medium mb-1.5 text-blue-800">เน€เธฅเธทเธญเธเธฃเธฒเธขเธเธฒเธฃเธ—เธตเนเนเธเนเธเน€เธเนเธฒเธกเธฒ</label>
                                         <div className="relative">
                                             <select
                                                 value={selectedGeneralRequestId || ''}
                                                 onChange={(e) => handleGeneralRequestSelect(Number(e.target.value))}
                                                 className="w-full border border-blue-300 rounded-lg px-4 py-2 bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                                 disabled={fetchingGeneral}
-                                                title="เลือกรายการแจ้งซ่อมทั่วไป"
+                                                title="เน€เธฅเธทเธญเธเธฃเธฒเธขเธเธฒเธฃเนเธเนเธเธเนเธญเธกเธ—เธฑเนเธงเนเธ"
                                             >
-                                                <option value="">-- เลือกรายการ --</option>
+                                                <option value="">-- เน€เธฅเธทเธญเธเธฃเธฒเธขเธเธฒเธฃ --</option>
                                                 {generalRequests.map(req => (
                                                     <option key={req.request_id} value={req.request_id}>
                                                         {req.title} ({req.reported_by})
@@ -1477,7 +1491,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             )}
                                         </div>
                                         {generalRequests.length === 0 && !fetchingGeneral && (
-                                            <p className="mt-2 text-xs text-orange-600 font-medium">ไม่พบรายการแจ้งใหม่ในขณะนี้</p>
+                                            <p className="mt-2 text-xs text-orange-600 font-medium">เนเธกเนเธเธเธฃเธฒเธขเธเธฒเธฃเนเธเนเธเนเธซเธกเนเนเธเธเธ“เธฐเธเธตเน</p>
                                         )}
                                     </div>
                                 )}
@@ -1485,21 +1499,21 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
                             {/* Problem Title */}
                             <div>
-                                <label className="block text-sm font-medium mb-2 text-gray-700">หัวข้อปัญหา <span className="text-red-500">*</span></label>
+                                <label className="block text-sm font-medium mb-2 text-gray-700">เธซเธฑเธงเธเนเธญเธเธฑเธเธซเธฒ <span className="text-red-500">*</span></label>
                                 <input
                                     type="text"
                                     value={formData.title}
                                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                    placeholder="เช่น  เครื่องปรับอากาศห้อง ไม่เย็น"
-                                    title="ระบุหัวข้อปัญหา"
+                                    placeholder="เน€เธเนเธ  เน€เธเธฃเธทเนเธญเธเธเธฃเธฑเธเธญเธฒเธเธฒเธจเธซเนเธญเธ เนเธกเนเน€เธขเนเธ"
+                                    title="เธฃเธฐเธเธธเธซเธฑเธงเธเนเธญเธเธฑเธเธซเธฒ"
                                     required
                                 />
                             </div>
 
                             {/* Asset Search with Autocomplete */}
                             <div>
-                                <label className="block text-sm font-medium mb-2 text-gray-700">หมายเลขสินทรัพย์หรือซีเรียล (ถ้ามี)</label>
+                                <label className="block text-sm font-medium mb-2 text-gray-700">เธซเธกเธฒเธขเน€เธฅเธเธชเธดเธเธ—เธฃเธฑเธเธขเนเธซเธฃเธทเธญเธเธตเน€เธฃเธตเธขเธฅ (เธ–เนเธฒเธกเธต)</label>
                                 <div className="relative">
                                     <input
                                         type="text"
@@ -1507,8 +1521,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         onChange={(e) => handleAssetSearch(e.target.value)}
                                         onFocus={() => assetResults.length > 0 && setShowAssetDropdown(true)}
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                        placeholder="พิมพ์เพื่อค้นหา รหัส, ชื่อ หรือ S/N..."
-                                        title="หมายเลขสินทรัพย์"
+                                        placeholder="เธเธดเธกเธเนเน€เธเธทเนเธญเธเนเธเธซเธฒ เธฃเธซเธฑเธช, เธเธทเนเธญ เธซเธฃเธทเธญ S/N..."
+                                        title="เธซเธกเธฒเธขเน€เธฅเธเธชเธดเธเธ—เธฃเธฑเธเธขเน"
                                     />
                                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
 
@@ -1521,7 +1535,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                     type="button"
                                                     onClick={() => handleAssetSelect(asset)}
                                                     className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b last:border-b-0 transition-colors"
-                                                    title={`เลือก ${asset.asset_code}`}
+                                                    title={`เน€เธฅเธทเธญเธ ${asset.asset_code}`}
                                                 >
                                                     <div className="font-medium text-gray-900">{asset.asset_code}</div>
                                                     <div className="text-sm text-gray-600">{asset.asset_name}</div>
@@ -1529,7 +1543,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                         <div className="text-xs text-gray-500">S/N: {asset.serial_number}</div>
                                                     )}
                                                     <div className="text-xs text-gray-400 mt-1">
-                                                        {asset.category} • {asset.location || 'No location'}
+                                                        {asset.category} โ€ข {asset.location || 'No location'}
                                                     </div>
                                                 </button>
                                             ))}
@@ -1541,23 +1555,23 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             {/* Category and Priority */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-2 text-gray-700">หมวดหมู่ <span className="text-red-500">*</span></label>
+                                    <label className="block text-sm font-medium mb-2 text-gray-700">เธซเธกเธงเธ”เธซเธกเธนเน <span className="text-red-500">*</span></label>
                                     <select
-                                        title="เลือกหมวดหมู่"
+                                        title="เน€เธฅเธทเธญเธเธซเธกเธงเธ”เธซเธกเธนเน"
                                         value={formData.category || 'electrical'}
                                         onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                                         required
                                     >
-                                        <option value="electrical">ไฟฟ้า</option>
-                                        <option value="plumbing">ประปา</option>
-                                        <option value="internet">อินเตอร์เน็ต</option>
-                                        <option value="furniture">เฟอร์นิเจอร์</option>
-                                        <option value="other">อื่นๆ</option>
+                                        <option value="electrical">เนเธเธเนเธฒ</option>
+                                        <option value="plumbing">เธเธฃเธฐเธเธฒ</option>
+                                        <option value="internet">เธญเธดเธเน€เธ•เธญเธฃเนเน€เธเนเธ•</option>
+                                        <option value="furniture">เน€เธเธญเธฃเนเธเธดเน€เธเธญเธฃเน</option>
+                                        <option value="other">เธญเธทเนเธเน</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2 text-gray-700">ระดับความสำคัญ <span className="text-red-500">*</span></label>
+                                    <label className="block text-sm font-medium mb-2 text-gray-700">เธฃเธฐเธ”เธฑเธเธเธงเธฒเธกเธชเธณเธเธฑเธ <span className="text-red-500">*</span></label>
                                     <select
                                         title="Select Priority"
                                         value={formData.priority}
@@ -1565,24 +1579,24 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:border-slate-600"
                                         required
                                     >
-                                        <option value="low">ต่ำ</option>
-                                        <option value="normal">ปานกลาง</option>
-                                        <option value="high">สูง</option>
-                                        <option value="urgent">เร่งด่วน</option>
+                                        <option value="low">เธ•เนเธณ</option>
+                                        <option value="normal">เธเธฒเธเธเธฅเธฒเธ</option>
+                                        <option value="high">เธชเธนเธ</option>
+                                        <option value="urgent">เน€เธฃเนเธเธ”เนเธงเธ</option>
                                     </select>
                                 </div>
                             </div>
 
                             {/* Problem Description */}
                             <div>
-                                <label className="block text-sm font-medium mb-2 text-gray-700">รายละเอียดปัญหา <span className="text-red-500">*</span></label>
+                                <label className="block text-sm font-medium mb-2 text-gray-700">เธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”เธเธฑเธเธซเธฒ <span className="text-red-500">*</span></label>
                                 <textarea
                                     value={formData.description}
                                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                                     rows={4}
-                                    placeholder="อธิบายปัญหาหรืออาการ เช่น อาการที่เกิดขึ้น, เวลาที่เกิดปัญหา"
-                                    title="รายละเอียดปัญหา"
+                                    placeholder="เธญเธเธดเธเธฒเธขเธเธฑเธเธซเธฒเธซเธฃเธทเธญเธญเธฒเธเธฒเธฃ เน€เธเนเธ เธญเธฒเธเธฒเธฃเธ—เธตเนเน€เธเธดเธ”เธเธถเนเธ, เน€เธงเธฅเธฒเธ—เธตเนเน€เธเธดเธ”เธเธฑเธเธซเธฒ"
+                                    title="เธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”เธเธฑเธเธซเธฒ"
                                     required
                                 />
                             </div>
@@ -1590,42 +1604,42 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             {/* Reporter Name and Department and Target Role */}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div>
-                                      <label className="block text-sm font-medium mb-1">ผู้เแจ้ง *</label>
+                                      <label className="block text-sm font-medium mb-1">เธเธนเนเน€เนเธเนเธ *</label>
                                     <input
                                         type="text"
                                         value={formData.reported_by}
                                         readOnly
                                         className="w-full border rounded-lg px-3 py-2 bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-gray-400 dark:border-slate-600 cursor-not-allowed"
-                                        placeholder="ชื่อแจ้ง"
+                                        placeholder="เธเธทเนเธญเนเธเนเธ"
                                     />
                                 </div>
                                 <div>
-                                      <label className="block text-sm font-medium mb-1">แผนก *</label>
+                                      <label className="block text-sm font-medium mb-1">เนเธเธเธ *</label>
                                     <input
                                         type="text"
-                                        value={session?.user?.role || ''}
+                                        value={formData.department || session?.user?.role || ''}
                                         readOnly
                                         className="w-full border rounded-lg px-3 py-2 bg-gray-100 text-gray-500 dark:bg-slate-600 dark:text-gray-300 dark:border-slate-400 cursor-not-allowed"
-                                        placeholder="ชื่อแผนก/หน่วยงาน"
+                                        placeholder="เธเธทเนเธญเนเธเธเธ/เธซเธเนเธงเธขเธเธฒเธ"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2 text-gray-700">แผนกงานที่ต้องการแจ้งไปหา <span className="text-red-500">*</span></label>
+                                    <label className="block text-sm font-medium mb-2 text-gray-700">เนเธเธเธเธเธฒเธเธ—เธตเนเธ•เนเธญเธเธเธฒเธฃเนเธเนเธเนเธเธซเธฒ <span className="text-red-500">*</span></label>
                                     <select
                                         value={formData.target_role}
                                         onChange={(e) => setFormData({ ...formData, target_role: e.target.value })}
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none dark:bg-slate-700 dark:border-slate-600"
                                         required
                                     >
-                                        <option value="general">General (ทั่วไป)</option>
-                                        <option value="technician">Technician (ช่างซ่อมบำรุง)</option>
-                                        <option value="maid">Maid (แม่บ้าน)</option>
-                                        <option value="driver">Driver (คนขับรถ)</option>
-                                        <option value="purchasing">Purchasing (จัดซื้อ)</option>
-                                        <option value="store">Store (คลังสินค้า)</option>
-                                        <option value="accounting">Accounting (บัญชี)</option>
-                                        <option value="manager">Manager (ผู้จัดการ)</option>
-                                        <option value="admin">Admin (ผู้ดูแลระบบ)</option>
+                                        <option value="general">General (เธ—เธฑเนเธงเนเธ)</option>
+                                        <option value="technician">Technician (เธเนเธฒเธเธเนเธญเธกเธเธณเธฃเธธเธ)</option>
+                                        <option value="maid">Maid (เนเธกเนเธเนเธฒเธ)</option>
+                                        <option value="driver">Driver (เธเธเธเธฑเธเธฃเธ–)</option>
+                                        <option value="purchasing">Purchasing (เธเธฑเธ”เธเธทเนเธญ)</option>
+                                        <option value="store">Store (เธเธฅเธฑเธเธชเธดเธเธเนเธฒ)</option>
+                                        <option value="accounting">Accounting (เธเธฑเธเธเธต)</option>
+                                        <option value="manager">Manager (เธเธนเนเธเธฑเธ”เธเธฒเธฃ)</option>
+                                        <option value="admin">Admin (เธเธนเนเธ”เธนเนเธฅเธฃเธฐเธเธ)</option>
                                     </select>
                                 </div>
                             </div>
@@ -1633,19 +1647,19 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             {/* Contact Method and Location */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-2 text-gray-700">ช่องทางติดต่อ <span className="text-red-500">*</span></label>
+                                    <label className="block text-sm font-medium mb-2 text-gray-700">เธเนเธญเธเธ—เธฒเธเธ•เธดเธ”เธ•เนเธญ <span className="text-red-500">*</span></label>
                                     <input
                                         type="text"
                                         value={formData.contact_info}
                                         onChange={(e) => setFormData({ ...formData, contact_info: e.target.value })}
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                        placeholder="เบอร์โทร/อีเมล/ไลน์"
-                                        title="ช่องทางติดต่อ"
+                                        placeholder="เน€เธเธญเธฃเนเนเธ—เธฃ/เธญเธตเน€เธกเธฅ/เนเธฅเธเน"
+                                        title="เธเนเธญเธเธ—เธฒเธเธ•เธดเธ”เธ•เนเธญ"
                                         required
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-2 text-gray-700">สถานที่ / ทะเบียนรถ <span className="text-red-500">*</span></label>
+                                    <label className="block text-sm font-medium mb-2 text-gray-700">เธชเธ–เธฒเธเธ—เธตเน / เธ—เธฐเน€เธเธตเธขเธเธฃเธ– <span className="text-red-500">*</span></label>
 
                                     <div className="grid grid-cols-2 gap-2 mb-2">
                                         <button
@@ -1654,13 +1668,13 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                 setLocationMode('location');
                                                 setFormData(prev => {
                                                     const currentTags = prev.tags ? prev.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
-                                                    const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('รถ:'));
+                                                    const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('เธฃเธ–:'));
                                                     return { ...prev, vehicle_id: 0, tags: nextTags.join(',') };
                                                 });
                                             }}
                                             className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${locationMode === 'location' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
                                         >
-                                            สถานที่
+                                            เธชเธ–เธฒเธเธ—เธตเน
                                         </button>
                                         <button
                                             type="button"
@@ -1668,13 +1682,13 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                 setLocationMode('vehicle');
                                                 setFormData(prev => {
                                                     const currentTags = prev.tags ? prev.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
-                                                    const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('รถ:'));
+                                                    const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('เธฃเธ–:'));
                                                     return { ...prev, room_id: 0, location: '', vehicle_id: 0, tags: nextTags.join(',') };
                                                 });
                                             }}
                                             className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${locationMode === 'vehicle' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
                                         >
-                                            ทะเบียนรถ
+                                            เธ—เธฐเน€เธเธตเธขเธเธฃเธ–
                                         </button>
                                     </div>
 
@@ -1682,7 +1696,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         <>
                                             {/* Hierarchical Room Selector - REDESIGNED */}
                                             {(() => {
-                                        // ── Data preparation (unchanged logic) ──────────────────────────────
+                                        // โ”€โ”€ Data preparation (unchanged logic) โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
                                         const realRooms = rooms.filter(r => r.active && !r.room_code.startsWith('T-') && !r.room_code.startsWith('F-'));
                                         type TreeZone = { id: number; code: string; name: string };
                                         type TreeRoom = { id: number; code: string; name: string; zones: TreeZone[] };
@@ -1705,7 +1719,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             let fNode = tNode.floors.find(f => f.code === fCode);
                                             if (!fNode) {
                                                 let fName = floorNameMap.get(`${tCode}__${fCode}`) || fCode;
-                                                if (fName.startsWith('ชั้น ชั้น')) fName = fName.replace('ชั้น ชั้น', 'ชั้น');
+                                                if (fName.startsWith('เธเธฑเนเธ เธเธฑเนเธ')) fName = fName.replace('เธเธฑเนเธ เธเธฑเนเธ', 'เธเธฑเนเธ');
                                                 fNode = { code: fCode, name: fName, rooms: [] };
                                                 tNode.floors.push(fNode);
                                             }
@@ -1729,7 +1743,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                 const fLabel = r.floor || '';
                                                 const locInfo = [bLabel, fLabel].filter(Boolean).join(' ');
                                                 const namePart = (!r.room_name || r.room_name === r.room_code) ? r.room_code : `${r.room_name} (${r.room_code})`;
-                                                return locInfo ? `${locInfo} › ${namePart}` : namePart;
+                                                return locInfo ? `${locInfo} โ€บ ${namePart}` : namePart;
                                             })()
                                             : '';
 
@@ -1740,15 +1754,15 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             setRoomSearch('');
                                         };
 
-                                        // ── SEARCH LOGIC: Build Comprehensive Flat List ─────────────────────
+                                        // โ”€โ”€ SEARCH LOGIC: Build Comprehensive Flat List โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
                                         const flatLocations: any[] = [];
                                         for (const t of types) {
                                             for (const f of t.floors) {
                                                 for (const rm of f.rooms) {
-                                                    const roomPath = `${t.name} › ${f.name}`;
+                                                    const roomPath = `${t.name} โ€บ ${f.name}`;
                                                     flatLocations.push({ id: rm.id, code: rm.code, name: rm.name, type: 'room', path: roomPath });
                                                     for (const z of rm.zones) {
-                                                        flatLocations.push({ id: z.id, code: z.code, name: z.name, type: 'zone', path: `${roomPath} › ${rm.name}` });
+                                                        flatLocations.push({ id: z.id, code: z.code, name: z.name, type: 'zone', path: `${roomPath} โ€บ ${rm.name}` });
                                                     }
                                                 }
                                             }
@@ -1761,7 +1775,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             ).slice(0, 15)
                                             : [];
 
-                                        // ── Shared style tokens ──────────────────────────────────────────────
+                                        // โ”€โ”€ Shared style tokens โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
                                         const PANEL: React.CSSProperties = {
                                             background: '#fff',
                                             border: '1px solid #e2e8f0',
@@ -1855,7 +1869,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
                                         return (
                                             <>
-                                                {/* ── Trigger Button ───────────────────────────────── */}
+                                                {/* โ”€โ”€ Trigger Button โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€ */}
                                                 <div style={{ position: 'relative' }}>
                                                     <button
                                                         type="button"
@@ -1896,7 +1910,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                 stroke={selectedText ? '#6366f1' : '#94a3b8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                                                 <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
                                                             </svg>
-                                                            {selectedText || 'เลือกสถานที่...'}
+                                                            {selectedText || 'เน€เธฅเธทเธญเธเธชเธ–เธฒเธเธ—เธตเน...'}
                                                         </span>
                                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                                                             stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -1904,7 +1918,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                         </svg>
                                                     </button>
 
-                                                    {/* ── Main Dropdown Panel ──────────────────────── */}
+                                                    {/* โ”€โ”€ Main Dropdown Panel โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€ */}
                                                     <div
                                                         id="room-selector-panel"
                                                         style={{
@@ -1927,7 +1941,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                 </svg>
                                                                 <input
                                                                     type="text"
-                                                                    placeholder="ค้นหารหัส หรือชื่อห้อง..."
+                                                                    placeholder="เธเนเธเธซเธฒเธฃเธซเธฑเธช เธซเธฃเธทเธญเธเธทเนเธญเธซเนเธญเธ..."
                                                                     value={roomSearch}
                                                                     onChange={e => setRoomSearch(e.target.value)}
                                                                     onKeyDown={e => e.stopPropagation()}
@@ -1952,11 +1966,11 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                         {/* Content */}
                                                         <div style={{ maxHeight: 380, overflowY: roomSearch.trim() ? 'auto' : 'visible' }}>
                                                             {roomSearch.trim() ? (
-                                                                /* ── Search results ── */
+                                                                /* โ”€โ”€ Search results โ”€โ”€ */
                                                                 searchResults.length === 0 ? (
                                                                     <div style={{ padding: '20px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
-                                                                        <div style={{ fontSize: 24, marginBottom: 6 }}>🔍</div>
-                                                                        ไม่พบรายการที่ค้นหา
+                                                                        <div style={{ fontSize: 24, marginBottom: 6 }}>๐”</div>
+                                                                        เนเธกเนเธเธเธฃเธฒเธขเธเธฒเธฃเธ—เธตเนเธเนเธเธซเธฒ
                                                                     </div>
                                                                 ) : (
                                                                     searchResults.map((loc: any) => (
@@ -1973,28 +1987,28 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                     background: loc.type === 'zone' ? 'linear-gradient(135deg,#ede9fe,#ddd6fe)' : 'linear-gradient(135deg,#ffedd5,#fed7aa)',
                                                                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                                                     fontSize: 11, flexShrink: 0,
-                                                                                }}>{loc.type === 'zone' ? '📍' : '🚪'}</span>
-                                                                                <span>{loc.code === loc.name ? loc.code : `${loc.code} – ${loc.name}`}</span>
+                                                                                }}>{loc.type === 'zone' ? '๐“' : '๐ช'}</span>
+                                                                                <span>{loc.code === loc.name ? loc.code : `${loc.code} โ€“ ${loc.name}`}</span>
                                                                                 <Badge label={loc.type === 'zone' ? 'ZONE' : 'RM'} type={loc.type as any} />
                                                                             </div>
                                                                             <div style={{ fontSize: 10, color: '#94a3b8', marginLeft: 30, display: 'flex', alignItems: 'center', gap: 4 }}>
                                                                                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" /><circle cx="12" cy="10" r="3" /></svg>
-                                                                                {loc.path.replace(/ชั้น ชั้น/g, 'ชั้น')}
+                                                                                {loc.path.replace(/เธเธฑเนเธ เธเธฑเนเธ/g, 'เธเธฑเนเธ')}
                                                                             </div>
                                                                         </div>
                                                                     ))
                                                                 )
                                                             ) : (
-                                                                /* ── Tree view ── */
+                                                                /* โ”€โ”€ Tree view โ”€โ”€ */
                                                                 <>
                                                                     {types.length === 0 && (
-                                                                        <div style={{ padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>ไม่พบข้อมูลห้อง</div>
+                                                                        <div style={{ padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>เนเธกเนเธเธเธเนเธญเธกเธนเธฅเธซเนเธญเธ</div>
                                                                     )}
 
                                                                     {/* Section label */}
                                                                     {types.length > 0 && (
                                                                         <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: '#94a3b8', textTransform: 'uppercase' }}>
-                                                                            ประเภทสถานที่
+                                                                            เธเธฃเธฐเน€เธ เธ—เธชเธ–เธฒเธเธ—เธตเน
                                                                         </div>
                                                                     )}
 
@@ -2018,7 +2032,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                         background: 'linear-gradient(135deg,#dbeafe,#bfdbfe)',
                                                                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                                                         fontSize: 14, flexShrink: 0,
-                                                                                    }}>🏢</span>
+                                                                                    }}>๐ข</span>
                                                                                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                                                         {t.name}
                                                                                     </span>
@@ -2032,7 +2046,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                     style={{ ...FLYOUT_BASE, zIndex: 100100 + tIdx }}
                                                                                 >
                                                                                     <div style={{ padding: '8px 12px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: '#94a3b8', textTransform: 'uppercase' }}>
-                                                                                        ชั้น
+                                                                                        เธเธฑเนเธ
                                                                                     </div>
                                                                                     {t.floors.map((f, fIdx) => (
                                                                                         <div
@@ -2053,7 +2067,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                                     background: 'linear-gradient(135deg,#dcfce7,#bbf7d0)',
                                                                                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                                                                     fontSize: 12, flexShrink: 0,
-                                                                                                }}>📁</span>
+                                                                                                }}>๐“</span>
                                                                                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</span>
                                                                                                 <Badge label={f.code} type="floor" />
                                                                                             </span>
@@ -2065,7 +2079,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                                 style={{ ...FLYOUT_BASE, zIndex: 100200 + tIdx * 20 + fIdx }}
                                                                                             >
                                                                                                 <div style={{ padding: '8px 12px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: '#94a3b8', textTransform: 'uppercase' }}>
-                                                                                                    ห้อง
+                                                                                                    เธซเนเธญเธ
                                                                                                 </div>
                                                                                                 {f.rooms.map((rm, rmIdx) => (
                                                                                                     <div key={rm.code} style={{ position: 'relative' }}>
@@ -2087,8 +2101,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                                                         background: 'linear-gradient(135deg,#ffedd5,#fed7aa)',
                                                                                                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                                                                                         fontSize: 11, flexShrink: 0,
-                                                                                                                    }}>🚪</span>
-                                                                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{rm.code === rm.name ? rm.code : `${rm.code} – ${rm.name}`}</span>
+                                                                                                                    }}>๐ช</span>
+                                                                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{rm.code === rm.name ? rm.code : `${rm.code} โ€“ ${rm.name}`}</span>
                                                                                                                     <Badge label="RM" type="room" />
                                                                                                                 </span>
                                                                                                                 <Chevron />
@@ -2099,7 +2113,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                                                     style={{ ...FLYOUT_BASE, zIndex: 100400 + tIdx * 100 + fIdx * 10 + rmIdx }}
                                                                                                                 >
                                                                                                                     <div style={{ padding: '8px 12px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: '#94a3b8', textTransform: 'uppercase' }}>
-                                                                                                                        โซน
+                                                                                                                        เนเธเธ
                                                                                                                     </div>
                                                                                                                     {rm.zones.map(z => (
                                                                                                                         <div
@@ -2115,8 +2129,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                                                                     background: 'linear-gradient(135deg,#ede9fe,#ddd6fe)',
                                                                                                                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                                                                                                     fontSize: 10, flexShrink: 0,
-                                                                                                                                }}>📍</span>
-                                                                                                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{z.code === z.name ? z.code : `${z.code} – ${z.name}`}</span>
+                                                                                                                                }}>๐“</span>
+                                                                                                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{z.code === z.name ? z.code : `${z.code} โ€“ ${z.name}`}</span>
                                                                                                                                 <Badge label="ZONE" type="zone" />
                                                                                                                             </span>
                                                                                                                         </div>
@@ -2136,8 +2150,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                                                                         background: 'linear-gradient(135deg,#ffedd5,#fed7aa)',
                                                                                                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                                                                                         fontSize: 11, flexShrink: 0,
-                                                                                                                    }}>🚪</span>
-                                                                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{rm.code === rm.name ? rm.code : `${rm.code} – ${rm.name}`}</span>
+                                                                                                                    }}>๐ช</span>
+                                                                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{rm.code === rm.name ? rm.code : `${rm.code} โ€“ ${rm.name}`}</span>
                                                                                                                     <Badge label="RM" type="room" />
                                                                                                                 </span>
                                                                                                             </div>
@@ -2168,10 +2182,10 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                 onChange={(vehicleId) => {
                                                     const selected = vehicleId ? vehicles.find(v => v.vehicle_id === vehicleId) : null;
                                                     const plate = selected?.license_plate?.trim() || '';
-                                                    const vehicleTag = plate ? `รถ:${plate}` : '';
+                                                    const vehicleTag = plate ? `เธฃเธ–:${plate}` : '';
                                                     setFormData(prev => {
                                                         const currentTags = prev.tags ? prev.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
-                                                        const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('รถ:'));
+                                                        const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('เธฃเธ–:'));
                                                         if (vehicleTag) nextTags.push(vehicleTag);
                                                         return { ...prev, vehicle_id: vehicleId, tags: nextTags.join(',') };
                                                     });
@@ -2183,13 +2197,13 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                 if (!v) return null;
                                                 const ownerRoom = v.owner_room?.trim();
                                                 if (!ownerRoom) {
-                                                    return <div className="text-xs text-amber-600 mt-2">ทะเบียนรถนี้ยังไม่ระบุเลขห้อง (owner_room) ในระบบ</div>;
+                                                    return <div className="text-xs text-amber-600 mt-2">เธ—เธฐเน€เธเธตเธขเธเธฃเธ–เธเธตเนเธขเธฑเธเนเธกเนเธฃเธฐเธเธธเน€เธฅเธเธซเนเธญเธ (owner_room) เนเธเธฃเธฐเธเธ</div>;
                                                 }
                                                 const matchedRoom = rooms.find(r => r.room_code.trim().toLowerCase() === ownerRoom.toLowerCase());
                                                 if (!matchedRoom) {
-                                                    return <div className="text-xs text-amber-600 mt-2">ไม่พบห้องรหัส "{ownerRoom}" ที่ผูกกับทะเบียนรถนี้ (แก้ไขได้ที่หน้า /admin/rooms)</div>;
+                                                    return <div className="text-xs text-amber-600 mt-2">เนเธกเนเธเธเธซเนเธญเธเธฃเธซเธฑเธช "{ownerRoom}" เธ—เธตเนเธเธนเธเธเธฑเธเธ—เธฐเน€เธเธตเธขเธเธฃเธ–เธเธตเน (เนเธเนเนเธเนเธ”เนเธ—เธตเนเธซเธเนเธฒ /admin/rooms)</div>;
                                                 }
-                                                return <div className="text-xs text-gray-500 mt-2">ระบบจะใช้สถานที่อัตโนมัติ: {matchedRoom.room_code} — {matchedRoom.room_name}</div>;
+                                                return <div className="text-xs text-gray-500 mt-2">เธฃเธฐเธเธเธเธฐเนเธเนเธชเธ–เธฒเธเธ—เธตเนเธญเธฑเธ•เนเธเธกเธฑเธ•เธด: {matchedRoom.room_code} โ€” {matchedRoom.room_name}</div>;
                                             })()}
                                         </>
                                     )}
@@ -2198,7 +2212,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
                             {/* Tags */}
                             <div>
-                                <label className="block text-sm font-medium mb-2 text-gray-700">แท็ก</label>
+                                <label className="block text-sm font-medium mb-2 text-gray-700">เนเธ—เนเธ</label>
                                 <div className="flex gap-2 mb-2">
                                     <input
                                         type="text"
@@ -2206,15 +2220,15 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         onChange={(e) => setFormData({ ...formData, tagInput: e.target.value })}
                                         onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
                                         className="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                        placeholder="เพิ่มแท็ก..."
-                                        title="แท็ก"
+                                        placeholder="เน€เธเธดเนเธกเนเธ—เนเธ..."
+                                        title="เนเธ—เนเธ"
                                     />
                                     <button
                                         type="button"
                                         onClick={handleAddTag}
                                         className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
                                     >
-                                        เพิ่ม
+                                        เน€เธเธดเนเธก
                                     </button>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
@@ -2226,7 +2240,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                 onClick={() => handleRemoveTag(tag)}
                                                 className="text-gray-500 hover:text-red-500"
                                             >
-                                                ×
+                                                ร—
                                             </button>
                                         </span>
                                     ))}
@@ -2235,7 +2249,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
                             {/* File Upload */}
                             <div>
-                                <label className="block text-sm font-medium mb-2 text-gray-700">แนบไฟล์ (ถ้ามี)</label>
+                                <label className="block text-sm font-medium mb-2 text-gray-700">เนเธเธเนเธเธฅเน (เธ–เนเธฒเธกเธต)</label>
                                 <div className="relative block border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors">
                                     <div className="flex flex-col items-center gap-2 pointer-events-none">
                                         <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
@@ -2252,11 +2266,11 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                 <span className="text-green-600 font-medium">{selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)</span>
                                             ) : (
                                                 <>
-                                                    <span className="text-blue-600 font-medium">คลิกเพื่อเลือกไฟล์</span> หรือลากไฟล์มาวางที่นี่
+                                                    <span className="text-blue-600 font-medium">เธเธฅเธดเธเน€เธเธทเนเธญเน€เธฅเธทเธญเธเนเธเธฅเน</span> เธซเธฃเธทเธญเธฅเธฒเธเนเธเธฅเนเธกเธฒเธงเธฒเธเธ—เธตเนเธเธตเน
                                                 </>
                                             )}
                                         </div>
-                                        {!selectedFile && <p className="text-xs text-gray-500">รองรับไฟล์รูปภาพ, PDF หรือเอกสาร ไฟล์ละไม่เกิน 10MB</p>}
+                                        {!selectedFile && <p className="text-xs text-gray-500">เธฃเธญเธเธฃเธฑเธเนเธเธฅเนเธฃเธนเธเธ เธฒเธ, PDF เธซเธฃเธทเธญเน€เธญเธเธชเธฒเธฃ เนเธเธฅเนเธฅเธฐเนเธกเนเน€เธเธดเธ 10MB</p>}
                                     </div>
                                     <input
                                         type="file"
@@ -2264,7 +2278,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                         accept="image/*,.pdf,.doc,.docx"
-                                        title="เลือกไฟล์แนบ"
+                                        title="เน€เธฅเธทเธญเธเนเธเธฅเนเนเธเธ"
                                     />
                                 </div>
                             </div>
@@ -2276,7 +2290,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     onClick={() => setShowForm(false)}
                                     className="flex-1 px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 font-medium"
                                 >
-                                    ยกเลิก
+                                    เธขเธเน€เธฅเธดเธ
                                 </button>
                                 <button
                                     type="submit"
@@ -2285,7 +2299,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                                     </svg>
-                                    ส่งคำขอซ่อม
+                                    เธชเนเธเธเธณเธเธญเธเนเธญเธก
                                 </button>
                             </div>
                         </form>
@@ -2297,48 +2311,48 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
             {showRoomForm && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-white dark:bg-slate-800 rounded-xl p-6 w-full max-w-md mx-4">
-                        <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">เพิ่มห้องใหม่</h2>
+                        <h2 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">เน€เธเธดเนเธกเธซเนเธญเธเนเธซเธกเน</h2>
                         <form onSubmit={handleRoomSubmit} className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">รหัสห้อง *</label>
+                                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">เธฃเธซเธฑเธชเธซเนเธญเธ *</label>
                                 <input
                                     type="text"
                                     value={roomFormData.room_code}
                                     onChange={(e) => setRoomFormData({ ...roomFormData, room_code: e.target.value })}
                                     className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                    placeholder="เช่น A101, B202"
+                                    placeholder="เน€เธเนเธ A101, B202"
                                     required
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">ชื่อห้อง *</label>
+                                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">เธเธทเนเธญเธซเนเธญเธ *</label>
                                 <input
                                     type="text"
                                     value={roomFormData.room_name}
                                     onChange={(e) => setRoomFormData({ ...roomFormData, room_name: e.target.value })}
                                     className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                    placeholder="เช่น ห้องประชุมใหญ่"
+                                    placeholder="เน€เธเนเธ เธซเนเธญเธเธเธฃเธฐเธเธธเธกเนเธซเธเน"
                                     required
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">อาคาร</label>
+                                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">เธญเธฒเธเธฒเธฃ</label>
                                 <input
                                     type="text"
                                     value={roomFormData.building}
                                     onChange={(e) => setRoomFormData({ ...roomFormData, building: e.target.value })}
                                     className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                    placeholder="เช่น อาคาร A"
+                                    placeholder="เน€เธเนเธ เธญเธฒเธเธฒเธฃ A"
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">ชั้น</label>
+                                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">เธเธฑเนเธ</label>
                                 <input
                                     type="text"
                                     value={roomFormData.floor}
                                     onChange={(e) => setRoomFormData({ ...roomFormData, floor: e.target.value })}
                                     className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                    placeholder="เช่น 1, 2, ชั้นใต้ดิน"
+                                    placeholder="เน€เธเนเธ 1, 2, เธเธฑเนเธเนเธ•เนเธ”เธดเธ"
                                 />
                             </div>
                             <div className="flex gap-2 pt-4">
@@ -2347,13 +2361,13 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     onClick={() => setShowRoomForm(false)}
                                     className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700"
                                 >
-                                    ยกเลิก
+                                    เธขเธเน€เธฅเธดเธ
                                 </button>
                                 <button
                                     type="submit"
                                     className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                                 >
-                                    บันทึก
+                                    เธเธฑเธเธ—เธถเธ
                                 </button>
                             </div>
                         </form>
@@ -2370,14 +2384,14 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
                             <div className="flex justify-between items-center mb-4">
                                 <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                                    รายละเอียดการแจ้งซ่อม #{selectedRequest.request_number}
+                                    เธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”เธเธฒเธฃเนเธเนเธเธเนเธญเธก #{selectedRequest.request_number}
                                 </h2>
                                 <div className="flex gap-2">
                                     <Link
                                         href={`/maintenance/job-sheet/${selectedRequest.request_id}`}
                                         target="_blank"
                                         className="text-gray-500 hover:text-blue-600 mr-2"
-                                        title="พิมพ์ใบงาน"
+                                        title="เธเธดเธกเธเนเนเธเธเธฒเธ"
                                     >
                                         <Printer size={24} />
                                     </Link>
@@ -2391,7 +2405,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                 <WorkflowStepper 
                                     totalSteps={4}
                                     status={selectedRequest.status as WorkflowStatus}
-                                    labels={['รอรับเรื่อง', 'ดำเนินการ', 'ยืนยันงาน', 'เสร็จสมบูรณ์']}
+                                    labels={['เธฃเธญเธฃเธฑเธเน€เธฃเธทเนเธญเธ', 'เธ”เธณเน€เธเธดเธเธเธฒเธฃ', 'เธขเธทเธเธขเธฑเธเธเธฒเธ', 'เน€เธชเธฃเนเธเธชเธกเธเธนเธฃเธ“เน']}
                                     size="md"
                                 />
                             </div>
@@ -2400,33 +2414,33 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                 {/* Left Column - Info */}
                                 <div className="space-y-4">
                                     <div>
-                                        <div className="text-sm text-gray-500">ห้อง</div>
+                                        <div className="text-sm text-gray-500">เธซเนเธญเธ</div>
                                         <div className="font-medium">
                                             {[selectedRequest.tbl_rooms?.building, selectedRequest.tbl_rooms?.floor].filter(Boolean).join(' ')} {selectedRequest.tbl_rooms?.room_name} ({selectedRequest.tbl_rooms?.room_code})
                                         </div>
                                     </div>
                                     <div>
-                                        <div className="text-sm text-gray-500">หัวข้อ</div>
+                                        <div className="text-sm text-gray-500">เธซเธฑเธงเธเนเธญ</div>
                                         <div className="font-medium">{selectedRequest.title}</div>
                                     </div>
                                     {selectedRequest.description && (
                                         <div>
-                                            <div className="text-sm text-gray-500">รายละเอียด</div>
+                                            <div className="text-sm text-gray-500">เธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”</div>
                                             <div>{selectedRequest.description}</div>
                                         </div>
                                     )}
                                     {selectedRequest.image_url && (
                                         <div>
-                                            <div className="text-sm text-gray-500 mb-1">รูปภาพ</div>
-                                            <img src={selectedRequest.image_url} alt="รูปภาพปัญหา" className="rounded-lg max-h-40 object-cover" />
+                                            <div className="text-sm text-gray-500 mb-1">เธฃเธนเธเธ เธฒเธ</div>
+                                            <img src={selectedRequest.image_url} alt="เธฃเธนเธเธ เธฒเธเธเธฑเธเธซเธฒ" className="rounded-lg max-h-40 object-cover" />
                                         </div>
                                     )}
                                     <div>
-                                        <div className="text-sm text-gray-500">ผู้แจ้ง</div>
+                                        <div className="text-sm text-gray-500">เธเธนเนเนเธเนเธ</div>
                                         <div>{selectedRequest.reported_by}</div>
                                     </div>
                                     <div>
-                                        <div className="text-sm text-gray-500">วันที่แจ้ง</div>
+                                        <div className="text-sm text-gray-500">เธงเธฑเธเธ—เธตเนเนเธเนเธ</div>
                                         <div>{new Date(selectedRequest.created_at).toLocaleString('th-TH')}</div>
                                     </div>
                                 </div>
@@ -2434,7 +2448,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                 {/* Right Column - Edit */}
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">สถานะ</label>
+                                        <label className="block text-sm font-medium mb-1">เธชเธ–เธฒเธเธฐ</label>
                                         <select
                                             value={editData.status}
                                             onChange={(e) => {
@@ -2445,36 +2459,36 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             }}
                                             className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
                                         >
-                                            {(!isApprover && editData.status === 'pending') && <option value="pending">รอดำเนินการ</option>}
-                                            {isApprover && <option value="pending">รอดำเนินการ</option>}
-                                            <option value="in_progress">กำลังซ่อม</option>
-                                            <option value="completed">เสร็จแล้ว</option>
-                                            {isApprover && <option value="cancelled">ยกเลิก</option>}
+                                            {(!isApprover && editData.status === 'pending') && <option value="pending">เธฃเธญเธ”เธณเน€เธเธดเธเธเธฒเธฃ</option>}
+                                            {isApprover && <option value="pending">เธฃเธญเธ”เธณเน€เธเธดเธเธเธฒเธฃ</option>}
+                                            <option value="in_progress">เธเธณเธฅเธฑเธเธเนเธญเธก</option>
+                                            <option value="completed">เน€เธชเธฃเนเธเนเธฅเนเธง</option>
+                                            {isApprover && <option value="cancelled">เธขเธเน€เธฅเธดเธ</option>}
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">ความเร่งด่วน</label>
+                                        <label className="block text-sm font-medium mb-1">เธเธงเธฒเธกเน€เธฃเนเธเธ”เนเธงเธ</label>
                                         <select
                                             value={editData.priority}
                                             onChange={(e) => setEditData({ ...editData, priority: e.target.value })}
                                             className={`w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 ${!isApprover ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                             disabled={!isApprover}
                                         >
-                                            <option value="low">ต่ำ</option>
-                                            <option value="normal">ปกติ</option>
-                                            <option value="high">สูง</option>
-                                            <option value="urgent">เร่งด่วน</option>
+                                            <option value="low">เธ•เนเธณ</option>
+                                            <option value="normal">เธเธเธ•เธด</option>
+                                            <option value="high">เธชเธนเธ</option>
+                                            <option value="urgent">เน€เธฃเนเธเธ”เนเธงเธ</option>
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">ผู้รับผิดชอบ/ช่าง</label>
+                                        <label className="block text-sm font-medium mb-1">เธเธนเนเธฃเธฑเธเธเธดเธ”เธเธญเธ/เธเนเธฒเธ</label>
                                         <select
                                             value={editData.assigned_to || ''}
                                             onChange={(e) => setEditData({ ...editData, assigned_to: e.target.value })}
                                             className={`w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 ${selectedRequest.status === 'in_progress' && !isApprover ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                                             disabled={selectedRequest.status === 'in_progress' && !isApprover}
                                         >
-                                            <option value="">-- ไม่ระบุ --</option>
+                                            <option value="">-- เนเธกเนเธฃเธฐเธเธธ --</option>
                                             {Array.from(new Set([
                                                 ...technicians.map(t => t.name),
                                                 ...lineTechnicians.map(u => u.display_name)
@@ -2487,7 +2501,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">วันที่นัดซ่อม</label>
+                                        <label className="block text-sm font-medium mb-1">เธงเธฑเธเธ—เธตเนเธเธฑเธ”เธเนเธญเธก</label>
                                         <input
                                             type="date"
                                             value={editData.scheduled_date}
@@ -2496,7 +2510,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">ค่าใช้จ่ายจริง (บาท)</label>
+                                        <label className="block text-sm font-medium mb-1">เธเนเธฒเนเธเนเธเนเธฒเธขเธเธฃเธดเธ (เธเธฒเธ—)</label>
                                         <input
                                             type="number"
                                             value={editData.actual_cost || ''}
@@ -2507,7 +2521,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium mb-1">หมายเหตุ</label>
+                                        <label className="block text-sm font-medium mb-1">เธซเธกเธฒเธขเน€เธซเธ•เธธ</label>
                                         <textarea
                                             value={editData.notes}
                                             onChange={(e) => setEditData({ ...editData, notes: e.target.value })}
@@ -2521,7 +2535,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-3 space-y-3">
                                             <h4 className="font-medium text-blue-800 dark:text-blue-300 flex items-center gap-2 text-sm">
                                                 <ShoppingCart size={14} />
-                                                เพิ่มอะไหล่ที่ใช้ (ถ้ามี)
+                                                เน€เธเธดเนเธกเธญเธฐเนเธซเธฅเนเธ—เธตเนเนเธเน (เธ–เนเธฒเธกเธต)
                                             </h4>
                                             
                                             {newPartsUsed.map((part, index) => {
@@ -2555,7 +2569,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                     className="w-16 px-2 py-0.5 text-sm text-center rounded-md border border-slate-300 dark:border-slate-500 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400"
                                                     />
                                                     <span className="text-xs text-slate-400">
-                                                    คงเหลือ {avail} ชิ้น
+                                                    เธเธเน€เธซเธฅเธทเธญ {avail} เธเธดเนเธ
                                                     </span>
                                                     <button
                                                     type="button"
@@ -2563,7 +2577,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                     className="ml-auto text-xs text-red-400 hover:text-red-600 hover:underline transition-colors"
                                                     aria-label="Remove part"
                                                     >
-                                                    ลบ
+                                                    เธฅเธ
                                                     </button>
                                                 </div>
                                                 </div>
@@ -2575,7 +2589,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                     <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
                                                     <input
                                                         type="text"
-                                                        placeholder="ค้นหาอะไหล่..."
+                                                        placeholder="เธเนเธเธซเธฒเธญเธฐเนเธซเธฅเน..."
                                                         value={modalPartSearch}
                                                         onChange={(e) => setModalPartSearch(e.target.value)}
                                                         className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-lg dark:bg-slate-700 dark:border-slate-600 bg-white"
@@ -2600,12 +2614,12 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                 >
                                                                     <span className={p.p_count <= 0 ? 'text-gray-400' : ''}>{p.p_name}</span>
                                                                     <span className={`text-[10px] ${p.p_count <= 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                                                                        สต็อก: {p.p_count}
+                                                                        เธชเธ•เนเธญเธ: {p.p_count}
                                                                     </span>
                                                                 </button>
                                                             ))}
                                                         {products.filter(p => p.p_name.toLowerCase().includes(modalPartSearch.toLowerCase())).length === 0 && (
-                                                            <div className="px-3 py-2 text-[10px] text-gray-500 text-center">ไม่พบอะไหล่</div>
+                                                            <div className="px-3 py-2 text-[10px] text-gray-500 text-center">เนเธกเนเธเธเธญเธฐเนเธซเธฅเน</div>
                                                         )}
                                                     </div>
                                                 )}
@@ -2620,7 +2634,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             {parts.length > 0 && (
                                 <div className="mt-6 pt-4 border-t">
                                     <h3 className="font-medium mb-3 flex items-center gap-2">
-                                        <Package size={18} /> รายการอะไหล่ที่เบิก
+                                        <Package size={18} /> เธฃเธฒเธขเธเธฒเธฃเธญเธฐเนเธซเธฅเนเธ—เธตเนเน€เธเธดเธ
                                     </h3>
                                     <div className="space-y-3">
                                         {parts.map(part => (
@@ -2629,7 +2643,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                     <div>
                                                         <div className="font-medium">{part.product?.p_name || part.p_id}</div>
                                                         <div className="text-sm text-gray-500">
-                                                            เบิก: {part.quantity} {part.unit || 'ชิ้น'} • โดย {part.withdrawn_by}
+                                                            เน€เธเธดเธ: {part.quantity} {part.unit || 'เธเธดเนเธ'} โ€ข เนเธ”เธข {part.withdrawn_by}
                                                         </div>
                                                     </div>
                                                     <div className="flex flex-col items-end">
@@ -2641,15 +2655,15 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                             part.status === 'defective' ? 'bg-red-100 text-red-700' :
                                                                                 part.status === 'returned' ? 'bg-gray-100 text-gray-700' :
                                                                                     'bg-gray-100 text-gray-600'}`}>
-                                                            {part.status === 'withdrawn' ? 'เบิกแล้ว (รอใช้งาน)' :
-                                                                part.status === 'pending_verification' ? 'รอตรวจนับ' :
-                                                                    part.status === 'verified' ? 'ตรวจนับแล้ว' :
-                                                                        part.status === 'verification_failed' ? 'ตรวจนับไม่ตรง' :
-                                                                            part.status === 'defective' ? 'ของเสีย' :
-                                                                                part.status === 'returned' ? 'คืนสต็อก' : part.status}
+                                                            {part.status === 'withdrawn' ? 'เน€เธเธดเธเนเธฅเนเธง (เธฃเธญเนเธเนเธเธฒเธ)' :
+                                                                part.status === 'pending_verification' ? 'เธฃเธญเธ•เธฃเธงเธเธเธฑเธ' :
+                                                                    part.status === 'verified' ? 'เธ•เธฃเธงเธเธเธฑเธเนเธฅเนเธง' :
+                                                                        part.status === 'verification_failed' ? 'เธ•เธฃเธงเธเธเธฑเธเนเธกเนเธ•เธฃเธ' :
+                                                                            part.status === 'defective' ? 'เธเธญเธเน€เธชเธตเธข' :
+                                                                                part.status === 'returned' ? 'เธเธทเธเธชเธ•เนเธญเธ' : part.status}
                                                         </span>
                                                         {part.actual_used !== null && part.actual_used !== undefined && (
-                                                            <span className="text-xs text-gray-500 mt-1">ใช้จริง: {part.actual_used}</span>
+                                                            <span className="text-xs text-gray-500 mt-1">เนเธเนเธเธฃเธดเธ: {part.actual_used}</span>
                                                         )}
                                                     </div>
                                                 </div>
@@ -2667,9 +2681,9 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                         value={confirmQty}
                                                                         onChange={(e) => setConfirmQty(Number(e.target.value))}
                                                                         className="w-20 px-2 py-1 border rounded text-sm"
-                                                                        placeholder="จำนวน"
+                                                                        placeholder="เธเธณเธเธงเธ"
                                                                     />
-                                                                    <span className="text-sm text-gray-600">ที่ใช้จริง</span>
+                                                                    <span className="text-sm text-gray-600">เธ—เธตเนเนเธเนเธเธฃเธดเธ</span>
                                                                     <label className="flex items-center gap-1 text-sm text-red-600 ml-2">
                                                                         <input
                                                                             type="checkbox"
@@ -2677,7 +2691,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                             onChange={(e) => setIsDefective(e.target.checked)}
                                                                             className="w-4 h-4"
                                                                         />
-                                                                        เป็นของเสีย
+                                                                        เน€เธเนเธเธเธญเธเน€เธชเธตเธข
                                                                     </label>
                                                                 </div>
                                                                 <div className="flex gap-2">
@@ -2685,7 +2699,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                         onClick={() => handleConfirmUsage(part.part_id)}
                                                                         className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
                                                                     >
-                                                                        ยืนยัน
+                                                                        เธขเธทเธเธขเธฑเธ
                                                                     </button>
                                                                     <button
                                                                         onClick={() => {
@@ -2694,7 +2708,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                         }}
                                                                         className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300"
                                                                     >
-                                                                        ยกเลิก
+                                                                        เธขเธเน€เธฅเธดเธ
                                                                     </button>
                                                                 </div>
                                                             </div>
@@ -2707,7 +2721,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                 }}
                                                                 className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
                                                             >
-                                                                <Wrench size={12} /> รายงานการใช้
+                                                                <Wrench size={12} /> เธฃเธฒเธขเธเธฒเธเธเธฒเธฃเนเธเน
                                                             </button>
                                                         )}
                                                     </div>
@@ -2725,22 +2739,22 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                         value={verifyQty}
                                                                         onChange={(e) => setVerifyQty(Number(e.target.value))}
                                                                         className="w-20 px-2 py-1 border rounded text-sm"
-                                                                        placeholder="จำนวน"
+                                                                        placeholder="เธเธณเธเธงเธ"
                                                                     />
-                                                                    <span className="text-sm text-gray-600">นับได้จริง</span>
+                                                                    <span className="text-sm text-gray-600">เธเธฑเธเนเธ”เนเธเธฃเธดเธ</span>
                                                                 </div>
                                                                 <div className="flex gap-2">
                                                                     <button
                                                                         onClick={() => handleVerifyPart(part.part_id)}
                                                                         className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
                                                                     >
-                                                                        ยืนยันถูกต้อง
+                                                                        เธขเธทเธเธขเธฑเธเธ–เธนเธเธ•เนเธญเธ
                                                                     </button>
                                                                     <button
                                                                         onClick={() => setVerifyingPartId(null)}
                                                                         className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300"
                                                                     >
-                                                                        ยกเลิก
+                                                                        เธขเธเน€เธฅเธดเธ
                                                                     </button>
                                                                 </div>
                                                             </div>
@@ -2752,7 +2766,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                                 }}
                                                                 className="text-xs text-yellow-700 hover:text-yellow-900 flex items-center gap-1 font-medium"
                                                             >
-                                                                <CheckCircle2 size={12} /> ตรวจนับสินค้า
+                                                                <CheckCircle2 size={12} /> เธ•เธฃเธงเธเธเธฑเธเธชเธดเธเธเนเธฒ
                                                             </button>
                                                         )}
                                                     </div>
@@ -2768,36 +2782,36 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                 <div className="mt-6 pt-4 border-t">
                                     {selectedRequest.status === 'confirmed' && (
                                         <div className="mb-3 rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-sm font-medium text-purple-800">
-                                            งานนี้ถูกส่งให้หัวหน้าช่างตรวจรับแล้ว และยังไม่ปิดใบงาน
+                                            เธเธฒเธเธเธตเนเธ–เธนเธเธชเนเธเนเธซเนเธซเธฑเธงเธซเธเนเธฒเธเนเธฒเธเธ•เธฃเธงเธเธฃเธฑเธเนเธฅเนเธง เนเธฅเธฐเธขเธฑเธเนเธกเนเธเธดเธ”เนเธเธเธฒเธ
                                         </div>
                                     )}
                                     <h3 className="font-medium mb-3 flex items-center gap-2">
-                                        <CheckCircle2 size={18} className="text-green-600" /> ข้อมูลการซ่อมเสร็จสิ้น
+                                        <CheckCircle2 size={18} className="text-green-600" /> เธเนเธญเธกเธนเธฅเธเธฒเธฃเธเนเธญเธกเน€เธชเธฃเนเธเธชเธดเนเธ
                                     </h3>
                                     <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm mb-6">
                                         <div className="flex items-center justify-between mb-4">
                                             <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                                                 <Activity className="w-4 h-4 text-blue-500" />
-                                                สถานะขั้นตอนการทำงาน
+                                                เธชเธ–เธฒเธเธฐเธเธฑเนเธเธ•เธญเธเธเธฒเธฃเธ—เธณเธเธฒเธ
                                             </h3>
                                             <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${STATUS_CONFIG[selectedRequest.status as keyof typeof STATUS_CONFIG]?.color || 'bg-slate-100'}`}>
                                                 {selectedRequest.status === 'confirmed'
-                                                    ? 'รอหัวหน้าช่างตรวจรับ'
+                                                    ? 'เธฃเธญเธซเธฑเธงเธซเธเนเธฒเธเนเธฒเธเธ•เธฃเธงเธเธฃเธฑเธ'
                                                     : (STATUS_CONFIG[selectedRequest.status as keyof typeof STATUS_CONFIG]?.label || selectedRequest.status)}
                                             </span>
                                         </div>
                                         <div className="p-4 bg-green-50/50 dark:bg-green-900/10 rounded-xl border border-green-100 dark:border-green-900/20">
                                             <h4 className="flex items-center gap-2 text-sm font-bold text-green-700 dark:text-green-400 mb-3">
                                                 <CheckCircle2 size={16} />
-                                                ดำเนินการเสร็จสิ้น
+                                                เธ”เธณเน€เธเธดเธเธเธฒเธฃเน€เธชเธฃเนเธเธชเธดเนเธ
                                             </h4>
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-1">
-                                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">ช่างผู้ร้บผิดชอบ</p>
+                                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">เธเนเธฒเธเธเธนเนเธฃเนเธเธเธดเธ”เธเธญเธ</p>
                                                     <p className="text-sm font-semibold">{selectedRequest.assigned_to || '-'}</p>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">วันที่ดำเนินการเสร็จ</p>
+                                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">เธงเธฑเธเธ—เธตเนเธ”เธณเน€เธเธดเธเธเธฒเธฃเน€เธชเธฃเนเธ</p>
                                                     <p className="text-sm font-semibold">
                                                         {selectedRequest.completed_at ? new Date(selectedRequest.completed_at).toLocaleString('th-TH') : '-'}
                                                     </p>
@@ -2809,7 +2823,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         {selectedRequest.completion_image_url && (
                                             <div>
-                                                <div className="text-sm text-gray-500 mb-2">รูปถ่ายหลังซ่อมเสร็จ</div>
+                                                <div className="text-sm text-gray-500 mb-2">เธฃเธนเธเธ–เนเธฒเธขเธซเธฅเธฑเธเธเนเธญเธกเน€เธชเธฃเนเธ</div>
                                                 <a href={selectedRequest.completion_image_url} target="_blank" rel="noopener noreferrer">
                                                     <img src={selectedRequest.completion_image_url} alt="Completion" className="rounded-lg w-full max-h-48 object-cover border hover:opacity-90 transition" />
                                                 </a>
@@ -2818,7 +2832,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         <div className="space-y-4">
                                             {selectedRequest.technician_signature && (
                                                 <div>
-                                                    <div className="text-sm text-gray-500 mb-2">ลายเซ็นช่างผู้ซ่อม</div>
+                                                    <div className="text-sm text-gray-500 mb-2">เธฅเธฒเธขเน€เธเนเธเธเนเธฒเธเธเธนเนเธเนเธญเธก</div>
                                                     <div className="bg-white border rounded-lg p-2 flex items-center justify-center min-h-[100px]">
                                                         <img src={selectedRequest.technician_signature} alt="Technician Signature" className="max-h-24 object-contain" />
                                                     </div>
@@ -2826,7 +2840,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             )}
                                             {selectedRequest.customer_signature && (
                                                 <div>
-                                                    <div className="text-sm text-gray-500 mb-2">ลายเซ็นลูกค้ารับงาน</div>
+                                                    <div className="text-sm text-gray-500 mb-2">เธฅเธฒเธขเน€เธเนเธเธฅเธนเธเธเนเธฒเธฃเธฑเธเธเธฒเธ</div>
                                                     <div className="bg-white border rounded-lg p-2 flex items-center justify-center min-h-[100px]">
                                                         <img src={selectedRequest.customer_signature} alt="Customer Signature" className="max-h-24 object-contain" />
                                                     </div>
@@ -2841,7 +2855,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                             {historyItems.length > 0 && (
                                 <div className="mt-6 pt-4 border-t">
                                     <h3 className="font-medium mb-3 flex items-center gap-2">
-                                        <HistoryIcon size={18} /> ประวัติการเปลี่ยนแปลง
+                                        <HistoryIcon size={18} /> เธเธฃเธฐเธงเธฑเธ•เธดเธเธฒเธฃเน€เธเธฅเธตเนเธขเธเนเธเธฅเธ
                                     </h3>
                                     <div className="space-y-2 max-h-40 overflow-y-auto">
                                         {historyItems.map(h => (
@@ -2849,11 +2863,11 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                 <div>
                                                     <span className="font-medium">{getHistoryActionLabel(h.action)}</span>
                                                     {h.old_value && h.new_value && (
-                                                        <span className="text-gray-500"> ({h.old_value} → {h.new_value})</span>
+                                                        <span className="text-gray-500"> ({h.old_value} โ’ {h.new_value})</span>
                                                     )}
                                                 </div>
                                                 <div className="text-gray-500">
-                                                    {h.changed_by} • {new Date(h.changed_at).toLocaleString('th-TH')}
+                                                    {h.changed_by} โ€ข {new Date(h.changed_at).toLocaleString('th-TH')}
                                                 </div>
                                             </div>
                                         ))}
@@ -2866,7 +2880,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     onClick={() => setShowDetailModal(false)}
                                     className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700"
                                 >
-                                    ปิด
+                                    เธเธดเธ”
                                 </button>
 
                                 {(session?.user as any)?.role === 'manager' && ['completed', 'cancelled'].includes(selectedRequest.status) && (
@@ -2879,7 +2893,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         title="Manager Override"
                                     >
                                         <AlertTriangle size={18} />
-                                        เปิดงานใหม่ (Manager)
+                                        เน€เธเธดเธ”เธเธฒเธเนเธซเธกเน (Manager)
                                     </button>
                                 )}
 
@@ -2889,7 +2903,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium flex items-center justify-center gap-2"
                                     >
                                         <CheckCircle2 size={18} />
-                                        ตรวจรับงาน
+                                        เธ•เธฃเธงเธเธฃเธฑเธเธเธฒเธ
                                     </button>
                                 )}
 
@@ -2899,7 +2913,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         onClick={handleUpdateRequest}
                                         className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
                                     >
-                                        บันทึกการเปลี่ยนแปลง
+                                        เธเธฑเธเธ—เธถเธเธเธฒเธฃเน€เธเธฅเธตเนเธขเธเนเธเธฅเธ
                                     </button>
                                 )}
                             </div>
@@ -2934,17 +2948,17 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     </div>
                                     <div>
                                         <h3 className="text-lg font-bold text-white">
-                                            {statusChangeData.newStatus === 'in_progress' && 'เริ่มดำเนินการซ่อม'}
-                                            {statusChangeData.newStatus === 'completed' && 'ยืนยันการซ่อมเสร็จ'}
-                                            {statusChangeData.newStatus === 'pending' && 'ยืนยันการเปลี่ยนสถานะ'}
+                                            {statusChangeData.newStatus === 'in_progress' && 'เน€เธฃเธดเนเธกเธ”เธณเน€เธเธดเธเธเธฒเธฃเธเนเธญเธก'}
+                                            {statusChangeData.newStatus === 'completed' && 'เธขเธทเธเธขเธฑเธเธเธฒเธฃเธเนเธญเธกเน€เธชเธฃเนเธ'}
+                                            {statusChangeData.newStatus === 'pending' && 'เธขเธทเธเธขเธฑเธเธเธฒเธฃเน€เธเธฅเธตเนเธขเธเธชเธ–เธฒเธเธฐ'}
                                         </h3>
                                         <p className="text-white/80 text-sm mb-2">
-                                            ใบงาน: {statusChangeData.request.request_number}
+                                            เนเธเธเธฒเธ: {statusChangeData.request.request_number}
                                         </p>
                                         <div className="w-[120px]">
                                             <WorkflowStepper
                                                 totalSteps={4}
-                                                labels={['รอรับเรื่อง', 'ดำเนินการ', 'ยืนยันงาน', 'เสร็จสมบูรณ์']}
+                                                labels={['เธฃเธญเธฃเธฑเธเน€เธฃเธทเนเธญเธ', 'เธ”เธณเน€เธเธดเธเธเธฒเธฃ', 'เธขเธทเธเธขเธฑเธเธเธฒเธ', 'เน€เธชเธฃเนเธเธชเธกเธเธนเธฃเธ“เน']}
                                                 status={statusChangeData.newStatus === 'pending' ? 'pending' : statusChangeData.newStatus as WorkflowStatus}
                                                 size="sm"
                                             />
@@ -2961,7 +2975,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         {statusChangeData.request.title}
                                     </h4>
                                     <p className="text-sm text-gray-600 dark:text-gray-300">
-                                        สถานที่: {[statusChangeData.request.tbl_rooms.building, statusChangeData.request.tbl_rooms.floor].filter(Boolean).join(' ')} {statusChangeData.request.tbl_rooms.room_name} ({statusChangeData.request.tbl_rooms.room_code})
+                                        เธชเธ–เธฒเธเธ—เธตเน: {[statusChangeData.request.tbl_rooms.building, statusChangeData.request.tbl_rooms.floor].filter(Boolean).join(' ')} {statusChangeData.request.tbl_rooms.room_name} ({statusChangeData.request.tbl_rooms.room_code})
                                     </p>
                                     {statusChangeData.request.description && (
                                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -2975,15 +2989,15 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     <div className="space-y-4">
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                                ช่างที่รับผิดชอบ <span className="text-red-500">*</span>
+                                                เธเนเธฒเธเธ—เธตเนเธฃเธฑเธเธเธดเธ”เธเธญเธ <span className="text-red-500">*</span>
                                             </label>
                                             <select
                                                 value={statusChangeData.technician}
                                                 onChange={(e) => setStatusChangeData({ ...statusChangeData, technician: e.target.value })}
                                                 className="w-full border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2.5 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                title="เลือกช่าง"
+                                                title="เน€เธฅเธทเธญเธเธเนเธฒเธ"
                                             >
-                                                <option value="">-- เลือกช่าง --</option>
+                                                <option value="">-- เน€เธฅเธทเธญเธเธเนเธฒเธ --</option>
                                                 {Array.from(new Set([
                                                     ...technicians.map(t => t.name),
                                                     ...lineTechnicians.map(u => u.display_name)
@@ -2997,14 +3011,14 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                                วันที่คาดว่าจะเสร็จ <span className="text-red-500">*</span>
+                                                เธงเธฑเธเธ—เธตเนเธเธฒเธ”เธงเนเธฒเธเธฐเน€เธชเธฃเนเธ <span className="text-red-500">*</span>
                                             </label>
                                             <input
                                                 type="date"
                                                 value={statusChangeData.scheduledDate}
                                                 onChange={(e) => setStatusChangeData({ ...statusChangeData, scheduledDate: e.target.value })}
                                                 className="w-full border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2.5 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                title="เลือกวันที่"
+                                                title="เน€เธฅเธทเธญเธเธงเธฑเธเธ—เธตเน"
                                             />
                                         </div>
                                     </div>
@@ -3017,16 +3031,16 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
                                             <h4 className="font-medium text-green-800 dark:text-green-300 mb-2 flex items-center gap-2">
                                                 <CheckCircle2 size={16} />
-                                                สรุปการซ่อม
+                                                เธชเธฃเธธเธเธเธฒเธฃเธเนเธญเธก
                                             </h4>
                                             <div className="text-sm text-green-700 dark:text-green-400 space-y-1">
-                                                <p>• ช่างผู้ดำเนินการ: {statusChangeData.request.assigned_to || '-'}</p>
-                                                <p>• วันที่กำหนด: {statusChangeData.request.scheduled_date
+                                                <p>โ€ข เธเนเธฒเธเธเธนเนเธ”เธณเน€เธเธดเธเธเธฒเธฃ: {statusChangeData.request.assigned_to || '-'}</p>
+                                                <p>โ€ข เธงเธฑเธเธ—เธตเนเธเธณเธซเธเธ”: {statusChangeData.request.scheduled_date
                                                     ? new Date(statusChangeData.request.scheduled_date).toLocaleDateString('th-TH')
                                                     : '-'}
                                                 </p>
                                                 {statusChangeData.request.estimated_cost && statusChangeData.request.estimated_cost > 0 && (
-                                                    <p>• ค่าใช้จ่ายประมาณ: ฿{Number(statusChangeData.request.estimated_cost).toLocaleString()}</p>
+                                                    <p>โ€ข เธเนเธฒเนเธเนเธเนเธฒเธขเธเธฃเธฐเธกเธฒเธ“: เธฟ{Number(statusChangeData.request.estimated_cost).toLocaleString()}</p>
                                                 )}
                                             </div>
                                         </div>
@@ -3036,11 +3050,11 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                                                 <h4 className="font-medium text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-2">
                                                     <ShoppingCart size={16} />
-                                                    อะไหล่ที่เบิก
+                                                    เธญเธฐเนเธซเธฅเนเธ—เธตเนเน€เธเธดเธ
                                                 </h4>
                                                 <ul className="text-sm text-blue-700 dark:text-blue-400 space-y-1">
                                                     {partRequestsForSummary.map((part, idx) => (
-                                                        <li key={idx}>• {part.item_name} x{part.quantity}</li>
+                                                        <li key={idx}>โ€ข {part.item_name} x{part.quantity}</li>
                                                     ))}
                                                 </ul>
                                             </div>
@@ -3050,7 +3064,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         <div className="bg-gray-50 dark:bg-slate-700/50 border border-gray-200 dark:border-slate-600 rounded-lg p-4 space-y-3">
                                             <h4 className="font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
                                                 <ShoppingCart size={16} />
-                                                เพิ่มอะไหล่ที่ใช้ (ถ้ามี)
+                                                เน€เธเธดเนเธกเธญเธฐเนเธซเธฅเนเธ—เธตเนเนเธเน (เธ–เนเธฒเธกเธต)
                                             </h4>
                                             {statusChangeData.partsUsed.map((part, index) => {
                                                 const product = products.find(p => p.p_id === part.p_id);
@@ -3098,14 +3112,14 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                         if (statusChangeData.partsUsed.some(p => p.p_id === p_id)) return; // prevent duplicate
                                                         setStatusChangeData({
                                                             ...statusChangeData,
-                                                            partsUsed: [...statusChangeData.partsUsed, { p_id, quantity: 1, notes: 'เพิ่มตอนซ่อมเสร็จ' }]
+                                                            partsUsed: [...statusChangeData.partsUsed, { p_id, quantity: 1, notes: 'เน€เธเธดเนเธกเธ•เธญเธเธเนเธญเธกเน€เธชเธฃเนเธ' }]
                                                         });
                                                         e.target.value = ""; // reset
                                                     }}
                                                 >
-                                                    <option value="">+ เลือกอะไหล่</option>
+                                                    <option value="">+ เน€เธฅเธทเธญเธเธญเธฐเนเธซเธฅเน</option>
                                                     {products.filter(p => !statusChangeData.partsUsed.some(pu => pu.p_id === p.p_id) && (p.available_stock ?? p.p_count) > 0).map(p => (
-                                                        <option key={p.p_id} value={p.p_id}>{p.p_name} (คงเหลือ {p.available_stock ?? p.p_count})</option>
+                                                        <option key={p.p_id} value={p.p_id}>{p.p_name} (เธเธเน€เธซเธฅเธทเธญ {p.available_stock ?? p.p_count})</option>
                                                     ))}
                                                 </select>
                                             </div>
@@ -3114,7 +3128,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         {/* Completion Photo */}
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                                รูปถ่ายหลังซ่อมเสร็จ
+                                                เธฃเธนเธเธ–เนเธฒเธขเธซเธฅเธฑเธเธเนเธญเธกเน€เธชเธฃเนเธ
                                             </label>
                                             <input
                                                 type="file"
@@ -3130,25 +3144,25 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                         {/* Completion Notes */}
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                                หมายเหตุการซ่อม
+                                                เธซเธกเธฒเธขเน€เธซเธ•เธธเธเธฒเธฃเธเนเธญเธก
                                             </label>
                                             <textarea
                                                 value={statusChangeData.completionNotes}
                                                 onChange={(e) => setStatusChangeData({ ...statusChangeData, completionNotes: e.target.value })}
                                                 className="w-full border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2.5 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-green-500 focus:border-transparent"
                                                 rows={3}
-                                                placeholder="รายละเอียดเพิ่มเติมเกี่ยวกับการซ่อม..."
+                                                placeholder="เธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”เน€เธเธดเนเธกเน€เธ•เธดเธกเน€เธเธตเนเธขเธงเธเธฑเธเธเธฒเธฃเธเนเธญเธก..."
                                             />
                                         </div>
 
                                         {/* Signatures */}
                                         <div className="space-y-4 pt-2">
                                             <SignaturePad
-                                                label="ลายเซ็นช่างผู้ซ่อม *"
+                                                label="เธฅเธฒเธขเน€เธเนเธเธเนเธฒเธเธเธนเนเธเนเธญเธก *"
                                                 onSignatureChange={(sig) => setStatusChangeData({ ...statusChangeData, technicianSignature: sig })}
                                             />
                                             <SignaturePad
-                                                label="ลายเซ็นลูกค้ารับงาน *"
+                                                label="เธฅเธฒเธขเน€เธเนเธเธฅเธนเธเธเนเธฒเธฃเธฑเธเธเธฒเธ *"
                                                 onSignatureChange={(sig) => setStatusChangeData({ ...statusChangeData, customerSignature: sig })}
                                             />
                                         </div>
@@ -3162,7 +3176,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     onClick={() => setShowStatusModal(false)}
                                     className="flex-1 px-4 py-2.5 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 font-medium transition"
                                 >
-                                    ยกเลิก
+                                    เธขเธเน€เธฅเธดเธ
                                 </button>
                                 <button
                                     onClick={confirmStatusChange}
@@ -3176,16 +3190,16 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     {statusChangeData.newStatus === 'in_progress' && (
                                         <>
                                             <Wrench size={18} />
-                                            เริ่มซ่อม
+                                            เน€เธฃเธดเนเธกเธเนเธญเธก
                                         </>
                                     )}
                                     {statusChangeData.newStatus === 'completed' && (
                                         <>
                                             <CheckCircle2 size={18} />
-                                            ยืนยันเสร็จสิ้น
+                                            เธขเธทเธเธขเธฑเธเน€เธชเธฃเนเธเธชเธดเนเธ
                                         </>
                                     )}
-                                    {statusChangeData.newStatus === 'pending' && 'ยืนยัน'}
+                                    {statusChangeData.newStatus === 'pending' && 'เธขเธทเธเธขเธฑเธ'}
                                 </button>
                             </div>
                         </div>
@@ -3209,7 +3223,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                         setShowReopenModal(false);
                         setShowDetailModal(false);
                         loadData();
-                        showToast('เปิดงานซ่อมใหม่เรียบร้อยแล้ว', 'success');
+                        showToast('เน€เธเธดเธ”เธเธฒเธเธเนเธญเธกเนเธซเธกเนเน€เธฃเธตเธขเธเธฃเนเธญเธขเนเธฅเนเธง', 'success');
                     }}
                 />
             )}
@@ -3253,43 +3267,43 @@ function PartRequestModal({
         const result = await createPartRequest(submitData);
 
         if (result.success) {
-            alert('บันทึกคำขอเรียบร้อยแล้ว');
+            alert('เธเธฑเธเธ—เธถเธเธเธณเธเธญเน€เธฃเธตเธขเธเธฃเนเธญเธขเนเธฅเนเธง');
             onClose();
         } else {
-            alert('เกิดข้อผิดพลาด: ' + result.error);
+            alert('เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”: ' + result.error);
         }
     }
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
             <div className="bg-white dark:bg-slate-800 rounded-xl p-6 w-full max-w-md shadow-xl border dark:border-slate-700">
-                <h2 className="text-xl font-bold mb-2">ขอซื้ออะไหล่เพิ่ม</h2>
-                <p className="text-sm text-gray-500 mb-4">สำหรับใบงาน: {requestNumber}</p>
+                <h2 className="text-xl font-bold mb-2">เธเธญเธเธทเนเธญเธญเธฐเนเธซเธฅเนเน€เธเธดเนเธก</h2>
+                <p className="text-sm text-gray-500 mb-4">เธชเธณเธซเธฃเธฑเธเนเธเธเธฒเธ: {requestNumber}</p>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium mb-1">ชื่อสินค้า/อะไหล่ *</label>
+                        <label className="block text-sm font-medium mb-1">เธเธทเนเธญเธชเธดเธเธเนเธฒ/เธญเธฐเนเธซเธฅเน *</label>
                         <input
                             type="text"
                             value={formData.item_name}
                             onChange={(e) => setFormData({ ...formData, item_name: e.target.value })}
                             className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                            placeholder="ระบุชื่ออะไหล่"
+                            placeholder="เธฃเธฐเธเธธเธเธทเนเธญเธญเธฐเนเธซเธฅเน"
                             required
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium mb-1">รายละเอียด/สเปค</label>
+                        <label className="block text-sm font-medium mb-1">เธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”/เธชเน€เธเธ</label>
                         <textarea
                             value={formData.description}
                             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                             className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
                             rows={2}
-                            placeholder="รุ่น, ยี่ห้อ, ขนาด..."
+                            placeholder="เธฃเธธเนเธ, เธขเธตเนเธซเนเธญ, เธเธเธฒเธ”..."
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium mb-1">จำนวน *</label>
+                        <label className="block text-sm font-medium mb-1">เธเธณเธเธงเธ *</label>
                         <input
                             type="number"
                             value={formData.quantity}
@@ -3305,13 +3319,13 @@ function PartRequestModal({
                             onClick={onClose}
                             className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700"
                         >
-                            ยกเลิก
+                            เธขเธเน€เธฅเธดเธ
                         </button>
                         <button
                             type="submit"
                             className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                         >
-                            ยืนยัน
+                            เธขเธทเธเธขเธฑเธ
                         </button>
                     </div>
                 </form>
@@ -3358,7 +3372,7 @@ function ReopenModal({
                     Manager Override
                 </h2>
                 <p className="text-sm text-gray-500 mb-4">
-                    เปิดงานซ่อม <b>#{request.request_number}</b> ใหม่อีกครั้ง
+                    เน€เธเธดเธ”เธเธฒเธเธเนเธญเธก <b>#{request.request_number}</b> เนเธซเธกเนเธญเธตเธเธเธฃเธฑเนเธ
                 </p>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -3369,12 +3383,12 @@ function ReopenModal({
                     )}
 
                     <div className="space-y-2">
-                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">สาเหตุการเปิดใหม่</label>
+                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">เธชเธฒเน€เธซเธ•เธธเธเธฒเธฃเน€เธเธดเธ”เนเธซเธกเน</label>
                         <textarea
                             value={reason}
                             onChange={e => setReason(e.target.value)}
                             className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 resize-none focus:ring-2 focus:ring-red-500 outline-none"
-                            placeholder="ระบุสาเหตุ..."
+                            placeholder="เธฃเธฐเธเธธเธชเธฒเน€เธซเธ•เธธ..."
                             required
                             rows={3}
                         />
@@ -3387,7 +3401,7 @@ function ReopenModal({
                             value={password}
                             onChange={e => setPassword(e.target.value)}
                             className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 focus:ring-2 focus:ring-red-500 outline-none"
-                            placeholder="รหัสผ่านผู้ดูแล"
+                            placeholder="เธฃเธซเธฑเธชเธเนเธฒเธเธเธนเนเธ”เธนเนเธฅ"
                             required
                         />
                     </div>
@@ -3398,14 +3412,14 @@ function ReopenModal({
                             onClick={onClose}
                             className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700"
                         >
-                            ยกเลิก
+                            เธขเธเน€เธฅเธดเธ
                         </button>
                         <button
                             type="submit"
                             className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-medium"
                             disabled={loading}
                         >
-                            {loading ? 'กำลังดำเนินการ...' : 'ยืนยันเปิดใหม่'}
+                            {loading ? 'เธเธณเธฅเธฑเธเธ”เธณเน€เธเธดเธเธเธฒเธฃ...' : 'เธขเธทเธเธขเธฑเธเน€เธเธดเธ”เนเธซเธกเน'}
                         </button>
                     </div>
                 </form>
