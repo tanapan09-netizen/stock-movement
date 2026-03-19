@@ -48,7 +48,7 @@ const BASE_PERMISSION_LIST: PermissionItem[] = [
     { key: PERMISSIONS.STOCK_ADJUST, label: 'Stock Adjust', description: 'Adjust stock quantities', category: 'Core' },
     { key: PERMISSIONS.BORROW, label: 'Borrow/Return', description: 'Manage borrow and return', category: 'Core' },
     { key: PERMISSIONS.ASSETS, label: 'Assets', description: 'Manage fixed assets', category: 'Core' },
-    { key: PERMISSIONS.GENERAL_REQUEST, label: 'General Request', description: 'Access general request page', category: 'Core' },
+    { key: PERMISSIONS.GENERAL_REQUEST, label: 'รับแจ้งซ่อม', description: 'เข้าถึงหน้ารับแจ้งซ่อม', category: 'Maintenance' },
     { key: PERMISSIONS.MAINTENANCE, label: 'Maintenance', description: 'Access maintenance requests', category: 'Core' },
     { key: PERMISSIONS.APPROVALS, label: 'Approvals', description: 'Access approval requests', category: 'Core' },
     { key: PERMISSIONS.PETTY_CASH, label: 'Petty Cash', description: 'Access petty cash module', category: 'Core' },
