@@ -391,6 +391,19 @@ export default function SettingsClient() {
                     <div className="text-blue-600 text-sm font-medium">Manage &rarr;</div>
                 </div>
 
+                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors" onClick={() => window.location.href = '/settings/line-customers'}>
+                    <div>
+                        <div className="font-medium flex items-center gap-2">
+                            LINE Customers
+                        </div>
+                        <div className="text-sm text-gray-500">จัดการรายชื่อลูกค้าที่สมัครผ่าน LINE แยกจากผู้ใช้ภายในระบบ</div>
+                        <div className="text-xs text-gray-400 mt-1">
+                            หน้าสมัครลูกค้า: <span className="font-mono">{typeof window !== 'undefined' ? `${window.location.origin}/line/customer-register` : '/line/customer-register'}</span>
+                        </div>
+                    </div>
+                    <div className="text-blue-600 text-sm font-medium">Manage &rarr;</div>
+                </div>
+
                 <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">
                     <div className="flex-1 mr-4">
                         <div className="font-medium mb-1">สิทธิ์การอนุมัติ (Manager Approval Limit)</div>

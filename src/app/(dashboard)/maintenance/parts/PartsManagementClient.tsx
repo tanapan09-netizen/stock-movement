@@ -353,12 +353,17 @@ export default function PartsManagementClient() {
                                 <div>
                                     <label className="block text-sm font-medium mb-1">สินค้า/อะไหล่ *</label>
                                     <SearchableSelect
-                                        options={products
-                                            .filter(p => (p.available_stock ?? p.p_count) > 0)
-                                            .map(p => ({
+                                        options={products.map(p => {
+                                            const stock = p.available_stock ?? p.p_count;
+                                            const unit = p.p_unit || 'ชิ้น';
+
+                                            return {
                                                 value: p.p_id,
-                                                label: `${p.p_name} (คงเหลือ WH-01: ${p.available_stock ?? p.p_count} ${p.p_unit || 'ชิ้น'})`
-                                            }))}
+                                                label: stock > 0
+                                                    ? `${p.p_name} (คงเหลือ WH-01: ${stock} ${unit})`
+                                                    : `${p.p_name} (WH-01 หมด)`
+                                            };
+                                        })}
                                         value={withdrawForm.p_id}
                                         onChange={(val: string) => setWithdrawForm(prev => ({
                                             ...prev,

@@ -423,14 +423,33 @@ export async function withdrawPartForMaintenance(data: {
             where: { warehouse_id_p_id: { warehouse_id: wh01.warehouse_id, p_id: data.p_id } }
         });
 
-        if (!stockWh01 || (stockWh01.quantity ?? 0) < data.quantity) {
+        const product = await prisma.tbl_products.findUnique({
+            where: { p_id: data.p_id },
+            select: { p_count: true }
+        });
+
+        let availableWh01 = stockWh01?.quantity ?? 0;
+        const productStock = product?.p_count ?? 0;
+
+        // Fallback to tbl_products stock when WH-01 stock row is missing/stale.
+        if (availableWh01 < data.quantity && productStock >= data.quantity) {
+            availableWh01 = productStock;
+        }
+
+        if (availableWh01 < data.quantity) {
             return { success: false, error: 'Insufficient stock in WH-01' };
         }
 
         const result = await prisma.$transaction(async (tx) => {
-            await tx.tbl_warehouse_stock.update({
+            await tx.tbl_warehouse_stock.upsert({
                 where: { warehouse_id_p_id: { warehouse_id: wh01.warehouse_id, p_id: data.p_id } },
-                data: { quantity: { decrement: data.quantity } }
+                create: {
+                    warehouse_id: wh01.warehouse_id,
+                    p_id: data.p_id,
+                    quantity: availableWh01 - data.quantity,
+                    min_stock: 0
+                },
+                update: { quantity: availableWh01 - data.quantity }
             });
 
             await tx.tbl_warehouse_stock.upsert({
@@ -713,7 +732,11 @@ export async function getProducts() {
 
         const data = products.map(p => ({
             ...p,
-            available_stock: stockByProduct.get(p.p_id) ?? 0
+            available_stock: (() => {
+                const whStock = stockByProduct.get(p.p_id);
+                if (whStock === undefined || whStock <= 0) return p.p_count;
+                return whStock;
+            })()
         }));
 
         return { success: true, data };

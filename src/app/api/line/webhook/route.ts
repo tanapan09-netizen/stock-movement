@@ -4,10 +4,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { WebhookEvent, validateSignature, TextMessage } from '@line/bot-sdk';
+import { WebhookEvent, validateSignature } from '@line/bot-sdk';
 import { prisma } from '@/lib/prisma';
-import { getUserProfile } from '@/lib/notifications/lineMessaging';
-import crypto from 'crypto';
+import { createTextMessage, getUserProfile, sendPushMessage } from '@/lib/notifications/lineMessaging';
 
 export async function POST(request: NextRequest) {
     try {
@@ -68,8 +67,7 @@ async function handleEvent(event: WebhookEvent) {
                 break;
 
             case 'message':
-                // Optional: Handle incoming messages
-                console.log('[LINE Webhook] Message event (ignored)');
+                await handleMessageEvent(event);
                 break;
 
             default:
@@ -118,6 +116,26 @@ async function handleFollowEvent(event: WebhookEvent) {
             },
         });
 
+        await prisma.tbl_line_customers.upsert({
+            where: { line_user_id: userId },
+            update: {
+                is_active: true,
+                display_name: profile?.displayName || null,
+                picture_url: profile?.pictureUrl || null,
+                last_interaction: new Date(),
+            },
+            create: {
+                line_user_id: userId,
+                display_name: profile?.displayName || null,
+                full_name: profile?.displayName || 'ลูกค้า',
+                phone_number: null,
+                picture_url: profile?.pictureUrl || null,
+                is_active: true,
+                registered_at: new Date(),
+                last_interaction: new Date(),
+            },
+        });
+
         console.log('[LINE Webhook] User registered:', profile?.displayName || userId);
     } catch (error) {
         console.error('[LINE Webhook] Failed to register user:', error);
@@ -145,10 +163,49 @@ async function handleUnfollowEvent(event: WebhookEvent) {
             },
         });
 
+        await prisma.tbl_line_customers.updateMany({
+            where: { line_user_id: userId },
+            data: {
+                is_active: false,
+                last_interaction: new Date(),
+            },
+        });
+
         console.log('[LINE Webhook] User deactivated:', userId);
     } catch (error) {
         console.error('[LINE Webhook] Failed to deactivate user:', error);
     }
+}
+
+async function handleMessageEvent(event: WebhookEvent) {
+    if (event.type !== 'message' || event.message.type !== 'text') return;
+
+    const userId = event.source.userId;
+    if (!userId) return;
+
+    const text = event.message.text.trim().toLowerCase();
+    const isRegisterIntent = text.includes('สมัคร') || text.includes('ลงทะเบียน') || text.includes('register');
+
+    await prisma.tbl_line_users.updateMany({
+        where: { line_user_id: userId },
+        data: { last_interaction: new Date() }
+    });
+    await prisma.tbl_line_customers.updateMany({
+        where: { line_user_id: userId },
+        data: { last_interaction: new Date(), is_active: true }
+    });
+
+    if (!isRegisterIntent) return;
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+    if (!appUrl) return;
+
+    const registerUrl = `${appUrl.replace(/\/$/, '')}/line/customer-register?line_user_id=${encodeURIComponent(userId)}`;
+    const msg = createTextMessage(
+        `ลิงก์สมัครลูกค้า LINE:\n${registerUrl}\n\nกรุณากรอกชื่อและเบอร์โทรให้ครบเพื่อใช้บริการ`
+    );
+
+    await sendPushMessage(userId, msg);
 }
 
 export const dynamic = 'force-dynamic';

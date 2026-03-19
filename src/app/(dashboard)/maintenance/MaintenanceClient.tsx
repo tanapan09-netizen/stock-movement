@@ -3118,8 +3118,16 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                     }}
                                                 >
                                                     <option value="">+ เลือกอะไหล่</option>
-                                                    {products.filter(p => !statusChangeData.partsUsed.some(pu => pu.p_id === p.p_id) && (p.available_stock ?? p.p_count) > 0).map(p => (
-                                                        <option key={p.p_id} value={p.p_id}>{p.p_name} (คงเหลือใน WH-01 {p.available_stock ?? p.p_count})</option>
+                                                    {products.filter(p => !statusChangeData.partsUsed.some(pu => pu.p_id === p.p_id)).map(p => (
+                                                        <option
+                                                            key={p.p_id}
+                                                            value={p.p_id}
+                                                            disabled={(p.available_stock ?? p.p_count) <= 0}
+                                                        >
+                                                            {(p.available_stock ?? p.p_count) > 0
+                                                                ? `${p.p_name} (คงเหลือใน WH-01 ${p.available_stock ?? p.p_count})`
+                                                                : `${p.p_name} (WH-01 หมด)`}
+                                                        </option>
                                                     ))}
                                                 </select>
                                             </div>

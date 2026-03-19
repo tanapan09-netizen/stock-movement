@@ -23,6 +23,7 @@ import {
     BarChart3,
     AlertTriangle,
     Wrench,
+    Users,
     ChevronLeft,
     ChevronRight,
     ScrollText
@@ -531,7 +532,27 @@ export default function Sidebar(props: SidebarProps) {
                                                     <span className="truncate">ตั้งค่าทั่วไป</span>
                                                 </Link>
                                             )}
+                                                                                        {can(PERMISSIONS.ADMIN_SETTINGS) && (
+                                                <Link
+                                                    href="/settings/line-users"
+                                                    onClick={handleLinkClick}
+                                                    className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isActive('/settings/line-users') ? 'bg-white/15 text-emerald-400' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                                                >
+                                                    <Users className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isActive('/settings/line-users') && 'group-hover:scale-110 group-hover:text-emerald-400'}`} />
+                                                    <span className="truncate">ผู้ใช้ LINE ภายใน</span>
+                                                </Link>
+                                            )}
 
+                                                                                        {can(PERMISSIONS.ADMIN_SETTINGS) && (
+                                                <Link
+                                                    href="/settings/line-customers"
+                                                    onClick={handleLinkClick}
+                                                    className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isActive('/settings/line-customers') ? 'bg-white/15 text-lime-400' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                                                >
+                                                    <Users className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isActive('/settings/line-customers') && 'group-hover:scale-110 group-hover:text-lime-400'}`} />
+                                                    <span className="truncate">ลูกค้า LINE</span>
+                                                </Link>
+                                            )}
                                             {can(PERMISSIONS.ADMIN_LOGS) && (
                                                 <Link
                                                     href="/settings/system-logs"
@@ -620,5 +641,6 @@ export default function Sidebar(props: SidebarProps) {
         </>
     );
 }
+
 
 
