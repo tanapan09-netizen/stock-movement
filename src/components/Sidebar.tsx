@@ -28,7 +28,7 @@ import {
     ScrollText
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
-import { PERMISSIONS, RolePermissions } from '@/lib/permissions';
+import { getPagePermissionKey, PERMISSIONS, RolePermissions } from '@/lib/permissions';
 import { useSidebar } from '@/contexts/SidebarContext';
 import QrScannerModal from './QrScannerModal';
 import { QrCode } from 'lucide-react';
@@ -76,6 +76,13 @@ export default function Sidebar(props: SidebarProps) {
 
     const isActive = (path: string) => pathname === path;
     const can = (key: string) => !!permissions[key];
+    const canAccessPage = (route: string) =>
+        Boolean(
+            permissions[getPagePermissionKey(route, 'read')] ||
+            permissions[getPagePermissionKey(route, 'edit')]
+        );
+    const canGeneralRequestPage = canAccessPage('/general-request');
+    const canMaintenancePage = canAccessPage('/maintenance');
     const baseNavItemClass = `group relative flex items-center rounded-2xl ${
         collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'
     } text-sm font-medium transition-all duration-200 ease-out select-none border`;
@@ -227,18 +234,18 @@ export default function Sidebar(props: SidebarProps) {
                         )}
 
                         {/* ─── งานซ่อมบำรุง ─── */}
-                        {(can(PERMISSIONS.MAINTENANCE) || can(PERMISSIONS.MAINTENANCE_DASHBOARD)) && !collapsed && (
+                        {(canGeneralRequestPage || canMaintenancePage || can(PERMISSIONS.MAINTENANCE_DASHBOARD)) && !collapsed && (
                             <div className="pt-5 pb-2 px-3 flex items-center gap-2">
                                 <div className="h-px bg-gray-700 flex-1"></div>
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-cyan-400 truncate">🔧 งานซ่อมบำรุง</p>
                                 <div className="h-px bg-gray-700 flex-1"></div>
                             </div>
                         )}
-                        {collapsed && (can(PERMISSIONS.MAINTENANCE) || can(PERMISSIONS.MAINTENANCE_DASHBOARD)) && (
+                        {collapsed && (canGeneralRequestPage || canMaintenancePage || can(PERMISSIONS.MAINTENANCE_DASHBOARD)) && (
                             <div className="my-2 h-px bg-gray-700/60" />
                         )}
 
-                        {can(PERMISSIONS.MAINTENANCE) && (
+                        {canGeneralRequestPage && (
                             <Link
                                 href="/general-request"
                                 onClick={handleLinkClick}
@@ -252,7 +259,7 @@ export default function Sidebar(props: SidebarProps) {
                             </Link>
                         )}
 
-                        {can(PERMISSIONS.MAINTENANCE) && (
+                        {canMaintenancePage && (
                             <Link
                                 href="/maintenance"
                                 onClick={handleLinkClick}
