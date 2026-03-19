@@ -1,9 +1,10 @@
 ﻿'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { registerLineCustomer, getLineCustomerByLineId } from '@/actions/lineCustomerActions';
-import { CheckCircle2, UserRound, Phone, MessageSquareText, House } from 'lucide-react';
+import { CheckCircle2, Copy, House, Loader2, MessageSquareText, Phone, UserRound, X } from 'lucide-react';
 
 declare global {
     interface Window {
@@ -12,19 +13,63 @@ declare global {
             isLoggedIn: () => boolean;
             login: (config?: { redirectUri?: string }) => void;
             getProfile: () => Promise<{ userId: string; displayName?: string }>;
+            closeWindow?: () => void;
         };
     }
 }
 
+let liffSdkPromise: Promise<void> | null = null;
+
 async function loadLiffSdk(): Promise<void> {
     if (typeof window === 'undefined') return;
     if (window.liff) return;
+    if (liffSdkPromise) return liffSdkPromise;
 
-    await new Promise<void>((resolve, reject) => {
-        const existing = document.querySelector('script[data-liff-sdk="true"]');
+    liffSdkPromise = new Promise<void>((resolve, reject) => {
+        const existing = document.querySelector<HTMLScriptElement>('script[data-liff-sdk="true"]');
+
+        const resolveIfReady = () => {
+            if (window.liff) {
+                resolve();
+                return true;
+            }
+            if (existing?.dataset?.loaded === 'true') {
+                resolve();
+                return true;
+            }
+            return false;
+        };
+
+        if (resolveIfReady()) return;
+
+        const timeoutId = window.setTimeout(() => {
+            reject(new Error('Timed out while loading LIFF SDK'));
+        }, 15000);
+
+        const cleanup = () => {
+            window.clearTimeout(timeoutId);
+            if (existing) {
+                existing.removeEventListener('load', onLoad);
+                existing.removeEventListener('error', onError);
+            }
+        };
+
+        const onLoad = () => {
+            cleanup();
+            resolve();
+        };
+
+        const onError = () => {
+            cleanup();
+            reject(new Error('Failed to load LIFF SDK'));
+        };
+
         if (existing) {
-            existing.addEventListener('load', () => resolve(), { once: true });
-            existing.addEventListener('error', () => reject(new Error('Failed to load LIFF SDK')), { once: true });
+            existing.addEventListener('load', onLoad, { once: true });
+            existing.addEventListener('error', onError, { once: true });
+            queueMicrotask(() => {
+                if (resolveIfReady()) cleanup();
+            });
             return;
         }
 
@@ -32,10 +77,66 @@ async function loadLiffSdk(): Promise<void> {
         script.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
         script.async = true;
         script.dataset.liffSdk = 'true';
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error('Failed to load LIFF SDK'));
+        script.onload = () => {
+            script.dataset.loaded = 'true';
+            onLoad();
+        };
+        script.onerror = onError;
         document.head.appendChild(script);
+    }).finally(() => {
+        if (!window.liff) liffSdkPromise = null;
     });
+
+    return liffSdkPromise;
+}
+
+type AlertKind = 'success' | 'error' | 'info';
+
+function Alert({
+    kind,
+    children,
+    onDismiss,
+}: {
+    kind: AlertKind;
+    children: ReactNode;
+    onDismiss?: () => void;
+}) {
+    const styles =
+        kind === 'success'
+            ? 'bg-green-50 text-green-800 border-green-200'
+            : kind === 'info'
+                ? 'bg-blue-50 text-blue-800 border-blue-200'
+                : 'bg-red-50 text-red-800 border-red-200';
+
+    return (
+        <div role="alert" className={`mt-4 text-sm rounded-lg px-3 py-2 border ${styles}`}>
+            <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2">
+                    {kind === 'success' && <CheckCircle2 size={16} />}
+                    <div className="leading-5">{children}</div>
+                </div>
+                {onDismiss && (
+                    <button
+                        type="button"
+                        onClick={onDismiss}
+                        className="p-1 rounded-md hover:bg-black/5"
+                        aria-label="ปิดข้อความแจ้งเตือน"
+                    >
+                        <X size={16} />
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+}
+
+async function copyToClipboard(text: string): Promise<boolean> {
+    try {
+        await navigator.clipboard.writeText(text);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 export default function LineCustomerRegisterClient() {
@@ -48,9 +149,10 @@ export default function LineCustomerRegisterClient() {
     const [roomNumber, setRoomNumber] = useState('');
     const [notes, setNotes] = useState('');
     const [loading, setLoading] = useState(false);
+    const [hydrating, setHydrating] = useState(false);
     const [detectingLineId, setDetectingLineId] = useState(true);
-    const [saved, setSaved] = useState(false);
-    const [message, setMessage] = useState('');
+    const [alert, setAlert] = useState<{ kind: AlertKind; text: string } | null>(null);
+    const [copied, setCopied] = useState<'lineUserId' | 'url' | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -68,7 +170,7 @@ export default function LineCustomerRegisterClient() {
             if (!liffId) {
                 if (!cancelled) {
                     setDetectingLineId(false);
-                    setMessage('ยังไม่ได้ตั้งค่า NEXT_PUBLIC_LINE_LIFF_ID');
+                    setAlert({ kind: 'info', text: 'ยังไม่ได้ตั้งค่า NEXT_PUBLIC_LINE_LIFF_ID (จำเป็นสำหรับดึง LINE User ID อัตโนมัติ)' });
                 }
                 return;
             }
@@ -91,7 +193,7 @@ export default function LineCustomerRegisterClient() {
                 }
             } catch (error) {
                 console.error('Failed to detect LINE user id:', error);
-                if (!cancelled) setMessage('ไม่สามารถดึง LINE User ID อัตโนมัติได้');
+                if (!cancelled) setAlert({ kind: 'error', text: 'ไม่สามารถดึง LINE User ID อัตโนมัติได้ (แนะนำให้เปิดหน้านี้จากใน LINE)' });
             } finally {
                 if (!cancelled) setDetectingLineId(false);
             }
@@ -109,13 +211,21 @@ export default function LineCustomerRegisterClient() {
 
         async function hydrate() {
             if (!lineUserId) return;
-            const result = await getLineCustomerByLineId(lineUserId);
-            if (!cancelled && result.success && result.data) {
-                setLineUserId(result.data.line_user_id);
-                setFullName(result.data.full_name || '');
-                setPhoneNumber(result.data.phone_number || '');
-                setRoomNumber(result.data.room_number || '');
-                setNotes(result.data.notes || '');
+            setHydrating(true);
+            try {
+                const result = await getLineCustomerByLineId(lineUserId);
+                if (cancelled) return;
+                if (result.success && result.data) {
+                    setLineUserId(result.data.line_user_id);
+                    setFullName(result.data.full_name || '');
+                    setPhoneNumber(result.data.phone_number || '');
+                    setRoomNumber(result.data.room_number || '');
+                    setNotes(result.data.notes || '');
+                } else if (!result.success && result.error) {
+                    setAlert({ kind: 'error', text: result.error });
+                }
+            } finally {
+                if (!cancelled) setHydrating(false);
             }
         }
 
@@ -127,44 +237,106 @@ export default function LineCustomerRegisterClient() {
 
     async function handleSubmit(e: FormEvent) {
         e.preventDefault();
-        setSaved(false);
         setLoading(true);
-        setMessage('');
+        setAlert(null);
 
-        const result = await registerLineCustomer({
-            line_user_id: lineUserId,
-            full_name: fullName,
-            phone_number: phoneNumber,
-            room_number: roomNumber,
-            notes
-        });
-
-        if (result.success) {
-            setSaved(true);
-            setMessage('บันทึกข้อมูลสำเร็จ สามารถปิดหน้านี้และใช้งาน LINE ได้ทันที');
-        } else {
-            setMessage(result.error || 'บันทึกข้อมูลไม่สำเร็จ');
+        if (!lineUserId) {
+            setAlert({ kind: 'error', text: 'ไม่พบ LINE User ID กรุณาเปิดหน้านี้จากแชท LINE หรือใส่ line_user_id ใน URL' });
+            setLoading(false);
+            return;
         }
 
-        setLoading(false);
+        try {
+            const result = await registerLineCustomer({
+                line_user_id: lineUserId,
+                full_name: fullName,
+                phone_number: phoneNumber,
+                room_number: roomNumber,
+                notes
+            });
+
+            if (result.success) {
+                setAlert({ kind: 'success', text: 'บันทึกข้อมูลสำเร็จ สามารถปิดหน้านี้และใช้งาน LINE ได้ทันที' });
+            } else {
+                setAlert({ kind: 'error', text: result.error || 'บันทึกข้อมูลไม่สำเร็จ' });
+            }
+        } catch (error) {
+            console.error('registerLineCustomer failed:', error);
+            setAlert({ kind: 'error', text: 'เกิดข้อผิดพลาดระหว่างบันทึกข้อมูล' });
+        } finally {
+            setLoading(false);
+        }
     }
+
+    const canSubmit =
+        !!lineUserId && fullName.trim().length > 0 && phoneNumber.trim().length > 0 && !loading && !detectingLineId;
+
+    const phoneDigits = phoneNumber.replace(/[^\d]/g, '');
+    const phoneLooksValid = phoneDigits.length === 9 || phoneDigits.length === 10;
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-green-50 to-white px-4 py-10">
             <div className="max-w-lg mx-auto bg-white border border-green-100 rounded-2xl shadow-sm p-6">
                 <h1 className="text-2xl font-bold text-gray-900 mb-1">สมัครลูกค้า LINE</h1>
-                <p className="text-sm text-gray-500 mb-6">กรอกชื่อและเบอร์โทรสำหรับลงทะเบียนลูกค้า</p>
+                <p className="text-sm text-gray-500 mb-6">กรอกข้อมูลสำหรับลงทะเบียนลูกค้า (ใช้เวลาไม่ถึง 1 นาที)</p>
+
+                <div className="rounded-xl border bg-gray-50 px-4 py-3 mb-5">
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-medium text-gray-800">สถานะ</div>
+                        <div className="text-xs text-gray-600">
+                            {detectingLineId ? 'กำลังตรวจสอบ LINE...' : lineUserId ? 'พร้อมลงทะเบียน' : 'ต้องเปิดจาก LINE'}
+                        </div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                        <div className={`rounded-lg px-2 py-1 ${lineUserId ? 'bg-green-100 text-green-800' : 'bg-white text-gray-600 border'}`}>
+                            1) LINE ID
+                        </div>
+                        <div className={`rounded-lg px-2 py-1 ${fullName.trim() && phoneNumber.trim() ? 'bg-green-100 text-green-800' : 'bg-white text-gray-600 border'}`}>
+                            2) กรอกข้อมูล
+                        </div>
+                        <div className={`rounded-lg px-2 py-1 ${alert?.kind === 'success' ? 'bg-green-100 text-green-800' : 'bg-white text-gray-600 border'}`}>
+                            3) บันทึก
+                        </div>
+                    </div>
+                </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">LINE User ID (Auto)</label>
-                        <input
-                            type="text"
-                            value={lineUserId}
-                            readOnly
-                            className="w-full border rounded-lg px-3 py-2 bg-gray-50 text-gray-700"
-                            placeholder="กำลังดึงข้อมูลจาก LINE..."
-                        />
+                        <div className="flex items-stretch gap-2">
+                            <div className="relative flex-1">
+                                <input
+                                    type="text"
+                                    value={lineUserId}
+                                    readOnly
+                                    className="w-full border rounded-lg pl-3 pr-10 py-2 bg-gray-50 text-gray-700"
+                                    placeholder="กำลังดึงข้อมูลจาก LINE..."
+                                />
+                                {(detectingLineId || hydrating) && (
+                                    <div className="absolute inset-y-0 right-3 flex items-center text-gray-400">
+                                        <Loader2 size={16} className="animate-spin" />
+                                    </div>
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    if (!lineUserId) return;
+                                    const ok = await copyToClipboard(lineUserId);
+                                    if (!ok) {
+                                        setAlert({ kind: 'error', text: 'คัดลอกไม่สำเร็จ (เบราว์เซอร์ไม่อนุญาต)' });
+                                        return;
+                                    }
+                                    setCopied('lineUserId');
+                                    window.setTimeout(() => setCopied(null), 1500);
+                                }}
+                                disabled={!lineUserId}
+                                className="shrink-0 inline-flex items-center justify-center gap-2 px-3 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-60"
+                            >
+                                <Copy size={16} />
+                                <span className="text-sm">{copied === 'lineUserId' ? 'คัดลอกแล้ว' : 'คัดลอก'}</span>
+                            </button>
+                        </div>
                         <p className="text-xs text-gray-400 mt-1">
                             {detectingLineId
                                 ? 'กำลังดึง LINE User ID อัตโนมัติ...'
@@ -172,6 +344,29 @@ export default function LineCustomerRegisterClient() {
                                     ? 'ระบบดึง LINE User ID ให้อัตโนมัติแล้ว'
                                     : 'ไม่พบ LINE User ID กรุณาเปิดหน้านี้จากแชท LINE'}
                         </p>
+                        {!detectingLineId && !lineUserId && (
+                            <div className="mt-2 flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        const ok = await copyToClipboard(window.location.href);
+                                        if (!ok) {
+                                            setAlert({ kind: 'error', text: 'คัดลอกลิงก์ไม่สำเร็จ (เบราว์เซอร์ไม่อนุญาต)' });
+                                            return;
+                                        }
+                                        setCopied('url');
+                                        window.setTimeout(() => setCopied(null), 1500);
+                                    }}
+                                    className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50"
+                                >
+                                    <Copy size={16} />
+                                    <span className="text-sm">{copied === 'url' ? 'คัดลอกแล้ว' : 'คัดลอกลิงก์หน้านี้'}</span>
+                                </button>
+                                <div className="text-xs text-gray-500">
+                                    ส่งลิงก์นี้ให้ตัวเองใน LINE แล้วเปิดจากในแชทเพื่อให้ดึง LINE ID ได้
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <div>
@@ -197,9 +392,13 @@ export default function LineCustomerRegisterClient() {
                             value={phoneNumber}
                             onChange={(e) => setPhoneNumber(e.target.value)}
                             required
-                            className="w-full border rounded-lg px-3 py-2"
+                            inputMode="tel"
+                            className={`w-full border rounded-lg px-3 py-2 ${phoneNumber && !phoneLooksValid ? 'border-red-300' : ''}`}
                             placeholder="08xxxxxxxx"
                         />
+                        {!!phoneNumber && !phoneLooksValid && (
+                            <p className="text-xs text-red-600 mt-1">รูปแบบเบอร์โทรไม่ถูกต้อง (ควรมี 9–10 ตัวเลข)</p>
+                        )}
                     </div>
 
                     <div>
@@ -230,20 +429,36 @@ export default function LineCustomerRegisterClient() {
 
                     <button
                         type="submit"
-                        disabled={loading || !lineUserId}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white rounded-lg px-4 py-2.5 disabled:opacity-60"
+                        disabled={!canSubmit || (!phoneLooksValid && phoneNumber.trim().length > 0)}
+                        className="w-full bg-green-600 hover:bg-green-700 text-white rounded-lg px-4 py-2.5 disabled:opacity-60 disabled:hover:bg-green-600"
                     >
-                        {loading ? 'กำลังบันทึก...' : 'บันทึกข้อมูลลูกค้า'}
+                        <span className="inline-flex items-center justify-center gap-2">
+                            {loading && <Loader2 size={16} className="animate-spin" />}
+                            {loading ? 'กำลังบันทึก...' : 'บันทึกข้อมูลลูกค้า'}
+                        </span>
                     </button>
+
+                    {alert?.kind === 'success' && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (window.liff?.closeWindow) {
+                                    window.liff.closeWindow();
+                                    return;
+                                }
+                                window.close();
+                            }}
+                            className="w-full border rounded-lg px-4 py-2.5 hover:bg-gray-50"
+                        >
+                            ปิดหน้านี้
+                        </button>
+                    )}
                 </form>
 
-                {message && (
-                    <div className={`mt-4 text-sm rounded-lg px-3 py-2 ${saved ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                        <div className="flex items-center gap-2">
-                            {saved && <CheckCircle2 size={16} />}
-                            <span>{message}</span>
-                        </div>
-                    </div>
+                {alert && (
+                    <Alert kind={alert.kind} onDismiss={() => setAlert(null)}>
+                        {alert.text}
+                    </Alert>
                 )}
             </div>
         </div>
