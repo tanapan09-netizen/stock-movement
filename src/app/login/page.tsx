@@ -1,19 +1,138 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Package, ArrowRight, AlertCircle, UserPlus, Wrench } from 'lucide-react';
+import { AlertCircle, ArrowRight, Package, UserPlus, Wrench } from 'lucide-react';
+
+type Locale = 'th' | 'en' | 'jp';
+type ErrorCodeKey = 'user_not_found' | 'invalid_password' | 'account_locked' | 'configuration' | 'login_failed' | 'exception' | 'lockout_released' | 'wait_more';
+
+type Messages = {
+    languageLabel: string;
+    title: string;
+    subtitle: string;
+    username: string;
+    usernamePlaceholder: string;
+    password: string;
+    passwordPlaceholder: string;
+    showPassword: string;
+    login: string;
+    loggingIn: string;
+    loginWithLine: string;
+    customerSection: string;
+    registerCustomer: string;
+    repairRequest: string;
+    unknownStatus: string;
+    errorPrefix: string;
+};
+
+const translations: Record<Locale, Messages> = {
+    th: {
+        languageLabel: 'ภาษา',
+        title: 'Stock Movement',
+        subtitle: 'ระบบจัดการคลังสินค้า',
+        username: 'ชื่อผู้ใช้ (Username)',
+        usernamePlaceholder: 'กรอกชื่อผู้ใช้...',
+        password: 'รหัสผ่าน (Password)',
+        passwordPlaceholder: 'กรอกรหัสผ่าน...',
+        showPassword: 'แสดงรหัสผ่าน',
+        login: 'เข้าสู่ระบบ',
+        loggingIn: 'กำลังเข้าสู่ระบบ...',
+        loginWithLine: 'เข้าสู่ระบบด้วย LINE',
+        customerSection: 'บริการสำหรับลูกค้า',
+        registerCustomer: 'ลงทะเบียน (สำหรับลูกค้า)',
+        repairRequest: 'แจ้งซ่อมออนไลน์ (สำหรับลูกค้า)',
+        unknownStatus: 'ไม่ทราบสถานะ',
+        errorPrefix: 'เกิดข้อผิดพลาด',
+    },
+    en: {
+        languageLabel: 'Language',
+        title: 'Stock Movement',
+        subtitle: 'Inventory Management System',
+        username: 'Username',
+        usernamePlaceholder: 'Enter username...',
+        password: 'Password',
+        passwordPlaceholder: 'Enter password...',
+        showPassword: 'Show password',
+        login: 'Sign In',
+        loggingIn: 'Signing in...',
+        loginWithLine: 'Sign in with LINE',
+        customerSection: 'Customer Services',
+        registerCustomer: 'Customer Registration',
+        repairRequest: 'Online Repair Request',
+        unknownStatus: 'Unknown',
+        errorPrefix: 'Error',
+    },
+    jp: {
+        languageLabel: '言語',
+        title: 'Stock Movement',
+        subtitle: '在庫管理システム',
+        username: 'ユーザー名',
+        usernamePlaceholder: 'ユーザー名を入力...',
+        password: 'パスワード',
+        passwordPlaceholder: 'パスワードを入力...',
+        showPassword: 'パスワードを表示',
+        login: 'ログイン',
+        loggingIn: 'ログイン中...',
+        loginWithLine: 'LINEでログイン',
+        customerSection: 'お客様向けサービス',
+        registerCustomer: 'お客様登録',
+        repairRequest: 'オンライン修理依頼',
+        unknownStatus: '不明',
+        errorPrefix: 'エラー',
+    },
+};
+
+const getErrorMessage = (locale: Locale, code: ErrorCodeKey, params?: { attempts?: string; errCode?: string; detail?: string; timeLeft?: string }) => {
+    const dict: Record<Locale, Record<ErrorCodeKey, string>> = {
+        th: {
+            user_not_found: 'ไม่พบชื่อผู้ใช้นี้ในระบบ',
+            invalid_password: `รหัสผ่านไม่ถูกต้อง${params?.attempts ? ` (เหลือโอกาสอีก ${params.attempts} ครั้ง)` : ''}`,
+            account_locked: 'บัญชีถูกระงับชั่วคราว',
+            configuration: 'เกิดข้อผิดพลาดในการตั้งค่าระบบ (Configuration Error)',
+            login_failed: `เข้าสู่ระบบไม่สำเร็จ${params?.errCode ? ` (${params.errCode})` : ''}`,
+            exception: `เกิดข้อผิดพลาด: ${params?.detail ?? 'กรุณาลองใหม่'}`,
+            lockout_released: 'บัญชีปลดล็อคแล้ว กรุณาลองใหม่',
+            wait_more: `กรุณารออีก ${params?.timeLeft ?? ''} นาที`,
+        },
+        en: {
+            user_not_found: 'User not found in the system',
+            invalid_password: `Invalid password${params?.attempts ? ` (${params.attempts} attempts left)` : ''}`,
+            account_locked: 'Account is temporarily locked',
+            configuration: 'System configuration error (Configuration Error)',
+            login_failed: `Login failed${params?.errCode ? ` (${params.errCode})` : ''}`,
+            exception: `An error occurred: ${params?.detail ?? 'Please try again'}`,
+            lockout_released: 'Account unlocked. Please try again.',
+            wait_more: `Please wait ${params?.timeLeft ?? ''} minutes`,
+        },
+        jp: {
+            user_not_found: 'ユーザーが見つかりません',
+            invalid_password: `パスワードが正しくありません${params?.attempts ? `（残り ${params.attempts} 回）` : ''}`,
+            account_locked: 'アカウントは一時的にロックされています',
+            configuration: 'システム設定エラーが発生しました (Configuration Error)',
+            login_failed: `ログインに失敗しました${params?.errCode ? ` (${params.errCode})` : ''}`,
+            exception: `エラーが発生しました: ${params?.detail ?? '再度お試しください'}`,
+            lockout_released: 'アカウントのロックが解除されました。もう一度お試しください。',
+            wait_more: `あと ${params?.timeLeft ?? ''} 分お待ちください`,
+        },
+    };
+
+    return dict[locale][code];
+};
 
 export default function LoginPage() {
+    const [locale, setLocale] = useState<Locale>('th');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [lockoutEndTime, setLockoutEndTime] = useState<number | null>(null);
-    const [timeLeft, setTimeLeft] = useState<string>('');
+    const [timeLeft, setTimeLeft] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const router = useRouter();
+
+    const t = useMemo(() => translations[locale], [locale]);
 
     useEffect(() => {
         if (!lockoutEndTime) return;
@@ -25,7 +144,7 @@ export default function LoginPage() {
             if (diff <= 0) {
                 setLockoutEndTime(null);
                 setTimeLeft('');
-                setError('บัญชีปลดล็อคแล้ว กรุณาลองใหม่');
+                setError(getErrorMessage(locale, 'lockout_released'));
                 clearInterval(timer);
                 return;
             }
@@ -36,7 +155,7 @@ export default function LoginPage() {
         }, 1000);
 
         return () => clearInterval(timer);
-    }, [lockoutEndTime]);
+    }, [lockoutEndTime, locale]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -51,36 +170,37 @@ export default function LoginPage() {
                 redirect: false,
             });
 
-
-
             if (result?.error) {
                 let errorMessage = '';
-                const errCode = result.code || result.error; // NextAuth v5 might put code in error string or code prop
+                const errCode = result.code || result.error;
 
                 if (errCode === 'user_not_found') {
-                    errorMessage = 'ไม่พบชื่อผู้ใช้นี้ในระบบ';
+                    errorMessage = getErrorMessage(locale, 'user_not_found');
                 } else if (errCode.startsWith('invalid_password')) {
                     const attempts = errCode.split(':')[1];
-                    errorMessage = `รหัสผ่านไม่ถูกต้อง${attempts ? ` (เหลือโอกาสอีก ${attempts} ครั้ง)` : ''}`;
+                    errorMessage = getErrorMessage(locale, 'invalid_password', { attempts });
                 } else if (errCode.startsWith('account_locked')) {
-                    const timestamp = parseInt(errCode.split(':')[1]);
-                    if (!isNaN(timestamp)) {
+                    const timestamp = parseInt(errCode.split(':')[1], 10);
+                    if (!Number.isNaN(timestamp)) {
                         setLockoutEndTime(timestamp);
-                        errorMessage = 'บัญชีถูกระงับชั่วคราว'; // Will be suffixed with timer
+                        errorMessage = getErrorMessage(locale, 'account_locked');
                     } else {
-                        errorMessage = 'บัญชีถูกระงับชั่วคราว กรุณาติดต่อผู้ดูแลระบบ';
+                        errorMessage = `${getErrorMessage(locale, 'account_locked')} (${t.errorPrefix})`;
                     }
                 } else if (errCode === 'Configuration') {
-                    errorMessage = 'เกิดข้อผิดพลาดในการตั้งค่าระบบ (Configuration Error)';
+                    errorMessage = getErrorMessage(locale, 'configuration');
                 } else {
-                    errorMessage = `เข้าสู่ระบบไม่สำเร็จ (${errCode})`;
+                    errorMessage = getErrorMessage(locale, 'login_failed', { errCode });
                 }
 
                 setError(errorMessage);
                 setLoading(false);
             } else if (!result?.ok) {
-                // Handle case where there's no error message but login failed
-                setError(`เข้าสู่ระบบไม่สำเร็จ (Status: ${result?.status || 'Unknown'})`);
+                setError(
+                    getErrorMessage(locale, 'login_failed', {
+                        errCode: `Status: ${result?.status || t.unknownStatus}`,
+                    }),
+                );
                 setLoading(false);
             } else {
                 router.push('/');
@@ -88,70 +208,74 @@ export default function LoginPage() {
             }
         } catch (err) {
             console.error('Login Exception:', err);
-            setError(`เกิดข้อผิดพลาด: ${err instanceof Error ? err.message : 'กรุณาลองใหม่'}`);
+            setError(
+                getErrorMessage(locale, 'exception', {
+                    detail: err instanceof Error ? err.message : undefined,
+                }),
+            );
             setLoading(false);
         }
     };
 
-    
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 relative">
-            {/* Subtle Background Pattern */}
-            <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:20px_20px] opacity-50"></div>
+            <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:20px_20px] opacity-50" />
 
-            {/* Login Card */}
             <div className="relative z-10 w-full max-w-md mx-4">
-                {/* Card */}
                 <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
-                    {/* Logo & Title */}
+                    <div className="flex justify-end mb-4">
+                        <label className="flex items-center gap-2 text-xs text-gray-600">
+                            <span>{t.languageLabel}</span>
+                            <select
+                                value={locale}
+                                onChange={(e) => setLocale(e.target.value as Locale)}
+                                className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white"
+                            >
+                                <option value="th">TH</option>
+                                <option value="en">EN</option>
+                                <option value="jp">JP</option>
+                            </select>
+                        </label>
+                    </div>
+
                     <div className="text-center mb-8">
                         <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-xl mb-4 shadow-lg shadow-blue-600/30">
                             <Package className="w-8 h-8 text-white" />
                         </div>
-                        <h1 className="text-2xl font-bold text-gray-900 mb-1">Stock Movement</h1>
-                        <p className="text-gray-500 text-sm">ระบบจัดการคลังสินค้า</p>
+                        <h1 className="text-2xl font-bold text-gray-900 mb-1">{t.title}</h1>
+                        <p className="text-gray-500 text-sm">{t.subtitle}</p>
                     </div>
 
-                    {/* Error Message */}
                     {error && (
                         <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-100 flex items-center gap-3">
                             <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
                             <div className="text-red-700 text-sm">
                                 <div>{error}</div>
-                                {lockoutEndTime && timeLeft && (
-                                    <div className="font-bold mt-1">
-                                        กรุณารออีก {timeLeft} นาที
-                                    </div>
-                                )}
+                                {lockoutEndTime && timeLeft && <div className="font-bold mt-1">{getErrorMessage(locale, 'wait_more', { timeLeft })}</div>}
                             </div>
                         </div>
                     )}
 
-                    {/* Form */}
                     <form onSubmit={handleSubmit} className="space-y-5">
                         <div>
-                            <label className="block text-gray-700 text-sm font-medium mb-2">
-                                ชื่อผู้ใช้ (Username)
-                            </label>
+                            <label className="block text-gray-700 text-sm font-medium mb-2">{t.username}</label>
                             <input
                                 type="text"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
-                                placeholder="กรอกชื่อผู้ใช้..."
+                                placeholder={t.usernamePlaceholder}
                                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                                 required
                             />
                         </div>
 
                         <div>
-                            <label className="block text-gray-700 text-sm font-medium mb-2">
-                                รหัสผ่าน (Password)
-                            </label>
+                            <label className="block text-gray-700 text-sm font-medium mb-2">{t.password}</label>
                             <input
-                                type={showPassword ? "text" : "password"}
+                                type={showPassword ? 'text' : 'password'}
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                placeholder="กรอกรหัสผ่าน..."
+                                placeholder={t.passwordPlaceholder}
                                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                                 required
                             />
@@ -164,7 +288,7 @@ export default function LoginPage() {
                                     className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
                                 />
                                 <label htmlFor="show-password" className="ml-2 text-sm text-gray-600 cursor-pointer">
-                                    แสดงรหัสผ่าน
+                                    {t.showPassword}
                                 </label>
                             </div>
                         </div>
@@ -176,21 +300,16 @@ export default function LoginPage() {
                         >
                             {loading ? (
                                 <>
-                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                    <span>กำลังเข้าสู่ระบบ...</span>
+                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    <span>{t.loggingIn}</span>
                                 </>
                             ) : (
                                 <>
-                                    <span>เข้าสู่ระบบ</span>
+                                    <span>{t.login}</span>
                                     <ArrowRight className="w-5 h-5" />
                                 </>
                             )}
                         </button>
-                        <div className="relative flex py-2 items-center">
-                            <div className="flex-grow border-t border-gray-200"></div>
-                            <span className="flex-shrink-0 mx-4 text-gray-400 text-sm">หรือ</span>
-                            <div className="flex-grow border-t border-gray-200"></div>
-                        </div>
 
                         <button
                             type="button"
@@ -204,22 +323,23 @@ export default function LoginPage() {
                                 className="w-8 h-8 rounded-full"
                                 style={{ marginTop: '-1px' }}
                             />
-                            <span className="text-[16px] tracking-wide">เข้าสู่ระบบด้วย LINE</span>
+                            <span className="text-[16px] tracking-wide">{t.loginWithLine}</span>
                         </button>
+
+                        <div className="relative flex py-2 mt-2 items-center">
+                            <div className="flex-grow border-t border-gray-200" />
+                            <span className="flex-shrink-0 mx-4 text-gray-400 text-[11px] uppercase tracking-wider font-semibold">{t.customerSection}</span>
+                            <div className="flex-grow border-t border-gray-200" />
+                        </div>
+
                         <button
                             type="button"
                             onClick={() => router.push('/line/customer-register')}
                             className="w-full py-3 border border-green-200 bg-green-50 text-green-700 font-medium rounded-xl hover:bg-green-100 transition-all duration-200 flex items-center justify-center gap-2"
                         >
                             <UserPlus className="w-5 h-5" />
-                            <span>สมัครลูกค้า LINE (ดึงข้อมูลอัตโนมัติ)</span>
+                            <span>{t.registerCustomer}</span>
                         </button>
-
-                        <div className="relative flex py-2 mt-2 items-center">
-                            <div className="flex-grow border-t border-gray-200"></div>
-                            <span className="flex-shrink-0 mx-4 text-gray-400 text-[11px] uppercase tracking-wider font-semibold">บริการสำหรับลูกค้า</span>
-                            <div className="flex-grow border-t border-gray-200"></div>
-                        </div>
 
                         <button
                             type="button"
@@ -227,22 +347,16 @@ export default function LoginPage() {
                             className="w-full py-3 border border-orange-200 bg-orange-50 text-orange-700 font-medium rounded-xl hover:bg-orange-100 shadow-sm transition-all duration-200 flex items-center justify-center gap-2"
                         >
                             <Wrench className="w-5 h-5" />
-                            <span>แจ้งซ่อมออนไลน์ (สำหรับลูกค้า)</span>
+                            <span>{t.repairRequest}</span>
                         </button>
                     </form>
 
-                    {/* Footer */}
                     <div className="mt-8 pt-6 border-t border-gray-100 text-center relative group">
-                        <p className="text-gray-400 text-xs">
-                            Stock Movement System v1.0
-                        </p>                                               
+                        <p className="text-gray-400 text-xs">Stock Movement System v1.0</p>
                     </div>
                 </div>
 
-                {/* Powered by */}
-                <p className="text-center text-gray-400 text-xs mt-4">
-                    Powered by Next.js & Prisma
-                </p>
+                <p className="text-center text-gray-400 text-xs mt-4">Powered by Next.js & Prisma</p>
             </div>
         </div>
     );
