@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -39,6 +39,7 @@ export default function HierarchicalRoomSelector({ rooms, value, onChange, place
     const [query, setQuery] = useState('');
     const containerRef = useRef<HTMLDivElement>(null);
     const closeTimerRef = useRef<number | null>(null);
+    const flyoutTimers = useRef<Map<HTMLElement, ReturnType<typeof setTimeout>>>(new Map());
 
     const clearCloseTimer = () => {
         if (!closeTimerRef.current) return;
@@ -188,15 +189,27 @@ export default function HierarchicalRoomSelector({ rooms, value, onChange, place
     };
 
     const showFlyout = (triggerEl: HTMLElement, selector: string) => {
+        // ยกเลิก timer ซ่อนที่ค้างอยู่ก่อน
+        const existing = flyoutTimers.current.get(triggerEl);
+        if (existing) { clearTimeout(existing); flyoutTimers.current.delete(triggerEl); }
+
         const flyout = triggerEl.querySelector<HTMLElement>(selector);
         if (!flyout) return;
         flyout.style.display = 'block';
         requestAnimationFrame(() => positionFlyout(triggerEl, flyout));
     };
 
-    const hideFlyout = (triggerEl: HTMLElement, selector: string) => {
-        const flyout = triggerEl.querySelector<HTMLElement>(selector);
-        if (flyout) flyout.style.display = 'none';
+    const hideFlyout = (triggerEl: HTMLElement, selector: string, delay = 300) => {
+        // หนวงเวลากอนซอน ใหเมาสมเวลาเลอนเขา submenu ได
+        const existing = flyoutTimers.current.get(triggerEl);
+        if (existing) clearTimeout(existing);
+
+        const timer = setTimeout(() => {
+            const flyout = triggerEl.querySelector<HTMLElement>(selector);
+            if (flyout) flyout.style.display = 'none';
+            flyoutTimers.current.delete(triggerEl);
+        }, delay);
+        flyoutTimers.current.set(triggerEl, timer);
     };
 
     const Badge = ({ label, type = 'default' }: { label: string; type?: 'type' | 'floor' | 'room' | 'zone' | 'default' }) => {
