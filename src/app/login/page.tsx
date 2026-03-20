@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Package, ArrowRight, AlertCircle } from 'lucide-react';
+import { Package, ArrowRight, AlertCircle, UserPlus } from 'lucide-react';
 
 export default function LoginPage() {
     const [username, setUsername] = useState('');
@@ -205,6 +205,14 @@ export default function LoginPage() {
                                 style={{ marginTop: '-1px' }}
                             />
                             <span className="text-[16px] tracking-wide">เข้าสู่ระบบด้วย LINE</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => router.push('/line/customer-register')}
+                            className="w-full py-3 border border-green-200 bg-green-50 text-green-700 font-medium rounded-xl hover:bg-green-100 transition-all duration-200 flex items-center justify-center gap-2"
+                        >
+                            <UserPlus className="w-5 h-5" />
+                            <span>สมัครลูกค้า LINE (ดึงข้อมูลอัตโนมัติ)</span>
                         </button>
                     </form>
 
