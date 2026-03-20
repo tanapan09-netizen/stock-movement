@@ -150,7 +150,7 @@ export default function LineCustomerRegisterClient() {
     const lineUserIdFromQuery = (searchParams.get('line_user_id') || '').trim();
 
     // Language state — default from query param or 'th'
-    const initialLang = (['th', 'en', 'ja'].includes(searchParams.get('lang') ?? '') 
+    const initialLang = (['th'].includes(searchParams.get('lang') ?? '') 
         ? searchParams.get('lang') 
         : 'th') as Lang;
     const [lang, setLang] = useState<Lang>(initialLang);
