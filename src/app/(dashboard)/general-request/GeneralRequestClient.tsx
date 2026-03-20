@@ -49,6 +49,10 @@ interface MaintenanceRequestItem {
     notes: string | null;
     created_at: Date;
     tbl_rooms: Room;
+    category?: string | null;
+    department?: string | null;
+    contact_info?: string | null;
+    tags?: string | null;
 }
 
 interface Vehicle {
@@ -500,9 +504,16 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border ${statusCfg.color}`}>
-                                                        {statusCfg.label}
-                                                    </span>
+                                                    <div className="flex flex-col gap-1 items-start">
+                                                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border ${statusCfg.color}`}>
+                                                            {statusCfg.label}
+                                                        </span>
+                                                        {req.tags?.includes('ลูกค้า') && (
+                                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold bg-pink-100 text-pink-700 border border-pink-200">
+                                                                แจ้งโดยลูกค้า
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <button 
@@ -542,6 +553,11 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${priorityCfg.color}`}>
                                                     {priorityCfg.label}
                                                 </span>
+                                                {req.tags?.includes('ลูกค้า') && (
+                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 text-pink-700 border border-pink-200">
+                                                        แจ้งโดยลูกค้า
+                                                    </span>
+                                                )}
                                             </div>
                                             <h3 className="font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors">{req.title}</h3>
                                             <div className="mt-2 space-y-1">
@@ -594,6 +610,11 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 <span className={`px-2.5 py-1 rounded-full text-sm font-medium ${PRIORITY_CONFIG[selectedRequest.priority]?.color}`}>
                                     {PRIORITY_CONFIG[selectedRequest.priority]?.label}
                                 </span>
+                                {selectedRequest.tags?.includes('ลูกค้า') && (
+                                    <span className="px-2.5 py-1 rounded-full text-sm font-medium bg-pink-100 text-pink-700 border border-pink-200">
+                                        แจ้งโดยลูกค้า
+                                    </span>
+                                )}
                             </div>
                             <h3 className="text-xl font-bold text-gray-900">{selectedRequest.title}</h3>
                             {selectedRequest.description && (

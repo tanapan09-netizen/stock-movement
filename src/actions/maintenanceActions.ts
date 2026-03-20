@@ -381,6 +381,106 @@ export async function createMaintenanceRequest(formData: FormData) {
     }
 }
 
+export async function submitCustomerRepairRequest(formData: FormData) {
+    try {
+        const line_user_id = formData.get('line_user_id') as string;
+        if (!line_user_id) {
+            return { success: false, error: 'Unauthorized: Missing LINE ID' };
+        }
+
+        const customer = await prisma.tbl_line_customers.findUnique({
+             where: { line_user_id }
+        });
+
+        if (!customer) {
+             return { success: false, error: 'Unauthorized: User not registered' };
+        }
+
+        const rawData = {
+            room_id: parseInt(formData.get('room_id') as string),
+            title: formData.get('title') as string,
+            description: (formData.get('description') as string) || "",
+            priority: (formData.get('priority') as string)?.toLowerCase() || 'low',
+        };
+
+        const validData = validateData(createMaintenanceRequestSchema, rawData, 'Maintenance');
+
+        const category = formData.get('category') as string;
+        const department = formData.get('department') as string;
+        const contact_info = (formData.get('contact_info') as string) || customer.phone_number;
+        const target_role = 'general';
+        const reported_by = customer.full_name;
+        
+        let tagsArray = formData.get('tags') ? (formData.get('tags') as string).split(',').map(t=>t.trim()).filter(Boolean) : [];
+        if (!tagsArray.includes('ลูกค้า')) {
+           tagsArray.push('ลูกค้า');
+        }
+        const tags = tagsArray.join(',');
+
+        const imageFiles = [
+            ...(formData.getAll('images') as File[]),
+            ...(formData.getAll('image_file') as File[])
+        ].filter(file => file && file.size > 0);
+        const uploadedImageUrls: string[] = [];
+
+        if (imageFiles.length > 0) {
+            for (const file of imageFiles) {
+                try {
+                    const url = await uploadFile(file, 'maintenance');
+                    uploadedImageUrls.push(url);
+                } catch (error) {
+                    console.error('Failed upload:', error);
+                }
+            }
+        }
+
+        const request = await prisma.tbl_maintenance_requests.create({
+            data: {
+                request_number: generateRequestNumber(),
+                room_id: validData.room_id,
+                title: validData.title,
+                description: validData.description || null,
+                image_url: uploadedImageUrls.length > 0 ? JSON.stringify(uploadedImageUrls) : null,
+                priority: validData.priority,
+                status: 'pending',
+                reported_by,
+                category: category || 'general',
+                department: department || null,
+                contact_info: contact_info || null,
+                tags: tags
+            }
+        });
+
+        try {
+            const room = await prisma.tbl_rooms.findUnique({
+                where: { room_id: validData.room_id },
+                select: { room_code: true, room_name: true }
+            });
+
+            if (room) {
+                console.log(`[Maintenance] notifying LINE target_role=${target_role} title="${validData.title}" room=${room.room_code}`);
+                await notifyRoleViaLine(
+                    target_role,
+                    validData.title,
+                    room.room_code,
+                    room.room_name,
+                    validData.priority,
+                    reported_by
+                );
+            }
+        } catch (notifyError) {
+            console.error('Failed to send customer maintenance LINE notification:', notifyError);
+        }
+
+        revalidatePath('/general-request');
+        revalidatePath('/maintenance');
+        return { success: true, data: request };
+    } catch (error: unknown) {
+        console.error('Error submitCustomerRepairRequest:', error);
+        return { success: false, error: getErrorMessage(error, 'Failed to create customer maintenance request') };
+    }
+}
+
 export async function updateMaintenanceRequestStatus(request_id: number, new_status: string, changed_by: string, notes?: string) {
     try {
         const request = await prisma.tbl_maintenance_requests.update({

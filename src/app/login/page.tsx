@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Package, ArrowRight, AlertCircle, UserPlus } from 'lucide-react';
+import { Package, ArrowRight, AlertCircle, UserPlus, Wrench } from 'lucide-react';
 
 export default function LoginPage() {
     const [username, setUsername] = useState('');
@@ -213,6 +213,21 @@ export default function LoginPage() {
                         >
                             <UserPlus className="w-5 h-5" />
                             <span>สมัครลูกค้า LINE (ดึงข้อมูลอัตโนมัติ)</span>
+                        </button>
+
+                        <div className="relative flex py-2 mt-2 items-center">
+                            <div className="flex-grow border-t border-gray-200"></div>
+                            <span className="flex-shrink-0 mx-4 text-gray-400 text-[11px] uppercase tracking-wider font-semibold">บริการสำหรับลูกค้า</span>
+                            <div className="flex-grow border-t border-gray-200"></div>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => router.push('/line/repair-request')}
+                            className="w-full py-3 border border-orange-200 bg-orange-50 text-orange-700 font-medium rounded-xl hover:bg-orange-100 shadow-sm transition-all duration-200 flex items-center justify-center gap-2"
+                        >
+                            <Wrench className="w-5 h-5" />
+                            <span>แจ้งซ่อมออนไลน์ (สำหรับลูกค้า)</span>
                         </button>
                     </form>
 
