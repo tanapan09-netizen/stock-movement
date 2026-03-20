@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -352,36 +352,36 @@ export default function HierarchicalRoomSelector({ rooms, value, onChange, place
                     </div>
                 </div>
 
-                    <div style={{ maxHeight: 380, overflowY: query.trim() ? 'auto' : 'visible' }}>
-                        {query.trim() ? (
-                            searchResults.length === 0 ? (
-                                <div style={{ padding: '20px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
-                                    ไม่พบรายการที่ค้นหา
-                                </div>
-                            ) : (
-                                searchResults.map(loc => (
-                                    <div
-                                        key={`${loc.type}-${loc.id}-${loc.code}`}
-                                        onClick={() => selectRoom(loc.id)}
-                                        style={{ ...ROW_BASE, flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '10px 14px' }}
-                                        onMouseEnter={e => (e.currentTarget.style.background = '#f0f9ff')}
-                                        onMouseLeave={e => (e.currentTarget.style.background = '')}
-                                    >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, color: '#1e293b', fontSize: 13 }}>
-                                            <span>{loc.code === loc.name ? loc.code : `${loc.code} – ${loc.name}`}</span>
-                                            <Badge label={loc.type === 'zone' ? 'ZONE' : 'RM'} type={loc.type as any} />
-                                        </div>
-                                        <div style={{ fontSize: 10, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
-                                                <circle cx="12" cy="10" r="3" />
-                                            </svg>
-                                            {loc.path.replace(/ชั้น ชั้น/g, 'ชั้น')}
-                                        </div>
-                                    </div>
-                                ))
-                            )
+                <div style={{ maxHeight: 380, overflowY: query.trim() ? 'auto' : 'visible' }}>
+                    {query.trim() ? (
+                        searchResults.length === 0 ? (
+                            <div style={{ padding: '20px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+                                ไม่พบรายการที่ค้นหา
+                            </div>
                         ) : (
+                            searchResults.map(loc => (
+                                <div
+                                    key={`${loc.type}-${loc.id}-${loc.code}`}
+                                    onClick={() => selectRoom(loc.id)}
+                                    style={{ ...ROW_BASE, flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '10px 14px' }}
+                                    onMouseEnter={e => (e.currentTarget.style.background = '#f0f9ff')}
+                                    onMouseLeave={e => (e.currentTarget.style.background = '')}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, color: '#1e293b', fontSize: 13 }}>
+                                        <span>{loc.code === loc.name ? loc.code : `${loc.code} – ${loc.name}`}</span>
+                                        <Badge label={loc.type === 'zone' ? 'ZONE' : 'RM'} type={loc.type} />
+                                    </div>
+                                    <div style={{ fontSize: 10, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
+                                            <circle cx="12" cy="10" r="3" />
+                                        </svg>
+                                        {loc.path.replace(/ชั้น ชั้น/g, 'ชั้น')}
+                                    </div>
+                                </div>
+                            ))
+                        )
+                    ) : (
                         <>
                             {types.length === 0 && (
                                 <div style={{ padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>ไม่พบข้อมูลห้อง</div>
