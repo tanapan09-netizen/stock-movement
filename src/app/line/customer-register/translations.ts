@@ -2,9 +2,10 @@ export type Lang = 'th' | 'en' | 'ja';
 
 export const LANGS: { code: Lang; label: string; flag: string }[] = [
     { code: 'th', label: 'ไทย', flag: '🇹🇭' },
-    { code: 'en', label: 'EN', flag: '🇬🇧' },
-    { code: 'ja', label: '日本語', flag: '🇯🇵' },
-];
+    ];
+   //แก้ให้เลือกภาษา { code: 'en', label: 'EN', flag: '🇬🇧' },
+   // { code: 'ja', label: '日本語', flag: '🇯🇵' },
+
 
 export const translations = {
     th: {

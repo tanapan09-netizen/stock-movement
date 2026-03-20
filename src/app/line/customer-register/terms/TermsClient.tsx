@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { LANGS, type Lang } from '../translations';
-import { ArrowLeft, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, FileX, ShieldCheck } from 'lucide-react';
 
 const termsContent = {
     th: {
@@ -69,7 +69,7 @@ const termsContent = {
             },
         ],
         backBtn: '← Back',
-    },
+        },
     ja: {
         title: '個人情報の収集・利用に関するポリシー',
         subtitle: '顧客データ保管規約',
@@ -144,7 +144,7 @@ function TermsContent() {
                 {/* Header */}
                 <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 bg-green-100 text-green-600 rounded-xl flex items-center justify-center shrink-0">
-                        <ShieldCheck size={20} />
+                        <FileX size={20} /> //แก้ให้เลือกภาษาได้
                     </div>
                     <div>
                         <h1 className="text-lg font-bold text-gray-900 leading-tight">{content.title}</h1>
