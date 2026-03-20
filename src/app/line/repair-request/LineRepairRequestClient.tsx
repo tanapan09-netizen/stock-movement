@@ -5,8 +5,8 @@ import type { ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getLineCustomerByLineId } from '@/actions/lineCustomerActions';
 import { getRooms, submitCustomerRepairRequest } from '@/actions/maintenanceActions';
-import { CheckCircle2, Copy, House, Loader2, MessageSquareText, Upload, AlertCircle, Image as ImageIcon, X, MapPin, Wrench } from 'lucide-react';
-import HierarchicalRoomSelector from '@/components/HierarchicalRoomSelector';
+import { CheckCircle2, Loader2, MessageSquareText, Upload, AlertCircle, Image as ImageIcon, X, MapPin, Wrench } from 'lucide-react';
+
 
 declare global {
     interface Window {
@@ -93,6 +93,11 @@ async function loadLiffSdk(): Promise<void> {
 }
 
 type AlertKind = 'success' | 'error' | 'info';
+type RoomOption = {
+    room_id: number;
+    room_code: string;
+    room_name: string;
+};
 
 function Alert({
     kind,
@@ -139,13 +144,12 @@ export default function LineRepairRequestClient() {
 
     const [lineUserId, setLineUserId] = useState('');
     const [customerInfo, setCustomerInfo] = useState<{ full_name: string; phone_number: string; room_number?: string } | null>(null);
-    const [rooms, setRooms] = useState<any[]>([]);
 
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [roomId, setRoomId] = useState<number>(0);
-    const [category, setCategory] = useState('general');
-    const [priority, setPriority] = useState('normal');
+    const [category] = useState('general');
+    const [priority] = useState('normal');
 
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [previews, setPreviews] = useState<string[]>([]);
@@ -218,11 +222,11 @@ export default function LineRepairRequestClient() {
                     getLineCustomerByLineId(lineUserId),
                     getRooms()
                 ]);
-                
+
                 if (cancelled) return;
-                
+
                 if (roomsResult.success && roomsResult.data) {
-                    setRooms(roomsResult.data);
+                    // Do nothing, just need the payload
                 }
 
                 if (customerResult.success && customerResult.data) {
@@ -231,11 +235,12 @@ export default function LineRepairRequestClient() {
                         phone_number: customerResult.data.phone_number || '',
                         room_number: customerResult.data.room_number || ''
                     });
-                    
+
                     if (roomsResult.success && roomsResult.data && customerResult.data.room_number) {
                         const savedRoom = customerResult.data.room_number.trim().toLowerCase();
-                        const match = roomsResult.data.find((r: any) => 
-                            r.room_code?.toLowerCase() === savedRoom || 
+                        const roomList = roomsResult.data as RoomOption[];
+                        const match = roomList.find((r) =>
+                            r.room_code?.toLowerCase() === savedRoom ||
                             r.room_name?.toLowerCase() === savedRoom
                         );
                         if (match) {
@@ -245,7 +250,7 @@ export default function LineRepairRequestClient() {
                 } else if (!customerResult.success) {
                     setAlert({ kind: 'error', text: 'ไม่พบข้อมูลลูกค้า กรุณาลงทะเบียนหรือติดต่อผู้ดูแลระบบ' });
                 }
-            } catch(e) {
+            } catch (e) {
                 console.error('Hydrate error:', e);
             } finally {
                 if (!cancelled) setHydrating(false);
@@ -272,7 +277,7 @@ export default function LineRepairRequestClient() {
             };
             reader.readAsDataURL(file);
         });
-        
+
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
         }
@@ -314,7 +319,7 @@ export default function LineRepairRequestClient() {
             formData.append('category', category);
             formData.append('priority', priority);
             formData.append('tags', 'ลูกค้า');
-            
+
             selectedFiles.forEach((file) => {
                 formData.append('images', file);
             });
@@ -371,6 +376,21 @@ export default function LineRepairRequestClient() {
                     )}
                 </div>
 
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
+                        <MapPin size={14} /> สถานที่ *
+                    </label>
+                    <input
+                        type="text"
+                        value={customerInfo?.room_number || 'ไม่ระบุสถานที่'}
+                        disabled
+                        className="w-full border rounded-lg px-3 py-2 bg-gray-50 text-gray-500 cursor-not-allowed"
+                    />
+                    {roomId === 0 && customerInfo?.room_number && (
+                        <p className="text-xs text-red-500 mt-1">ไม่พบรหัสสถานที่นี้ในระบบ โปรดแจ้งธุรการ</p>
+                    )}
+                </div>
+
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
@@ -386,20 +406,6 @@ export default function LineRepairRequestClient() {
                             disabled={!customerInfo}
                         />
                     </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                            <MapPin size={14} /> สถานที่ *
-                        </label>
-                        <div className="relative border rounded-lg p-2 bg-white min-h-[42px] z-10">
-                            <HierarchicalRoomSelector
-                                rooms={rooms}
-                                value={roomId}
-                                onChange={(id) => setRoomId(id)}
-                            />
-                        </div>
-                    </div>
-
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
                             รายละเอียดเพิ่มเติม
@@ -413,50 +419,15 @@ export default function LineRepairRequestClient() {
                             disabled={!customerInfo}
                         />
                     </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">หมวดหมู่</label>
-                            <select
-                                value={category}
-                                onChange={(e) => setCategory(e.target.value)}
-                                className="w-full border rounded-lg px-3 py-2 bg-white text-sm"
-                                disabled={!customerInfo}
-                            >
-                                <option value="general">ทั่วไป</option>
-                                <option value="electrical">ไฟฟ้า</option>
-                                <option value="plumbing">ประปา</option>
-                                <option value="air_conditioning">แอร์/ระบบปรับอากาศ</option>
-                                <option value="structural">โครงสร้าง/อาคาร</option>
-                                <option value="it">IT/คอมพิวเตอร์</option>
-                                <option value="furniture">เฟอร์นิเจอร์</option>
-                                <option value="other">อื่นๆ</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">ความเร่งด่วน</label>
-                            <select
-                                value={priority}
-                                onChange={(e) => setPriority(e.target.value)}
-                                className="w-full border rounded-lg px-3 py-2 bg-white text-sm"
-                                disabled={!customerInfo}
-                            >
-                                <option value="low">ไม่เร่งด่วน</option>
-                                <option value="normal">ปกติ</option>
-                                <option value="high">เร่งด่วน</option>
-                                <option value="urgent">เร่งด่วนมาก</option>
-                            </select>
-                        </div>
-                    </div>
-
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
                             <ImageIcon size={14} /> แนบรูปภาพ (ถ้ามี)
                         </label>
-                        
+
                         <div className="grid grid-cols-4 gap-2 mb-2">
                             {previews.map((src, idx) => (
                                 <div key={idx} className="relative aspect-square rounded-lg border overflow-hidden bg-gray-50 group">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img src={src} alt="Preview" className="w-full h-full object-cover" />
                                     <button
                                         type="button"
@@ -478,7 +449,7 @@ export default function LineRepairRequestClient() {
                                 </button>
                             )}
                         </div>
-                        
+
                         <input
                             type="file"
                             ref={fileInputRef}
