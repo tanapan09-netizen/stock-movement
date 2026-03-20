@@ -1,15 +1,17 @@
 'use client';
 
-import { FormEvent, useEffect, useState, useRef } from 'react';
+import { FormEvent, useEffect, useState, useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getLineCustomerByLineId } from '@/actions/lineCustomerActions';
 import { getRooms, submitCustomerRepairRequest } from '@/actions/maintenanceActions';
 import {
     CheckCircle2, Loader2, Upload, AlertCircle,
-    X, MapPin, Wrench, User, Phone, Globe, Camera, ChevronRight
+    X, MapPin, Wrench, User, Phone, Globe, Camera, ChevronRight,
+    RefreshCw, ShieldCheck, Send, FileText
 } from 'lucide-react';
 
+// ─── Global styles ────────────────────────────────────────────────────────────
 const GLOBAL_STYLE = `
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600&family=Sora:wght@600;700&display=swap');
 
@@ -104,6 +106,100 @@ const GLOBAL_STYLE = `
 .ia:hover { border-color:var(--amber); background:var(--amber-light); color:var(--amber-dark); }
 .ic { font-size:0.7rem; color:var(--text-muted); text-align:right; margin-top:3px; }
 
+/* ── CAPTCHA ── */
+.cap-wrap {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 14px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cap-header { display:flex; align-items:center; justify-content:space-between; }
+.cap-label { font-size:0.72rem; font-weight:700; color:var(--text-sec); text-transform:uppercase; letter-spacing:0.07em; display:flex; align-items:center; gap:5px; }
+.cap-label svg { color:var(--amber); }
+.cap-refresh { background:transparent; border:none; cursor:pointer; color:var(--text-muted); padding:4px; border-radius:6px; display:flex; align-items:center; transition:var(--t); }
+.cap-refresh:hover { color:var(--amber); background:var(--amber-light); }
+.cap-refresh.spinning svg { animation: spin 0.5s linear; }
+.cap-row { display:flex; align-items:center; gap:10px; }
+.cap-display {
+  flex:1;
+  background: linear-gradient(135deg, #fdf0e6 0%, #fce8d4 100%);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  position: relative;
+  overflow: hidden;
+  min-height: 54px;
+  user-select: none;
+}
+.cap-display::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 8px,
+      rgba(224,123,57,0.04) 8px,
+      rgba(224,123,57,0.04) 9px
+    );
+}
+.cap-digit {
+  font-family: 'Sora', monospace;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--amber-dark);
+  letter-spacing: 0.08em;
+  position: relative;
+  z-index: 1;
+  text-shadow: 1px 1px 0 rgba(255,255,255,0.6);
+  transform: rotate(var(--rot));
+  display: inline-block;
+  line-height: 1;
+}
+.cap-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.cap-input-wrap { flex:1; }
+.cap-input {
+  width: 100%;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 12px 13px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  font-family: 'Sora', monospace;
+  color: var(--text-primary);
+  background: #fff;
+  box-shadow: var(--shadow-input);
+  transition: var(--t);
+  outline: none;
+  text-align: center;
+  letter-spacing: 0.25em;
+}
+.cap-input:focus { border-color:var(--amber); box-shadow:0 0 0 3px var(--amber-glow); }
+.cap-input:disabled { background:var(--surface); color:var(--text-muted); cursor:not-allowed; }
+.cap-input.wrong { border-color:var(--error); box-shadow:0 0 0 3px rgba(196,59,59,0.12); animation: shake 0.35s ease; }
+.cap-input.right { border-color:var(--success); box-shadow:0 0 0 3px rgba(45,138,94,0.12); }
+
+@keyframes shake {
+  0%,100%{ transform:translateX(0); }
+  20%    { transform:translateX(-6px); }
+  40%    { transform:translateX(6px); }
+  60%    { transform:translateX(-4px); }
+  80%    { transform:translateX(4px); }
+}
+
 /* Submit btn */
 .sb {
   width:100%; background:linear-gradient(130deg,#e07b39,#c4622a);
@@ -134,6 +230,64 @@ const GLOBAL_STYLE = `
 .al-x { background:transparent; border:none; cursor:pointer; padding:2px; border-radius:4px; display:flex; align-items:center; color:inherit; opacity:0.6; flex-shrink:0; transition:opacity 0.15s; }
 .al-x:hover { opacity:1; }
 
+/* ── Confirm Dialog ── */
+.dlg-backdrop {
+  position: fixed; inset: 0; z-index: 999;
+  background: rgba(26,18,9,0.55);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.18s ease;
+}
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+.dlg {
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 24px 64px rgba(26,18,9,0.22), 0 4px 16px rgba(26,18,9,0.1);
+  width: 100%; max-width: 380px;
+  overflow: hidden;
+  animation: slideUp 0.22s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes slideUp { from{transform:translateY(24px);opacity:0} to{transform:translateY(0);opacity:1} }
+.dlg-header {
+  background: linear-gradient(130deg,#e07b39,#c4622a);
+  padding: 20px 20px 18px;
+  display: flex; align-items: center; gap: 12px;
+  position: relative;
+}
+.dlg-header-icon { width:40px; height:40px; background:rgba(255,255,255,0.22); border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.dlg-header-title { font-family:'Sora',sans-serif; font-size:1rem; font-weight:700; color:#fff; margin:0; }
+.dlg-header-sub { font-size:0.72rem; color:rgba(255,255,255,0.75); margin:2px 0 0; }
+.dlg-body { padding:18px 20px 0; display:flex; flex-direction:column; gap:10px; }
+.dlg-row {
+  display: flex; align-items: flex-start;
+  gap: 10px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 13px;
+  font-size: 0.82rem;
+}
+.dlg-row-icon { color:var(--amber); flex-shrink:0; margin-top:1px; }
+.dlg-row-label { font-weight:700; color:var(--text-muted); font-size:0.69rem; text-transform:uppercase; letter-spacing:0.07em; margin-bottom:2px; }
+.dlg-row-value { font-weight:500; color:var(--text-primary); line-height:1.4; }
+.dlg-actions { display:flex; gap:8px; padding:16px 20px 20px; }
+.dlg-cancel {
+  flex:1; background:transparent; color:var(--text-sec); border:1.5px solid var(--border);
+  border-radius:var(--r-md); padding:11px; font-size:0.86rem; font-weight:500;
+  font-family:inherit; cursor:pointer; transition:var(--t);
+}
+.dlg-cancel:hover { background:var(--surface); }
+.dlg-confirm {
+  flex:2; background:linear-gradient(130deg,#e07b39,#c4622a); color:#fff; border:none;
+  border-radius:var(--r-md); padding:11px; font-size:0.9rem; font-weight:600;
+  font-family:inherit; cursor:pointer; transition:var(--t);
+  display:flex; align-items:center; justify-content:center; gap:7px;
+  box-shadow: 0 3px 12px rgba(224,123,57,0.3);
+}
+.dlg-confirm:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 5px 18px rgba(224,123,57,0.4); }
+.dlg-confirm:disabled { opacity:0.55; cursor:not-allowed; transform:none; }
+
 /* Dots */
 @keyframes dp { 0%,80%,100%{transform:scale(0.5);opacity:0.35} 40%{transform:scale(1);opacity:1} }
 .d  { display:inline-block; width:5px; height:5px; border-radius:50%; background:currentColor; margin:0 1.5px; }
@@ -145,6 +299,7 @@ const GLOBAL_STYLE = `
 .spin { animation: spin 1s linear infinite; }
 `;
 
+// ─── LIFF SDK ─────────────────────────────────────────────────────────────────
 declare global {
     interface Window {
         liff?: {
@@ -177,7 +332,7 @@ async function loadLiffSdk(): Promise<void> {
     return liffSdkPromise;
 }
 
-
+// ─── i18n ─────────────────────────────────────────────────────────────────────
 type Lang = 'th' | 'en' | 'jp';
 const LANG_LABELS: Record<Lang, string> = { th: 'ไทย', en: 'EN', jp: '日本語' };
 
@@ -201,8 +356,16 @@ const T: Record<Lang, Record<string, string>> = {
         errLineId:'ไม่สามารถดึง LINE User ID ได้ กรุณาเปิดจากใน LINE',
         errNoLiffId:'ยังไม่ได้ตั้งค่า NEXT_PUBLIC_LINE_LIFF_ID',
         errSubmit:'เกิดข้อผิดพลาดระหว่างส่งข้อมูล', errGeneric:'แจ้งซ่อมไม่สำเร็จ',
+        errCaptcha:'รหัสยืนยันไม่ถูกต้อง กรุณาลองอีกครั้ง',
         closeAlert:'ปิด', required:'จำเป็น', optional:'ไม่บังคับ',
         detailSection:'รายละเอียดปัญหา', footer:'ข้อมูลของท่านปลอดภัยและเป็นความลับ',
+        captchaLabel:'รหัสยืนยัน', captchaPlaceholder:'พิมพ์ตัวเลข 4 หลัก', captchaRefresh:'รหัสใหม่',
+        confirmTitle:'ยืนยันการแจ้งซ่อม', confirmSub:'ตรวจสอบข้อมูลก่อนส่ง',
+        confirmLocation:'สถานที่', confirmIssue:'หัวข้อปัญหา',
+        confirmDesc:'รายละเอียด', confirmNoDesc:'ไม่ระบุ',
+        confirmImages:'รูปภาพ', confirmImagesCount:'{n} รูป',
+        confirmCancel:'แก้ไข', confirmSubmit:'ยืนยันส่ง',
+        confirmSubmitting:'กำลังส่ง...',
     },
     en: {
         pageTitle:'Repair Request', pageSubtitle:'Submit your maintenance issue for prompt assistance',
@@ -223,8 +386,16 @@ const T: Record<Lang, Record<string, string>> = {
         errLineId:'Unable to retrieve LINE User ID. Open from within LINE.',
         errNoLiffId:'NEXT_PUBLIC_LINE_LIFF_ID is not configured.',
         errSubmit:'An error occurred while submitting.', errGeneric:'Submission failed.',
+        errCaptcha:'Incorrect verification code. Please try again.',
         closeAlert:'Dismiss', required:'Required', optional:'Optional',
         detailSection:'Issue Details', footer:'Your information is safe and confidential.',
+        captchaLabel:'Verification Code', captchaPlaceholder:'Enter 4 digits', captchaRefresh:'New code',
+        confirmTitle:'Confirm Repair Request', confirmSub:'Review details before submitting',
+        confirmLocation:'Location', confirmIssue:'Issue',
+        confirmDesc:'Details', confirmNoDesc:'None provided',
+        confirmImages:'Photos', confirmImagesCount:'{n} photo(s)',
+        confirmCancel:'Edit', confirmSubmit:'Confirm & Send',
+        confirmSubmitting:'Submitting...',
     },
     jp: {
         pageTitle:'修理リクエスト', pageSubtitle:'お問い合わせいただければ迅速に対応いたします',
@@ -245,42 +416,158 @@ const T: Record<Lang, Record<string, string>> = {
         errLineId:'LINE User IDを取得できませんでした。LINEから開いてください。',
         errNoLiffId:'NEXT_PUBLIC_LINE_LIFF_IDが設定されていません。',
         errSubmit:'送信中にエラーが発生しました。', errGeneric:'送信に失敗しました。',
+        errCaptcha:'認証コードが間違っています。もう一度お試しください。',
         closeAlert:'閉じる', required:'必須', optional:'任意',
         detailSection:'問題の詳細', footer:'情報は安全に保護されます。',
+        captchaLabel:'認証コード', captchaPlaceholder:'4桁を入力', captchaRefresh:'更新',
+        confirmTitle:'修理リクエストの確認', confirmSub:'送信前に内容をご確認ください',
+        confirmLocation:'場所', confirmIssue:'問題',
+        confirmDesc:'詳細', confirmNoDesc:'なし',
+        confirmImages:'写真', confirmImagesCount:'{n}枚',
+        confirmCancel:'修正', confirmSubmit:'確認して送信',
+        confirmSubmitting:'送信中...',
     },
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function genCaptcha(): string {
+    return String(Math.floor(1000 + Math.random() * 9000));
+}
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 type AlertKind = 'success' | 'error' | 'info';
 type RoomOption = { room_id: number; room_code: string; room_name: string };
 
+// ─── Sub-components ──────────────────────────────────────────────────────────
 function Dots() {
-    return <span style={{ display: 'inline-flex', alignItems: 'center' }}><span className="d d1" /><span className="d d2" /><span className="d d3" /></span>;
+    return <span style={{ display:'inline-flex', alignItems:'center' }}><span className="d d1"/><span className="d d2"/><span className="d d3"/></span>;
 }
 
 function AlertBox({ kind, children, onDismiss, closeLabel }: { kind: AlertKind; children: ReactNode; onDismiss?: () => void; closeLabel?: string }) {
     return (
         <div role="alert" className={`al ${kind}`}>
             <div className="al-in">
-                {kind === 'success' && <CheckCircle2 size={15} style={{ flexShrink: 0, marginTop: 1 }} />}
-                {kind === 'error' && <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />}
+                {kind === 'success' && <CheckCircle2 size={15} style={{ flexShrink:0, marginTop:1 }}/>}
+                {kind === 'error' && <AlertCircle size={15} style={{ flexShrink:0, marginTop:1 }}/>}
                 <span>{children}</span>
             </div>
-            {onDismiss && <button type="button" onClick={onDismiss} className="al-x" aria-label={closeLabel ?? 'Dismiss'}><X size={14} /></button>}
+            {onDismiss && <button type="button" onClick={onDismiss} className="al-x" aria-label={closeLabel ?? 'Dismiss'}><X size={14}/></button>}
         </div>
     );
 }
 
+// ── Captcha Display with SVG noise lines ──
+function CaptchaDisplay({ code }: { code: string }) {
+    const rotations = ['-4deg', '3deg', '-2deg', '5deg'];
+    // SVG noise lines
+    const lines = Array.from({ length: 5 }, (_, i) => ({
+        x1: 5 + i * 18, y1: Math.random() * 54, x2: 15 + i * 18, y2: Math.random() * 54,
+    }));
+    return (
+        <div className="cap-display">
+            <svg className="cap-noise" viewBox="0 0 200 54" preserveAspectRatio="none">
+                {/* horizontal noise lines */}
+                <line x1="0" y1="12" x2="200" y2="18" stroke="rgba(196,98,42,0.12)" strokeWidth="1.2"/>
+                <line x1="0" y1="38" x2="200" y2="32" stroke="rgba(196,98,42,0.10)" strokeWidth="1"/>
+                <line x1="10" y1="27" x2="190" y2="24" stroke="rgba(196,98,42,0.07)" strokeWidth="0.8"/>
+                {lines.map((l, i) => (
+                    <line key={i} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="rgba(196,98,42,0.09)" strokeWidth="1"/>
+                ))}
+            </svg>
+            {code.split('').map((ch, i) => (
+                <span key={i} className="cap-digit" style={{ '--rot': rotations[i] } as React.CSSProperties}>{ch}</span>
+            ))}
+        </div>
+    );
+}
 
+// ── Confirm Dialog ──
+function ConfirmDialog({
+    lang, t, customerInfo, roomDisplay, title, description, imageCount, loading,
+    onCancel, onConfirm,
+}: {
+    lang: Lang; t: (k: string) => string;
+    customerInfo: { full_name: string } | null;
+    roomDisplay: string; title: string; description: string; imageCount: number;
+    loading: boolean; onCancel: () => void; onConfirm: () => void;
+}) {
+    return (
+        <div className="dlg-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+            <div className="dlg" role="dialog" aria-modal="true">
+                {/* Header */}
+                <div className="dlg-header">
+                    <div className="dlg-header-icon"><Send size={18} color="#fff"/></div>
+                    <div>
+                        <p className="dlg-header-title">{t('confirmTitle')}</p>
+                        <p className="dlg-header-sub">{t('confirmSub')}</p>
+                    </div>
+                </div>
+
+                {/* Summary rows */}
+                <div className="dlg-body">
+                    <div className="dlg-row">
+                        <MapPin size={15} className="dlg-row-icon"/>
+                        <div>
+                            <p className="dlg-row-label">{t('confirmLocation')}</p>
+                            <p className="dlg-row-value">{roomDisplay}</p>
+                        </div>
+                    </div>
+                    <div className="dlg-row">
+                        <Wrench size={15} className="dlg-row-icon"/>
+                        <div>
+                            <p className="dlg-row-label">{t('confirmIssue')}</p>
+                            <p className="dlg-row-value">{title}</p>
+                        </div>
+                    </div>
+                    {description && (
+                        <div className="dlg-row">
+                            <FileText size={15} className="dlg-row-icon"/>
+                            <div>
+                                <p className="dlg-row-label">{t('confirmDesc')}</p>
+                                <p className="dlg-row-value" style={{ whiteSpace:'pre-wrap' }}>{description}</p>
+                            </div>
+                        </div>
+                    )}
+                    {imageCount > 0 && (
+                        <div className="dlg-row">
+                            <Camera size={15} className="dlg-row-icon"/>
+                            <div>
+                                <p className="dlg-row-label">{t('confirmImages')}</p>
+                                <p className="dlg-row-value">{t('confirmImagesCount').replace('{n}', String(imageCount))}</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Actions */}
+                <div className="dlg-actions">
+                    <button type="button" className="dlg-cancel" onClick={onCancel} disabled={loading}>
+                        {t('confirmCancel')}
+                    </button>
+                    <button type="button" className="dlg-confirm" onClick={onConfirm} disabled={loading}>
+                        {loading
+                            ? <><Loader2 size={15} className="spin"/>{t('confirmSubmitting')}</>
+                            : <><CheckCircle2 size={15}/>{t('confirmSubmit')}</>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 export default function LineRepairRequestClient() {
     const searchParams = useSearchParams();
     const lineUserIdFromQuery = (searchParams.get('line_user_id') || '').trim();
 
+    // Language
     const [lang, setLangState] = useState<Lang>('th');
-    const t = (k: string) => T[lang][k] ?? k;
+    const t = useCallback((k: string) => T[lang][k] ?? k, [lang]);
     const setLang = (l: Lang) => { setLangState(l); try { localStorage.setItem('repair_lang', l); } catch { /**/ } };
     useEffect(() => { try { const s = localStorage.getItem('repair_lang') as Lang | null; if (s && ['th','en','jp'].includes(s)) setLangState(s); } catch { /**/ } }, []);
 
+    // Core state
     const [lineUserId, setLineUserId] = useState('');
     const [customerInfo, setCustomerInfo] = useState<{ full_name: string; phone_number: string; room_number?: string } | null>(null);
     const [title, setTitle] = useState('');
@@ -291,31 +578,66 @@ export default function LineRepairRequestClient() {
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [previews, setPreviews] = useState<string[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Captcha
+    const [captchaCode, setCaptchaCode] = useState(() => genCaptcha());
+    const [captchaInput, setCaptchaInput] = useState('');
+    const [captchaStatus, setCaptchaStatus] = useState<'idle' | 'wrong' | 'right'>('idle');
+    const [refreshing, setRefreshing] = useState(false);
+
+    // UI
     const [loading, setLoading] = useState(false);
     const [hydrating, setHydrating] = useState(false);
     const [detectingLineId, setDetectingLineId] = useState(true);
     const [alert, setAlert] = useState<{ kind: AlertKind; text: string } | null>(null);
+    const [showConfirm, setShowConfirm] = useState(false);
 
+    const refreshCaptcha = () => {
+        setRefreshing(true);
+        setTimeout(() => setRefreshing(false), 500);
+        setCaptchaCode(genCaptcha());
+        setCaptchaInput('');
+        setCaptchaStatus('idle');
+    };
+
+    // Captcha input handler
+    const handleCaptchaChange = (val: string) => {
+        const v = val.replace(/\D/g, '').slice(0, 4);
+        setCaptchaInput(v);
+        if (v.length === 4) {
+            if (v === captchaCode) {
+                setCaptchaStatus('right');
+            } else {
+                setCaptchaStatus('wrong');
+                setTimeout(() => { setCaptchaInput(''); setCaptchaStatus('idle'); refreshCaptcha(); }, 600);
+            }
+        } else {
+            setCaptchaStatus('idle');
+        }
+    };
+
+    // LIFF
     useEffect(() => {
         let cancelled = false;
         async function run() {
             if (lineUserIdFromQuery) { if (!cancelled) { setLineUserId(lineUserIdFromQuery); setDetectingLineId(false); } return; }
             const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID;
-            if (!liffId) { if (!cancelled) { setDetectingLineId(false); setAlert({ kind: 'info', text: t('errNoLiffId') }); } return; }
+            if (!liffId) { if (!cancelled) { setDetectingLineId(false); setAlert({ kind:'info', text:t('errNoLiffId') }); } return; }
             try {
                 await loadLiffSdk();
                 if (!window.liff) throw new Error('LIFF unavailable');
                 await window.liff.init({ liffId });
-                if (!window.liff.isLoggedIn()) { window.liff.login({ redirectUri: window.location.href }); return; }
+                if (!window.liff.isLoggedIn()) { window.liff.login({ redirectUri:window.location.href }); return; }
                 const p = await window.liff.getProfile();
                 if (!cancelled && p?.userId) setLineUserId(p.userId);
-            } catch (e) { console.error(e); if (!cancelled) setAlert({ kind: 'error', text: t('errLineId') }); }
+            } catch (e) { console.error(e); if (!cancelled) setAlert({ kind:'error', text:t('errLineId') }); }
             finally { if (!cancelled) setDetectingLineId(false); }
         }
         void run(); return () => { cancelled = true; };
-        
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [lineUserIdFromQuery]);
 
+    // Hydrate
     useEffect(() => {
         let cancelled = false;
         async function hydrate() {
@@ -324,78 +646,90 @@ export default function LineRepairRequestClient() {
                 const [cr, rr] = await Promise.all([getLineCustomerByLineId(lineUserId), getRooms()]);
                 if (cancelled) return;
                 if (cr.success && cr.data) {
-                    setCustomerInfo({ full_name: cr.data.full_name || '', phone_number: cr.data.phone_number || '', room_number: cr.data.room_number || '' });
+                    setCustomerInfo({ full_name:cr.data.full_name||'', phone_number:cr.data.phone_number||'', room_number:cr.data.room_number||'' });
                     if (rr.success && rr.data && cr.data.room_number) {
                         const saved = cr.data.room_number.trim().toLowerCase();
-                        const match = (rr.data as RoomOption[]).find(r => r.room_code?.toLowerCase() === saved || r.room_name?.toLowerCase() === saved);
+                        const match = (rr.data as RoomOption[]).find(r => r.room_code?.toLowerCase()===saved || r.room_name?.toLowerCase()===saved);
                         if (match) setRoomId(match.room_id);
                     }
-                } else if (!cr.success) setAlert({ kind: 'error', text: t('errNoCustomer') });
+                } else if (!cr.success) setAlert({ kind:'error', text:t('errNoCustomer') });
             } catch (e) { console.error(e); } finally { if (!cancelled) setHydrating(false); }
         }
         void hydrate(); return () => { cancelled = true; };
- 
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [lineUserId]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = Array.from(e.target.files || []); if (!files.length) return;
-        setSelectedFiles(prev => [...prev, ...files]);
-        files.forEach(f => { const r = new FileReader(); r.onloadend = () => setPreviews(prev => [...prev, r.result as string]); r.readAsDataURL(f); });
-        if (fileInputRef.current) fileInputRef.current.value = '';
+        const files = Array.from(e.target.files||[]); if (!files.length) return;
+        setSelectedFiles(prev=>[...prev,...files]);
+        files.forEach(f=>{const r=new FileReader();r.onloadend=()=>setPreviews(prev=>[...prev,r.result as string]);r.readAsDataURL(f);});
+        if (fileInputRef.current) fileInputRef.current.value='';
     };
     const removeFile = (i: number) => {
-        setSelectedFiles(prev => { const n = [...prev]; n.splice(i,1); return n; });
-        setPreviews(prev => { const n = [...prev]; n.splice(i,1); return n; });
+        setSelectedFiles(prev=>{const n=[...prev];n.splice(i,1);return n;});
+        setPreviews(prev=>{const n=[...prev];n.splice(i,1);return n;});
     };
 
-    async function handleSubmit(e: FormEvent) {
-        e.preventDefault(); setLoading(true); setAlert(null);
-        if (!lineUserId || !customerInfo) { setAlert({ kind:'error', text:t('errNoUser') }); setLoading(false); return; }
-        if (roomId === 0) { setAlert({ kind:'error', text:t('errNoRoom') }); setLoading(false); return; }
+    // Step 1: validate form → open confirm dialog
+    function handleSubmit(e: FormEvent) {
+        e.preventDefault();
+        setAlert(null);
+        if (!lineUserId || !customerInfo) { setAlert({ kind:'error', text:t('errNoUser') }); return; }
+        if (roomId === 0) { setAlert({ kind:'error', text:t('errNoRoom') }); return; }
+        if (captchaStatus !== 'right') { setAlert({ kind:'error', text:t('errCaptcha') }); return; }
+        setShowConfirm(true);
+    }
+
+    // Step 2: confirmed → actually submit
+    async function handleConfirmedSubmit() {
+        setLoading(true);
         try {
             const fd = new FormData();
             fd.append('line_user_id', lineUserId); fd.append('title', title); fd.append('description', description);
-            fd.append('room_id', roomId.toString()); fd.append('category', category); fd.append('priority', priority); fd.append('tags', 'ลูกค้า');
-            selectedFiles.forEach(f => fd.append('images', f));
+            fd.append('room_id', roomId.toString()); fd.append('category', category); fd.append('priority', priority); fd.append('tags','ลูกค้า');
+            selectedFiles.forEach(f=>fd.append('images',f));
             const result = await submitCustomerRepairRequest(fd);
             if (result.success) {
+                setShowConfirm(false);
                 setAlert({ kind:'success', text:t('successMsg') });
                 setTitle(''); setDescription(''); setRoomId(0); setSelectedFiles([]); setPreviews([]);
-            } else { setAlert({ kind:'error', text:result.error || t('errGeneric') }); }
-        } catch (e) { console.error(e); setAlert({ kind:'error', text:t('errSubmit') }); }
+                setCaptchaInput(''); setCaptchaStatus('idle'); refreshCaptcha();
+            } else { setAlert({ kind:'error', text:result.error||t('errGeneric') }); setShowConfirm(false); }
+        } catch (e) { console.error(e); setAlert({ kind:'error', text:t('errSubmit') }); setShowConfirm(false); }
         finally { setLoading(false); }
     }
 
-    const canSubmit = !!customerInfo && title.trim().length > 0 && roomId !== 0 && !loading && !detectingLineId && !hydrating;
+    const captchaVerified = captchaStatus === 'right';
+    const canSubmit = !!customerInfo && title.trim().length > 0 && roomId !== 0 && captchaVerified && !loading && !detectingLineId && !hydrating;
     const isWaiting = detectingLineId || hydrating;
     const badgeClass = isWaiting ? 'wait' : customerInfo ? 'ok' : 'no';
     const badgeText = isWaiting ? (detectingLineId ? t('checkingLine') : t('fetchingData')) : customerInfo ? t('verified') : t('notRegistered');
 
     return (
         <div className="repair-root" style={{ minHeight:'100vh', background:'linear-gradient(150deg,#fff7ef 0%,#fef9f5 55%,#fff 100%)', padding:'28px 14px 52px' }}>
-            <style dangerouslySetInnerHTML={{ __html: GLOBAL_STYLE }} />
+            <style dangerouslySetInnerHTML={{ __html: GLOBAL_STYLE }}/>
             <div style={{ maxWidth:432, margin:'0 auto' }}>
                 <div className="rc">
 
-                    {/* ── Header ── */}
+                    {/* Header */}
                     <div className="rh">
                         <div className="rh-inner">
                             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                                <div className="rh-icon"><Wrench size={20} color="#fff" /></div>
+                                <div className="rh-icon"><Wrench size={20} color="#fff"/></div>
                                 <div>
                                     <h1 className="rh-title">{t('pageTitle')}</h1>
                                     <p className="rh-sub">{t('pageSubtitle')}</p>
                                 </div>
                             </div>
                             <div className="ls">
-                                {(['th','en','jp'] as Lang[]).map(l => (
-                                    <button key={l} type="button" onClick={() => setLang(l)} className={`lb ${lang===l?'on':''}`}>{LANG_LABELS[l]}</button>
+                                {(['th','en','jp'] as Lang[]).map(l=>(
+                                    <button key={l} type="button" onClick={()=>setLang(l)} className={`lb ${lang===l?'on':''}`}>{LANG_LABELS[l]}</button>
                                 ))}
                             </div>
                         </div>
                     </div>
 
-                    {/* ── Body ── */}
+                    {/* Body */}
                     <div className="rb">
 
                         {/* Status */}
@@ -403,11 +737,11 @@ export default function LineRepairRequestClient() {
                             <div className="sc-row">
                                 <span className="sc-label"><Globe size={11}/>{t('userStatus')}</span>
                                 <span className={`badge ${badgeClass}`}>
-                                    {isWaiting ? <><Dots />&nbsp;{badgeText}</> : customerInfo ? <><CheckCircle2 size={11}/>{badgeText}</> : <><AlertCircle size={11}/>{badgeText}</>}
+                                    {isWaiting?<><Dots/>&nbsp;{badgeText}</>:customerInfo?<><CheckCircle2 size={11}/>{badgeText}</>:<><AlertCircle size={11}/>{badgeText}</>}
                                 </span>
                             </div>
-                            {customerInfo && (<>
-                                <div className="sc-div" />
+                            {customerInfo&&(<>
+                                <div className="sc-div"/>
                                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                                     <div className="cr"><User size={13}/><span>{t('name')}:</span><span className="cv">{customerInfo.full_name}</span></div>
                                     <div className="cr"><Phone size={13}/><span>{t('phone')}:</span><span className="cv">{customerInfo.phone_number}</span></div>
@@ -418,8 +752,8 @@ export default function LineRepairRequestClient() {
                         {/* Location */}
                         <div className="fg">
                             <label className="fl"><MapPin size={13}/>{t('locationRequired')}</label>
-                            <input type="text" value={customerInfo?.room_number || t('noLocation')} disabled className="fi ro" />
-                            {roomId === 0 && customerInfo?.room_number && <p className="fhint"><AlertCircle size={11}/>{t('locationNotFound')}</p>}
+                            <input type="text" value={customerInfo?.room_number||t('noLocation')} disabled className="fi ro"/>
+                            {roomId===0&&customerInfo?.room_number&&<p className="fhint"><AlertCircle size={11}/>{t('locationNotFound')}</p>}
                         </div>
 
                         <div className="sec-div">{t('detailSection')}</div>
@@ -428,59 +762,86 @@ export default function LineRepairRequestClient() {
                         <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:14 }}>
 
                             <div className="fg">
-                                <label className="fl">
-                                    <Wrench size={13}/>{t('issueTitle')}
-                                    <span className="fl-tag req">{t('required')}</span>
-                                </label>
-                                <input type="text" value={title} onChange={e=>setTitle(e.target.value)} required className="fi" placeholder={t('issuePlaceholder')} disabled={!customerInfo} />
+                                <label className="fl"><Wrench size={13}/>{t('issueTitle')}<span className="fl-tag req">{t('required')}</span></label>
+                                <input type="text" value={title} onChange={e=>setTitle(e.target.value)} required className="fi" placeholder={t('issuePlaceholder')} disabled={!customerInfo}/>
                             </div>
 
                             <div className="fg">
-                                <label className="fl">
-                                    {t('description')}
-                                    <span className="fl-tag opt">{t('optional')}</span>
-                                </label>
-                                <textarea value={description} onChange={e=>setDescription(e.target.value)} className="ft" rows={3} placeholder={t('descriptionPlaceholder')} disabled={!customerInfo} />
+                                <label className="fl">{t('description')}<span className="fl-tag opt">{t('optional')}</span></label>
+                                <textarea value={description} onChange={e=>setDescription(e.target.value)} className="ft" rows={3} placeholder={t('descriptionPlaceholder')} disabled={!customerInfo}/>
                             </div>
 
                             <div className="fg">
-                                <label className="fl">
-                                    <Camera size={13}/>{t('attachImage')}
-                                    <span className="fl-tag opt">{t('optional')}</span>
-                                </label>
+                                <label className="fl"><Camera size={13}/>{t('attachImage')}<span className="fl-tag opt">{t('optional')}</span></label>
                                 <div className="ig">
-                                    {previews.map((src,idx) => (
+                                    {previews.map((src,idx)=>(
                                         <div key={idx} className="it">
                                             {/* eslint-disable-next-line @next/next/no-img-element */}
                                             <img src={src} alt="preview"/>
                                             <button type="button" onClick={()=>removeFile(idx)} className="ir"><X size={10}/></button>
                                         </div>
                                     ))}
-                                    {previews.length < 4 && customerInfo && (
+                                    {previews.length<4&&customerInfo&&(
                                         <button type="button" onClick={()=>fileInputRef.current?.click()} className="ia">
                                             <Upload size={16}/><span>{t('addPhoto')}</span>
                                         </button>
                                     )}
                                 </div>
-                                {previews.length > 0 && <p className="ic">{previews.length} {t('imagesMax')}</p>}
-                                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" multiple style={{ display:'none' }} />
+                                {previews.length>0&&<p className="ic">{previews.length} {t('imagesMax')}</p>}
+                                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" multiple style={{ display:'none' }}/>
+                            </div>
+
+                            {/* ── CAPTCHA ── */}
+                            <div className="cap-wrap">
+                                <div className="cap-header">
+                                    <span className="cap-label"><ShieldCheck size={13}/>{t('captchaLabel')}<span className="fl-tag req" style={{ marginLeft:6 }}>{t('required')}</span></span>
+                                    <button
+                                        type="button"
+                                        onClick={refreshCaptcha}
+                                        className={`cap-refresh${refreshing?' spinning':''}`}
+                                        title={t('captchaRefresh')}
+                                        disabled={!customerInfo}
+                                    >
+                                        <RefreshCw size={14} style={refreshing?{animation:'spin 0.5s linear'}:{}}/>
+                                    </button>
+                                </div>
+                                <div className="cap-row">
+                                    <CaptchaDisplay code={captchaCode}/>
+                                    <div className="cap-input-wrap">
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
+                                            maxLength={4}
+                                            value={captchaInput}
+                                            onChange={e=>handleCaptchaChange(e.target.value)}
+                                            className={`cap-input${captchaStatus==='wrong'?' wrong':captchaStatus==='right'?' right':''}`}
+                                            placeholder={t('captchaPlaceholder')}
+                                            disabled={!customerInfo||captchaStatus==='right'}
+                                            autoComplete="off"
+                                        />
+                                    </div>
+                                </div>
+                                {captchaStatus==='right'&&(
+                                    <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:'0.76rem', color:'var(--success)', fontWeight:600 }}>
+                                        <CheckCircle2 size={13}/>
+                                        {lang==='th'?'ยืนยันรหัสสำเร็จ':lang==='en'?'Code verified':'コード確認済み'}
+                                    </div>
+                                )}
                             </div>
 
                             <button type="submit" disabled={!canSubmit} className="sb" style={{ marginTop:2 }}>
-                                {loading
-                                    ? <><Loader2 size={16} className="spin"/>{t('submitting')}</>
-                                    : <>{t('submit')}<ChevronRight size={16} className="arr"/></>
-                                }
+                                {t('submit')}<ChevronRight size={16} className="arr"/>
                             </button>
 
-                            {alert?.kind === 'success' && (
-                                <button type="button" className="bb" onClick={()=>{ if(window.liff?.closeWindow){window.liff.closeWindow();return;} window.close(); }}>
+                            {alert?.kind==='success'&&(
+                                <button type="button" className="bb" onClick={()=>{ if(window.liff?.closeWindow){window.liff.closeWindow();return;}window.close(); }}>
                                     {t('backToHome')}
                                 </button>
                             )}
                         </form>
 
-                        {alert && (
+                        {alert&&(
                             <AlertBox kind={alert.kind} onDismiss={()=>setAlert(null)} closeLabel={t('closeAlert')}>
                                 {alert.text}
                             </AlertBox>
@@ -492,6 +853,22 @@ export default function LineRepairRequestClient() {
                     {t('footer')}
                 </p>
             </div>
+
+            {/* Confirm Dialog */}
+            {showConfirm&&(
+                <ConfirmDialog
+                    lang={lang}
+                    t={t}
+                    customerInfo={customerInfo}
+                    roomDisplay={customerInfo?.room_number||t('noLocation')}
+                    title={title}
+                    description={description}
+                    imageCount={selectedFiles.length}
+                    loading={loading}
+                    onCancel={()=>setShowConfirm(false)}
+                    onConfirm={handleConfirmedSubmit}
+                />
+            )}
         </div>
     );
 }
