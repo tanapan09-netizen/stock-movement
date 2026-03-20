@@ -31,23 +31,36 @@ interface Props {
     value: number;
     onChange: (roomId: number) => void;
     placeholder?: string;
+    closeDelayMs?: number;
 }
 
-export default function HierarchicalRoomSelector({ rooms, value, onChange, placeholder = 'เลือกสถานที่...' }: Props) {
+export default function HierarchicalRoomSelector({ rooms, value, onChange, placeholder = 'เลือกสถานที่...', closeDelayMs = 0 }: Props) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
     const containerRef = useRef<HTMLDivElement>(null);
+    const closeTimerRef = useRef<number | null>(null);
+
+    const clearCloseTimer = () => {
+        if (!closeTimerRef.current) return;
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+    };
 
     useEffect(() => {
         if (!open) return;
         const onPointerDown = (e: MouseEvent | PointerEvent) => {
             if (!containerRef.current) return;
             if (containerRef.current.contains(e.target as Node)) return;
+            clearCloseTimer();
             setOpen(false);
         };
         window.addEventListener('pointerdown', onPointerDown);
         return () => window.removeEventListener('pointerdown', onPointerDown);
     }, [open]);
+
+    useEffect(() => {
+        return () => clearCloseTimer();
+    }, []);
 
     const { types, flatLocations, selectedText } = useMemo(() => {
         const realRooms = rooms.filter(r => r.active && !r.room_code.startsWith('T-') && !r.room_code.startsWith('F-'));
@@ -229,8 +242,16 @@ export default function HierarchicalRoomSelector({ rooms, value, onChange, place
 
     const selectRoom = (id: number) => {
         onChange(id);
-        setOpen(false);
         setQuery('');
+        clearCloseTimer();
+        if (closeDelayMs > 0) {
+            closeTimerRef.current = window.setTimeout(() => {
+                setOpen(false);
+                closeTimerRef.current = null;
+            }, closeDelayMs);
+            return;
+        }
+        setOpen(false);
     };
 
     return (
@@ -238,6 +259,7 @@ export default function HierarchicalRoomSelector({ rooms, value, onChange, place
             <button
                 type="button"
                 onClick={() => {
+                    clearCloseTimer();
                     setOpen(o => !o);
                     setQuery('');
                 }}
@@ -521,3 +543,4 @@ export default function HierarchicalRoomSelector({ rooms, value, onChange, place
         </div>
     );
 }
+

@@ -1,10 +1,11 @@
-﻿'use client';
+'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { registerLineCustomer, getLineCustomerByLineId } from '@/actions/lineCustomerActions';
 import { CheckCircle2, Copy, House, Loader2, MessageSquareText, Phone, UserRound, X } from 'lucide-react';
+import { translations, LANGS, type Lang } from './translations';
 
 declare global {
     interface Window {
@@ -29,14 +30,8 @@ async function loadLiffSdk(): Promise<void> {
         const existing = document.querySelector<HTMLScriptElement>('script[data-liff-sdk="true"]');
 
         const resolveIfReady = () => {
-            if (window.liff) {
-                resolve();
-                return true;
-            }
-            if (existing?.dataset?.loaded === 'true') {
-                resolve();
-                return true;
-            }
+            if (window.liff) { resolve(); return true; }
+            if (existing?.dataset?.loaded === 'true') { resolve(); return true; }
             return false;
         };
 
@@ -54,22 +49,13 @@ async function loadLiffSdk(): Promise<void> {
             }
         };
 
-        const onLoad = () => {
-            cleanup();
-            resolve();
-        };
-
-        const onError = () => {
-            cleanup();
-            reject(new Error('Failed to load LIFF SDK'));
-        };
+        const onLoad = () => { cleanup(); resolve(); };
+        const onError = () => { cleanup(); reject(new Error('Failed to load LIFF SDK')); };
 
         if (existing) {
             existing.addEventListener('load', onLoad, { once: true });
             existing.addEventListener('error', onError, { once: true });
-            queueMicrotask(() => {
-                if (resolveIfReady()) cleanup();
-            });
+            queueMicrotask(() => { if (resolveIfReady()) cleanup(); });
             return;
         }
 
@@ -77,10 +63,7 @@ async function loadLiffSdk(): Promise<void> {
         script.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
         script.async = true;
         script.dataset.liffSdk = 'true';
-        script.onload = () => {
-            script.dataset.loaded = 'true';
-            onLoad();
-        };
+        script.onload = () => { script.dataset.loaded = 'true'; onLoad(); };
         script.onerror = onError;
         document.head.appendChild(script);
     }).finally(() => {
@@ -120,7 +103,7 @@ function Alert({
                         type="button"
                         onClick={onDismiss}
                         className="p-1 rounded-md hover:bg-black/5"
-                        aria-label="ปิดข้อความแจ้งเตือน"
+                        aria-label="close"
                     >
                         <X size={16} />
                     </button>
@@ -139,15 +122,46 @@ async function copyToClipboard(text: string): Promise<boolean> {
     }
 }
 
+// Language switcher pill component
+function LangSwitcher({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
+    return (
+        <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1 w-fit ml-auto mb-4">
+            {LANGS.map((l) => (
+                <button
+                    key={l.code}
+                    type="button"
+                    onClick={() => setLang(l.code)}
+                    className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                        lang === l.code
+                            ? 'bg-white text-gray-900 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    <span>{l.flag}</span>
+                    <span>{l.label}</span>
+                </button>
+            ))}
+        </div>
+    );
+}
+
 export default function LineCustomerRegisterClient() {
     const searchParams = useSearchParams();
     const lineUserIdFromQuery = (searchParams.get('line_user_id') || '').trim();
+
+    // Language state — default from query param or 'th'
+    const initialLang = (['th', 'en', 'ja'].includes(searchParams.get('lang') ?? '') 
+        ? searchParams.get('lang') 
+        : 'th') as Lang;
+    const [lang, setLang] = useState<Lang>(initialLang);
+    const t = translations[lang];
 
     const [lineUserId, setLineUserId] = useState('');
     const [fullName, setFullName] = useState('');
     const [phoneNumber, setPhoneNumber] = useState('');
     const [roomNumber, setRoomNumber] = useState('');
     const [notes, setNotes] = useState('');
+    const [agreedToTerms, setAgreedToTerms] = useState(false);
     const [loading, setLoading] = useState(false);
     const [hydrating, setHydrating] = useState(false);
     const [detectingLineId, setDetectingLineId] = useState(true);
@@ -170,7 +184,7 @@ export default function LineCustomerRegisterClient() {
             if (!liffId) {
                 if (!cancelled) {
                     setDetectingLineId(false);
-                    setAlert({ kind: 'info', text: 'ยังไม่ได้ตั้งค่า NEXT_PUBLIC_LINE_LIFF_ID (จำเป็นสำหรับดึง LINE User ID อัตโนมัติ)' });
+                    setAlert({ kind: 'info', text: translations.th.liffEnvMissing });
                 }
                 return;
             }
@@ -193,17 +207,14 @@ export default function LineCustomerRegisterClient() {
                 }
             } catch (error) {
                 console.error('Failed to detect LINE user id:', error);
-                if (!cancelled) setAlert({ kind: 'error', text: 'ไม่สามารถดึง LINE User ID อัตโนมัติได้ (แนะนำให้เปิดหน้านี้จากใน LINE)' });
+                if (!cancelled) setAlert({ kind: 'error', text: translations.th.liffFetchError });
             } finally {
                 if (!cancelled) setDetectingLineId(false);
             }
         }
 
         void resolveLineUserId();
-
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [lineUserIdFromQuery]);
 
     useEffect(() => {
@@ -230,9 +241,7 @@ export default function LineCustomerRegisterClient() {
         }
 
         void hydrate();
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [lineUserId]);
 
     async function handleSubmit(e: FormEvent) {
@@ -241,7 +250,7 @@ export default function LineCustomerRegisterClient() {
         setAlert(null);
 
         if (!lineUserId) {
-            setAlert({ kind: 'error', text: 'ไม่พบ LINE User ID กรุณาเปิดหน้านี้จากแชท LINE หรือใส่ line_user_id ใน URL' });
+            setAlert({ kind: 'error', text: t.errorNoLineId });
             setLoading(false);
             return;
         }
@@ -256,53 +265,66 @@ export default function LineCustomerRegisterClient() {
             });
 
             if (result.success) {
-                setAlert({ kind: 'success', text: 'บันทึกข้อมูลสำเร็จ สามารถปิดหน้านี้และใช้งาน LINE ได้ทันที' });
+                setAlert({ kind: 'success', text: t.successText });
             } else {
-                setAlert({ kind: 'error', text: result.error || 'บันทึกข้อมูลไม่สำเร็จ' });
+                setAlert({ kind: 'error', text: result.error || t.errorSave });
             }
         } catch (error) {
             console.error('registerLineCustomer failed:', error);
-            setAlert({ kind: 'error', text: 'เกิดข้อผิดพลาดระหว่างบันทึกข้อมูล' });
+            setAlert({ kind: 'error', text: t.errorGeneral });
         } finally {
             setLoading(false);
         }
     }
 
-    const canSubmit =
-        !!lineUserId && fullName.trim().length > 0 && phoneNumber.trim().length > 0 && !loading && !detectingLineId;
-
     const phoneDigits = phoneNumber.replace(/[^\d]/g, '');
     const phoneLooksValid = phoneDigits.length === 9 || phoneDigits.length === 10;
+
+    const canSubmit =
+        !!lineUserId &&
+        fullName.trim().length > 0 &&
+        phoneNumber.trim().length > 0 &&
+        agreedToTerms &&
+        !loading &&
+        !detectingLineId;
+
+    const termsHref = `/line/customer-register/terms?lang=${lang}`;
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-green-50 to-white px-4 py-10">
             <div className="max-w-lg mx-auto bg-white border border-green-100 rounded-2xl shadow-sm p-6">
-                <h1 className="text-2xl font-bold text-gray-900 mb-1">สมัครลูกค้า LINE</h1>
-                <p className="text-sm text-gray-500 mb-6">กรอกข้อมูลสำหรับลงทะเบียนลูกค้า (ใช้เวลาไม่ถึง 1 นาที)</p>
 
+                {/* Language switcher */}
+                <LangSwitcher lang={lang} setLang={setLang} />
+
+                <h1 className="text-2xl font-bold text-gray-900 mb-1">{t.pageTitle}</h1>
+                <p className="text-sm text-gray-500 mb-6">{t.pageSubtitle}</p>
+
+                {/* Status card */}
                 <div className="rounded-xl border bg-gray-50 px-4 py-3 mb-5">
                     <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-medium text-gray-800">สถานะ</div>
+                        <div className="text-sm font-medium text-gray-800">{t.statusLabel}</div>
                         <div className="text-xs text-gray-600">
-                            {detectingLineId ? 'กำลังตรวจสอบ LINE...' : lineUserId ? 'พร้อมลงทะเบียน' : 'ต้องเปิดจาก LINE'}
+                            {detectingLineId ? t.statusChecking : lineUserId ? t.statusReady : t.statusNeedLine}
                         </div>
                     </div>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
                         <div className={`rounded-lg px-2 py-1 ${lineUserId ? 'bg-green-100 text-green-800' : 'bg-white text-gray-600 border'}`}>
-                            1) LINE ID
+                            {t.step1}
                         </div>
                         <div className={`rounded-lg px-2 py-1 ${fullName.trim() && phoneNumber.trim() ? 'bg-green-100 text-green-800' : 'bg-white text-gray-600 border'}`}>
-                            2) กรอกข้อมูล
+                            {t.step2}
                         </div>
                         <div className={`rounded-lg px-2 py-1 ${alert?.kind === 'success' ? 'bg-green-100 text-green-800' : 'bg-white text-gray-600 border'}`}>
-                            3) บันทึก
+                            {t.step3}
                         </div>
                     </div>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
+                    {/* LINE User ID */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">LINE User ID (Auto)</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t.lineIdLabel}</label>
                         <div className="flex items-stretch gap-2">
                             <div className="relative flex-1">
                                 <input
@@ -310,7 +332,7 @@ export default function LineCustomerRegisterClient() {
                                     value={lineUserId}
                                     readOnly
                                     className="w-full border rounded-lg pl-3 pr-10 py-2 bg-gray-50 text-gray-700"
-                                    placeholder="กำลังดึงข้อมูลจาก LINE..."
+                                    placeholder={t.lineIdPlaceholder}
                                 />
                                 {(detectingLineId || hydrating) && (
                                     <div className="absolute inset-y-0 right-3 flex items-center text-gray-400">
@@ -323,10 +345,7 @@ export default function LineCustomerRegisterClient() {
                                 onClick={async () => {
                                     if (!lineUserId) return;
                                     const ok = await copyToClipboard(lineUserId);
-                                    if (!ok) {
-                                        setAlert({ kind: 'error', text: 'คัดลอกไม่สำเร็จ (เบราว์เซอร์ไม่อนุญาต)' });
-                                        return;
-                                    }
+                                    if (!ok) { setAlert({ kind: 'error', text: t.copyError }); return; }
                                     setCopied('lineUserId');
                                     window.setTimeout(() => setCopied(null), 1500);
                                 }}
@@ -334,15 +353,15 @@ export default function LineCustomerRegisterClient() {
                                 className="shrink-0 inline-flex items-center justify-center gap-2 px-3 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-60"
                             >
                                 <Copy size={16} />
-                                <span className="text-sm">{copied === 'lineUserId' ? 'คัดลอกแล้ว' : 'คัดลอก'}</span>
+                                <span className="text-sm">{copied === 'lineUserId' ? t.copiedBtn : t.copyBtn}</span>
                             </button>
                         </div>
                         <p className="text-xs text-gray-400 mt-1">
                             {detectingLineId
-                                ? 'กำลังดึง LINE User ID อัตโนมัติ...'
+                                ? t.lineIdHelperChecking
                                 : lineUserId
-                                    ? 'ระบบดึง LINE User ID ให้อัตโนมัติแล้ว'
-                                    : 'ไม่พบ LINE User ID กรุณาเปิดหน้านี้จากแชท LINE'}
+                                    ? t.lineIdHelperReady
+                                    : t.lineIdHelperMissing}
                         </p>
                         {!detectingLineId && !lineUserId && (
                             <div className="mt-2 flex items-center gap-2">
@@ -350,28 +369,24 @@ export default function LineCustomerRegisterClient() {
                                     type="button"
                                     onClick={async () => {
                                         const ok = await copyToClipboard(window.location.href);
-                                        if (!ok) {
-                                            setAlert({ kind: 'error', text: 'คัดลอกลิงก์ไม่สำเร็จ (เบราว์เซอร์ไม่อนุญาต)' });
-                                            return;
-                                        }
+                                        if (!ok) { setAlert({ kind: 'error', text: t.copyLinkError }); return; }
                                         setCopied('url');
                                         window.setTimeout(() => setCopied(null), 1500);
                                     }}
                                     className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border bg-white hover:bg-gray-50"
                                 >
                                     <Copy size={16} />
-                                    <span className="text-sm">{copied === 'url' ? 'คัดลอกแล้ว' : 'คัดลอกลิงก์หน้านี้'}</span>
+                                    <span className="text-sm">{copied === 'url' ? t.copiedBtn : t.copyLinkBtn}</span>
                                 </button>
-                                <div className="text-xs text-gray-500">
-                                    ส่งลิงก์นี้ให้ตัวเองใน LINE แล้วเปิดจากในแชทเพื่อให้ดึง LINE ID ได้
-                                </div>
+                                <div className="text-xs text-gray-500">{t.copyLinkHint}</div>
                             </div>
                         )}
                     </div>
 
+                    {/* Full name */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                            <UserRound size={14} /> ชื่อ-นามสกุล *
+                            <UserRound size={14} /> {t.fullNameLabel}
                         </label>
                         <input
                             type="text"
@@ -379,13 +394,14 @@ export default function LineCustomerRegisterClient() {
                             onChange={(e) => setFullName(e.target.value)}
                             required
                             className="w-full border rounded-lg px-3 py-2"
-                            placeholder="ระบุชื่อผู้ติดต่อ"
+                            placeholder={t.fullNamePlaceholder}
                         />
                     </div>
 
+                    {/* Phone */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                            <Phone size={14} /> เบอร์โทร *
+                            <Phone size={14} /> {t.phoneLabel}
                         </label>
                         <input
                             type="tel"
@@ -394,47 +410,74 @@ export default function LineCustomerRegisterClient() {
                             required
                             inputMode="tel"
                             className={`w-full border rounded-lg px-3 py-2 ${phoneNumber && !phoneLooksValid ? 'border-red-300' : ''}`}
-                            placeholder="08xxxxxxxx"
+                            placeholder={t.phonePlaceholder}
                         />
                         {!!phoneNumber && !phoneLooksValid && (
-                            <p className="text-xs text-red-600 mt-1">รูปแบบเบอร์โทรไม่ถูกต้อง (ควรมี 9–10 ตัวเลข)</p>
+                            <p className="text-xs text-red-600 mt-1">{t.phoneError}</p>
                         )}
                     </div>
 
+                    {/* Room */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                            <House size={14} /> เบอร์ห้อง
+                            <House size={14} /> {t.roomLabel}
                         </label>
                         <input
                             type="text"
                             value={roomNumber}
                             onChange={(e) => setRoomNumber(e.target.value)}
                             className="w-full border rounded-lg px-3 py-2"
-                            placeholder="เช่น A-1205"
+                            placeholder={t.roomPlaceholder}
                         />
                     </div>
 
+                    {/* Notes */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                            <MessageSquareText size={14} /> หมายเหตุ
+                            <MessageSquareText size={14} /> {t.notesLabel}
                         </label>
                         <textarea
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
                             className="w-full border rounded-lg px-3 py-2"
                             rows={3}
-                            placeholder="ข้อมูลเพิ่มเติม (ถ้ามี)"
+                            placeholder={t.notesPlaceholder}
                         />
                     </div>
 
+                    {/* Terms checkbox */}
+                    <div className="flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                        <input
+                            id="terms-checkbox"
+                            type="checkbox"
+                            checked={agreedToTerms}
+                            onChange={(e) => setAgreedToTerms(e.target.checked)}
+                            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-green-600 accent-green-600 cursor-pointer"
+                        />
+                        <label htmlFor="terms-checkbox" className="text-sm text-gray-700 cursor-pointer leading-snug">
+                            {t.termsCheckboxPre && <span>{t.termsCheckboxPre} </span>}
+                            <a
+                                href={termsHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-green-600 underline underline-offset-2 hover:text-green-700 font-medium"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                {t.termsLinkText}
+                            </a>
+                            {t.termsCheckboxPost && <span> {t.termsCheckboxPost}</span>}
+                        </label>
+                    </div>
+
+                    {/* Submit */}
                     <button
                         type="submit"
                         disabled={!canSubmit || (!phoneLooksValid && phoneNumber.trim().length > 0)}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white rounded-lg px-4 py-2.5 disabled:opacity-60 disabled:hover:bg-green-600"
+                        className="w-full bg-green-600 hover:bg-green-700 text-white rounded-lg px-4 py-2.5 disabled:opacity-60 disabled:hover:bg-green-600 transition-colors font-medium"
                     >
                         <span className="inline-flex items-center justify-center gap-2">
                             {loading && <Loader2 size={16} className="animate-spin" />}
-                            {loading ? 'กำลังบันทึก...' : 'บันทึกข้อมูลลูกค้า'}
+                            {loading ? t.submittingBtn : t.submitBtn}
                         </span>
                     </button>
 
@@ -448,9 +491,9 @@ export default function LineCustomerRegisterClient() {
                                 }
                                 window.close();
                             }}
-                            className="w-full border rounded-lg px-4 py-2.5 hover:bg-gray-50"
+                            className="w-full border rounded-lg px-4 py-2.5 hover:bg-gray-50 font-medium text-gray-700"
                         >
-                            ปิดหน้านี้
+                            {t.closeBtn}
                         </button>
                     )}
                 </form>

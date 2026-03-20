@@ -715,6 +715,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                         rooms={rooms}
                                         value={formData.room_id}
                                         onChange={(roomId) => setFormData(prev => ({ ...prev, room_id: roomId }))}
+                                        closeDelayMs={2500}
                                     />
                                 </div>
                             ) : (

@@ -215,6 +215,7 @@ interface MaintenanceClientProps {
 }
 
 const resolveDepartmentFromRole = (role: string) => role.trim().toLowerCase();
+const ROOM_SUBMENU_CLOSE_DELAY_MS = 2500;
 
 export default function MaintenanceClient({ userPermissions = {} }: MaintenanceClientProps) {
     const { data: session } = useSession();
@@ -323,6 +324,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     const [showReopenModal, setShowReopenModal] = useState(false);
     const [reopenRequest, setReopenRequest] = useState<MaintenanceRequestItem | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const roomPanelCloseTimeoutRef = useRef<number | null>(null);
 
     const [roomFormData, setRoomFormData] = useState({
         room_code: '',
@@ -352,6 +354,25 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
         }, 60000);
         return () => clearInterval(timer);
     }, []);
+
+    useEffect(() => {
+        return () => {
+            if (roomPanelCloseTimeoutRef.current) {
+                window.clearTimeout(roomPanelCloseTimeoutRef.current);
+            }
+        };
+    }, []);
+
+    const scheduleCloseRoomSelectorPanel = () => {
+        if (roomPanelCloseTimeoutRef.current) {
+            window.clearTimeout(roomPanelCloseTimeoutRef.current);
+        }
+        roomPanelCloseTimeoutRef.current = window.setTimeout(() => {
+            const panel = document.getElementById('room-selector-panel');
+            if (panel) panel.style.display = 'none';
+            roomPanelCloseTimeoutRef.current = null;
+        }, ROOM_SUBMENU_CLOSE_DELAY_MS);
+    };
 
     const fetchGeneralRequests = async () => {
         setFetchingGeneral(true);
@@ -1748,10 +1769,9 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             : '';
 
                                         const selectRoom = (id: number, code: string, name: string) => {
-                                            setFormData({ ...formData, room_id: id, location: `${code} - ${name}` });
-                                            const el = document.getElementById('room-selector-panel');
-                                            if (el) el.style.display = 'none';
+                                            setFormData(prev => ({ ...prev, room_id: id, location: `${code} - ${name}` }));
                                             setRoomSearch('');
+                                            scheduleCloseRoomSelectorPanel();
                                         };
 
                                         // ── SEARCH LOGIC: Build Comprehensive Flat List ─────────────────────
@@ -1874,6 +1894,10 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                                     <button
                                                         type="button"
                                                         onClick={() => {
+                                                            if (roomPanelCloseTimeoutRef.current) {
+                                                                window.clearTimeout(roomPanelCloseTimeoutRef.current);
+                                                                roomPanelCloseTimeoutRef.current = null;
+                                                            }
                                                             const el = document.getElementById('room-selector-panel');
                                                             if (el) el.style.display = el.style.display === 'block' ? 'none' : 'block';
                                                             setRoomSearch('');
