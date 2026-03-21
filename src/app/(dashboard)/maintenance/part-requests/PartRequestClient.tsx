@@ -488,7 +488,7 @@ export default function PartRequestClient() {
                                                         setUploadedFile(file);
                                                     }
                                                 }}
-                                                accept=".pdf,.jpg,.jpeg,.png"
+                                                accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls"
                                                 className="hidden"
                                                 id="file-upload"
                                             />

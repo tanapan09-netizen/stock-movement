@@ -39,6 +39,22 @@ type LowStockItem = {
     safety_stock: number | null;
 };
 
+type PendingPartRequestItem = {
+    request_id: number;
+    request_number: string | null;
+    item_name: string;
+    quantity: number;
+    priority: string;
+    requested_by: string;
+    tbl_maintenance_requests: {
+        request_number: string;
+        title: string;
+        tbl_rooms: {
+            room_code: string;
+        };
+    } | null;
+};
+
 const colorMap = {
     emerald: {
         style: 'bg-white dark:bg-slate-800 border-emerald-100/50 dark:border-slate-700',
@@ -166,6 +182,7 @@ export default async function StoreDashboard() {
         lowStockResult,
         pendingVerificationCount,
         pendingPartRequestCount,
+        recentPendingPartRequests,
     ] = await Promise.all([
         prisma.tbl_products.count({ where: { active: true } }),
         prisma.tbl_product_movements.findMany({
@@ -181,6 +198,20 @@ export default async function StoreDashboard() {
         }),
         prisma.tbl_part_requests.count({
             where: { status: 'pending' },
+        }),
+        prisma.tbl_part_requests.findMany({
+            where: { status: 'pending' },
+            include: {
+                tbl_maintenance_requests: {
+                    select: {
+                        request_number: true,
+                        title: true,
+                        tbl_rooms: { select: { room_code: true } },
+                    },
+                },
+            },
+            orderBy: { created_at: 'desc' },
+            take: 5,
         }),
     ]);
 
@@ -315,11 +346,58 @@ export default async function StoreDashboard() {
                                 title="คำขอเบิกอะไหล่รอดำเนินการ"
                                 value={pendingPartRequestCount}
                                 description="รายการที่รอคลังตรวจสอบและจัดเตรียมสินค้า"
-                                href="/maintenance/part-requests"
+                                href="/maintenance/parts"
                                 icon={ShieldCheck}
                                 tone="blue"
                             />
                         </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                        <div className="mb-5 flex items-center justify-between">
+                            <h3 className="flex items-center gap-2 font-bold text-gray-800 dark:text-white">
+                                <span className="h-6 w-1 rounded-full bg-blue-500"></span>
+                                คำขอเบิกอะไหล่รอคลังตอบกลับ
+                            </h3>
+                            <Link href="/maintenance/parts" className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
+                                เปิดหน้าเบิกอะไหล่
+                            </Link>
+                        </div>
+                        {recentPendingPartRequests.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500 dark:border-slate-700 dark:text-gray-400">
+                                ไม่มีคำขอเบิกอะไหล่ที่รอคลังตอบกลับ
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {(recentPendingPartRequests as PendingPartRequestItem[]).map((request) => (
+                                    <Link
+                                        key={request.request_id}
+                                        href="/maintenance/parts"
+                                        className="block rounded-xl border border-gray-100 p-4 transition hover:border-blue-200 hover:bg-blue-50/60 dark:border-slate-700 dark:hover:border-blue-900 dark:hover:bg-slate-700/50"
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="font-medium text-gray-900 dark:text-white">{request.item_name}</p>
+                                                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                                    {request.request_number || `REQ-${request.request_id}`} • ผู้ขอ {request.requested_by}
+                                                </p>
+                                                {request.tbl_maintenance_requests ? (
+                                                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                                        {request.tbl_maintenance_requests.request_number} / {request.tbl_maintenance_requests.tbl_rooms?.room_code}
+                                                    </p>
+                                                ) : null}
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-bold text-gray-900 dark:text-white">{request.quantity}</p>
+                                                <p className={`mt-1 text-xs font-medium ${request.priority === 'urgent' ? 'text-red-600 dark:text-red-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
+                                                    {request.priority === 'urgent' ? 'ด่วน' : 'ปกติ'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </Link>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
 

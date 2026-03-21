@@ -1,10 +1,12 @@
 'use client';
+/* eslint-disable react/no-unescaped-entities */
 
 import { useState, useEffect } from 'react';
 import { Package, Plus, Undo2, CheckCircle, Search, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import SearchableSelect from '@/components/SearchableSelect';
+import { getPartRequests, updatePartRequestStatus } from '@/actions/partRequestActions';
 import {
     getMaintenanceRequests,
     getProducts,
@@ -53,6 +55,21 @@ interface MaintenanceRequestItem {
     tbl_rooms: { room_code: string; room_name: string };
 }
 
+interface PartRequestItem {
+    request_id: number;
+    request_number?: string | null;
+    item_name: string;
+    quantity: number;
+    priority: string;
+    requested_by: string;
+    description?: string | null;
+    tbl_maintenance_requests?: {
+        request_number: string;
+        title: string;
+        tbl_rooms: { room_code: string; room_name: string };
+    } | null;
+}
+
 const STATUS_COLORS: Record<string, string> = {
     withdrawn: 'bg-yellow-100 text-yellow-700',
     used: 'bg-green-100 text-green-700',
@@ -68,6 +85,7 @@ const STATUS_LABELS: Record<string, string> = {
 export default function PartsManagementClient() {
     const { data: session } = useSession();
     const [withdrawnParts, setWithdrawnParts] = useState<MaintenancePart[]>([]);
+    const [pendingPartRequests, setPendingPartRequests] = useState<PartRequestItem[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -82,19 +100,23 @@ export default function PartsManagementClient() {
         quantity: 1,
         withdrawn_by: ''
     });
+    const normalizedRole = (session?.user?.role || '').toLowerCase();
+    const canRespondPartAvailability = ['store', 'leader_store', 'manager', 'admin', 'owner'].includes(normalizedRole);
 
     async function loadData() {
         setLoading(true);
         try {
-            const [partsResult, productsResult, requestsResult] = await Promise.all([
+            const [partsResult, productsResult, requestsResult, partRequestsResult] = await Promise.all([
                 getWithdrawnPartsForMaintenance(),
                 getProducts(),
-                getMaintenanceRequests({ status: ['in_progress', 'confirmed'] })
+                getMaintenanceRequests({ status: ['in_progress', 'confirmed'] }),
+                getPartRequests({ status: 'pending' })
             ]);
 
             if (partsResult.success) setWithdrawnParts(partsResult.data as MaintenancePart[]);
             if (productsResult.success) setProducts(productsResult.data as Product[]);
             if (requestsResult.success) setRequests(requestsResult.data as MaintenanceRequestItem[]);
+            if (partRequestsResult.success) setPendingPartRequests(partRequestsResult.data as PartRequestItem[]);
         } catch (error) {
             console.error('Error loading data:', error);
         }
@@ -102,6 +124,8 @@ export default function PartsManagementClient() {
     }
 
     useEffect(() => {
+        // Existing page flow loads initial data on mount.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         loadData();
     }, []);
 
@@ -184,6 +208,19 @@ export default function PartsManagementClient() {
         setLoading(false);
     }
 
+    async function handlePartAvailability(requestId: number, nextStatus: 'approved' | 'rejected') {
+        const actionLabel = nextStatus === 'approved' ? 'เบิกได้' : 'เบิกไม่ได้';
+        if (!confirm(`ยืนยันการแจ้งว่า ${actionLabel} ?`)) return;
+
+        const result = await updatePartRequestStatus(requestId, nextStatus);
+        if (result.success) {
+            loadData();
+            return;
+        }
+
+        alert('เกิดข้อผิดพลาด: ' + result.error);
+    }
+
     const filteredParts = withdrawnParts.filter(part => {
         if (!searchText) return true;
         const search = searchText.toLowerCase();
@@ -251,6 +288,91 @@ export default function PartsManagementClient() {
                         aria-label="ค้นหา"
                     />
                 </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b dark:border-slate-700 flex items-center justify-between">
+                    <div>
+                        <h2 className="font-semibold flex items-center gap-2">
+                            <CheckCircle size={18} /> คำขอเบิกอะไหล่รอคลังตอบกลับ
+                        </h2>
+                        <p className="text-sm text-gray-500 mt-1">ให้คลังแจ้งได้ทันทีว่าเบิกได้หรือเบิกไม่ได้</p>
+                    </div>
+                    <span className="text-sm text-gray-500">{pendingPartRequests.length} รายการ</span>
+                </div>
+
+                {loading ? (
+                    <div className="p-8 text-center text-gray-500">กำลังโหลด...</div>
+                ) : pendingPartRequests.length === 0 ? (
+                    <div className="p-8 text-center text-gray-500">ไม่มีคำขอเบิกอะไหล่ที่รอคลังตอบกลับ</div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-gray-50 dark:bg-slate-700">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">รายการ</th>
+                                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">ใบงาน</th>
+                                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-600 dark:text-gray-300">จำนวน</th>
+                                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">ผู้ขอ</th>
+                                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">ความเร่งด่วน</th>
+                                    <th className="px-4 py-3 text-right text-sm font-medium text-gray-600 dark:text-gray-300">คลังตอบกลับ</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y dark:divide-slate-700">
+                                {pendingPartRequests.map((request) => (
+                                    <tr key={request.request_id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                                        <td className="px-4 py-3">
+                                            <div className="font-medium">{request.item_name}</div>
+                                            <div className="text-xs text-gray-500">{request.request_number || `REQ-${request.request_id}`}</div>
+                                            {request.description ? (
+                                                <div className="text-xs text-gray-400 mt-1">{request.description}</div>
+                                            ) : null}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm">
+                                            {request.tbl_maintenance_requests ? (
+                                                <>
+                                                    <div className="font-mono text-blue-600">{request.tbl_maintenance_requests.request_number}</div>
+                                                    <div className="text-xs text-gray-500">
+                                                        {request.tbl_maintenance_requests.tbl_rooms?.room_code} - {request.tbl_maintenance_requests.title}
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <span className="text-gray-400">-</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-center font-medium">{request.quantity}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{request.requested_by}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-1 rounded text-xs font-medium ${request.priority === 'urgent' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                                {request.priority === 'urgent' ? 'ด่วน' : 'ปกติ'}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            {canRespondPartAvailability ? (
+                                                <div className="flex justify-end gap-2">
+                                                    <button
+                                                        onClick={() => handlePartAvailability(request.request_id, 'approved')}
+                                                        className="rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+                                                    >
+                                                        เบิกได้
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handlePartAvailability(request.request_id, 'rejected')}
+                                                        className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+                                                    >
+                                                        เบิกไม่ได้
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-gray-400">เฉพาะคลัง</span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
 
             {/* Withdrawn Parts List */}
