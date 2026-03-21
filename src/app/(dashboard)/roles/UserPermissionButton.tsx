@@ -15,6 +15,20 @@ interface Props {
     dbRolePermissions?: string | null; // For database-defined role permissions if any
 }
 
+function formatPermissionLabel(label: string): string {
+    if (label.includes('/approvals/purchasing')) {
+        return label
+            .replace('/approvals/purchasing', 'อนุมัติรายการ / จัดซื้อ')
+            .replace('/approvals', 'อนุมัติรายการ');
+    }
+
+    if (label.includes('/purchase-request')) {
+        return label.replace('/purchase-request', 'ส่งคำขอซื้อ');
+    }
+
+    return label;
+}
+
 export default function UserPermissionButton({ user, dbRolePermissions }: Props) {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -24,7 +38,7 @@ export default function UserPermissionButton({ user, dbRolePermissions }: Props)
     if (dbRolePermissions) {
         try {
             basePerms = JSON.parse(dbRolePermissions);
-        } catch (e) {
+        } catch {
             // ignore
         }
     }
@@ -34,7 +48,7 @@ export default function UserPermissionButton({ user, dbRolePermissions }: Props)
     if (user.custom_permissions) {
         try {
             userPerms = JSON.parse(user.custom_permissions);
-        } catch (e) {
+        } catch {
             // ignore
         }
     }
@@ -119,7 +133,7 @@ export default function UserPermissionButton({ user, dbRolePermissions }: Props)
                                                     />
                                                 </div>
                                                 <div className="flex flex-col">
-                                                    <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">{perm.label}</span>
+                                                    <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">{formatPermissionLabel(perm.label)}</span>
                                                     <span className="text-xs text-gray-500">{perm.description}</span>
                                                 </div>
                                             </label>

@@ -22,6 +22,8 @@ import {
     Briefcase,
     BarChart3,
     AlertTriangle,
+    FileCheck2,
+    ShoppingCart,
     Wrench,
     Users,
     ChevronLeft,
@@ -43,6 +45,7 @@ export default function Sidebar(props: SidebarProps) {
     const { data: session } = useSession();
     const user = session?.user;
     const role = user?.role || 'user';
+    const normalizedRole = String(role).toLowerCase();
 
     // Default to empty permissions if not provided (will be fixed by layout)
     const permissions = props.permissions || {};
@@ -84,6 +87,7 @@ export default function Sidebar(props: SidebarProps) {
         );
     const canGeneralRequestPage = canAccessPage('/general-request');
     const canMaintenancePage = canAccessPage('/maintenance');
+    const canPurchasingApprovalsPage = canAccessPage('/approvals/purchasing');
     const baseNavItemClass = `group relative flex items-center rounded-2xl ${
         collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'
     } text-sm font-medium transition-all duration-200 ease-out select-none border`;
@@ -359,6 +363,43 @@ export default function Sidebar(props: SidebarProps) {
                         )}
 
                         {/* ─── การเงิน & เบิกจ่าย ─── */}
+                        {canAccessPage('/purchase-request') && (
+                            <Link
+                                href="/purchase-request"
+                                onClick={handleLinkClick}
+                                className={getNavItemClass(isActive('/purchase-request'))}
+                                title={collapsed ? 'ส่งคำขอซื้อ' : undefined}
+                            >
+                                <ShoppingCart className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/purchase-request') && 'group-hover:scale-110 group-hover:text-emerald-400'}`} />
+                                {!collapsed && <span className="truncate">ส่งคำขอซื้อ</span>}
+                            </Link>
+                        )}
+
+                        {normalizedRole === 'purchasing' && canPurchasingApprovalsPage && (
+                            <Link
+                                href="/approvals/purchasing"
+                                onClick={handleLinkClick}
+                                className={getNavItemClass(isActive('/approvals/purchasing'))}
+                                title={collapsed ? 'คำขออนุมัติซื้อ' : undefined}
+                            >
+                                <FileCheck2 className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/approvals/purchasing') && 'group-hover:scale-110 group-hover:text-emerald-400'}`} />
+                                {!collapsed && <span className="truncate">คำขออนุมัติซื้อ</span>}
+                            </Link>
+                        )}
+
+                        {/* Purchasing Dashboard Link */}
+                        {(normalizedRole === 'admin' || normalizedRole === 'purchasing' || normalizedRole === 'manager') && (
+                            <Link
+                                href="/purchasing-dashboard"
+                                onClick={handleLinkClick}
+                                className={getNavItemClass(isActive('/purchasing-dashboard'))}
+                                title={collapsed ? 'Purchasing Dashboard' : undefined}
+                            >
+                                <BarChart3 className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/purchasing-dashboard') && 'group-hover:scale-110 group-hover:text-indigo-400'}`} />
+                                {!collapsed && <span className="truncate">Purchasing Dashboard</span>}
+                            </Link>
+                        )}
+
                         {can(PERMISSIONS.PETTY_CASH) && !collapsed && (
                             <div className="pt-5 pb-2 px-3 flex items-center gap-2">
                                 <div className="h-px bg-gray-700 flex-1"></div>

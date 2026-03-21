@@ -2,16 +2,8 @@ import { prisma } from '@/lib/prisma';
 import POForm from '@/components/POForm';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
-import { auth } from '@/auth';
-import { redirect } from 'next/navigation';
 
 export default async function NewPOPage() {
-    const session = await auth();
-    const role = ((session?.user as { role?: string })?.role || '').toLowerCase();
-    if (role !== 'purchasing') {
-        redirect('/purchase-orders');
-    }
-
     const [products, suppliers] = await Promise.all([
         prisma.tbl_products.findMany({ select: { p_id: true, p_name: true, price_unit: true }, where: { active: true } }),
         prisma.tbl_suppliers.findMany({ select: { id: true, name: true } })

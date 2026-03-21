@@ -9,14 +9,12 @@ import PurchaseOrderActions from './PurchaseOrderActions';
 export default async function POListPage() {
     const session = await auth();
     const userRole = (session?.user as { role?: string })?.role || '';
-    const userName = (session?.user as { name?: string })?.name || '';
-    const userId = Number.parseInt(((session?.user as { id?: string })?.id || ''), 10);
-    const isPurchasing = userRole.toLowerCase() === 'purchasing';
     const rolePermissions = await getRolePermissions(userRole);
 
     const canView = !!rolePermissions[PERMISSIONS.PO_VIEW];
-    const canEdit = !!rolePermissions[PERMISSIONS.PO_EDIT] && isPurchasing;
+    const canEdit = !!rolePermissions[PERMISSIONS.PO_EDIT];
 
+    // Check View Permission
     if (!canView) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
@@ -28,14 +26,6 @@ export default async function POListPage() {
     }
 
     const pos = await prisma.tbl_purchase_orders.findMany({
-        where: isPurchasing
-            ? undefined
-            : {
-                OR: [
-                    ...(Number.isNaN(userId) ? [] : [{ created_by_user_id: userId }]),
-                    { created_by: userName || '__NO_USER__' }
-                ]
-            },
         orderBy: { created_at: 'desc' },
     });
 
@@ -45,22 +35,15 @@ export default async function POListPage() {
 
     return (
         <div>
-            <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
+            <div className="mb-6 flex items-center justify-between">
                 <h1 className="text-2xl font-bold text-gray-800">ใบสั่งซื้อ (Purchase Orders)</h1>
 
-                <div className="flex items-center gap-2 flex-wrap">
-                    <Link href="/purchase-orders/issue" className="px-3 py-2 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 text-sm">
-                        ออกใบสั่งซื้อ
+                {/* Check Create/Edit Permission */}
+                {canEdit && (
+                    <Link href="/purchase-orders/new" className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center hover:bg-blue-700">
+                        <Plus className="w-4 h-4 mr-2" /> สร้างใบสั่งซื้อ
                     </Link>
-                    <Link href="/purchase-orders/receive" className="px-3 py-2 rounded-lg border border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-sm">
-                        รับใบสั่งซื้อ
-                    </Link>
-                    {canEdit && (
-                        <Link href="/purchase-orders/new" className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center hover:bg-blue-700">
-                            <Plus className="w-4 h-4 mr-2" /> สร้างใบสั่งซื้อ
-                        </Link>
-                    )}
-                </div>
+                )}
             </div>
 
             <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -83,7 +66,9 @@ export default async function POListPage() {
                                 <td className="px-6 py-4">{po.order_date ? new Date(po.order_date).toLocaleDateString('th-TH') : '-'}</td>
                                 <td className="px-6 py-4 text-right">{Number(po.total_amount).toLocaleString()}</td>
                                 <td className="px-6 py-4 text-center">
-                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${po.status === 'received' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase
+                                ${po.status === 'received' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}
+                            `}>
                                         {po.status}
                                     </span>
                                 </td>

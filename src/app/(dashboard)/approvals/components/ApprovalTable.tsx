@@ -20,6 +20,7 @@ function getTypeLabel(type: string) {
         case 'ot': return 'ล่วงเวลา (OT)';
         case 'leave': return 'ลาหยุด';
         case 'expense': return 'เบิกค่าใช้จ่าย';
+        case 'purchase': return 'คำขอซื้อ';
         case 'other': return 'อื่นๆ';
         default: return type;
     }
@@ -110,7 +111,8 @@ export default function ApprovalTable({
                                             {req.request_type === 'ot' && <Clock size={14} className="text-blue-500" />}
                                             {req.request_type === 'leave' && <Calendar size={14} className="text-orange-500" />}
                                             {req.request_type === 'expense' && <DollarSign size={14} className="text-green-500" />}
-                                            {(req.request_type === 'other' || !['ot', 'leave', 'expense'].includes(req.request_type)) && <FileText size={14} className="text-slate-500" />}
+                                            {req.request_type === 'purchase' && <DollarSign size={14} className="text-emerald-500" />}
+                                            {(req.request_type === 'other' || !['ot', 'leave', 'expense', 'purchase'].includes(req.request_type)) && <FileText size={14} className="text-slate-500" />}
                                             {getTypeLabel(req.request_type)}
                                         </div>
                                         <div className="text-gray-700 dark:text-gray-300">{req.reason}</div>
@@ -121,7 +123,7 @@ export default function ApprovalTable({
                                                 เวลา: {new Date(req.start_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} - {new Date(req.end_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
                                             </div>
                                         )}
-                                        {req.request_type === 'expense' && Boolean(req.amount) && (
+                                        {(req.request_type === 'expense' || req.request_type === 'purchase') && Boolean(req.amount) && (
                                             <div className="text-sm font-semibold text-green-600 dark:text-green-400">
                                                 ฿ {Number(req.amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
                                             </div>

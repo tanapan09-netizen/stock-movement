@@ -14,8 +14,9 @@ type NotificationItem = {
 export async function GET() {
     try {
         const session = await auth();
-        const role = (session?.user as any)?.role || 'employee';
-        const isApprover = (session?.user as any)?.is_approver || false;
+        const sessionUser = session?.user as { role?: string; is_approver?: boolean } | undefined;
+        const role = sessionUser?.role || 'employee';
+        const isApprover = sessionUser?.is_approver || false;
         const userName = session?.user?.name || '';
 
         const notifications: NotificationItem[] = [];
@@ -203,6 +204,26 @@ export async function GET() {
                     read: false,
                 });
             });
+        }
+
+        if (isAdminOrManager || role === 'purchasing') {
+            const pendingPurchaseRequests = await prisma.tbl_approval_requests.count({
+                where: {
+                    request_type: 'purchase',
+                    status: 'pending',
+                },
+            });
+
+            if (pendingPurchaseRequests > 0) {
+                notifications.push({
+                    id: 'purchase_requests_pending',
+                    type: 'info',
+                    title: 'คำขอซื้อรอพิจารณา',
+                    message: `มี ${pendingPurchaseRequests} รายการรอฝ่ายจัดซื้อดำเนินการ`,
+                    time: new Date(),
+                    read: false,
+                });
+            }
         }
 
         if (isAdminOrManager || isApprover || role === 'head_technician' || role === 'purchasing') {

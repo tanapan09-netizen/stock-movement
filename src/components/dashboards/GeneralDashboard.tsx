@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { Wrench, Clock, FileText, ArrowRight } from 'lucide-react';
+import { Wrench, Clock, FileText, ArrowRight, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
 import { auth } from '@/auth';
 import { getRolePermissions } from '@/actions/roleActions';
@@ -75,6 +75,18 @@ export default async function GeneralDashboard() {
                 'w-12 h-12 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform',
             titleClass: 'font-semibold text-gray-700 group-hover:text-orange-700',
             allowed: canAccessPage('/borrow'),
+        },
+        {
+            href: '/purchase-request',
+            title: 'ส่งคำขอซื้อ',
+            description: 'ส่งคำขอซื้อหรือเบิกค่าใช้จ่ายให้ฝ่ายจัดซื้อ',
+            icon: <ShoppingCart className="w-6 h-6" />,
+            cardClass:
+                'group p-6 rounded-xl border border-gray-100 hover:border-emerald-200 bg-gray-50 hover:bg-emerald-50 transition-all text-center flex flex-col items-center',
+            iconClass:
+                'w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform',
+            titleClass: 'font-semibold text-gray-700 group-hover:text-emerald-700',
+            allowed: canAccessPage('/purchase-request'),
         },
     ];
 

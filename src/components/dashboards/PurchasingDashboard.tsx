@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { Package, ShoppingCart, AlertTriangle, ListOrdered } from 'lucide-react';
+import { ShoppingCart, ListOrdered, FileCheck2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default async function PurchasingDashboard() {
@@ -7,11 +7,15 @@ export default async function PurchasingDashboard() {
         where: { status: 'wait_for_parts' }
     });
 
-    // Need to implement proper low stock fetching, just a placeholder
-    const lowStockCount = 0;
-
     const pendingPOCount = await prisma.tbl_purchase_orders.count({
         where: { status: 'pending' }
+    });
+
+    const pendingApprovalCount = await prisma.tbl_approval_requests.count({
+        where: {
+            status: 'pending',
+            request_type: 'purchase'
+        }
     });
 
     return (
@@ -28,7 +32,7 @@ export default async function PurchasingDashboard() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <Link href="/maintenance" className="block group">
                     <div className="bg-white dark:bg-slate-800 border-purple-100/50 border rounded-2xl p-6 shadow-sm group-hover:shadow-md transition-all">
                         <div className="flex justify-between items-start mb-4">
@@ -52,6 +56,20 @@ export default async function PurchasingDashboard() {
                             </div>
                             <div className="p-3 rounded-xl bg-blue-50 text-blue-600">
                                 <ShoppingCart className="w-6 h-6" />
+                            </div>
+                        </div>
+                    </div>
+                </Link>
+
+                <Link href="/approvals/purchasing" className="block group">
+                    <div className="bg-white dark:bg-slate-800 border-emerald-100/50 border rounded-2xl p-6 shadow-sm group-hover:shadow-md transition-all">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 className="text-sm font-semibold text-gray-500 mb-1">คำขออนุมัติซื้อ (Expense)</h3>
+                                <p className="text-3xl font-bold text-gray-900 dark:text-white">{pendingApprovalCount}</p>
+                            </div>
+                            <div className="p-3 rounded-xl bg-emerald-50 text-emerald-600">
+                                <FileCheck2 className="w-6 h-6" />
                             </div>
                         </div>
                     </div>

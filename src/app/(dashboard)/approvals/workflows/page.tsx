@@ -5,12 +5,30 @@ import { getApprovalWorkflows, saveApprovalWorkflow, toggleWorkflowStatus } from
 import { Plus, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import { useToast } from '@/components/ToastProvider';
 
+interface WorkflowStep {
+    step_order: number;
+    approver_role: string;
+    approver_id?: string | number | null;
+}
+
+interface WorkflowItem {
+    id?: number;
+    workflow_name: string;
+    request_type: string;
+    condition_field?: string | null;
+    condition_op?: string | null;
+    condition_value?: string | null;
+    total_steps?: number;
+    active?: boolean;
+    steps: WorkflowStep[];
+}
+
 export default function WorkflowsPage() {
-    const [workflows, setWorkflows] = useState<any[]>([]);
+    const [workflows, setWorkflows] = useState<WorkflowItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [isMockingData, setIsMockingData] = useState(false);
     const [modalOpen, setModalOpen] = useState(false);
-    const [currentWorkflow, setCurrentWorkflow] = useState<any>(null);
+    const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowItem | null>(null);
     const { showToast } = useToast();
 
     useEffect(() => {
@@ -39,7 +57,7 @@ export default function WorkflowsPage() {
                     }
                 ]);
             }
-        } catch (e) {
+        } catch {
             console.error("Failed to load workflows due to missing Prisma generation. Mocking data for UI styling.");
         } finally {
             setLoading(false);
@@ -57,7 +75,7 @@ export default function WorkflowsPage() {
         }
     };
 
-    const openEdit = (wf: any) => {
+    const openEdit = (wf: WorkflowItem) => {
         setCurrentWorkflow({ ...wf });
         setModalOpen(true);
     };
@@ -76,6 +94,10 @@ export default function WorkflowsPage() {
 
     const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        if (!currentWorkflow) {
+            showToast('ไม่พบข้อมูล Workflow', 'error');
+            return;
+        }
         const res = await saveApprovalWorkflow(currentWorkflow);
         if (res.success) {
             showToast('บันทึก Workflow สำเร็จ', 'success');
@@ -120,7 +142,7 @@ export default function WorkflowsPage() {
                                     </td>
                                     <td className="p-4">
                                         <div className="flex items-center gap-1 text-sm">
-                                            {wf.steps.map((st: any, i: number) => (
+                                            {wf.steps.map((st: WorkflowStep, i: number) => (
                                                 <React.Fragment key={i}>
                                                     <span className="bg-slate-100 dark:bg-slate-600 px-2 py-1 rounded text-xs">{st.approver_role}</span>
                                                     {i < wf.steps.length - 1 && <span>→</span>}
@@ -129,7 +151,7 @@ export default function WorkflowsPage() {
                                         </div>
                                     </td>
                                     <td className="p-4">
-                                        <button onClick={() => handleToggle(wf.id, !wf.active)} className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${wf.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                        <button onClick={() => wf.id && handleToggle(wf.id, !wf.active)} className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${wf.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                             {wf.active ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
                                             {wf.active ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
                                         </button>
@@ -182,6 +204,7 @@ export default function WorkflowsPage() {
                                         <option value="ot">OT</option>
                                         <option value="leave">Leave</option>
                                         <option value="expense">Expense</option>
+                                        <option value="purchase">Purchase</option>
                                     </select>
                                 </div>
                             </div>
@@ -230,7 +253,7 @@ export default function WorkflowsPage() {
                                     </button>
                                 </div>
                                 <div className="space-y-3">
-                                    {currentWorkflow.steps.map((st: any, idx: number) => (
+                                    {currentWorkflow.steps.map((st: WorkflowStep, idx: number) => (
                                         <div key={idx} className="flex gap-2 items-center">
                                             <div className="font-bold text-slate-400 w-8">#{idx + 1}</div>
                                             <select
@@ -252,8 +275,8 @@ export default function WorkflowsPage() {
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        const steps = currentWorkflow.steps.filter((_: any, i: number) => i !== idx)
-                                                            .map((step: any, i: number) => ({ ...step, step_order: i + 1 }));
+                                                        const steps = currentWorkflow.steps.filter((_: WorkflowStep, i: number) => i !== idx)
+                                                            .map((step: WorkflowStep, i: number) => ({ ...step, step_order: i + 1 }));
                                                         setCurrentWorkflow({ ...currentWorkflow, steps });
                                                     }}
                                                     className="p-2 text-red-500 hover:bg-red-100 rounded"

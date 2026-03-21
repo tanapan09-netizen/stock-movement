@@ -15,16 +15,26 @@ interface CreateApprovalModalProps {
     isSubmitting: boolean;
     formData: ApprovalFormData;
     jobOptions: JobOption[];
+    lockedRequestType?: string | null;
     onClose: () => void;
     onSubmit: (e: FormEvent) => void;
     onChange: (patch: Partial<ApprovalFormData>) => void;
 }
+
+const REQUEST_TYPE_LABELS: Record<string, string> = {
+    ot: 'ทำงานล่วงเวลา (OT)',
+    leave: 'ลาหยุด',
+    expense: 'เบิกค่าใช้จ่าย',
+    purchase: 'คำขอซื้อ',
+    other: 'อื่นๆ',
+};
 
 export default function CreateApprovalModal({
     isOpen,
     isSubmitting,
     formData,
     jobOptions,
+    lockedRequestType,
     onClose,
     onSubmit,
     onChange
@@ -47,17 +57,27 @@ export default function CreateApprovalModal({
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium mb-1">ประเภทคำขอ *</label>
-                            <select
-                                className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                value={formData.request_type}
-                                onChange={e => onChange({ request_type: e.target.value })}
-                                required
-                            >
-                                <option value="ot">ทำงานล่วงเวลา (OT)</option>
-                                <option value="leave">ลาหยุด</option>
-                                <option value="expense">เบิกค่าใช้จ่ายอื่นๆ</option>
-                                <option value="other">อื่นๆ</option>
-                            </select>
+                            {lockedRequestType ? (
+                                <input
+                                    type="text"
+                                    className="w-full border rounded-lg px-3 py-2 bg-gray-50 dark:bg-slate-700 dark:border-slate-600"
+                                    value={REQUEST_TYPE_LABELS[lockedRequestType] || lockedRequestType}
+                                    readOnly
+                                />
+                            ) : (
+                                <select
+                                    className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                                    value={formData.request_type}
+                                    onChange={e => onChange({ request_type: e.target.value })}
+                                    required
+                                >
+                                    <option value="ot">ทำงานล่วงเวลา (OT)</option>
+                                    <option value="leave">ลาหยุด</option>
+                                    <option value="expense">เบิกค่าใช้จ่ายอื่นๆ</option>
+                                    <option value="purchase">คำขอซื้อ</option>
+                                    <option value="other">อื่นๆ</option>
+                                </select>
+                            )}
                         </div>
                         <div>
                             <label className="block text-sm font-medium mb-1">วันที่ *</label>
@@ -96,7 +116,7 @@ export default function CreateApprovalModal({
                         </div>
                     )}
 
-                    {formData.request_type === 'expense' && (
+                    {(formData.request_type === 'expense' || formData.request_type === 'purchase') && (
                         <div>
                             <label className="block text-sm font-medium mb-1">จำนวนเงิน (บาท) *</label>
                             <input

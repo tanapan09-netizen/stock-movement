@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
-import ApprovalClient from './ApprovalClient';
+import ApprovalClient from '../ApprovalClient';
 import { getApprovalRequests } from '@/actions/approvalActions';
 import { getMaintenanceRequests } from '@/actions/maintenanceActions';
 
@@ -9,10 +9,10 @@ interface MaintenanceRequestStatusLike {
 }
 
 export const metadata = {
-    title: 'อนุมัติคำขอต่างๆ (OT/เบิก/ลา) | Stock Movement',
+    title: 'คำขออนุมัติซื้อ | Stock Movement',
 };
 
-export default async function ApprovalsPage() {
+export default async function PurchasingApprovalsPage() {
     const session = await auth();
 
     if (!session) {
@@ -25,7 +25,6 @@ export default async function ApprovalsPage() {
     const role = session.user.role?.toLowerCase() || '';
     const isApprover = session.user.is_approver || false;
     const canApprove = role === 'admin' || role === 'manager' || isApprover;
-    const initialRequestType = role === 'purchasing' ? 'purchase' : 'all';
 
     return (
         <ApprovalClient
@@ -35,7 +34,11 @@ export default async function ApprovalsPage() {
                 : []}
             canApprove={canApprove}
             currentUserId={parseInt(session.user.id as string) || 0}
-            initialRequestType={initialRequestType}
+            initialRequestType="purchase"
+            lockedRequestType="purchase"
+            defaultCreateRequestType="purchase"
+            title="คำขออนุมัติซื้อ"
+            subtitle="มุมมองเฉพาะงานอนุมัติของฝ่ายจัดซื้อ"
         />
     );
 }

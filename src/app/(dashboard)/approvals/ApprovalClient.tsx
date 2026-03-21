@@ -14,12 +14,26 @@ interface ApprovalClientProps {
     activeJobs: ActiveJob[];
     canApprove: boolean;
     currentUserId: number;
+    initialRequestType?: string;
+    lockedRequestType?: string | null;
+    defaultCreateRequestType?: string;
+    title?: string;
+    subtitle?: string;
 }
 
 const PAGE_SIZE = 10;
 
-const defaultFormData = (): ApprovalFormData => ({
-    request_type: 'ot',
+const REQUEST_TYPE_OPTIONS = [
+    { value: 'all', label: 'ทุกประเภท' },
+    { value: 'ot', label: 'OT' },
+    { value: 'leave', label: 'ลา' },
+    { value: 'expense', label: 'Expense' },
+    { value: 'purchase', label: 'Purchase Request' },
+    { value: 'other', label: 'อื่นๆ' },
+];
+
+const defaultFormData = (requestType = 'ot'): ApprovalFormData => ({
+    request_type: requestType,
     request_date: new Date().toISOString().slice(0, 10),
     start_time: '',
     end_time: '',
@@ -28,7 +42,17 @@ const defaultFormData = (): ApprovalFormData => ({
     reference_job: ''
 });
 
-export default function ApprovalClient({ initialRequests, activeJobs, canApprove, currentUserId }: ApprovalClientProps) {
+export default function ApprovalClient({
+    initialRequests,
+    activeJobs,
+    canApprove,
+    currentUserId,
+    initialRequestType = 'all',
+    lockedRequestType = null,
+    defaultCreateRequestType = 'ot',
+    title = 'ระบบขออนุมัติทั่วไป (OT/เบิก/ลา)',
+    subtitle = 'จัดการคำขออนุมัติ และติดตามสถานะได้ในหน้าเดียว'
+}: ApprovalClientProps) {
     const { showToast } = useToast();
     const [requests, setRequests] = useState<ApprovalRequest[]>(initialRequests);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -36,6 +60,7 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
 
     const [viewMode, setViewMode] = useState<'all' | 'mine' | 'pending_review'>('all');
     const [filterStatus, setFilterStatus] = useState('all');
+    const [filterRequestType, setFilterRequestType] = useState(lockedRequestType || initialRequestType);
     const [searchText, setSearchText] = useState('');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
@@ -49,10 +74,12 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
     const [rejectId, setRejectId] = useState<number | null>(null);
     const [rejectionReason, setRejectionReason] = useState('');
 
-    const [formData, setFormData] = useState<ApprovalFormData>(defaultFormData());
+    const [formData, setFormData] = useState<ApprovalFormData>(() =>
+        defaultFormData(lockedRequestType || defaultCreateRequestType)
+    );
 
     const jobOptions = useMemo(
-        () => activeJobs.map(j => ({
+        () => activeJobs.map((j) => ({
             value: j.request_number,
             label: `${j.request_number} - ห้อง ${j.tbl_rooms?.room_code || '-'}: ${j.title || '-'}`
         })),
@@ -73,6 +100,7 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
             }
 
             if (filterStatus !== 'all' && r.status !== filterStatus) return false;
+            if (filterRequestType !== 'all' && r.request_type !== filterRequestType) return false;
 
             if (dateFrom || dateTo) {
                 const sourceDate = r.created_at ? new Date(r.created_at) : null;
@@ -94,7 +122,7 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
 
             return true;
         });
-    }, [requests, viewMode, currentUserId, canApprove, filterStatus, dateFrom, dateTo, searchText]);
+    }, [requests, viewMode, currentUserId, canApprove, filterStatus, filterRequestType, dateFrom, dateTo, searchText]);
 
     const totalPages = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE));
     const safePage = Math.min(currentPage, totalPages);
@@ -103,18 +131,18 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
     const resetToFirstPage = () => setCurrentPage(1);
 
     const patchFormData = (patch: Partial<ApprovalFormData>) => {
-        setFormData(prev => ({ ...prev, ...patch }));
+        setFormData((prev) => ({ ...prev, ...patch }));
     };
 
     const setRowsProcessing = (ids: number[], processing: boolean) => {
-        setProcessingIds(prev => {
+        setProcessingIds((prev) => {
             if (processing) return Array.from(new Set([...prev, ...ids]));
-            return prev.filter(id => !ids.includes(id));
+            return prev.filter((id) => !ids.includes(id));
         });
     };
 
     const applyUpdatedRequest = (updated: ApprovalRequest) => {
-        setRequests(prev => prev.map(r => (r.request_id === updated.request_id ? updated : r)));
+        setRequests((prev) => prev.map((r) => (r.request_id === updated.request_id ? updated : r)));
     };
 
     const runStatusUpdate = async (ids: number[], status: 'approved' | 'rejected', reason?: string) => {
@@ -136,7 +164,7 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
         } finally {
             setRowsProcessing(targetIds, false);
             if (targetIds.length > 1) setIsBulkProcessing(false);
-            setSelectedIds(prev => prev.filter(id => !targetIds.includes(id)));
+            setSelectedIds((prev) => prev.filter((id) => !targetIds.includes(id)));
         }
 
         if (successCount === targetIds.length) {
@@ -162,7 +190,7 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
             }
         }
 
-        if (formData.request_type === 'expense') {
+        if (formData.request_type === 'expense' || formData.request_type === 'purchase') {
             const amount = Number(formData.amount);
             if (!Number.isFinite(amount) || amount <= 0) {
                 showToast('จำนวนเงินต้องมากกว่า 0', 'error');
@@ -196,8 +224,8 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
             if (res.success && res.data) {
                 showToast('ส่งคำขอสำเร็จ', 'success');
                 setIsModalOpen(false);
-                setRequests(prev => [{ ...res.data, tbl_users: { username: 'ฉันเอง', p_id: currentUserId } }, ...prev]);
-                setFormData(defaultFormData());
+                setRequests((prev) => [{ ...res.data, tbl_users: { username: 'ฉันเอง', p_id: currentUserId } }, ...prev]);
+                setFormData(defaultFormData(lockedRequestType || defaultCreateRequestType));
                 resetToFirstPage();
             } else {
                 showToast(res.error || 'เกิดข้อผิดพลาด', 'error');
@@ -236,18 +264,16 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
     };
 
     const handleToggleSelect = (id: number) => {
-        setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+        setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
     };
 
     const handleToggleSelectAllPage = () => {
-        const pagePendingIds = paginatedRequests.filter(r => r.status === 'pending').map(r => r.request_id);
+        const pagePendingIds = paginatedRequests.filter((r) => r.status === 'pending').map((r) => r.request_id);
         if (!pagePendingIds.length) return;
 
-        const allSelected = pagePendingIds.every(id => selectedIds.includes(id));
-        setSelectedIds(prev => {
-            if (allSelected) {
-                return prev.filter(id => !pagePendingIds.includes(id));
-            }
+        const allSelected = pagePendingIds.every((id) => selectedIds.includes(id));
+        setSelectedIds((prev) => {
+            if (allSelected) return prev.filter((id) => !pagePendingIds.includes(id));
             return Array.from(new Set([...prev, ...pagePendingIds]));
         });
     };
@@ -267,19 +293,7 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
     };
 
     const handleExportCsv = () => {
-        const headers = [
-            'เลขที่คำขอ',
-            'ผู้ขอ',
-            'ประเภท',
-            'สถานะ',
-            'เหตุผล',
-            'จำนวนเงิน',
-            'งานอ้างอิง',
-            'อนุมัติโดย',
-            'วันที่สร้าง',
-            'วันที่อนุมัติ'
-        ];
-
+        const headers = ['เลขที่คำขอ', 'ผู้ขอ', 'ประเภท', 'สถานะ', 'เหตุผล', 'จำนวนเงิน', 'งานอ้างอิง', 'อนุมัติโดย', 'วันที่สร้าง', 'วันที่อนุมัติ'];
         const lines = filteredRequests.map((r) => [
             r.request_number || '',
             r.tbl_users?.username || '',
@@ -294,7 +308,7 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
         ]);
 
         const csv = [headers, ...lines]
-            .map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(','))
+            .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
             .join('\n');
 
         const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
@@ -312,9 +326,9 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
                 <div>
                     <h1 className="text-2xl font-bold dark:text-white flex items-center gap-2">
                         <FileText className="text-indigo-500" />
-                        ระบบขออนุมัติทั่วไป (OT/ลา/เบิก)
+                        {title}
                     </h1>
-                    <p className="text-gray-500 dark:text-gray-400 mt-1">จัดการคำขออนุมัติ และติดตามสถานะได้ในหน้าเดียว</p>
+                    <p className="text-gray-500 dark:text-gray-400 mt-1">{subtitle}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <button
@@ -357,7 +371,7 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
                 )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-2">
                 <div className="md:col-span-2 relative">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
@@ -370,13 +384,31 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
                 <select
                     className="border rounded-lg px-3 py-2 text-sm dark:bg-slate-800 dark:border-slate-700"
                     value={filterStatus}
-                    onChange={e => { setFilterStatus(e.target.value); resetToFirstPage(); }}
+                    onChange={(e) => { setFilterStatus(e.target.value); resetToFirstPage(); }}
                 >
                     <option value="all">สถานะทั้งหมด</option>
                     <option value="pending">รอพิจารณา</option>
                     <option value="approved">อนุมัติแล้ว</option>
                     <option value="rejected">ไม่อนุมัติ</option>
                 </select>
+                {lockedRequestType ? (
+                    <input
+                        type="text"
+                        className="border rounded-lg px-3 py-2 text-sm bg-gray-50 dark:bg-slate-800 dark:border-slate-700"
+                        value={REQUEST_TYPE_OPTIONS.find((item) => item.value === lockedRequestType)?.label || lockedRequestType}
+                        readOnly
+                    />
+                ) : (
+                    <select
+                        className="border rounded-lg px-3 py-2 text-sm dark:bg-slate-800 dark:border-slate-700"
+                        value={filterRequestType}
+                        onChange={(e) => { setFilterRequestType(e.target.value); resetToFirstPage(); }}
+                    >
+                        {REQUEST_TYPE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </select>
+                )}
                 <input
                     type="date"
                     value={dateFrom}
@@ -427,7 +459,7 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
                 </p>
                 <div className="flex items-center gap-2">
                     <button
-                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                         disabled={safePage <= 1}
                         className="px-3 py-1.5 rounded border disabled:opacity-50 dark:border-slate-700"
                     >
@@ -435,7 +467,7 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
                     </button>
                     <span className="text-sm">{safePage}/{totalPages}</span>
                     <button
-                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                         disabled={safePage >= totalPages}
                         className="px-3 py-1.5 rounded border disabled:opacity-50 dark:border-slate-700"
                     >
@@ -449,6 +481,7 @@ export default function ApprovalClient({ initialRequests, activeJobs, canApprove
                 isSubmitting={isSubmitting}
                 formData={formData}
                 jobOptions={jobOptions}
+                lockedRequestType={lockedRequestType}
                 onClose={() => setIsModalOpen(false)}
                 onSubmit={handleSubmit}
                 onChange={patchFormData}

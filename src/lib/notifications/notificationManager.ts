@@ -163,7 +163,7 @@ export async function notifyJobAssignment(
         return;
     }
 
-    const results = await Promise.allSettled([
+    await Promise.allSettled([
         // LINE Messaging API
         (async () => {
             if (process.env.LINE_MESSAGING_ENABLED !== 'false' && technician.line_user_id) {
@@ -214,7 +214,7 @@ export async function notifyNewMaintenanceRequest(request: {
 }): Promise<void> {
     console.log('[Notification] Sending notifications for new maintenance request:', request.request_number);
 
-    const results = await Promise.allSettled([
+    await Promise.allSettled([
         // LINE Messaging API (To Admin/Manager/Technician)
         (async () => {
             if (!options?.disableLine && process.env.LINE_MESSAGING_ENABLED !== 'false') {
@@ -233,7 +233,7 @@ export async function notifyNewMaintenanceRequest(request: {
                         } else {
                             console.warn('[Notification] New Maintenance Request LINE messaging failed:', result.error);
                         }
-                    } catch (err) {
+                    } catch {
                         // Fallback simple message if flex template not implemented
                         const fallbackMsg = {
                             type: 'text' as const,
@@ -283,7 +283,7 @@ export async function notifyMaintenanceStatusChange(
     // OR if we can find an email in the future.
     // For now, let's send to Approvers (Admin) so they know the job status updated.
 
-    const results = await Promise.allSettled([
+    await Promise.allSettled([
         (async () => {
             const recipients = getApproverEmails(); // Send to Admin for visibility
             if (recipients.length > 0 && process.env.EMAIL_ENABLED !== 'false') {
@@ -373,7 +373,7 @@ export async function notifyPettyCashEvent(
             const { getLineIdsByRoles, getLineIdByUsername } = await import('@/actions/lineUserActions');
 
             let targetRoles: string[] = [];
-            let targetUsers: string[] = [];
+            const targetUsers: string[] = [];
             let lineIds: string[] = [];
 
             if (data.eventType === 'request') {
@@ -441,6 +441,7 @@ export async function notifyApprovalEvent(
                 'ot': 'ขอทำงานล่วงเวลา (OT)',
                 'leave': 'ขอลาหยุด',
                 'expense': 'ขอเบิกค่าใช้จ่าย',
+                'purchase': 'ขอซื้อ',
                 'other': 'ขออนุมัติอื่นๆ'
             };
 
@@ -455,15 +456,17 @@ export async function notifyApprovalEvent(
                     const et = new Date(data.end_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
                     messageText += `\nเวลา: ${st} - ${et}`;
                 }
-                if (data.request_type === 'expense' && data.amount) {
+                if ((data.request_type === 'expense' || data.request_type === 'purchase') && data.amount) {
                     messageText += `\nยอดเงิน: ${Number(data.amount).toLocaleString()} บาท`;
                 }
                 if (data.reference_job) {
                     messageText += `\nอ้างอิงงาน: ${data.reference_job}`;
                 }
 
-                // Send to managers/admins
-                const lineIds = await getLineIdsByRoles(['manager', 'admin']);
+                const targetRoles = data.request_type === 'expense' || data.request_type === 'purchase'
+                    ? ['manager', 'admin', 'purchasing']
+                    : ['manager', 'admin'];
+                const lineIds = await getLineIdsByRoles(targetRoles);
                 if (lineIds.length > 0) {
                     const fallbackMsg = { type: 'text' as const, text: messageText };
                     await sendMulticastMessage(lineIds, fallbackMsg);

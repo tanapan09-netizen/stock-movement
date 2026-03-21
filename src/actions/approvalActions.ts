@@ -19,6 +19,14 @@ interface CreateApprovalRequestInput {
     reference_job?: string | null;
 }
 
+interface UpdatePurchaseRequestInput {
+    requestId: number;
+    request_date?: string | Date | null;
+    amount?: string | number | null;
+    reason: string;
+    reference_job?: string | null;
+}
+
 interface ApprovalNotificationRequest {
     request_number: string;
     request_type: string;
@@ -104,6 +112,7 @@ export async function createApprovalRequest(data: CreateApprovalRequestInput) {
         if (validData.request_type === 'ot') prefix = 'OT';
         if (validData.request_type === 'leave') prefix = 'LV';
         if (validData.request_type === 'expense') prefix = 'EX';
+        if (validData.request_type === 'purchase') prefix = 'PR';
 
         const request_number = `${prefix}-${dateStr}-${(count + 1).toString().padStart(3, '0')}`;
 
@@ -202,6 +211,72 @@ export async function getApprovalRequests() {
         return { success: true, data: requests };
     } catch (error: unknown) {
         console.error('Error fetching approval requests:', error);
+        return { success: false, error: getErrorMessage(error) };
+    }
+}
+
+export async function updatePurchaseRequest(data: UpdatePurchaseRequestInput) {
+    try {
+        const session = await auth();
+        if (!session?.user?.id) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        const userId = parseInt(session.user.id as string) || 0;
+        const role = session.user.role?.toLowerCase() || '';
+
+        const existing = await prisma.tbl_approval_requests.findUnique({
+            where: { request_id: data.requestId },
+        });
+
+        if (!existing || existing.request_type !== 'purchase') {
+            return { success: false, error: 'Purchase request not found' };
+        }
+
+        const canEdit = existing.requested_by === userId || role === 'admin' || role === 'manager' || role === 'purchasing';
+        if (!canEdit) {
+            return { success: false, error: 'Permission denied' };
+        }
+
+        if (existing.status !== 'pending') {
+            return { success: false, error: 'Only pending purchase requests can be edited' };
+        }
+
+        const rawData = {
+            request_type: 'purchase',
+            reason: data.reason,
+            amount: toNumber(data.amount),
+            reference_job: data.reference_job,
+            start_time: null,
+            end_time: null,
+        };
+
+        const validData = validateData(createApprovalRequestSchema, rawData, 'PurchaseRequestUpdate');
+
+        const updated = await prisma.tbl_approval_requests.update({
+            where: { request_id: data.requestId },
+            data: {
+                request_date: data.request_date ? new Date(data.request_date) : existing.request_date,
+                amount: (validData.amount || 0) > 0 ? validData.amount : null,
+                reason: validData.reason,
+                reference_job: validData.reference_job || null,
+            },
+            include: {
+                tbl_users: {
+                    select: { username: true, p_id: true },
+                },
+                tbl_approver: {
+                    select: { username: true },
+                },
+            },
+        });
+
+        revalidatePath('/purchase-request');
+        revalidatePath('/approvals');
+        revalidatePath(`/print/purchase-request/${data.requestId}`);
+        return { success: true, data: updated };
+    } catch (error: unknown) {
+        console.error('Error updating purchase request:', error);
         return { success: false, error: getErrorMessage(error) };
     }
 }

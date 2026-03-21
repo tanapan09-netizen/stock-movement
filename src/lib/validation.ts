@@ -23,7 +23,7 @@ export const createMaintenanceRequestSchema = z.object({
 
 // Approval Validation
 export const createApprovalRequestSchema = z.object({
-    request_type: z.enum(['ot', 'leave', 'expense', 'other']),
+    request_type: z.enum(['ot', 'leave', 'expense', 'purchase', 'other']),
     reason: z.string().min(1, 'Reason is required'),
     amount: z.number().min(0).optional().nullable(),
     reference_job: z.string().optional().nullable(),
@@ -42,10 +42,10 @@ export const updateUserSchema = z.object({
 /**
  * Validates data against a given Zod schema and throws a structured error if invalid.
  */
-export function validateData<T>(schema: z.ZodSchema<T>, data: any, schemaName: string = 'Unknown'): T {
+export function validateData<T>(schema: z.ZodSchema<T>, data: unknown, schemaName: string = 'Unknown'): T {
     const result = schema.safeParse(data);
     if (!result.success) {
-        const errorMessages = result.error.issues.map((err: any) => err.message).join(', ');
+        const errorMessages = result.error.issues.map((err) => err.message).join(', ');
         const fullError = `[${schemaName}] Validation Error: ${errorMessages}`;
 
         // During Next.js build phase, we might want to log but not crash

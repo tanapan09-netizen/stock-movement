@@ -13,6 +13,7 @@ export interface ApprovalRequest {
     request_type: string;
     status: string;
     requested_by?: number | null;
+    request_date?: string | Date | null;
     reason?: string | null;
     reference_job?: string | null;
     rejection_reason?: string | null;

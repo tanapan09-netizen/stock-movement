@@ -238,8 +238,18 @@ const ROUTE_SEGMENT_LABEL_TH: Record<string, string> = {
     'debug-auth': 'ดีบักสิทธิ์เข้าใช้งาน',
 };
 
+const EXTRA_ROUTE_LABELS: Record<string, string> = {
+    '/approvals/purchasing': 'อนุมัติรายการ / จัดซื้อ',
+    '/purchase-request': 'ส่งคำขอซื้อ',
+};
+
+const EXTRA_ROUTE_SEGMENT_LABELS: Record<string, string> = {
+    purchasing: 'จัดซื้อ',
+};
+
 function humanizeRouteSegment(segment: string): string {
     if (segment === '[id]' || segment === 'id') return 'รายละเอียด';
+    if (EXTRA_ROUTE_SEGMENT_LABELS[segment]) return EXTRA_ROUTE_SEGMENT_LABELS[segment];
     if (ROUTE_SEGMENT_LABEL_TH[segment]) return ROUTE_SEGMENT_LABEL_TH[segment];
 
     const words = segment
@@ -259,6 +269,7 @@ function formatPagePermissionLabel(label: string): string {
     const normalizedRoute = route.trim();
     const accessText = access === 'อ่าน' ? 'อ่าน' : 'แก้ไข';
     const routeLabel =
+        EXTRA_ROUTE_LABELS[normalizedRoute] ||
         ROUTE_LABEL_TH[normalizedRoute] ||
         normalizedRoute
             .split('/')
