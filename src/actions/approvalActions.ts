@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { isDepartmentRole, isManagerRole } from '@/lib/roles';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { notifyApprovalEvent } from '@/lib/notifications/notificationManager';
@@ -233,7 +234,7 @@ export async function updatePurchaseRequest(data: UpdatePurchaseRequestInput) {
             return { success: false, error: 'Purchase request not found' };
         }
 
-        const canEdit = existing.requested_by === userId || role === 'admin' || role === 'manager' || role === 'purchasing';
+        const canEdit = existing.requested_by === userId || isManagerRole(role) || isDepartmentRole(role, 'purchasing');
         if (!canEdit) {
             return { success: false, error: 'Permission denied' };
         }
@@ -292,10 +293,6 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
         const role = session.user.role?.toLowerCase() || '';
         const isApprover = session.user.is_approver;
 
-        if (role !== 'admin' && role !== 'manager' && !isApprover) {
-            return { success: false, error: 'Permission denied' };
-        }
-
         const currentRequest = await prisma.tbl_approval_requests.findUnique({
             where: { request_id: requestId },
             include: { tbl_users: true }
@@ -303,6 +300,13 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
 
         if (!currentRequest) {
             return { success: false, error: 'Request not found' };
+        }
+
+        const canApprovePurchaseRequest =
+            isDepartmentRole(role, 'purchasing') && currentRequest.request_type === 'purchase';
+
+        if (!isManagerRole(role) && !isApprover && !canApprovePurchaseRequest) {
+            return { success: false, error: 'Permission denied' };
         }
 
         let newStatus = currentRequest.status;
@@ -369,6 +373,7 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
         }
 
         revalidatePath('/approvals');
+        revalidatePath('/approvals/purchasing');
         return { success: true, data: updated };
     } catch (error: unknown) {
         console.error('Error updating approval status:', error);

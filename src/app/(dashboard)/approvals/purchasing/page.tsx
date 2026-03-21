@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import ApprovalClient from '../ApprovalClient';
 import { getApprovalRequests } from '@/actions/approvalActions';
 import { getMaintenanceRequests } from '@/actions/maintenanceActions';
+import { isDepartmentRole, isManagerRole } from '@/lib/roles';
 
 interface MaintenanceRequestStatusLike {
     status?: string | null;
@@ -24,7 +25,7 @@ export default async function PurchasingApprovalsPage() {
 
     const role = session.user.role?.toLowerCase() || '';
     const isApprover = session.user.is_approver || false;
-    const canApprove = role === 'admin' || role === 'manager' || isApprover;
+    const canApprove = isManagerRole(role) || isDepartmentRole(role, 'purchasing') || isApprover;
 
     return (
         <ApprovalClient

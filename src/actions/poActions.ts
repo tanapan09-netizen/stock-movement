@@ -1,10 +1,10 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
-import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+import { isDepartmentRole } from '@/lib/roles';
+import { prisma } from '@/lib/prisma';
 import { tbl_purchase_orders_status } from '@prisma/client';
+import { revalidatePath } from 'next/cache';
 
 type POItemInput = {
     p_id: string;
@@ -12,43 +12,50 @@ type POItemInput = {
     unit_price: number;
 };
 
-const isPurchasingRole = (role?: string | null) => (role || '').toLowerCase() === 'purchasing';
+type SessionUserLike = {
+    id?: string;
+    role?: string;
+    name?: string | null;
+};
+
+const isPurchasingRole = (role?: string | null) => isDepartmentRole(role, 'purchasing');
+
+function parseItems(itemsJson: string): POItemInput[] | null {
+    try {
+        return JSON.parse(itemsJson) as POItemInput[];
+    } catch {
+        return null;
+    }
+}
 
 export async function createPO(formData: FormData) {
     const session = await auth();
-    if (!session || !session.user) {
+    if (!session?.user) {
         return { error: 'Unauthorized' };
     }
-    if (!isPurchasingRole((session.user as any).role)) {
+
+    const user = session.user as SessionUserLike;
+    if (!isPurchasingRole(user.role)) {
         return { error: 'Only purchasing role can create purchase orders' };
     }
-    const createdByUserId = Number.parseInt((session.user as any).id as string, 10);
 
-    const supplier_id = parseInt(formData.get('supplier_id') as string);
+    const createdByUserId = Number.parseInt(user.id || '', 10);
+    const supplier_id = parseInt(formData.get('supplier_id') as string, 10);
     const po_number = formData.get('po_number') as string;
     const order_date = formData.get('order_date') as string;
     const notes = formData.get('notes') as string;
+    const items = parseItems((formData.get('items') as string) || '');
 
-    const itemsJson = formData.get('items') as string;
-    let items: POItemInput[] = [];
-    try {
-        items = JSON.parse(itemsJson);
-    } catch (e) {
-        return { error: 'Invalid items data' };
-    }
-
-    if (!supplier_id || !po_number || items.length === 0) {
+    if (!supplier_id || !po_number || !items?.length) {
         return { error: 'Missing required fields' };
     }
 
     try {
-        // Check if PO Number exists
         const existing = await prisma.tbl_purchase_orders.findUnique({
-            where: { po_number }
+            where: { po_number },
         });
         if (existing) return { error: 'เลขที่ใบสั่งซื้อซ้ำ' };
 
-        // Use values from formData instead of recalculating without tax
         const subtotal = parseFloat(formData.get('subtotal') as string) || 0;
         const tax_amount = parseFloat(formData.get('tax_amount') as string) || 0;
         const total_amount = parseFloat(formData.get('total_amount') as string) || 0;
@@ -65,8 +72,8 @@ export async function createPO(formData: FormData) {
                     tax_amount,
                     total_amount,
                     notes,
-                    created_by: session.user?.name,
-                }
+                    created_by: user.name,
+                },
             });
 
             for (const item of items) {
@@ -77,13 +84,12 @@ export async function createPO(formData: FormData) {
                         quantity: item.quantity,
                         unit_price: item.unit_price,
                         line_total: item.quantity * item.unit_price,
-                        received_qty: 0
-                    }
+                        received_qty: 0,
+                    },
                 });
             }
         });
-
-    } catch (error: any) {
+    } catch (error) {
         console.error('Create PO failed:', error);
         return { error: 'สร้างใบสั่งซื้อล้มเหลว' };
     }
@@ -94,13 +100,16 @@ export async function createPO(formData: FormData) {
 
 export async function receivePO(po_id: number) {
     const session = await auth();
-    if (!session || !session.user) {
+    if (!session?.user) {
         return { error: 'Unauthorized' };
     }
-    if (!isPurchasingRole((session.user as any).role)) {
+
+    const user = session.user as SessionUserLike;
+    if (!isPurchasingRole(user.role)) {
         return { error: 'Only purchasing role can receive purchase orders' };
     }
-    const username = session?.user?.name || 'System';
+
+    const username = user.name || 'System';
 
     try {
         await prisma.$transaction(async (tx) => {
@@ -111,26 +120,21 @@ export async function receivePO(po_id: number) {
             if (!po) throw new Error('PO Not Found');
             if (po.status === 'received') throw new Error('PO Already Received');
 
-            // Fetch items separately to avoid TS include error
             const items = await tx.tbl_po_items.findMany({
-                where: { po_id }
+                where: { po_id },
             });
 
-            // Update Items and Stock
             for (const item of items) {
-                // Assuming full receive for simplicity
                 await tx.tbl_po_items.update({
                     where: { item_id: item.item_id },
-                    data: { received_qty: item.quantity }
+                    data: { received_qty: item.quantity },
                 });
 
-                // Update Stock
                 await tx.tbl_products.update({
                     where: { p_id: item.p_id },
-                    data: { p_count: { increment: item.quantity } }
+                    data: { p_count: { increment: item.quantity } },
                 });
 
-                // Force create log (even though type might string mismatch, using 'รับเข้า')
                 await tx.tbl_product_movements.create({
                     data: {
                         p_id: item.p_id,
@@ -138,39 +142,41 @@ export async function receivePO(po_id: number) {
                         quantity: item.quantity,
                         remarks: `รับสินค้าจาก PO #${po.po_number}`,
                         username,
-                        movement_time: new Date()
-                    }
+                        movement_time: new Date(),
+                    },
                 });
             }
 
-            // Update PO Status
             await tx.tbl_purchase_orders.update({
                 where: { po_id },
                 data: {
                     status: 'received',
                     received_date: new Date(),
-                    approved_by: username // Using approved_by as receiver for now
-                }
+                    approved_by: username,
+                },
             });
         });
-    } catch (error: any) {
-        return { error: error.message || 'Receive Failed' };
+    } catch (error) {
+        return { error: error instanceof Error ? error.message : 'Receive Failed' };
     }
+
     revalidatePath('/purchase-orders');
     return { success: true };
 }
 
 export async function updatePO(formData: FormData) {
     const session = await auth();
-    if (!session || !session.user) {
+    if (!session?.user) {
         return { error: 'Unauthorized' };
     }
-    if (!isPurchasingRole((session.user as any).role)) {
+
+    const user = session.user as SessionUserLike;
+    if (!isPurchasingRole(user.role)) {
         return { error: 'Only purchasing role can edit purchase orders' };
     }
 
-    const po_id = parseInt(formData.get('po_id') as string);
-    const supplier_id = parseInt(formData.get('supplier_id') as string);
+    const po_id = parseInt(formData.get('po_id') as string, 10);
+    const supplier_id = parseInt(formData.get('supplier_id') as string, 10);
     const po_number = formData.get('po_number') as string;
     const order_date = formData.get('order_date') as string;
     const expected_date = formData.get('expected_date') as string;
@@ -179,30 +185,18 @@ export async function updatePO(formData: FormData) {
     const subtotal = parseFloat(formData.get('subtotal') as string) || 0;
     const tax_amount = parseFloat(formData.get('tax_amount') as string) || 0;
     const total_amount = parseFloat(formData.get('total_amount') as string) || 0;
+    const items = parseItems((formData.get('items') as string) || '');
 
-    const itemsJson = formData.get('items') as string;
-    let items: POItemInput[] = [];
-    try {
-        items = JSON.parse(itemsJson);
-    } catch (e) {
-        return { error: 'Invalid items data' };
-    }
-
-    if (!po_id || !supplier_id || !po_number || items.length === 0) {
+    if (!po_id || !supplier_id || !po_number || !items?.length) {
         return { error: 'Missing required fields' };
     }
 
     try {
         const existing = await prisma.tbl_purchase_orders.findUnique({ where: { po_id } });
         if (!existing) return { error: 'PO Not Found' };
-
-        // Prevent editing if already received or partially received (logic varies, but safety first)
-        if (existing.status === 'received') {
-            return { error: 'Cannot edit received PO' };
-        }
+        if (existing.status === 'received') return { error: 'Cannot edit received PO' };
 
         await prisma.$transaction(async (tx) => {
-            // Update PO Header
             await tx.tbl_purchase_orders.update({
                 where: { po_id },
                 data: {
@@ -215,29 +209,26 @@ export async function updatePO(formData: FormData) {
                     tax_amount,
                     total_amount,
                     notes,
-                    updated_at: new Date()
-                }
+                    updated_at: new Date(),
+                },
             });
 
-            // Update Items: Delete all and Re-create (Simplest for full form submission)
-            // Note: This resets received_qty to 0, which is fine since we blocked editing if status is received.
             await tx.tbl_po_items.deleteMany({ where: { po_id } });
 
             for (const item of items) {
                 await tx.tbl_po_items.create({
                     data: {
-                        po_id: po_id,
+                        po_id,
                         p_id: item.p_id,
                         quantity: item.quantity,
                         unit_price: item.unit_price,
                         line_total: item.quantity * item.unit_price,
-                        received_qty: 0
-                    }
+                        received_qty: 0,
+                    },
                 });
             }
         });
-
-    } catch (error: any) {
+    } catch (error) {
         console.error('Update PO failed:', error);
         return { error: 'แก้ไขใบสั่งซื้อล้มเหลว' };
     }
@@ -249,27 +240,25 @@ export async function updatePO(formData: FormData) {
 
 export async function deletePO(po_id: number) {
     const session = await auth();
-    if (!session || !session.user) {
+    if (!session?.user) {
         return { error: 'Unauthorized' };
     }
-    if (!isPurchasingRole((session.user as any).role)) {
+
+    const user = session.user as SessionUserLike;
+    if (!isPurchasingRole(user.role)) {
         return { error: 'Only purchasing role can delete purchase orders' };
     }
 
     try {
         const po = await prisma.tbl_purchase_orders.findUnique({ where: { po_id } });
         if (!po) return { error: 'PO Not Found' };
-
-        if (po.status === 'received') {
-            return { error: 'Cannot delete received PO' };
-        }
+        if (po.status === 'received') return { error: 'Cannot delete received PO' };
 
         await prisma.$transaction(async (tx) => {
             await tx.tbl_po_items.deleteMany({ where: { po_id } });
             await tx.tbl_purchase_orders.delete({ where: { po_id } });
         });
-
-    } catch (error: any) {
+    } catch (error) {
         console.error('Delete PO failed:', error);
         return { error: 'ลบใบสั่งซื้อล้มเหลว' };
     }

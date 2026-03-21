@@ -48,8 +48,7 @@ export default function LineUserClient() {
         setLoading(true);
         const result = await getLineUsers();
         if (result.success && result.data) {
-            // @ts-ignore - Ignore type errors for full_name and role missing from generated types
-            setUsers(result.data as any);
+            setUsers(result.data as unknown as LineUser[]);
         }
         setLoading(false);
     }
@@ -185,15 +184,26 @@ export default function LineUserClient() {
                     >
                         <option value="pending">Pending (waiting for assignment)</option>
                         <option value="general">General</option>
+                        <option value="leader_general">Leader General</option>
                         <option value="employee">Employee</option>
+                        <option value="leader_employee">Leader Employee</option>
                         <option value="technician">Technician</option>
+                        <option value="leader_technician">Leader Technician</option>
                         <option value="maid">Maid</option>
+                        <option value="leader_maid">Leader Maid</option>
                         <option value="driver">Driver</option>
+                        <option value="leader_driver">Leader Driver</option>
                         <option value="purchasing">Purchasing</option>
+                        <option value="leader_purchasing">Leader Purchasing</option>
                         <option value="store">Store</option>
+                        <option value="leader_store">Leader Store</option>
                         <option value="accounting">Accounting</option>
+                        <option value="leader_accounting">Leader Accounting</option>
+                        <option value="operation">Operation</option>
+                        <option value="leader_operation">Leader Operation</option>
                         <option value="manager">Manager</option>
                         <option value="admin">Admin</option>
+                        <option value="owner">Owner</option>
                     </select>
                 </td>
                 <td className="p-4">

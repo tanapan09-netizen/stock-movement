@@ -1,11 +1,28 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
-import { revalidatePath } from 'next/cache';
-import bcrypt from 'bcryptjs';
-import { logSystemAction } from '@/lib/logger';
 import { auth } from '@/auth';
-import { validateData, updateUserSchema } from '@/lib/validation';
+import { logSystemAction } from '@/lib/logger';
+import { prisma } from '@/lib/prisma';
+import { isAdminRole, isManagerRole } from '@/lib/roles';
+import { updateUserSchema, validateData } from '@/lib/validation';
+import bcrypt from 'bcryptjs';
+import { revalidatePath } from 'next/cache';
+
+async function resolveRoleMetadata(role: string, requestedApprover: boolean) {
+    const roleRecord = await prisma.tbl_roles.findUnique({
+        where: { role_name: role },
+        select: { role_id: true },
+    });
+
+    if (!roleRecord) {
+        throw new Error(`Role "${role}" not found`);
+    }
+
+    return {
+        role_id: roleRecord.role_id,
+        is_approver: isManagerRole(role) ? true : requestedApprover,
+    };
+}
 
 export async function createUser(formData: FormData) {
     const username = formData.get('username') as string;
@@ -15,45 +32,26 @@ export async function createUser(formData: FormData) {
     const line_user_id = formData.get('line_user_id') as string;
     const is_approver_form = formData.get('is_approver') === 'true';
 
-    // Basic required check
     if (!username || !password || !role) {
         return { error: 'กรุณากรอกข้อมูลให้ครบถ้วน' };
     }
 
     const session = await auth();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (!session || (session.user as any).role !== 'admin') {
+    if (!session || !isAdminRole((session.user as { role?: string })?.role)) {
         return { error: 'Unauthorized: Admin access required' };
     }
 
-    const usernameTrim = username.trim();
-    const emailTrim = email?.trim();
-    const lineIdTrim = line_user_id?.trim();
-
     const rawData = {
-        username: usernameTrim,
+        username: username.trim(),
         role,
-        email: emailTrim === '' ? null : emailTrim,
-        line_user_id: lineIdTrim === '' ? null : lineIdTrim,
+        email: email?.trim() === '' ? null : email?.trim(),
+        line_user_id: line_user_id?.trim() === '' ? null : line_user_id?.trim(),
     };
 
     try {
-        // Validate basic fields
         const validData = validateData(updateUserSchema, rawData, 'User');
-
-        // Hash password separately since it's not in the updateUserSchema
         const hashedPassword = await bcrypt.hash(password, 10);
-
-        // Map role to role_id
-        let role_id = 3;
-        let is_approver = is_approver_form;
-
-        if (validData.role === 'admin') { role_id = 1; is_approver = true; }
-        if (validData.role === 'manager') { role_id = 2; is_approver = true; }
-        if (validData.role === 'technician') role_id = 4;
-        if (validData.role === 'accounting') role_id = 5;
-        if (validData.role === 'purchasing') role_id = 6;
-        if (validData.role === 'operation') role_id = 7;
+        const { role_id, is_approver } = await resolveRoleMetadata(validData.role, is_approver_form);
 
         await prisma.tbl_users.create({
             data: {
@@ -63,7 +61,7 @@ export async function createUser(formData: FormData) {
                 role_id,
                 email: validData.email || null,
                 line_user_id: validData.line_user_id || null,
-                is_approver
+                is_approver,
             },
         });
 
@@ -72,20 +70,19 @@ export async function createUser(formData: FormData) {
             'User',
             validData.username,
             `Created user: ${validData.username} (Role: ${validData.role})`,
-            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
-            session?.user?.name || 'Unknown',
-            'unknown'
+            session.user.id ? (parseInt(session.user.id as string, 10) || 0) : 0,
+            session.user.name || 'Unknown',
+            'unknown',
         );
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Create user failed:', error);
-        if (error.code === 'P2002') {
+        if ((error as { code?: string }).code === 'P2002') {
             return { error: 'Username นี้มีอยู่ในระบบแล้ว' };
         }
-        if (error.message && error.message.includes('Validation Error')) {
-            // Keep the specific validation error message if it exists
+        if (error instanceof Error && error.message.includes('Validation Error')) {
             return { error: error.message };
         }
-        return { error: 'เพิ่มผู้ใช้งานล้มเหลว: ' + (error.message || 'Error') };
+        return { error: `เพิ่มผู้ใช้งานล้มเหลว: ${error instanceof Error ? error.message : 'Error'}` };
     }
 
     revalidatePath('/roles');
@@ -93,68 +90,56 @@ export async function createUser(formData: FormData) {
 }
 
 export async function updateUser(formData: FormData) {
-    const p_id = parseInt(formData.get('p_id') as string);
+    const p_id = parseInt(formData.get('p_id') as string, 10);
     const role = formData.get('role') as string;
-    const password = formData.get('password') as string; // Optional
+    const password = formData.get('password') as string;
     const rawEmail = formData.get('email') as string;
     const rawLineId = formData.get('line_user_id') as string;
     const isApproverVal = formData.get('is_approver');
-
-    const emailTrim = rawEmail?.trim();
-    const lineIdTrim = rawLineId?.trim();
-    const email = emailTrim === '' ? null : emailTrim;
-    const line_user_id = lineIdTrim === '' ? null : lineIdTrim;
-    const is_approver_form = isApproverVal === 'true' || isApproverVal === 'on';
 
     if (!p_id || !role) {
         return { error: 'ข้อมูลไม่ถูกต้อง' };
     }
 
-    let role_id = 3;
-    let is_approver = is_approver_form;
-
-    if (role === 'admin') { role_id = 1; is_approver = true; }
-    if (role === 'manager') { role_id = 2; is_approver = true; }
-    if (role === 'technician') role_id = 4;
-    if (role === 'accounting') role_id = 5;
-    if (role === 'purchasing') role_id = 6;
-    if (role === 'operation') role_id = 7;
-
-    const data: any = {
-        role,
-        role_id,
-        email: email || null,
-        line_user_id: line_user_id || null,
-        is_approver
-    };
-
-    if (password && password.trim() !== '') {
-        data.password = await bcrypt.hash(password, 10);
-    }
-
     const session = await auth();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (!session || (session.user as any).role !== 'admin') {
+    if (!session || !isAdminRole((session.user as { role?: string })?.role)) {
         return { error: 'Unauthorized: Admin access required' };
     }
 
     try {
+        const { role_id, is_approver } = await resolveRoleMetadata(
+            role,
+            isApproverVal === 'true' || isApproverVal === 'on',
+        );
+
+        const data: Record<string, unknown> = {
+            role,
+            role_id,
+            email: rawEmail?.trim() === '' ? null : rawEmail?.trim(),
+            line_user_id: rawLineId?.trim() === '' ? null : rawLineId?.trim(),
+            is_approver,
+        };
+
+        if (password?.trim()) {
+            data.password = await bcrypt.hash(password, 10);
+        }
+
         await prisma.tbl_users.update({
             where: { p_id },
             data,
         });
 
-        // const session = await auth();
         await logSystemAction(
             'UPDATE',
             'User',
             p_id,
             `Updated user ID: ${p_id} (Role: ${role})`,
-            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
-            session?.user?.name || 'Unknown',
-            'unknown'
+            session.user.id ? (parseInt(session.user.id as string, 10) || 0) : 0,
+            session.user.name || 'Unknown',
+            'unknown',
         );
     } catch (error) {
+        console.error('Update user failed:', error);
         return { error: 'อัปเดตข้อมูลล้มเหลว' };
     }
 
@@ -163,12 +148,9 @@ export async function updateUser(formData: FormData) {
 }
 
 export async function deleteUser(p_id: number) {
-    // Prevent deleting self? or last admin?
-    // For now simple delete
     try {
         const session = await auth();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (!session || (session.user as any).role !== 'admin') {
+        if (!session || !isAdminRole((session.user as { role?: string })?.role)) {
             return { error: 'Unauthorized: Admin access required' };
         }
 
@@ -176,17 +158,16 @@ export async function deleteUser(p_id: number) {
             where: { p_id },
         });
 
-        // const session = await auth();
         await logSystemAction(
             'DELETE',
             'User',
             p_id,
             `Deleted user ID: ${p_id}`,
-            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
-            session?.user?.name || 'Unknown',
-            'unknown'
+            session.user.id ? (parseInt(session.user.id as string, 10) || 0) : 0,
+            session.user.name || 'Unknown',
+            'unknown',
         );
-    } catch (error) {
+    } catch {
         return { error: 'ลบผู้ใช้งานล้มเหลว' };
     }
     revalidatePath('/roles');
@@ -195,8 +176,7 @@ export async function deleteUser(p_id: number) {
 export async function unlockUser(p_id: number) {
     try {
         const session = await auth();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (!session || (session.user as any).role !== 'admin') {
+        if (!session || !isAdminRole((session.user as { role?: string })?.role)) {
             return { error: 'Unauthorized: Admin access required' };
         }
 
@@ -204,19 +184,18 @@ export async function unlockUser(p_id: number) {
             where: { p_id },
             data: {
                 failed_attempts: 0,
-                locked_until: null
-            }
+                locked_until: null,
+            },
         });
 
-        // const session = await auth();
         await logSystemAction(
             'UPDATE',
             'User',
             p_id,
             `Unlocked user ID: ${p_id} (${user.username})`,
-            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
-            session?.user?.name || 'Unknown',
-            'user_management' // Updated category to be more specific if possible, or keep 'unknown' if schema restricts
+            session.user.id ? (parseInt(session.user.id as string, 10) || 0) : 0,
+            session.user.name || 'Unknown',
+            'user_management',
         );
 
         revalidatePath('/roles');
@@ -230,16 +209,15 @@ export async function unlockUser(p_id: number) {
 export async function updateUserPermissions(p_id: number, permissions: Record<string, boolean>) {
     try {
         const session = await auth();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (!session || (session.user as any).role !== 'admin') {
+        if (!session || !isAdminRole((session.user as { role?: string })?.role)) {
             return { success: false, error: 'Unauthorized: Admin access required' };
         }
 
         const user = await prisma.tbl_users.update({
             where: { p_id },
             data: {
-                custom_permissions: JSON.stringify(permissions)
-            }
+                custom_permissions: JSON.stringify(permissions),
+            },
         });
 
         await logSystemAction(
@@ -247,9 +225,9 @@ export async function updateUserPermissions(p_id: number, permissions: Record<st
             'User',
             p_id,
             `แก้ไขสิทธิ์รายบุคคลของ User: ${user.username} | แก้ไขโดย: ${session.user.name}`,
-            session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
-            session?.user?.name || 'Unknown',
-            'user_management'
+            session.user.id ? (parseInt(session.user.id as string, 10) || 0) : 0,
+            session.user.name || 'Unknown',
+            'user_management',
         );
 
         revalidatePath('/roles');

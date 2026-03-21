@@ -1,8 +1,8 @@
 'use client';
 
 import NotificationBell from './NotificationBell';
-import { ThemeToggle } from './ThemeProvider';
 import { useSession } from 'next-auth/react';
+import { getRoleDisplayName, isAdminRole } from '@/lib/roles';
 
 interface UserWithRole {
     name?: string | null;
@@ -16,7 +16,7 @@ export default function Header() {
     return (
         <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex items-center justify-between sticky top-0 z-40">
             <div className="flex items-center gap-4">
-                {user?.role === 'admin' && (
+                {isAdminRole(user?.role) && (
                     <h1 className="text-lg font-semibold text-gray-800 dark:text-white">
                         Admin Mode: <span className="text-blue-600 dark:text-blue-400">สามารถแก้ไข/ลบได้</span>
                     </h1>
@@ -39,7 +39,7 @@ export default function Header() {
                     </div>
                     <div className="text-sm">
                         <p className="font-medium text-gray-800 dark:text-white">{user?.name || 'User'}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{user?.role || 'Employee'}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{getRoleDisplayName(user?.role)}</p>
                     </div>
                 </div>
             </div>

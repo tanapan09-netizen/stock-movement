@@ -1,12 +1,12 @@
 'use client';
+/* eslint-disable react/no-unescaped-entities */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import Swal from 'sweetalert2';
 import { useToast } from '@/components/ToastProvider';
 import {
     Search, Plus, CheckCircle2, Clock, AlertCircle, XCircle,
-    Wrench, Eye, Calendar, MapPin, ShieldCheck, Loader2,
-    X, Filter, ClipboardList, LayoutGrid, TableProperties
+    Eye, Calendar, MapPin, ShieldCheck, Loader2,
+    X, ClipboardList, LayoutGrid, TableProperties
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
@@ -19,6 +19,7 @@ import {
 } from '@/actions/maintenanceActions';
 import { getAllVehicles } from '@/actions/vehicleActions';
 import { getPagePermissionKey } from '@/lib/permissions';
+import type { LucideIcon } from 'lucide-react';
 
 interface Room {
     room_id: number;
@@ -65,7 +66,7 @@ interface Vehicle {
     active: boolean;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: LucideIcon }> = {
     pending: { label: 'รอรับเรื่อง', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: Clock },
     in_progress: { label: 'กำลังดำเนินการ', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Loader2 },
     confirmed: { label: 'ยืนยันงานเสร็จ', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: CheckCircle2 },
@@ -96,6 +97,12 @@ interface Props {
     userPermissions: Record<string, boolean>;
 }
 
+type SessionUserLike = {
+    role?: string;
+    name?: string | null;
+    email?: string | null;
+};
+
 const GENERAL_REQUEST_CREATOR_ROLES = new Set([
     'admin',
     'manager',
@@ -105,12 +112,19 @@ const GENERAL_REQUEST_CREATOR_ROLES = new Set([
     'driver',
 ]);
 
+const hasCustomerTag = (tags?: string | null) =>
+    (tags || '')
+        .split(',')
+        .map((tag) => tag.trim().toLowerCase())
+        .includes('ลูกค้า');
+
 export default function GeneralRequestClient({ userPermissions }: Props) {
     const { data: session } = useSession();
     const { showToast } = useToast();
     const searchParams = useSearchParams();
     const reqQueryParam = searchParams.get('req');
-    const currentRole = ((session?.user as any)?.role || '').toLowerCase();
+    const currentUser = session?.user as SessionUserLike | undefined;
+    const currentRole = (currentUser?.role || '').toLowerCase();
     const canEditGeneralRequestPage = Boolean(
         userPermissions[getPagePermissionKey('/general-request', 'edit')]
     );
@@ -162,7 +176,12 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 getAllVehicles()
             ]);
             if (reqResult.success && reqResult.data) {
-                setRequests(reqResult.data as unknown as MaintenanceRequestItem[]);
+                const normalizedRequests = (reqResult.data as unknown as MaintenanceRequestItem[]).map((request) =>
+                    hasCustomerTag(request.tags)
+                        ? { ...request, priority: 'urgent' }
+                        : request
+                );
+                setRequests(normalizedRequests);
             }
             if (roomResult.success && roomResult.data) {
                 setRooms(roomResult.data);
@@ -180,11 +199,11 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
     useEffect(() => {
         loadData();
         // Pre-fill reported_by from session
-        if (session?.user) {
-            const user = session.user as any;
+        if (currentUser) {
+            const user = currentUser;
             setFormData(f => ({ ...f, reported_by: user.name || user.email || '' }));
         }
-    }, [loadData, session]);
+    }, [currentUser, loadData]);
 
     useEffect(() => {
         if (!reqQueryParam || requests.length === 0 || hasOpenedFromUrl) return;
@@ -310,12 +329,15 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 return current.join(',');
             })();
 
+            const priorityToSend = hasCustomerTag(tagsToSend) ? 'urgent' : formData.priority;
+
             data.append('tags', tagsToSend);
             if (vehiclePlate) {
                 data.append('vehicle_id', formData.vehicle_id.toString());
                 data.append('vehicle_plate', vehiclePlate);
             }
             data.append('target_role', 'general'); // Always 'general' for this page
+            data.set('priority', priorityToSend);
 
             if (selectedFile) {
                 data.append('image_file', selectedFile);
@@ -332,7 +354,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                     description: '',
                     category: 'general',
                     priority: 'normal',
-                    reported_by: (session?.user as any)?.name || '',
+                    reported_by: currentUser?.name || '',
                     contact_info: '',
                     department: '',
                     tags: '',
@@ -345,7 +367,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             } else {
                 showToast('เกิดข้อผิดพลาด: ' + result.error, 'error');
             }
-        } catch (err) {
+        } catch {
             showToast('เกิดข้อผิดพลาดในการบันทึก', 'error');
         } finally {
             setSubmitting(false);

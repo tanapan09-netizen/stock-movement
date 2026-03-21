@@ -23,9 +23,11 @@ export default async function ApprovalsPage() {
     const maintenanceRes = await getMaintenanceRequests();
 
     const role = session.user.role?.toLowerCase() || '';
+    if (role === 'purchasing') {
+        redirect('/approvals/purchasing');
+    }
     const isApprover = session.user.is_approver || false;
     const canApprove = role === 'admin' || role === 'manager' || isApprover;
-    const initialRequestType = role === 'purchasing' ? 'purchase' : 'all';
 
     return (
         <ApprovalClient
@@ -35,7 +37,7 @@ export default async function ApprovalsPage() {
                 : []}
             canApprove={canApprove}
             currentUserId={parseInt(session.user.id as string) || 0}
-            initialRequestType={initialRequestType}
+            initialRequestType="all"
         />
     );
 }

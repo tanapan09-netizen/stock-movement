@@ -104,26 +104,38 @@ function getChangedRoleIds(
 
 function getRoleColor(roleName: string) {
     switch (roleName.toLowerCase()) {
+        case 'owner':
+            return 'from-yellow-500 to-amber-600';
         case 'admin':
             return 'from-purple-500 to-violet-600';
         case 'manager':
             return 'from-blue-500 to-sky-600';
+        case 'leader_technician':
         case 'technician':
             return 'from-orange-400 to-orange-600';
+        case 'leader_operation':
         case 'operation':
             return 'from-teal-400 to-emerald-600';
+        case 'leader_general':
         case 'general':
             return 'from-slate-500 to-slate-600';
+        case 'leader_maid':
         case 'maid':
             return 'from-pink-400 to-rose-500';
+        case 'leader_driver':
         case 'driver':
             return 'from-indigo-500 to-blue-600';
+        case 'leader_purchasing':
         case 'purchasing':
             return 'from-amber-500 to-yellow-600';
+        case 'leader_accounting':
         case 'accounting':
             return 'from-cyan-500 to-sky-600';
+        case 'leader_employee':
         case 'employee':
             return 'from-green-500 to-emerald-600';
+        case 'leader_store':
+            return 'from-indigo-500 to-violet-600';
         default:
             return 'from-gray-400 to-gray-500';
     }
@@ -241,10 +253,23 @@ const ROUTE_SEGMENT_LABEL_TH: Record<string, string> = {
 const EXTRA_ROUTE_LABELS: Record<string, string> = {
     '/approvals/purchasing': 'อนุมัติรายการ / จัดซื้อ',
     '/purchase-request': 'ส่งคำขอซื้อ',
+    '/manager-dashboard': 'Manager Dashboard',
+    '/store-dashboard': 'Store Dashboard',
+    '/purchasing-dashboard': 'Purchasing Dashboard',
 };
 
 const EXTRA_ROUTE_SEGMENT_LABELS: Record<string, string> = {
     purchasing: 'จัดซื้อ',
+    owner: 'เจ้าของระบบ',
+    leader_purchasing: 'หัวหน้าจัดซื้อ',
+    leader_store: 'หัวหน้าคลังสินค้า',
+    leader_operation: 'หัวหน้าฝ่ายปฏิบัติการ',
+    leader_accounting: 'หัวหน้าบัญชี',
+    leader_technician: 'หัวหน้าช่างซ่อม',
+    leader_employee: 'หัวหน้าพนักงานทั่วไป',
+    leader_general: 'หัวหน้าทั่วไป',
+    leader_driver: 'หัวหน้าคนขับรถ',
+    leader_maid: 'หัวหน้าแม่บ้าน',
 };
 
 function humanizeRouteSegment(segment: string): string {

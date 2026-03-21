@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { isDepartmentRole, isManagerRole } from '@/lib/roles';
 import { Lock, Pencil } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import PrintButton from './PrintButton';
@@ -120,7 +121,7 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
     }
 
     const ownerId = request.requested_by || request.tbl_users?.p_id || 0;
-    const canView = ownerId === currentUserId || role === 'admin' || role === 'manager' || role === 'purchasing' || isApprover;
+    const canView = ownerId === currentUserId || isManagerRole(role) || isDepartmentRole(role, 'purchasing') || isApprover;
 
     if (!canView) {
         return (

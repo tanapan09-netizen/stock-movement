@@ -35,6 +35,7 @@ import { getPagePermissionKey, PERMISSIONS, RolePermissions } from '@/lib/permis
 import { useSidebar } from '@/contexts/SidebarContext';
 import QrScannerModal from './QrScannerModal';
 import { QrCode } from 'lucide-react';
+import { getRoleDisplayName, isAdminRole, isDepartmentRole, isManagerRole } from '@/lib/roles';
 
 
 interface SidebarProps {
@@ -46,6 +47,11 @@ export default function Sidebar(props: SidebarProps) {
     const user = session?.user;
     const role = user?.role || 'user';
     const normalizedRole = String(role).toLowerCase();
+    const isPurchasingTeam = isDepartmentRole(normalizedRole, 'purchasing');
+    const isStoreTeam = isDepartmentRole(normalizedRole, 'store');
+    const isOperationTeam = isDepartmentRole(normalizedRole, 'operation');
+    const isAdminTeam = isAdminRole(normalizedRole);
+    const isManagerTeam = isManagerRole(normalizedRole);
 
     // Default to empty permissions if not provided (will be fixed by layout)
     const permissions = props.permissions || {};
@@ -88,6 +94,25 @@ export default function Sidebar(props: SidebarProps) {
     const canGeneralRequestPage = canAccessPage('/general-request');
     const canMaintenancePage = canAccessPage('/maintenance');
     const canPurchasingApprovalsPage = canAccessPage('/approvals/purchasing');
+    const canPurchasingDashboardPage = canAccessPage('/purchasing-dashboard');
+    const canManagerDashboardPage = canAccessPage('/manager-dashboard');
+    const canStoreDashboardPage = canAccessPage('/store-dashboard');
+    const showStoreSection =
+        canStoreDashboardPage ||
+        can(PERMISSIONS.PRODUCTS) ||
+        can(PERMISSIONS.MOVEMENTS) ||
+        can(PERMISSIONS.STOCK_ADJUST) ||
+        can(PERMISSIONS.BORROW) ||
+        can(PERMISSIONS.ASSETS);
+    const showGeneralApprovalSection =
+        (can(PERMISSIONS.APPROVALS) && !isPurchasingTeam) ||
+        can(PERMISSIONS.PETTY_CASH);
+    const showPurchasingSection =
+        canAccessPage('/purchase-request') ||
+        canPurchasingApprovalsPage ||
+        canPurchasingDashboardPage ||
+        can(PERMISSIONS.ADMIN_PO) ||
+        can(PERMISSIONS.ADMIN_SUPPLIERS);
     const baseNavItemClass = `group relative flex items-center rounded-2xl ${
         collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'
     } text-sm font-medium transition-all duration-200 ease-out select-none border`;
@@ -104,6 +129,22 @@ export default function Sidebar(props: SidebarProps) {
 
     const confirmLogout = () => {
         signOut({ callbackUrl: '/login' });
+    };
+
+    const renderSectionHeader = (show: boolean, title: string, colorClass: string) => {
+        if (!show) return null;
+
+        if (collapsed) {
+            return <div className="my-2 h-px bg-gray-700/60" />;
+        }
+
+        return (
+            <div className="flex items-center gap-2 px-3 pb-2 pt-5">
+                <div className="h-px flex-1 bg-gray-700"></div>
+                <p className={`truncate text-[10px] font-bold uppercase tracking-widest ${colorClass}`}>{title}</p>
+                <div className="h-px flex-1 bg-gray-700"></div>
+            </div>
+        );
     };
 
     return (
@@ -156,6 +197,18 @@ export default function Sidebar(props: SidebarProps) {
                             </Link>
                         )}
 
+                        {isManagerTeam && canManagerDashboardPage && (
+                            <Link
+                                href="/manager-dashboard"
+                                onClick={handleLinkClick}
+                                className={getNavItemClass(isActive('/manager-dashboard'))}
+                                title={collapsed ? 'Manager Dashboard' : undefined}
+                            >
+                                <ScrollText className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/manager-dashboard') && 'group-hover:scale-110 group-hover:text-sky-400'}`} />
+                                {!collapsed && <span className="truncate">Manager Dashboard</span>}
+                            </Link>
+                        )}
+
                         {/* ─── เครื่องมือ ─── */}
                         <button
                             onClick={() => setShowQrScanner(true)}
@@ -167,15 +220,29 @@ export default function Sidebar(props: SidebarProps) {
                         </button>
 
                         {/* ─── คลังสินค้า ─── */}
-                        {(can(PERMISSIONS.PRODUCTS) || can(PERMISSIONS.MOVEMENTS) || can(PERMISSIONS.STOCK_ADJUST) || can(PERMISSIONS.BORROW)) && !collapsed && (
+                        {false && (can(PERMISSIONS.PRODUCTS) || can(PERMISSIONS.MOVEMENTS) || can(PERMISSIONS.STOCK_ADJUST) || can(PERMISSIONS.BORROW)) && !collapsed && (
                             <div className="pt-5 pb-2 px-3 flex items-center gap-2">
                                 <div className="h-px bg-gray-700 flex-1"></div>
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 truncate">📦 คลังสินค้า</p>
                                 <div className="h-px bg-gray-700 flex-1"></div>
                             </div>
                         )}
-                        {collapsed && (can(PERMISSIONS.PRODUCTS) || can(PERMISSIONS.MOVEMENTS)) && (
+                        {false && collapsed && (can(PERMISSIONS.PRODUCTS) || can(PERMISSIONS.MOVEMENTS)) && (
                             <div className="my-2 h-px bg-gray-700/60" />
+                        )}
+
+                        {renderSectionHeader(showStoreSection, 'คลังสินค้าและสโตร์', 'text-blue-400')}
+
+                        {(normalizedRole === 'admin' || normalizedRole === 'manager' || normalizedRole === 'store' || normalizedRole === 'operation') && canStoreDashboardPage && (
+                            <Link
+                                href="/store-dashboard"
+                                onClick={handleLinkClick}
+                                className={getNavItemClass(isActive('/store-dashboard'))}
+                                title={collapsed ? 'Store Dashboard' : undefined}
+                            >
+                                <Package className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/store-dashboard') && 'group-hover:scale-110 group-hover:text-emerald-400'}`} />
+                                {!collapsed && <span className="truncate">Store Dashboard</span>}
+                            </Link>
                         )}
 
                         {can(PERMISSIONS.PRODUCTS) && (
@@ -339,18 +406,20 @@ export default function Sidebar(props: SidebarProps) {
                         )}
 
                         {/* ─── คำขออนุมัติ ─── */}
-                        {can(PERMISSIONS.APPROVALS) && !collapsed && (
+                        {false && can(PERMISSIONS.APPROVALS) && !collapsed && (
                             <div className="pt-5 pb-2 px-3 flex items-center gap-2">
                                 <div className="h-px bg-gray-700 flex-1"></div>
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-violet-400 truncate">📝 คำขออนุมัติ</p>
                                 <div className="h-px bg-gray-700 flex-1"></div>
                             </div>
                         )}
-                        {can(PERMISSIONS.APPROVALS) && collapsed && (
+                        {false && can(PERMISSIONS.APPROVALS) && collapsed && (
                             <div className="my-2 h-px bg-gray-700/60" />
                         )}
 
-                        {can(PERMISSIONS.APPROVALS) && (
+                        {renderSectionHeader(showGeneralApprovalSection, 'งานทั่วไปและการเงิน', 'text-violet-400')}
+
+                        {can(PERMISSIONS.APPROVALS) && !isPurchasingTeam && (
                             <Link
                                 href="/approvals"
                                 onClick={handleLinkClick}
@@ -363,6 +432,8 @@ export default function Sidebar(props: SidebarProps) {
                         )}
 
                         {/* ─── การเงิน & เบิกจ่าย ─── */}
+                        {renderSectionHeader(showPurchasingSection, 'จัดซื้อ', 'text-emerald-400')}
+
                         {canAccessPage('/purchase-request') && (
                             <Link
                                 href="/purchase-request"
@@ -375,7 +446,7 @@ export default function Sidebar(props: SidebarProps) {
                             </Link>
                         )}
 
-                        {normalizedRole === 'purchasing' && canPurchasingApprovalsPage && (
+                        {isPurchasingTeam && canPurchasingApprovalsPage && (
                             <Link
                                 href="/approvals/purchasing"
                                 onClick={handleLinkClick}
@@ -388,7 +459,7 @@ export default function Sidebar(props: SidebarProps) {
                         )}
 
                         {/* Purchasing Dashboard Link */}
-                        {(normalizedRole === 'admin' || normalizedRole === 'purchasing' || normalizedRole === 'manager') && (
+                        {(isAdminTeam || isPurchasingTeam || isManagerTeam) && (
                             <Link
                                 href="/purchasing-dashboard"
                                 onClick={handleLinkClick}
@@ -400,14 +471,40 @@ export default function Sidebar(props: SidebarProps) {
                             </Link>
                         )}
 
-                        {can(PERMISSIONS.PETTY_CASH) && !collapsed && (
+                        {can(PERMISSIONS.ADMIN_PO) && (
+                            <Link href="/purchase-orders" onClick={handleLinkClick} className={getNavItemClass(isActive('/purchase-orders'))}>
+                                <FileText className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/purchase-orders') && 'group-hover:scale-110 group-hover:text-indigo-400'}`} />
+                                {!collapsed && <span className="truncate">ใบสั่งซื้อ (PO)</span>}
+                            </Link>
+                        )}
+
+                        {can(PERMISSIONS.ADMIN_SUPPLIERS) && (
+                            <Link href="/suppliers" onClick={handleLinkClick} className={getNavItemClass(isActive('/suppliers'))}>
+                                <Truck className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/suppliers') && 'group-hover:scale-110 group-hover:translate-x-1 group-hover:text-slate-400'}`} />
+                                {!collapsed && <span className="truncate">จัดการผู้ขาย</span>}
+                            </Link>
+                        )}
+
+                        {false && (isAdminTeam || isManagerTeam || isStoreTeam || isOperationTeam) && canAccessPage('/store-dashboard') && (
+                            <Link
+                                href="/store-dashboard"
+                                onClick={handleLinkClick}
+                                className={getNavItemClass(isActive('/store-dashboard'))}
+                                title={collapsed ? 'Store Dashboard' : undefined}
+                            >
+                                <Package className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/store-dashboard') && 'group-hover:scale-110 group-hover:text-emerald-400'}`} />
+                                {!collapsed && <span className="truncate">Store Dashboard</span>}
+                            </Link>
+                        )}
+
+                        {false && can(PERMISSIONS.PETTY_CASH) && !collapsed && (
                             <div className="pt-5 pb-2 px-3 flex items-center gap-2">
                                 <div className="h-px bg-gray-700 flex-1"></div>
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 truncate">💰 การเงิน & เบิกจ่าย</p>
                                 <div className="h-px bg-gray-700 flex-1"></div>
                             </div>
                         )}
-                        {can(PERMISSIONS.PETTY_CASH) && collapsed && (
+                        {false && can(PERMISSIONS.PETTY_CASH) && collapsed && (
                             <div className="my-2 h-px bg-gray-700/60" />
                         )}
 
@@ -424,30 +521,32 @@ export default function Sidebar(props: SidebarProps) {
                         )}
 
                         {/* ─── การจัดการ (Admin) ─── */}
-                        {(can(PERMISSIONS.ADMIN_PO) || can(PERMISSIONS.ADMIN_SUPPLIERS) || can(PERMISSIONS.ADMIN_WAREHOUSES) || can(PERMISSIONS.ADMIN_CATEGORIES)) && !collapsed && (
+                        {false && (can(PERMISSIONS.ADMIN_PO) || can(PERMISSIONS.ADMIN_SUPPLIERS) || can(PERMISSIONS.ADMIN_WAREHOUSES) || can(PERMISSIONS.ADMIN_CATEGORIES)) && !collapsed && (
                             <div className="pt-5 pb-2 px-3 flex items-center gap-2">
                                 <div className="h-px bg-gray-700 flex-1"></div>
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 truncate">🏢 การจัดการ</p>
                                 <div className="h-px bg-gray-700 flex-1"></div>
                             </div>
                         )}
-                        {collapsed && (can(PERMISSIONS.ADMIN_PO) || can(PERMISSIONS.ADMIN_SUPPLIERS)) && (
+                        {false && collapsed && (can(PERMISSIONS.ADMIN_PO) || can(PERMISSIONS.ADMIN_SUPPLIERS)) && (
                             <div className="my-2 h-px bg-gray-700/60" />
                         )}
 
-                        {can(PERMISSIONS.ADMIN_PO) && (
+                        {false && can(PERMISSIONS.ADMIN_PO) && (
                             <Link href="/purchase-orders" onClick={handleLinkClick} className={getNavItemClass(isActive('/purchase-orders'))}>
                                 <FileText className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/purchase-orders') && 'group-hover:scale-110 group-hover:text-indigo-400'}`} />
                                 {!collapsed && <span className="truncate">ใบสั่งซื้อ (PO)</span>}
                             </Link>
                         )}
 
-                        {can(PERMISSIONS.ADMIN_SUPPLIERS) && (
+                        {false && can(PERMISSIONS.ADMIN_SUPPLIERS) && (
                             <Link href="/suppliers" onClick={handleLinkClick} className={getNavItemClass(isActive('/suppliers'))}>
                                 <Truck className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/suppliers') && 'group-hover:scale-110 group-hover:translate-x-1 group-hover:text-slate-400'}`} />
                                 {!collapsed && <span className="truncate">จัดการผู้ขาย</span>}
                             </Link>
                         )}
+
+                        {renderSectionHeader(can(PERMISSIONS.ADMIN_WAREHOUSES) || can(PERMISSIONS.ADMIN_CATEGORIES), 'ข้อมูลหลัก', 'text-indigo-400')}
 
                         {can(PERMISSIONS.ADMIN_WAREHOUSES) && (
                             <Link href="/warehouses" onClick={handleLinkClick} className={getNavItemClass(isActive('/warehouses'))}>
@@ -621,7 +720,7 @@ export default function Sidebar(props: SidebarProps) {
                         {!collapsed && (
                             <div className="ml-4 overflow-hidden">
                                 <div className="text-sm font-bold text-white truncate drop-shadow-sm">{user?.name}</div>
-                                <div className="text-[11px] text-slate-400 uppercase tracking-widest font-medium mt-0.5">{role}</div>
+                                <div className="mt-0.5 text-[11px] font-medium tracking-widest text-slate-400">{getRoleDisplayName(role)}</div>
                             </div>
                         )}
                     </div>

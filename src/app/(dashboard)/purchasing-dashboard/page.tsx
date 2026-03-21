@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { getPurchasingDashboardData } from '@/actions/purchasingDashboardActions';
 import PurchasingDashboardClient from './PurchasingDashboardClient';
+import { isDepartmentRole, isManagerRole } from '@/lib/roles';
 
 export default async function PurchasingDashboardPage() {
     const session = await auth();
@@ -10,7 +11,7 @@ export default async function PurchasingDashboardPage() {
     }
 
     const role = (session.user.role || '').toLowerCase();
-    if (role !== 'admin' && role !== 'manager' && role !== 'purchasing') {
+    if (!isManagerRole(role) && !isDepartmentRole(role, 'purchasing')) {
          redirect('/'); // Or show unauthorized page
     }
 

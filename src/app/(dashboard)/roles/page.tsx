@@ -6,10 +6,21 @@ import { getRoles } from '@/actions/roleActions';
 import RolePermissionEditor from './RolePermissionEditor';
 import UserPermissionButton from './UserPermissionButton';
 import { auth } from '@/auth';
+import { getRoleLabel, isAdminRole } from '@/lib/roles';
+
+type RoleRow = {
+    role_id: number;
+    role_name: string;
+    permissions: string | null;
+};
+
+type UserWithPermissions = Awaited<ReturnType<typeof prisma.tbl_users.findMany>>[number] & {
+    custom_permissions?: string | null;
+};
 
 export default async function UsersPage() {
     const session = await auth();
-    const isAdmin = (session?.user as { role?: string })?.role === 'admin';
+    const isAdmin = isAdminRole((session?.user as { role?: string })?.role);
 
     const [users, rolesResult] = await Promise.all([
         prisma.tbl_users.findMany({
@@ -18,7 +29,7 @@ export default async function UsersPage() {
         getRoles()
     ]);
 
-    const roles = rolesResult.success ? rolesResult.data : [];
+    const roles: RoleRow[] = rolesResult.success ? (rolesResult.data as RoleRow[]) : [];
 
     return (
         <div className="space-y-12">
@@ -38,16 +49,21 @@ export default async function UsersPage() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {users.map((user) => (
+                    {(users as UserWithPermissions[]).map((user) => (
                         <div key={user.p_id} className="bg-white rounded-lg shadow p-6 flex items-start justify-between">
                             <div className="flex items-start space-x-4">
                                 <div className={`h-12 w-12 rounded-full flex items-center justify-center text-xl font-bold text-white shadow-md
-                        ${user.role === 'admin' ? 'bg-purple-600' :
+                        ${user.role === 'owner' ? 'bg-yellow-500' :
+                            user.role === 'admin' ? 'bg-purple-600' :
                                         user.role === 'manager' ? 'bg-blue-600' :
                                             user.role === 'technician' ? 'bg-orange-500' :
+                                                user.role === 'leader_technician' ? 'bg-orange-600' :
                                                 user.role === 'accounting' ? 'bg-pink-500' :
+                                                    user.role === 'leader_accounting' ? 'bg-pink-700' :
                                                     user.role === 'purchasing' ? 'bg-cyan-600' :
+                                                        user.role === 'leader_purchasing' ? 'bg-cyan-800' :
                                                         user.role === 'store' ? 'bg-indigo-500' :
+                                                            user.role === 'leader_store' ? 'bg-indigo-700' :
                                                             user.role === 'operation' ? 'bg-teal-500' : 'bg-green-500'}
                      `}>
                                     {user.username.charAt(0).toUpperCase()}
@@ -56,7 +72,7 @@ export default async function UsersPage() {
                                     <h3 className="font-bold text-gray-900 text-lg">{user.username}</h3>
                                     <div className="flex items-center text-sm text-gray-500 mt-1">
                                         <Shield className="w-3 h-3 mr-1" />
-                                        <span className="uppercase">{user.role}</span>
+                                        <span className="uppercase">{getRoleLabel(user.role)}</span>
                                     </div>
                                     {(user.email || user.line_user_id) && (
                                         <div className="mt-1 text-xs text-gray-500 space-y-0.5">
@@ -88,9 +104,9 @@ export default async function UsersPage() {
                                             p_id: user.p_id,
                                             username: user.username,
                                             role: user.role,
-                                            custom_permissions: (user as any).custom_permissions || null
+                                            custom_permissions: user.custom_permissions || null
                                         }}
-                                        dbRolePermissions={(roles || []).find((r: any) => r.role_name === user.role)?.permissions}
+                                        dbRolePermissions={roles.find((r) => r.role_name === user.role)?.permissions}
                                     />
 
                                     {user.locked_until && new Date(user.locked_until) > new Date() && (
@@ -110,13 +126,13 @@ export default async function UsersPage() {
 
                                     <form action={async () => {
                                         'use server';
-                                        if (user.role !== 'admin') {
+                                        if (!isAdminRole(user.role)) {
                                             await deleteUser(user.p_id);
                                         }
                                     }}>
                                         <button
                                             type="submit"
-                                            disabled={user.role === 'admin'}
+                                            disabled={isAdminRole(user.role)}
                                             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition disabled:opacity-30 disabled:cursor-not-allowed"
                                             title="ลบผู้ใช้งาน"
                                         >
@@ -133,7 +149,7 @@ export default async function UsersPage() {
             {/* Role Permissions Section */}
             {isAdmin && roles && roles.length > 0 && (
                 <div>
-                    <RolePermissionEditor roles={roles as any} />
+                    <RolePermissionEditor roles={roles} />
                 </div>
             )}
         </div>
