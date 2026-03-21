@@ -287,21 +287,32 @@ export default async function ManagerDashboard() {
                             <thead><tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500"><th className="pb-3 pr-4 font-semibold">โมดูล</th><th className="pb-3 pr-4 font-semibold">รายการ</th><th className="pb-3 pr-4 font-semibold">ตอนนี้อยู่ที่</th><th className="pb-3 pr-4 font-semibold">สถานะ</th><th className="pb-3 pr-4 font-semibold">การอนุมัติ</th><th className="pb-3 font-semibold">อัปเดตล่าสุด</th></tr></thead>
                             <tbody>
                                 {workMonitor.map((item) => (
-                                    <tr
-                                        key={item.id}
-                                        className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 last:border-b-0"
-                                        onClick={() => {
-                                            if (typeof window !== 'undefined') {
-                                                window.location.href = item.href;
-                                            }
-                                        }}
-                                    >
-                                        <td className="py-3 pr-4 align-top"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{item.module}</span></td>
-                                        <td className="py-3 pr-4 align-top"><Link href={item.href} className="font-semibold text-slate-900 hover:text-slate-700">{item.number}</Link><p className="mt-1 text-xs text-slate-500">{item.title}</p></td>
-                                        <td className="py-3 pr-4 align-top text-slate-700">{item.owner}</td>
-                                        <td className="py-3 pr-4 align-top text-slate-700">{item.status}</td>
-                                        <td className="py-3 pr-4 align-top"><span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">{item.approval}</span></td>
-                                        <td className="py-3 align-top text-xs text-slate-500">{formatDateTime(item.updatedAt)}</td>
+                                    <tr key={item.id} className="border-b border-slate-100 transition hover:bg-slate-50 last:border-b-0">
+                                        <td className="py-3 pr-4 align-top">
+                                            <Link href={item.href} className="block">
+                                                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{item.module}</span>
+                                            </Link>
+                                        </td>
+                                        <td className="py-3 pr-4 align-top">
+                                            <Link href={item.href} className="block">
+                                                <span className="font-semibold text-slate-900 hover:text-slate-700">{item.number}</span>
+                                                <p className="mt-1 text-xs text-slate-500">{item.title}</p>
+                                            </Link>
+                                        </td>
+                                        <td className="py-3 pr-4 align-top text-slate-700">
+                                            <Link href={item.href} className="block">{item.owner}</Link>
+                                        </td>
+                                        <td className="py-3 pr-4 align-top text-slate-700">
+                                            <Link href={item.href} className="block">{item.status}</Link>
+                                        </td>
+                                        <td className="py-3 pr-4 align-top">
+                                            <Link href={item.href} className="block">
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">{item.approval}</span>
+                                            </Link>
+                                        </td>
+                                        <td className="py-3 align-top text-xs text-slate-500">
+                                            <Link href={item.href} className="block">{formatDateTime(item.updatedAt)}</Link>
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
