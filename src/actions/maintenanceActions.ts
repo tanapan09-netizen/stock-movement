@@ -589,23 +589,74 @@ export async function confirmPartsUsed(data: {
         const part = await prisma.tbl_maintenance_parts.findUnique({ where: { part_id: data.part_id } });
         if (!part) return { success: false, error: 'Part record not found' };
 
-        const result = await prisma.tbl_maintenance_parts.update({
-            where: { part_id: data.part_id },
-            data: {
-                actual_used: data.actual_used,
-                status: 'used',
-                used_at: new Date(),
-                notes: data.is_defective ? 'MARKED AS DEFECTIVE' : undefined
-            }
+        const request = await prisma.tbl_maintenance_requests.findUnique({
+            where: { request_id: part.request_id },
+            select: { actual_cost: true }
         });
 
-        await prisma.tbl_maintenance_history.create({
-            data: {
-                request_id: part.request_id,
-                action: 'PART_USED',
-                new_value: `Used ${data.actual_used} units${data.is_defective ? ' (Defective)' : ''}`,
-                changed_by: data.changed_by
+        const result = await prisma.$transaction(async (tx) => {
+            const updatedPart = await tx.tbl_maintenance_parts.update({
+                where: { part_id: data.part_id },
+                data: {
+                    actual_used: data.actual_used,
+                    status: 'used',
+                    used_at: new Date(),
+                    notes: data.is_defective ? 'MARKED AS DEFECTIVE' : undefined
+                }
+            });
+
+            const costParts = await tx.tbl_maintenance_parts.findMany({
+                where: {
+                    request_id: part.request_id,
+                    actual_used: { not: null },
+                    status: {
+                        in: ['used', 'pending_verification', 'verified', 'verification_failed', 'completed', 'defective']
+                    }
+                },
+                include: {
+                    tbl_products: {
+                        select: { price_unit: true }
+                    }
+                }
+            });
+
+            const calculatedActualCost = costParts.reduce((sum, item) => {
+                const qty = Number(item.actual_used ?? 0);
+                const unitPrice = Number(item.tbl_products?.price_unit ?? 0);
+                return sum + (qty * unitPrice);
+            }, 0);
+
+            await tx.tbl_maintenance_requests.update({
+                where: { request_id: part.request_id },
+                data: { actual_cost: new Decimal(calculatedActualCost) }
+            });
+
+            await tx.tbl_maintenance_history.create({
+                data: {
+                    request_id: part.request_id,
+                    action: 'PART_USED',
+                    new_value: `Used ${data.actual_used} units${data.is_defective ? ' (Defective)' : ''}`,
+                    changed_by: data.changed_by
+                }
+            });
+
+            const previousCost = Number(request?.actual_cost ?? 0);
+            if (previousCost !== calculatedActualCost) {
+                await tx.tbl_maintenance_history.create({
+                    data: {
+                        request_id: part.request_id,
+                        action: 'actual_cost_change',
+                        old_value: String(previousCost),
+                        new_value: String(calculatedActualCost),
+                        changed_by: data.changed_by
+                    }
+                });
             }
+
+            return {
+                part: updatedPart,
+                actual_cost: calculatedActualCost
+            };
         });
 
         revalidatePath('/maintenance');

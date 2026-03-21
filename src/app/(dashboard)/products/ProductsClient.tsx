@@ -25,6 +25,14 @@ interface Product {
     is_luxury?: boolean | null;
 }
 
+function getProductImageSrc(imagePath?: string | null): string | null {
+    if (!imagePath) return null;
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://') || imagePath.startsWith('/uploads/')) {
+        return imagePath;
+    }
+    return `/uploads/${imagePath.replace(/^\/+/, '')}`;
+}
+
 interface ProductsToolbarProps {
     products: Product[];
     onSearch?: (term: string) => void;
@@ -349,9 +357,9 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     <tr key={product.p_id} className="hover:bg-gray-50">
                                         <td className="px-6 py-4">
                                             <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                                                {product.p_image ? (
+                                                {getProductImageSrc(product.p_image) ? (
                                                     <ProductImage
-                                                        src={`/uploads/${product.p_image}`}
+                                                        src={getProductImageSrc(product.p_image)!}
                                                         alt={product.p_name}
                                                         className="w-full h-full object-cover"
                                                     />
@@ -430,9 +438,9 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                             <div key={product.p_id} className="bg-white border rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden">
                                 {/* Image */}
                                 <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
-                                    {product.p_image ? (
+                                    {getProductImageSrc(product.p_image) ? (
                                         <ProductImage
-                                            src={`/uploads/${product.p_image}`}
+                                            src={getProductImageSrc(product.p_image)!}
                                             alt={product.p_name}
                                             className="w-full h-full object-cover"
                                         />

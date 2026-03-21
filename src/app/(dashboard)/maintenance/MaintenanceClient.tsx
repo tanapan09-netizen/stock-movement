@@ -987,6 +987,13 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                 showToast(result.message || 'Confirmation successful', 'success');
                 setConfirmingPartId(null);
                 setIsDefective(false);
+
+                const updatedActualCost = Number((result.data as any)?.actual_cost ?? NaN);
+                if (!Number.isNaN(updatedActualCost)) {
+                    setEditData(prev => ({ ...prev, actual_cost: updatedActualCost }));
+                    setSelectedRequest((prev: any) => prev ? { ...prev, actual_cost: updatedActualCost } : prev);
+                }
+
                 // Refresh parts
                 if (selectedRequest) {
                     const partsResult = await getMaintenanceParts(selectedRequest.request_id);
