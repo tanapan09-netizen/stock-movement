@@ -403,6 +403,7 @@ model tbl_purchase_orders {
   po_id         Int                         @id @default(autoincrement())
   po_number     String                      @unique(map: "po_number") @db.VarChar(50)
   supplier_id   Int?
+  created_by_user_id Int?
   status        tbl_purchase_orders_status? @default(draft)
   order_date    DateTime?                   @db.Date
   expected_date DateTime?                   @db.Date

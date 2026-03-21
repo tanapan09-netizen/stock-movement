@@ -12,11 +12,17 @@ type POItemInput = {
     unit_price: number;
 };
 
+const isPurchasingRole = (role?: string | null) => (role || '').toLowerCase() === 'purchasing';
+
 export async function createPO(formData: FormData) {
     const session = await auth();
     if (!session || !session.user) {
         return { error: 'Unauthorized' };
     }
+    if (!isPurchasingRole((session.user as any).role)) {
+        return { error: 'Only purchasing role can create purchase orders' };
+    }
+    const createdByUserId = Number.parseInt((session.user as any).id as string, 10);
 
     const supplier_id = parseInt(formData.get('supplier_id') as string);
     const po_number = formData.get('po_number') as string;
@@ -52,6 +58,7 @@ export async function createPO(formData: FormData) {
                 data: {
                     po_number,
                     supplier_id,
+                    created_by_user_id: Number.isNaN(createdByUserId) ? null : createdByUserId,
                     order_date: new Date(order_date),
                     status: 'draft',
                     subtotal,
@@ -87,6 +94,12 @@ export async function createPO(formData: FormData) {
 
 export async function receivePO(po_id: number) {
     const session = await auth();
+    if (!session || !session.user) {
+        return { error: 'Unauthorized' };
+    }
+    if (!isPurchasingRole((session.user as any).role)) {
+        return { error: 'Only purchasing role can receive purchase orders' };
+    }
     const username = session?.user?.name || 'System';
 
     try {
@@ -151,6 +164,9 @@ export async function updatePO(formData: FormData) {
     const session = await auth();
     if (!session || !session.user) {
         return { error: 'Unauthorized' };
+    }
+    if (!isPurchasingRole((session.user as any).role)) {
+        return { error: 'Only purchasing role can edit purchase orders' };
     }
 
     const po_id = parseInt(formData.get('po_id') as string);
@@ -235,6 +251,9 @@ export async function deletePO(po_id: number) {
     const session = await auth();
     if (!session || !session.user) {
         return { error: 'Unauthorized' };
+    }
+    if (!isPurchasingRole((session.user as any).role)) {
+        return { error: 'Only purchasing role can delete purchase orders' };
     }
 
     try {

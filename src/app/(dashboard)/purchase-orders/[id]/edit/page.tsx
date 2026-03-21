@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import POForm from '@/components/POForm';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { ArrowLeft, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { auth } from '@/auth';
@@ -14,30 +14,28 @@ export default async function EditPOPage(props: { params: Promise<{ id: string }
 
     const session = await auth();
     const userRole = (session?.user as { role?: string })?.role || '';
+    const isPurchasing = userRole.toLowerCase() === 'purchasing';
     const rolePermissions = await getRolePermissions(userRole);
 
-    // Check Edit Permission
-    if (!rolePermissions[PERMISSIONS.PO_EDIT]) {
+    if (!rolePermissions[PERMISSIONS.PO_EDIT] || !isPurchasing) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
                 <Lock className="w-12 h-12 mb-4 text-gray-400" />
                 <h3 className="text-lg font-medium">Access Denied</h3>
-                <p>คุณไม่มีสิทธิ์แก้ไขใบสั่งซื้อ (ต้องการสิทธิ์: PO_EDIT)</p>
+                <p>Only purchasing role can edit purchase orders</p>
                 <Link href="/purchase-orders" className="mt-4 text-blue-600 hover:underline">
-                    กลับไปหน้ารายการ
+                    กลับไปรายการ
                 </Link>
             </div>
         );
     }
 
-    // Fetch PO Data
     const po = await prisma.tbl_purchase_orders.findUnique({
         where: { po_id: poId },
     });
 
     if (!po) notFound();
 
-    // Prevent editing if received (consistent with backend check)
     if (po.status === 'received') {
         return (
             <div className="max-w-6xl mx-auto py-6">
@@ -46,13 +44,12 @@ export default async function EditPOPage(props: { params: Promise<{ id: string }
                 </Link>
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
                     <h3 className="text-lg font-bold text-yellow-800 mb-2">ไม่สามารถแก้ไขได้</h3>
-                    <p className="text-yellow-700">ใบสั่งซื้อนี้ได้รับการรับสินค้าแล้ว ไม่สามารถแก้ไขได้</p>
+                    <p className="text-yellow-700">ใบสั่งซื้อนี้รับสินค้าแล้ว จึงไม่สามารถแก้ไขได้</p>
                 </div>
             </div>
         );
     }
 
-    // Fetch Items separately since relation is not defined in schema model for include
     const items = await prisma.tbl_po_items.findMany({
         where: { po_id: poId }
     });
@@ -62,16 +59,14 @@ export default async function EditPOPage(props: { params: Promise<{ id: string }
         prisma.tbl_suppliers.findMany({ select: { id: true, name: true } })
     ]);
 
-    // Convert Decimal to number for client component
     const productsSerialized = products.map(p => ({
         ...p,
         price_unit: p.price_unit ? Number(p.price_unit) : 0
     }));
 
-    // Serialize PO Data
     const poSerialized = {
         ...po,
-        status: po.status || 'draft', // Handle null or enum
+        status: po.status || 'draft',
         total_amount: Number(po.total_amount),
         tbl_po_items: items.map(item => ({
             ...item,
