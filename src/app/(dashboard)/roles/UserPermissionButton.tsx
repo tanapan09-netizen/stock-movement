@@ -31,8 +31,12 @@ function formatPermissionLabel(label: string): string {
             .replace('/approvals', 'อนุมัติรายการ');
     }
 
-    if (label.includes('/purchase-request')) {
+    if (label.includes('/purchase-request') && !label.includes('/purchase-request/manage')) {
         return label.replace('/purchase-request', 'ส่งคำขอซื้อ');
+    }
+
+    if (label.includes('/purchase-request/manage')) {
+        return label.replace('/purchase-request/manage', 'จัดการระบบคำขอซื้อ');
     }
 
     if (label.includes('/manager-dashboard')) {

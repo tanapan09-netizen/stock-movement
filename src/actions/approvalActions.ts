@@ -273,6 +273,7 @@ export async function updatePurchaseRequest(data: UpdatePurchaseRequestInput) {
         });
 
         revalidatePath('/purchase-request');
+        revalidatePath('/purchase-request/manage');
         revalidatePath('/approvals');
         revalidatePath(`/print/purchase-request/${data.requestId}`);
         return { success: true, data: updated };

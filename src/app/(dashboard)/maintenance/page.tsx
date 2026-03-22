@@ -3,6 +3,13 @@ import MaintenanceClient from './MaintenanceClient';
 import { auth } from '@/auth';
 import { getRolePermissions } from '@/actions/roleActions';
 import { prisma } from '@/lib/prisma';
+import { getPagePermissionKey } from '@/lib/permissions';
+
+interface SessionUserLike {
+    role?: string;
+    is_linked?: boolean;
+    id?: string;
+}
 
 export const metadata = {
     title: 'แจ้งซ่อม | Stock Movement',
@@ -12,13 +19,15 @@ export const metadata = {
 export default async function MaintenancePage() {
     const session = await auth();
     let permissions = {};
+    let canEditPage = false;
 
     if (session && session.user) {
-        const role = (session.user as any).role || 'user';
+        const sessionUser = session.user as SessionUserLike;
+        const role = sessionUser.role || 'user';
         const defaultPermissions = await getRolePermissions(role);
 
         let customPermissions = {};
-        const isLinked = (session.user as any).is_linked;
+        const isLinked = Boolean(sessionUser.is_linked);
 
         if (isLinked) {
             const user = await prisma.tbl_users.findUnique({
@@ -34,11 +43,12 @@ export default async function MaintenancePage() {
             }
         }
         permissions = { ...defaultPermissions, ...customPermissions };
+        canEditPage = Boolean((permissions as Record<string, boolean>)[getPagePermissionKey('/maintenance', 'edit')]);
     }
 
     return (
         <Suspense fallback={<div className="p-8 text-center text-gray-500">กำลังโหลด...</div>}>
-            <MaintenanceClient userPermissions={permissions} />
+            <MaintenanceClient userPermissions={permissions} canEditPage={canEditPage} />
         </Suspense>
     );
 }

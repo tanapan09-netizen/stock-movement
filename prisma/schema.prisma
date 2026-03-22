@@ -416,6 +416,23 @@ model tbl_purchase_orders {
   approved_by   String?                     @db.VarChar(50)
   created_at    DateTime                    @default(now()) @db.Timestamp(0)
   updated_at    DateTime                    @default(now()) @db.Timestamp(0)
+  approval_logs tbl_po_approval_logs[]
+}
+
+model tbl_po_approval_logs {
+  id          Int       @id @default(autoincrement())
+  po_id       Int
+  step_key    String    @db.VarChar(30) // draft, pending, approved, ordered, received, cancelled
+  action      String    @db.VarChar(30) // created, status_changed, received
+  actor_name  String?   @db.VarChar(100)
+  actor_role  String?   @db.VarChar(50)
+  note        String?   @db.Text
+  acted_at    DateTime  @default(now()) @db.Timestamp(0)
+
+  purchase_order tbl_purchase_orders @relation(fields: [po_id], references: [po_id], onDelete: Cascade)
+
+  @@index([po_id], map: "idx_po_approval_logs_po_id")
+  @@index([step_key], map: "idx_po_approval_logs_step_key")
 }
 
 model tbl_roles {

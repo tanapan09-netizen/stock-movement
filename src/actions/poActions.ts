@@ -76,6 +76,17 @@ export async function createPO(formData: FormData) {
                 },
             });
 
+            await tx.tbl_po_approval_logs.create({
+                data: {
+                    po_id: po.po_id,
+                    step_key: 'draft',
+                    action: 'created',
+                    actor_name: user.name || null,
+                    actor_role: user.role || null,
+                    note: 'PO created',
+                },
+            });
+
             for (const item of items) {
                 await tx.tbl_po_items.create({
                     data: {
@@ -155,6 +166,17 @@ export async function receivePO(po_id: number) {
                     approved_by: username,
                 },
             });
+
+            await tx.tbl_po_approval_logs.create({
+                data: {
+                    po_id,
+                    step_key: 'received',
+                    action: 'received',
+                    actor_name: username,
+                    actor_role: user.role || null,
+                    note: 'Goods received',
+                },
+            });
         });
     } catch (error) {
         return { error: error instanceof Error ? error.message : 'Receive Failed' };
@@ -212,6 +234,20 @@ export async function updatePO(formData: FormData) {
                     updated_at: new Date(),
                 },
             });
+
+            const nextStatus = String(status || existing.status || 'draft');
+            if (existing.status !== nextStatus) {
+                await tx.tbl_po_approval_logs.create({
+                    data: {
+                        po_id,
+                        step_key: nextStatus,
+                        action: 'status_changed',
+                        actor_name: user.name || null,
+                        actor_role: user.role || null,
+                        note: `Status changed from ${existing.status} to ${nextStatus}`,
+                    },
+                });
+            }
 
             await tx.tbl_po_items.deleteMany({ where: { po_id } });
 

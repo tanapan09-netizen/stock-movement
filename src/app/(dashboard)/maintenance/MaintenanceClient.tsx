@@ -213,20 +213,39 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string
 };
 interface MaintenanceClientProps {
     userPermissions?: Record<string, boolean>;
+    canEditPage?: boolean;
 }
 
 const resolveDepartmentFromRole = (role: string) => role.trim().toLowerCase();
 const ROOM_SUBMENU_CLOSE_DELAY_MS = 2500;
+const ALLOWED_NEW_MAINTENANCE_ROLES = new Set([
+    'admin',
+    'manager',
+    'employee',
+]);
 
-export default function MaintenanceClient({ userPermissions = {} }: MaintenanceClientProps) {
+export default function MaintenanceClient({ userPermissions = {}, canEditPage = false }: MaintenanceClientProps) {
     const { data: session } = useSession();
-    const loggedInRole = ((session?.user as any)?.role || '').toString();
+    const loggedInRole = ((session?.user as any)?.role || '').toString().trim().toLowerCase();
     const derivedDepartment = resolveDepartmentFromRole(loggedInRole);
     const isApprover = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'manager' || userPermissions.can_approve;
     const searchParams = useSearchParams();
     const reqQueryParam = searchParams.get('req');
     const [hasOpenedFromUrl, setHasOpenedFromUrl] = useState(false);
     const { showToast } = useToast();
+    const ensureCanEditPage = () => {
+        if (canEditPage) return true;
+        showToast('คุณมีสิทธิ์อ่านอย่างเดียวในหน้านี้', 'warning');
+        return false;
+    };
+    const canCreateNewRequestByRole = ALLOWED_NEW_MAINTENANCE_ROLES.has(loggedInRole);
+    const canCreateNewMaintenanceRequest = canEditPage && canCreateNewRequestByRole;
+    const ensureCanCreateMaintenanceRequest = () => {
+        if (!ensureCanEditPage()) return false;
+        if (canCreateNewRequestByRole) return true;
+        showToast('Role นี้ไม่มีสิทธิ์กดปุ่มแจ้งใหม่', 'warning');
+        return false;
+    };
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
     const [rooms, setRooms] = useState<Room[]>([]);
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -579,6 +598,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
+        if (!ensureCanCreateMaintenanceRequest()) return;
 
         // Validation
         if (!formData.title) {
@@ -741,6 +761,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
     async function handleRoomSubmit(e: React.FormEvent) {
         e.preventDefault();
+        if (!ensureCanEditPage()) return;
         if (!roomFormData.room_code || !roomFormData.room_name) {
             alert('กรุณากรอกรหัสและชื่อห้อง');
             return;
@@ -777,6 +798,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
     async function confirmStatusChange() {
         if (!statusChangeData.request) return;
+        if (!ensureCanEditPage()) return;
 
         if (statusChangeData.newStatus === 'completed') {
             const formData = new FormData();
@@ -886,6 +908,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
     // Simple cancel status change
     async function handleSimpleStatusChange(request_id: number, newStatus: string) {
+        if (!ensureCanEditPage()) return;
         const result = await updateMaintenanceRequest(request_id, { status: newStatus }, 'System');
         if (result.success) {
             loadData();
@@ -894,6 +917,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
     }
 
     async function handleDelete(request_id: number) {
+        if (!ensureCanEditPage()) return;
         const result = await Swal.fire({
             title: '<div style="font-size: 22px; font-weight: 800; margin-bottom: 8px;">ยืนยันการลบรายการ?</div>',
             html: '<div style="font-size: 15px; opacity: 0.8; line-height: 1.6;">ข้อมูลรายการแจ้งซ่อมนี้จะถูกลบออกจากระบบ<br/><span style="color: #ef4444; font-weight: 600;">และไม่สามารถกู้คืนได้ในภายหลัง</span></div>',
@@ -944,6 +968,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
     async function handleVerifyPart(partId: number) {
         if (!session?.user?.name) return;
+        if (!ensureCanEditPage()) return;
 
         try {
             const result = await storeVerifyParts({
@@ -974,6 +999,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
     async function handleConfirmUsage(partId: number) {
         if (!session?.user?.name) return;
+        if (!ensureCanEditPage()) return;
 
         try {
             const result = await confirmPartsUsed({
@@ -1010,6 +1036,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
     async function handleUpdateRequest() {
         if (!selectedRequest) return;
+        if (!ensureCanEditPage()) return;
 
         // Validation for technician role and in_progress status
         const isTechnician = (session?.user as any)?.role === 'technician';
@@ -1053,6 +1080,7 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
 
     async function handleHeadTechnicianApproval() {
         if (!selectedRequest || !session?.user?.name) return;
+        if (!ensureCanEditPage()) return;
 
         const result = await updateMaintenanceRequest(
             selectedRequest.request_id,
@@ -1152,10 +1180,15 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                         </button>
                     </div>
 
-                        {true && ( // Anyone can request maintenance
+                        {true && (
                         <button
-                            onClick={() => setShowForm(true)}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                            onClick={() => {
+                                if (!ensureCanCreateMaintenanceRequest()) return;
+                                setShowForm(true);
+                            }}
+                            disabled={!canCreateNewMaintenanceRequest}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={canCreateNewMaintenanceRequest ? undefined : 'เฉพาะ role ที่กำหนดเท่านั้น'}
                         >
                             <Wrench size={18} /> แจ้งใหม่
                         </button>
@@ -1857,7 +1890,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center justify-center gap-2"
+                                    disabled={!canEditPage}
+                                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -1928,7 +1962,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                    disabled={!canEditPage}
+                                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     บันทึก
                                 </button>
@@ -2452,7 +2487,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                             setReopenRequest(selectedRequest);
                                             setShowReopenModal(true);
                                         }}
-                                        className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center justify-center gap-2"
+                                        disabled={!canEditPage}
+                                        className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         title="Manager Override"
                                     >
                                         <AlertTriangle size={18} />
@@ -2463,7 +2499,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                 {['head_technician', 'admin', 'manager'].includes((session?.user as any)?.role || '') && selectedRequest.status === 'confirmed' && (
                                     <button
                                         onClick={handleHeadTechnicianApproval}
-                                        className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium flex items-center justify-center gap-2"
+                                        disabled={!canEditPage}
+                                        className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         <CheckCircle2 size={18} />
                                         ตรวจรับงาน
@@ -2474,7 +2511,8 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                     && !((session?.user as any)?.role === 'head_technician' && selectedRequest.status === 'confirmed') && (
                                     <button
                                         onClick={handleUpdateRequest}
-                                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                                        disabled={!canEditPage}
+                                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         บันทึกการเปลี่ยนแปลง
                                     </button>
@@ -2751,12 +2789,13 @@ export default function MaintenanceClient({ userPermissions = {} }: MaintenanceC
                                 </button>
                                 <button
                                     onClick={confirmStatusChange}
+                                    disabled={!canEditPage}
                                     className={`flex-1 px-4 py-2.5 text-white rounded-lg font-medium transition flex items-center justify-center gap-2 ${statusChangeData.newStatus === 'in_progress'
                                         ? 'bg-blue-600 hover:bg-blue-700'
                                         : statusChangeData.newStatus === 'completed'
                                             ? 'bg-green-600 hover:bg-green-700'
                                             : 'bg-gray-600 hover:bg-gray-700'
-                                        }`}
+                                        } disabled:cursor-not-allowed disabled:opacity-50`}
                                 >
                                     {statusChangeData.newStatus === 'in_progress' && (
                                         <>

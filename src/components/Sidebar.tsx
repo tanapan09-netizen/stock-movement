@@ -94,6 +94,7 @@ export default function Sidebar(props: SidebarProps) {
     const canGeneralRequestPage = canAccessPage('/general-request');
     const canMaintenancePage = canAccessPage('/maintenance');
     const canPurchasingApprovalsPage = canAccessPage('/approvals/purchasing');
+    const canPurchaseRequestManagePage = canAccessPage('/purchase-request/manage');
     const canPurchasingDashboardPage = canAccessPage('/purchasing-dashboard');
     const canManagerDashboardPage = canAccessPage('/manager-dashboard');
     const canStoreDashboardPage = canAccessPage('/store-dashboard');
@@ -109,6 +110,7 @@ export default function Sidebar(props: SidebarProps) {
         can(PERMISSIONS.PETTY_CASH);
     const showPurchasingSection =
         canAccessPage('/purchase-request') ||
+        canPurchaseRequestManagePage ||
         canPurchasingApprovalsPage ||
         canPurchasingDashboardPage ||
         can(PERMISSIONS.ADMIN_PO) ||
@@ -455,6 +457,18 @@ export default function Sidebar(props: SidebarProps) {
                             >
                                 <FileCheck2 className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/approvals/purchasing') && 'group-hover:scale-110 group-hover:text-emerald-400'}`} />
                                 {!collapsed && <span className="truncate">คำขออนุมัติซื้อ</span>}
+                            </Link>
+                        )}
+
+                        {(isPurchasingTeam || isManagerTeam || isAdminTeam) && canPurchaseRequestManagePage && (
+                            <Link
+                                href="/purchase-request/manage"
+                                onClick={handleLinkClick}
+                                className={getNavItemClass(isActive('/purchase-request/manage'))}
+                                title={collapsed ? 'จัดการระบบคำขอซื้อ' : undefined}
+                            >
+                                <ClipboardList className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/purchase-request/manage') && 'group-hover:scale-110 group-hover:text-cyan-400'}`} />
+                                {!collapsed && <span className="truncate">จัดการระบบคำขอซื้อ</span>}
                             </Link>
                         )}
 

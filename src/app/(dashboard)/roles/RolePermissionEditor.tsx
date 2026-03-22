@@ -253,6 +253,7 @@ const ROUTE_SEGMENT_LABEL_TH: Record<string, string> = {
 const EXTRA_ROUTE_LABELS: Record<string, string> = {
     '/approvals/purchasing': 'อนุมัติรายการ / จัดซื้อ',
     '/purchase-request': 'ส่งคำขอซื้อ',
+    '/purchase-request/manage': 'จัดการระบบคำขอซื้อ',
     '/manager-dashboard': 'Manager Dashboard',
     '/store-dashboard': 'Store Dashboard',
     '/purchasing-dashboard': 'Purchasing Dashboard',

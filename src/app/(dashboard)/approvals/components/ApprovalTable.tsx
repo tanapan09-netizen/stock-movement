@@ -1,6 +1,7 @@
 'use client';
 
-import { Calendar, CheckCircle2, Clock, DollarSign, FileText, Loader2, Square, SquareCheckBig, XCircle } from 'lucide-react';
+import Link from 'next/link';
+import { Calendar, CheckCircle2, Clock, DollarSign, FileText, Loader2, Printer, Square, SquareCheckBig, XCircle } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import { ApprovalRequest } from '../types';
 
@@ -152,8 +153,19 @@ export default function ApprovalTable({
                                     </td>
                                     {canApprove && (
                                         <td className="px-6 py-4 text-right">
-                                            {isPending && (
-                                                <div className="flex justify-end gap-2">
+                                            <div className="flex justify-end gap-2">
+                                                {req.request_type === 'purchase' && (
+                                                    <Link
+                                                        href={`/print/purchase-request/${req.request_id}`}
+                                                        target="_blank"
+                                                        className="px-3 py-1.5 bg-slate-50 text-slate-600 hover:bg-slate-100 rounded-md font-medium text-xs transition inline-flex items-center"
+                                                        title="พิมพ์ใบขอซื้อ"
+                                                    >
+                                                        <Printer size={14} />
+                                                    </Link>
+                                                )}
+                                                {isPending && (
+                                                    <>
                                                     <button
                                                         onClick={() => onApprove(req.request_id)}
                                                         disabled={isProcessing}
@@ -168,8 +180,9 @@ export default function ApprovalTable({
                                                     >
                                                         <XCircle size={14} />
                                                     </button>
-                                                </div>
-                                            )}
+                                                    </>
+                                                )}
+                                            </div>
                                         </td>
                                     )}
                                 </tr>

@@ -6,6 +6,52 @@ import { PERMISSIONS } from '@/lib/permissions';
 import { Lock } from 'lucide-react';
 import PrintButton from './PrintButton';
 
+type PoStamp = {
+    stepKey: string;
+    stepLabel: string;
+    role: string;
+    actorName: string | null;
+    actedAt: Date | null;
+    approved: boolean;
+};
+
+function formatRoleLabel(role: string) {
+    const normalized = role.trim().toLowerCase();
+    const roleMap: Record<string, string> = {
+        admin: 'Admin',
+        manager: 'Manager',
+        employee: 'Employee',
+        purchasing: 'Purchasing',
+        leader_purchasing: 'Leader Purchasing',
+        store: 'Store',
+        leader_store: 'Leader Store',
+        accounting: 'Accounting',
+        leader_accounting: 'Leader Accounting',
+        approver: 'Approver',
+    };
+
+    if (roleMap[normalized]) return roleMap[normalized];
+
+    return normalized
+        .split('_')
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ') || '-';
+}
+
+function formatStepLabel(stepKey: string) {
+    const key = stepKey.trim().toLowerCase();
+    const labels: Record<string, string> = {
+        draft: 'Draft',
+        pending: 'Pending',
+        approved: 'Approved',
+        ordered: 'Ordered',
+        received: 'Received',
+        cancelled: 'Cancelled',
+    };
+    return labels[key] || key.toUpperCase();
+}
+
 export default async function POPrintPage(props: { params: Promise<{ id: string }> }) {
     const params = await props.params;
     const poId = parseInt(params.id);
@@ -46,6 +92,50 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
     // Get Supplier
     const supplier = po.supplier_id ? await prisma.tbl_suppliers.findUnique({ where: { id: po.supplier_id } }) : null;
 
+    let poApprovalLogs: Array<{
+        step_key: string;
+        action: string;
+        actor_name: string | null;
+        actor_role: string | null;
+        acted_at: Date;
+    }> = [];
+
+    try {
+        poApprovalLogs = await prisma.tbl_po_approval_logs.findMany({
+            where: { po_id: poId },
+            orderBy: { acted_at: 'asc' },
+            select: {
+                step_key: true,
+                action: true,
+                actor_name: true,
+                actor_role: true,
+                acted_at: true,
+            },
+        });
+    } catch {
+        // Fallback for environments where the new table has not been migrated yet
+        poApprovalLogs = [];
+    }
+
+    const actorNames = [po.created_by, po.approved_by, ...poApprovalLogs.map((log) => log.actor_name)]
+        .filter((name): name is string => Boolean(name && name.trim()))
+        .map((name) => name.trim());
+    const uniqueActorNames = Array.from(new Set(actorNames));
+    const actorUsers = uniqueActorNames.length > 0
+        ? await prisma.tbl_users.findMany({
+            where: {
+                username: {
+                    in: uniqueActorNames,
+                },
+            },
+            select: {
+                username: true,
+                role: true,
+            },
+        })
+        : [];
+    const roleByUsername = new Map(actorUsers.map((user) => [user.username, user.role || '']));
+
     // Fetch Company Settings
     const settings = await prisma.tbl_system_settings.findMany();
     const companyInfo = settings.reduce((acc, curr) => {
@@ -58,6 +148,37 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
     const displaySubtotal = Number(po.subtotal) > 0 ? Number(po.subtotal) : calculatedSubtotal;
     const calculatedTax = Number(po.total_amount) - displaySubtotal;
     const displayTax = Number(po.tax_amount) > 0 ? Number(po.tax_amount) : (calculatedTax > 0 ? calculatedTax : 0);
+    const status = String(po.status || 'draft').toLowerCase();
+    const normalizedStatus = status === 'partial' ? 'ordered' : status;
+    const stepFlow = ['draft', 'pending', 'approved', 'ordered', 'received'];
+    const currentStepIndex = Math.max(0, stepFlow.indexOf(normalizedStatus));
+    const latestLogByStep = new Map<string, (typeof poApprovalLogs)[number]>();
+    for (const log of poApprovalLogs) {
+        latestLogByStep.set(log.step_key.toLowerCase(), log);
+    }
+
+    const stamps: PoStamp[] = stepFlow.map((stepKey, index) => {
+        const stepLog = latestLogByStep.get(stepKey);
+        const fallbackActorName = stepKey === 'draft'
+            ? (po.created_by || null)
+            : (stepKey === 'received' || stepKey === 'approved' ? (po.approved_by || null) : null);
+        const actorName = stepLog?.actor_name || fallbackActorName;
+        const role =
+            stepLog?.actor_role ||
+            (actorName ? roleByUsername.get(actorName) : '') ||
+            (stepKey === 'draft' ? 'purchasing' : stepKey === 'received' ? 'store' : 'approver');
+        const actedAt = stepLog?.acted_at ||
+            (stepKey === 'draft' ? (po.created_at || null) : stepKey === 'received' ? (po.received_date || null) : null);
+
+        return {
+            stepKey,
+            stepLabel: formatStepLabel(stepKey),
+            role,
+            actorName,
+            actedAt,
+            approved: index <= currentStepIndex && Boolean(actorName),
+        };
+    });
 
     return (
         <div className="bg-white min-h-screen p-8 print:p-0 text-black">
@@ -172,6 +293,27 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
                         <p className="font-bold">{po.approved_by || '________________'}</p>
                         <p className="text-xs uppercase text-gray-500">Approved By</p>
                         <p className="text-xs mt-1">Date: ____/____/____</p>
+                    </div>
+                </div>
+
+                <div className="mt-10 page-break-inside-avoid">
+                    <h3 className="mb-3 text-sm font-bold uppercase text-gray-600">Approval Stamps</h3>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {stamps.map((stamp, index) => (
+                            <div key={`${stamp.role}-${index}`} className="relative rounded border border-gray-300 p-3">
+                                {stamp.approved && (
+                                    <div className="absolute right-3 top-3 rotate-[-12deg] rounded-full border-2 border-red-500 px-2 py-0.5 text-[10px] font-bold tracking-wide text-red-600">
+                                        APPROVED
+                                    </div>
+                                )}
+                                <p className="text-xs text-gray-500">Step {index + 1} · {stamp.stepLabel}</p>
+                                <p className="text-sm font-semibold">{formatRoleLabel(stamp.role)}</p>
+                                <p className="mt-1 text-sm">{stamp.actorName || '-'}</p>
+                                <p className="text-xs text-gray-500">
+                                    {stamp.actedAt ? new Date(stamp.actedAt).toLocaleString('th-TH') : '-'}
+                                </p>
+                            </div>
+                        ))}
                     </div>
                 </div>
 

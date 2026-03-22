@@ -292,6 +292,17 @@ export async function getMaintenanceRequestById(request_id: number) {
 
 export async function createMaintenanceRequest(formData: FormData) {
     try {
+        const session = await auth();
+        if (!session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        const allowedRoles = new Set(['admin', 'manager', 'employee']);
+        const userRole = (session.user.role || '').toString().trim().toLowerCase();
+        if (!allowedRoles.has(userRole)) {
+            return { success: false, error: 'Permission denied: role cannot create maintenance request' };
+        }
+
         const rawData = {
             room_id: parseInt(formData.get('room_id') as string),
             title: formData.get('title') as string,

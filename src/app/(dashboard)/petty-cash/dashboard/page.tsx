@@ -2,6 +2,8 @@ import { Metadata } from 'next';
 import PettyCashDashboardClient from './PettyCashDashboardClient';
 import { getPettyCashAnalytics } from '@/actions/pettyCashAnalyticsActions';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
     title: 'Petty Cash Analytics | Stock Movement',
     description: 'Dashboard and analytics for petty cash',

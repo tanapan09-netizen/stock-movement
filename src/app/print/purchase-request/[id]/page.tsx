@@ -11,6 +11,14 @@ type PurchaseLineItem = {
     link?: string;
 };
 
+type RoleStamp = {
+    stepOrder: number;
+    approverRole: string;
+    actorName: string | null;
+    actedAt: Date | null;
+    action: string | null;
+};
+
 function formatCurrency(value: number) {
     return value.toLocaleString('th-TH', {
         minimumFractionDigits: 2,
@@ -77,6 +85,32 @@ function parsePurchaseReason(reason: string | null | undefined) {
     };
 }
 
+function formatRoleLabel(role: string) {
+    const normalized = role.trim().toLowerCase();
+    const roleMap: Record<string, string> = {
+        admin: 'Admin',
+        manager: 'Manager',
+        employee: 'Employee',
+        purchasing: 'Purchasing',
+        leader_purchasing: 'Leader Purchasing',
+        accounting: 'Accounting',
+        leader_accounting: 'Leader Accounting',
+        technician: 'Technician',
+        leader_technician: 'Leader Technician',
+        operation: 'Operation',
+        leader_operation: 'Leader Operation',
+        approver: 'Approver',
+    };
+
+    if (roleMap[normalized]) return roleMap[normalized];
+
+    return normalized
+        .split('_')
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ') || '-';
+}
+
 export default async function PurchaseRequestPrintPage(props: { params: Promise<{ id: string }> }) {
     const params = await props.params;
     const requestId = Number(params.id);
@@ -111,6 +145,25 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                         username: true,
                     },
                 },
+                workflow: {
+                    include: {
+                        steps: {
+                            orderBy: { step_order: 'asc' },
+                        },
+                    },
+                },
+                step_logs: {
+                    include: {
+                        actor: {
+                            select: {
+                                username: true,
+                            },
+                        },
+                    },
+                    orderBy: {
+                        acted_at: 'asc',
+                    },
+                },
             },
         }),
         prisma.tbl_system_settings.findMany(),
@@ -140,6 +193,32 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
     const parsed = parsePurchaseReason(request.reason);
     const displaySubtotal = parsed.subtotal !== '-' ? parsed.subtotal : `฿${formatCurrency(Number(request.amount || 0))}`;
     const displayNetTotal = parsed.netTotal !== '-' ? parsed.netTotal : `฿${formatCurrency(Number(request.amount || 0))}`;
+    const workflowSteps = (request.workflow?.steps || []).map((step) => ({
+        stepOrder: step.step_order,
+        approverRole: step.approver_role,
+    }));
+
+    const fallbackSteps = request.total_steps > 0
+        ? Array.from({ length: request.total_steps }, (_, index) => ({
+            stepOrder: index + 1,
+            approverRole: index === request.total_steps - 1 ? 'approver' : `step_${index + 1}`,
+        }))
+        : [];
+
+    const approvalSteps = workflowSteps.length > 0 ? workflowSteps : fallbackSteps;
+    const roleStamps: RoleStamp[] = approvalSteps.map((step) => {
+        const matchedLog = [...request.step_logs]
+            .reverse()
+            .find((log) => log.step_order === step.stepOrder);
+
+        return {
+            stepOrder: step.stepOrder,
+            approverRole: step.approverRole,
+            actorName: matchedLog?.actor?.username || null,
+            actedAt: matchedLog?.acted_at || null,
+            action: matchedLog?.action || null,
+        };
+    });
 
     return (
         <div className="bg-white min-h-screen p-8 print:p-0 text-black">
@@ -285,6 +364,33 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                         <p className="text-xs mt-1">Date: ____/____/____</p>
                     </div>
                 </div>
+
+                {request.status === 'approved' && roleStamps.length > 0 && (
+                    <div className="mt-10 page-break-inside-avoid">
+                        <h3 className="mb-3 text-sm font-bold uppercase text-gray-600">Approval Stamps</h3>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {roleStamps.map((stamp) => {
+                                const isApproved = stamp.action === 'approved' && Boolean(stamp.actorName);
+
+                                return (
+                                    <div key={`${stamp.stepOrder}-${stamp.approverRole}`} className="relative rounded border border-gray-300 p-3">
+                                        {isApproved && (
+                                            <div className="absolute right-3 top-3 rotate-[-12deg] rounded-full border-2 border-red-500 px-2 py-0.5 text-[10px] font-bold tracking-wide text-red-600">
+                                                APPROVED
+                                            </div>
+                                        )}
+                                        <p className="text-xs text-gray-500">Step {stamp.stepOrder}</p>
+                                        <p className="text-sm font-semibold">{formatRoleLabel(stamp.approverRole)}</p>
+                                        <p className="mt-1 text-sm">{stamp.actorName || '-'}</p>
+                                        <p className="text-xs text-gray-500">
+                                            {stamp.actedAt ? new Date(stamp.actedAt).toLocaleString('th-TH') : '-'}
+                                        </p>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 <div className="mt-12 text-center text-xs text-gray-400 print:fixed print:bottom-4 print:left-0 print:w-full">
                     <p>Generated by Stock Movement System on {new Date().toLocaleDateString('th-TH')}</p>
