@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createProduct, updateProduct } from '@/actions/productActions';
 import { Save, X } from 'lucide-react';
-import Image from 'next/image';
 
 type Category = {
     cat_id: number;
@@ -15,6 +14,10 @@ type Product = {
     p_id: string;
     p_name: string;
     p_desc: string | null;
+    model_name?: string | null;
+    brand_name?: string | null;
+    brand_code?: string | null;
+    size?: string | null;
     p_unit: string | null;
     price_unit: number | null; // Decimal is number in JS
     cat_id: number | null;
@@ -125,6 +128,42 @@ export default function ProductForm({
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">ชื่อรุ่น</label>
+                            <input
+                                type="text"
+                                name="model_name"
+                                defaultValue={product?.model_name || ''}
+                                className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">ขนาด</label>
+                            <input
+                                type="text"
+                                name="size"
+                                defaultValue={product?.size || ''}
+                                className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">ชื่อแบรนด์</label>
+                            <input
+                                type="text"
+                                name="brand_name"
+                                defaultValue={product?.brand_name || ''}
+                                className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">รหัสแบรนด์</label>
+                            <input
+                                type="text"
+                                name="brand_code"
+                                defaultValue={product?.brand_code || ''}
+                                className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 text-sm focus:border-blue-500 focus:outline-none"
+                            />
+                        </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">ราคา/หน่วย</label>
                             <input

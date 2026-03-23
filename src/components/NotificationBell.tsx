@@ -1,15 +1,27 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Bell, Package, AlertTriangle, FileText, Wrench, Wallet } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { useToast } from './ToastProvider';
 import { getReadNotificationsKey, getStoredReadNotificationIds, storeReadNotificationIds } from '@/lib/notifications/clientReadState';
 
+type NotificationModule =
+    | 'all'
+    | 'products'
+    | 'purchase_orders'
+    | 'borrow'
+    | 'maintenance'
+    | 'part_requests'
+    | 'petty_cash'
+    | 'approvals'
+    | 'dashboard';
+
 type Notification = {
     id: string;
     type: 'low_stock' | 'po_update' | 'borrow' | 'info' | 'maintenance' | 'part_request' | 'petty_cash';
+    module?: Exclude<NotificationModule, 'all'>;
     title: string;
     message: string;
     time: Date;
@@ -18,6 +30,7 @@ type Notification = {
 
 export default function NotificationBell() {
     const router = useRouter();
+    const pathname = usePathname();
     const { data: session } = useSession();
     const { showToast } = useToast();
     const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -32,6 +45,23 @@ export default function NotificationBell() {
         return 'default';
     });
     const readNotificationsKey = getReadNotificationsKey(session?.user?.id, session?.user?.name);
+
+    const moduleFromPathname = useCallback((path: string): NotificationModule => {
+        if (path.startsWith('/products')) return 'products';
+        if (path.startsWith('/purchase-orders') || path.startsWith('/purchase-request')) return 'purchase_orders';
+        if (path.startsWith('/borrow')) return 'borrow';
+        if (path.startsWith('/maintenance')) return 'maintenance';
+        if (path.startsWith('/petty-cash')) return 'petty_cash';
+        return 'all';
+    }, []);
+
+    const userSelectedModuleRef = useRef(false);
+    const [selectedModule, setSelectedModule] = useState<NotificationModule>(() => moduleFromPathname(pathname));
+
+    useEffect(() => {
+        if (userSelectedModuleRef.current) return;
+        setSelectedModule(moduleFromPathname(pathname));
+    }, [moduleFromPathname, pathname]);
 
     const getNotificationHref = useCallback((notification: Notification) => {
         if (notification.id.startsWith('general_request_')) {
@@ -136,7 +166,8 @@ export default function NotificationBell() {
         // Fetch notifications
         const fetchNotifications = async () => {
             try {
-                const res = await fetch('/api/notifications');
+                const query = selectedModule === 'all' ? '' : `?module=${encodeURIComponent(selectedModule)}`;
+                const res = await fetch(`/api/notifications${query}`);
                 if (res.ok) {
                     const storedReadIds = getStoredReadNotificationIds(readNotificationsKey);
                     const data: Notification[] = (await res.json()).map((notification: Notification) => ({
@@ -171,7 +202,7 @@ export default function NotificationBell() {
         // Poll every 30 seconds
         const interval = setInterval(fetchNotifications, 30000);
         return () => clearInterval(interval);
-    }, [playNotificationSound, readNotificationsKey, showBrowserNotification, showToast]);
+    }, [playNotificationSound, readNotificationsKey, selectedModule, showBrowserNotification, showToast]);
 
     useEffect(() => {
         knownIdsRef.current = new Set();
@@ -276,6 +307,36 @@ export default function NotificationBell() {
                             )}
                         </div>
                     )}
+
+                    {/* Module Filter */}
+                    <div className="px-4 py-2 border-t bg-white">
+                        <div className="flex gap-1.5 overflow-x-auto">
+                            {[
+                                { key: 'all', label: 'ทั้งหมด' },
+                                { key: 'products', label: 'สินค้า' },
+                                { key: 'purchase_orders', label: 'จัดซื้อ/PO' },
+                                { key: 'borrow', label: 'ยืม-คืน' },
+                                { key: 'maintenance', label: 'ซ่อมบำรุง' },
+                                { key: 'part_requests', label: 'อะไหล่' },
+                                { key: 'petty_cash', label: 'เงินสดย่อย' },
+                                { key: 'approvals', label: 'อนุมัติ' },
+                            ].map(({ key, label }) => (
+                                <button
+                                    key={key}
+                                    onClick={() => {
+                                        userSelectedModuleRef.current = true;
+                                        setSelectedModule(key as NotificationModule);
+                                        knownIdsRef.current = new Set();
+                                        setLoading(true);
+                                    }}
+                                    className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border transition
+                                        ${selectedModule === key ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
 
                     {/* Notifications List */}
                     <div className="max-h-96 overflow-y-auto">

@@ -1,19 +1,21 @@
 @echo off
+setlocal EnableExtensions
 echo ===========================================
 echo Building StockMovement Deploy Tool (.exe)
 echo ===========================================
 
-cd /d "%~dp0"
+cd /d "%~dp0" || (echo Failed to change directory to "%~dp0" & exit /b 1)
 
 echo [1/3] Checking PyInstaller...
-pip install pyinstaller customtkinter packaging
+where python >nul 2>&1 || (echo Python not found in PATH & exit /b 1)
+python -m pip install --disable-pip-version-check pyinstaller customtkinter packaging || exit /b 1
 
 echo [2/3] Building Executable...
-python -m PyInstaller --noconfirm --onefile --windowed --name "StockDeploy" --collect-all customtkinter deploy_tool.py
+python -m PyInstaller --noconfirm --onefile --windowed --name "StockDeploy" --collect-all customtkinter deploy_tool.py || exit /b 1
 
 echo [3/3] Cleaning up...
-rmdir /s /q build
-del /q StockDeploy.spec
+if exist build rmdir /s /q build 2>nul
+if exist StockDeploy.spec del /q StockDeploy.spec 2>nul
 
 echo.
 echo Build Complete!

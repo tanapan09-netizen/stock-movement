@@ -19,6 +19,10 @@ interface Product {
     p_unit: string | null;
     price_unit: number | string;
     safety_stock: number;
+    model_name?: string | null;
+    brand_name?: string | null;
+    brand_code?: string | null;
+    size?: string | null;
     main_category?: string | null;
     p_image?: string | null;
     tbl_categories?: { cat_name: string } | null;
@@ -51,6 +55,10 @@ export function ProductsToolbar({ products }: ProductsToolbarProps) {
         p_unit: p.p_unit,
         p_price: Number(p.price_unit).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
         safety_stock: p.safety_stock,
+        model_name: p.model_name ?? '',
+        brand_name: p.brand_name ?? '',
+        brand_code: p.brand_code ?? '',
+        size: p.size ?? '',
     }));
 
     const handleExportExcel = async () => {
@@ -194,19 +202,18 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
     const sortedProducts = [...filteredProducts].sort((a, b) => {
         if (!sortColumn) return 0;
 
-        let aValue: string | number = 0;
-        let bValue: string | number = 0;
+        let aValue: string | number = '';
+        let bValue: string | number = '';
 
         // Default value extraction
         const aVal = a[sortColumn as keyof Product];
         const bVal = b[sortColumn as keyof Product];
 
-        if (typeof aVal === 'string' || typeof aVal === 'number') {
-            aValue = aVal;
-        }
-        if (typeof bVal === 'string' || typeof bVal === 'number') {
-            bValue = bVal;
-        }
+        if (aVal === null || aVal === undefined) aValue = '';
+        else if (typeof aVal === 'string' || typeof aVal === 'number') aValue = aVal;
+
+        if (bVal === null || bVal === undefined) bValue = '';
+        else if (typeof bVal === 'string' || typeof bVal === 'number') bValue = bVal;
 
         if (sortColumn === 'category') {
             aValue = a.main_category || a.tbl_categories?.cat_name || '';
@@ -308,6 +315,42 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                 </th>
                                 <th
                                     className="px-6 py-3 cursor-pointer hover:bg-gray-100 transition-colors group"
+                                    onClick={() => handleSort('model_name')}
+                                >
+                                    <div className="flex items-center gap-1">
+                                        ชื่อรุ่น
+                                        <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'model_name' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
+                                    </div>
+                                </th>
+                                <th
+                                    className="px-6 py-3 cursor-pointer hover:bg-gray-100 transition-colors group"
+                                    onClick={() => handleSort('brand_name')}
+                                >
+                                    <div className="flex items-center gap-1">
+                                        ชื่อแบรน
+                                        <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'brand_name' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
+                                    </div>
+                                </th>
+                                <th
+                                    className="px-6 py-3 cursor-pointer hover:bg-gray-100 transition-colors group"
+                                    onClick={() => handleSort('brand_code')}
+                                >
+                                    <div className="flex items-center gap-1">
+                                        รหัสแบรน
+                                        <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'brand_code' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
+                                    </div>
+                                </th>
+                                <th
+                                    className="px-6 py-3 cursor-pointer hover:bg-gray-100 transition-colors group"
+                                    onClick={() => handleSort('size')}
+                                >
+                                    <div className="flex items-center gap-1">
+                                        ขนาด
+                                        <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'size' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
+                                    </div>
+                                </th>
+                                <th
+                                    className="px-6 py-3 cursor-pointer hover:bg-gray-100 transition-colors group"
                                     onClick={() => handleSort('category')}
                                 >
                                     <div className="flex items-center gap-1">
@@ -348,7 +391,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                         <tbody className="divide-y divide-gray-200">
                             {sortedProducts.length === 0 ? (
                                 <tr>
-                                    <td colSpan={isAdmin ? 8 : 7} className="px-6 py-12 text-center text-gray-400">
+                                    <td colSpan={isAdmin ? 12 : 11} className="px-6 py-12 text-center text-gray-400">
                                         ไม่พบข้อมูลสินค้า
                                     </td>
                                 </tr>
@@ -379,6 +422,10 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                                 )}
                                             </div>
                                         </td>
+                                        <td className="px-6 py-4">{product.model_name ?? ''}</td>
+                                        <td className="px-6 py-4">{product.brand_name ?? ''}</td>
+                                        <td className="px-6 py-4">{product.brand_code ?? ''}</td>
+                                        <td className="px-6 py-4">{product.size ?? ''}</td>
                                         <td className="px-6 py-4">
                                             <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
                                                 {product.main_category || product.tbl_categories?.cat_name || '-'}
@@ -466,6 +513,20 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                         </span>
                                         <span className={`font-bold ${product.p_count <= product.safety_stock ? 'text-red-600' : 'text-green-600'}`}>
                                             {product.p_count} {product.p_unit}
+                                        </span>
+                                    </div>
+                                    <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-gray-500">
+                                        <span className="truncate" title={product.model_name ?? ''}>
+                                            รุ่น: {product.model_name || '-'}
+                                        </span>
+                                        <span className="truncate" title={product.size ?? ''}>
+                                            ขนาด: {product.size || '-'}
+                                        </span>
+                                        <span className="truncate" title={product.brand_name ?? ''}>
+                                            แบรนด์: {product.brand_name || '-'}
+                                        </span>
+                                        <span className="truncate" title={product.brand_code ?? ''}>
+                                            รหัส: {product.brand_code || '-'}
                                         </span>
                                     </div>
                                     <div className="mt-2 text-right font-bold text-blue-600">

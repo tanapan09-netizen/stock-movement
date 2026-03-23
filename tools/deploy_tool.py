@@ -186,6 +186,48 @@ class DeployTool(ctk.CTk):
             return_code = 1
         return return_code
 
+    def is_git_repo(self):
+        """Returns True when current working directory is a git work tree."""
+        if os.path.isdir('.git'):
+            return True
+        try:
+            result = subprocess.run(
+                "git rev-parse --is-inside-work-tree",
+                shell=True,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace'
+            )
+            return result.returncode == 0 and result.stdout.strip().lower() == 'true'
+        except Exception:
+            return False
+
+    def git_prereq_message(self):
+        return (
+            "This folder is not a Git repository (no .git).\n\n"
+            "Fix options:\n"
+            "1) Clone the project with Git (recommended)\n"
+            "2) If you copied the folder, copy the hidden .git folder too\n"
+            "3) Or run: git init, git remote add origin <url>, git fetch, git checkout main\n\n"
+            "หมายเหตุ: ถ้าโหลดมาเป็น ZIP จะไม่มีโฟลเดอร์ .git ทำให้ pull/push ไม่ได้"
+        )
+
+    def ask_yesno_threadsafe(self, title, message):
+        """Ask a yes/no question from background threads safely."""
+        event = threading.Event()
+        result = {'value': False}
+
+        def _ask():
+            try:
+                result['value'] = messagebox.askyesno(title, message)
+            finally:
+                event.set()
+
+        self.after(0, _ask)
+        event.wait()
+        return result['value']
+
     def check_docker_status(self):
         def _target():
             self.after(0, lambda: self.container_list.delete(0, tk.END))
@@ -206,6 +248,12 @@ class DeployTool(ctk.CTk):
             self.status_var.set("Checking for updates...")
             self.log("-" * 50)
             self.log("Checking for updates...", 'info')
+
+            if not self.is_git_repo():
+                self.log("Not a Git repository. Skipping update check.", 'error')
+                self.status_var.set("Not a Git Repo")
+                self.after(0, lambda: messagebox.showerror("Git Not Found", self.git_prereq_message()))
+                return
             
             cmd_fetch = "git fetch"
             self.log(f"> {cmd_fetch}", 'cmd')
@@ -267,6 +315,12 @@ class DeployTool(ctk.CTk):
             self.status_var.set("Uploading to Git...")
             self.log("=" * 50)
             self.log("Starting Git Upload Process...", 'info')
+
+            if not self.is_git_repo():
+                self.log("Not a Git repository. Upload aborted.", 'error')
+                self.status_var.set("Upload Failed")
+                self.after(0, lambda: messagebox.showerror("Git Not Found", self.git_prereq_message()))
+                return
             
             self.log("\n[Step 1] Adding files...", 'info')
             if self.run_command_process("git add .") != 0:
@@ -453,10 +507,22 @@ class DeployTool(ctk.CTk):
         self.log("Starting Deployment Process...", 'info')
 
         self.log("\n[Step 1] Pulling latest code...", 'info')
-        if self.run_command_process("git pull") != 0:
-            self.log("Git pull failed. Aborting.", 'error')
-            self.status_var.set("Deploy Failed")
-            return
+        if not self.is_git_repo():
+            self.log("Not a Git repository detected. Cannot pull latest code.", 'error')
+            proceed = self.ask_yesno_threadsafe(
+                "Git Not Found",
+                self.git_prereq_message() + "\n\nContinue deployment without pulling latest code?"
+            )
+            if not proceed:
+                self.log("Deployment aborted (no git repo).", 'error')
+                self.status_var.set("Deploy Failed")
+                return
+            self.log("Skipping git pull (deploying current working tree).", 'info')
+        else:
+            if self.run_command_process("git pull") != 0:
+                self.log("Git pull failed. Aborting.", 'error')
+                self.status_var.set("Deploy Failed")
+                return
 
         self.log("\n[Step 2] Building Docker Image...", 'info')
         build_cmd = "docker-compose -f docker-compose.prod.yml build app" 

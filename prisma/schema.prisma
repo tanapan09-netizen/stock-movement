@@ -376,6 +376,10 @@ model tbl_products {
   p_desc                String?                 @db.Text
   supplier              String?                 @db.VarChar(255)
   p_sku                 String?                 @db.VarChar(50)
+  model_name            String?                 @db.VarChar(100)
+  brand_name            String?                 @db.VarChar(100)
+  brand_code            String?                 @db.VarChar(50)
+  size                  String?                 @db.VarChar(100)
   p_unit                String?                 @default("ชิ้น") @db.VarChar(20)
   p_count               Int
   expiry_date           DateTime?               @db.Date

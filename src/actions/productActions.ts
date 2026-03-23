@@ -10,6 +10,12 @@ import { validateData, createProductSchema } from '@/lib/validation';
 
 const UPLOAD_DIR = 'products'; // Just folder name for GCS/Local util
 
+function normalizeOptionalText(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
 export async function createProduct(formData: FormData) {
     const rawData = {
         p_name: formData.get('p_name') as string,
@@ -19,6 +25,10 @@ export async function createProduct(formData: FormData) {
         safety_stock: parseInt(formData.get('safety_stock') as string) || 0,
         supplier: formData.get('supplier') as string,
         p_sku: formData.get('p_sku') as string,
+        model_name: formData.get('model_name') as string,
+        brand_name: formData.get('brand_name') as string,
+        brand_code: formData.get('brand_code') as string,
+        size: formData.get('size') as string,
         p_count: parseInt(formData.get('p_count') as string) || 0,
     };
 
@@ -34,6 +44,10 @@ export async function createProduct(formData: FormData) {
     const cat_id = parseInt(formData.get('cat_id') as string) || null;
     const is_luxury = formData.get('is_luxury') === 'true';
     const imageFile = formData.get('p_image') as File;
+    const model_name = normalizeOptionalText(validData.model_name);
+    const brand_name = normalizeOptionalText(validData.brand_name);
+    const brand_code = normalizeOptionalText(validData.brand_code);
+    const size = normalizeOptionalText(validData.size);
 
     let imageName = '';
 
@@ -66,6 +80,16 @@ export async function createProduct(formData: FormData) {
             },
         });
 
+        // Use raw SQL so this works even if Prisma Client wasn't regenerated yet
+        await prisma.$executeRaw`
+            UPDATE tbl_products
+            SET model_name = ${model_name},
+                brand_name = ${brand_name},
+                brand_code = ${brand_code},
+                size = ${size}
+            WHERE p_id = ${p_id}
+        `;
+
         const session = await auth();
         await logSystemAction(
             'CREATE',
@@ -94,6 +118,10 @@ export async function updateProduct(formData: FormData) {
     const cat_id = parseInt(formData.get('cat_id') as string) || null;
     const safety_stock = parseInt(formData.get('safety_stock') as string) || 0;
     const supplier = formData.get('supplier') as string;
+    const model_name = formData.get('model_name') as string;
+    const brand_name = formData.get('brand_name') as string;
+    const brand_code = formData.get('brand_code') as string;
+    const size = formData.get('size') as string;
     const is_luxury = formData.get('is_luxury') === 'true';
     const imageFile = formData.get('p_image') as File;
 
@@ -123,6 +151,16 @@ export async function updateProduct(formData: FormData) {
             where: { p_id },
             data,
         });
+
+        // Use raw SQL so this works even if Prisma Client wasn't regenerated yet
+        await prisma.$executeRaw`
+            UPDATE tbl_products
+            SET model_name = ${normalizeOptionalText(model_name)},
+                brand_name = ${normalizeOptionalText(brand_name)},
+                brand_code = ${normalizeOptionalText(brand_code)},
+                size = ${normalizeOptionalText(size)}
+            WHERE p_id = ${p_id}
+        `;
 
         const session = await auth();
         await logSystemAction(

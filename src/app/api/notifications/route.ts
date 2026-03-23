@@ -2,17 +2,29 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 
+type NotificationModule =
+    | 'products'
+    | 'purchase_orders'
+    | 'borrow'
+    | 'maintenance'
+    | 'part_requests'
+    | 'petty_cash'
+    | 'approvals'
+    | 'dashboard';
+
 type NotificationItem = {
     id: string;
     type: 'low_stock' | 'po_update' | 'borrow' | 'info' | 'maintenance' | 'part_request' | 'petty_cash';
+    module: NotificationModule;
     title: string;
     message: string;
     time: Date;
     read: boolean;
 };
 
-export async function GET() {
+export async function GET(request: Request) {
     try {
+        const requestedModule = new URL(request.url).searchParams.get('module') as NotificationModule | 'all' | null;
         const session = await auth();
         const sessionUser = session?.user as { role?: string; is_approver?: boolean } | undefined;
         const role = sessionUser?.role || 'employee';
@@ -41,6 +53,7 @@ export async function GET() {
                     notifications.push({
                         id: `low_stock_${product.p_id}`,
                         type: 'low_stock',
+                        module: 'products',
                         title: 'สต็อกต่ำ',
                         message: `${product.p_name} เหลือ ${product.p_count} ชิ้น`,
                         time: new Date(),
@@ -72,6 +85,7 @@ export async function GET() {
                 notifications.push({
                     id: `po_${po.po_id}`,
                     type: 'po_update',
+                    module: 'purchase_orders',
                     title: `PO ${po.po_number}`,
                     message: `สถานะ: ${statusMap[statusKey] || statusKey}`,
                     time: po.updated_at || new Date(),
@@ -95,6 +109,7 @@ export async function GET() {
                 notifications.push({
                     id: `borrow_${borrow.borrow_id}`,
                     type: 'borrow',
+                    module: 'borrow',
                     title: 'รอคืนสินค้า',
                     message: `${borrow.borrower_name} ยังไม่คืนสินค้า`,
                     time: borrow.borrow_date,
@@ -116,6 +131,7 @@ export async function GET() {
                 notifications.push({
                     id: `borrow_my_${borrow.borrow_id}`,
                     type: 'borrow',
+                    module: 'borrow',
                     title: 'รอคืนสินค้า',
                     message: `คุณยังไม่ได้คืนสินค้าที่ยืมไป`,
                     time: borrow.borrow_date,
@@ -128,10 +144,21 @@ export async function GET() {
         // MAINTENANCE / PART REQUESTS — Technician, Head Tech, Approver
         // ===================================================
         if (isAdminOrManager || role === 'technician' || role === 'head_technician' || isApprover) {
+            const maintenanceWhere: any = {
+                status: 'pending',
+                category: { not: 'general' },
+            };
+
+            // Technician: show only unassigned or assigned-to-me (avoid mixing other tech jobs)
+            if (!isAdminOrManager && !isApprover && role === 'technician') {
+                maintenanceWhere.OR = userName
+                    ? [{ assigned_to: null }, { assigned_to: userName }]
+                    : [{ assigned_to: null }];
+            }
+
             const pendingMaintenance = await prisma.tbl_maintenance_requests.findMany({
                 where: {
-                    status: 'pending',
-                    category: { not: 'general' },
+                    ...maintenanceWhere,
                 },
                 orderBy: { created_at: 'desc' },
                 take: 10,
@@ -154,6 +181,7 @@ export async function GET() {
                 notifications.push({
                     id: `maintenance_request_${request.request_id}`,
                     type: 'maintenance',
+                    module: 'maintenance',
                     title: `งานแจ้งซ่อม ${request.request_number}`,
                     message: `${request.title} - ${request.tbl_rooms?.room_code || '-'} ${request.tbl_rooms?.room_name || ''} โดย ${request.reported_by}`,
                     time: request.created_at || new Date(),
@@ -165,6 +193,7 @@ export async function GET() {
                 notifications.push({
                     id: `maintenance_pending`,
                     type: 'maintenance',
+                    module: 'maintenance',
                     title: 'งานซ่อมรอดำเนินการ',
                     message: `มี ${pendingMaintenance} งานที่รอรับมอบหมาย`,
                     time: new Date(),
@@ -198,6 +227,7 @@ export async function GET() {
                 notifications.push({
                     id: `general_request_${request.request_id}`,
                     type: 'maintenance',
+                    module: 'maintenance',
                     title: `งานแจ้งซ่อมทั่วไป ${request.request_number}`,
                     message: `${request.title} - ${request.tbl_rooms?.room_code || '-'} ${request.tbl_rooms?.room_name || ''} โดย ${request.reported_by}`,
                     time: request.created_at || new Date(),
@@ -218,6 +248,7 @@ export async function GET() {
                 notifications.push({
                     id: 'purchase_requests_pending',
                     type: 'info',
+                    module: 'approvals',
                     title: 'คำขอซื้อรอพิจารณา',
                     message: `มี ${pendingPurchaseRequests} รายการรอฝ่ายจัดซื้อดำเนินการ`,
                     time: new Date(),
@@ -235,6 +266,7 @@ export async function GET() {
                 notifications.push({
                     id: `part_requests_pending`,
                     type: 'part_request',
+                    module: 'part_requests',
                     title: 'ใบขออนุมัติซื้ออะไหล่',
                     message: `มี ${pendingParts} รายการรออนุมัติ`,
                     time: new Date(),
@@ -255,6 +287,7 @@ export async function GET() {
                 notifications.push({
                     id: `petty_cash_pending`,
                     type: 'petty_cash',
+                    module: 'petty_cash',
                     title: 'เบิกเงินสดย่อยรอดำเนินการ',
                     message: `มี ${pendingPettyCash} รายการรออนุมัติ`,
                     time: new Date(),
@@ -263,10 +296,28 @@ export async function GET() {
             }
         }
 
-        // Sort by time descending
-        notifications.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+        const allowedModules: Set<string> = new Set([
+            'products',
+            'purchase_orders',
+            'borrow',
+            'maintenance',
+            'part_requests',
+            'petty_cash',
+            'approvals',
+            'dashboard',
+            'all',
+        ]);
 
-        return NextResponse.json(notifications);
+        const filtered = requestedModule && allowedModules.has(requestedModule)
+            ? requestedModule === 'all'
+                ? notifications
+                : notifications.filter(n => n.module === requestedModule)
+            : notifications;
+
+        // Sort by time descending
+        filtered.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+        return NextResponse.json(filtered);
     } catch (error) {
         console.error('Notifications error:', error);
         return NextResponse.json([]);

@@ -1,7 +1,6 @@
 'use client';
 
-import Link from 'next/link';
-import { Calendar, CheckCircle2, Clock, DollarSign, FileText, Loader2, Printer, Square, SquareCheckBig, XCircle } from 'lucide-react';
+import { Calendar, CheckCircle2, Clock, DollarSign, FileText, Loader2, Square, SquareCheckBig, XCircle } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import { ApprovalRequest } from '../types';
 
@@ -14,6 +13,7 @@ interface ApprovalTableProps {
     onToggleSelectAllPage: () => void;
     onApprove: (id: number) => void;
     onOpenReject: (id: number) => void;
+    onOpenDetail: (req: ApprovalRequest) => void;
 }
 
 function getTypeLabel(type: string) {
@@ -41,6 +41,19 @@ function StatusBadge({ req }: { req: ApprovalRequest }) {
     );
 }
 
+function toSafeDate(value: string | Date | null | undefined) {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date;
+}
+
+function formatShortDate(value: string | Date | null | undefined) {
+    const date = toSafeDate(value);
+    if (!date) return '-';
+    return date.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 export default function ApprovalTable({
     requests,
     canApprove,
@@ -49,7 +62,8 @@ export default function ApprovalTable({
     onToggleSelect,
     onToggleSelectAllPage,
     onApprove,
-    onOpenReject
+    onOpenReject,
+    onOpenDetail
 }: ApprovalTableProps) {
     const allSelectableIds = requests.filter(r => r.status === 'pending').map(r => r.request_id);
     const selectedOnPage = allSelectableIds.filter(id => selectedIds.includes(id));
@@ -58,7 +72,7 @@ export default function ApprovalTable({
     return (
         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border dark:border-slate-700 overflow-hidden">
             <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm whitespace-nowrap">
+                <table className="w-full text-left text-sm">
                     <thead className="bg-gray-50 dark:bg-slate-700/50 text-gray-500 dark:text-gray-400 font-medium">
                         <tr>
                             {canApprove && (
@@ -87,7 +101,11 @@ export default function ApprovalTable({
                             const isSelected = selectedIds.includes(req.request_id);
 
                             return (
-                                <tr key={req.request_id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition">
+                                <tr
+                                    key={req.request_id}
+                                    className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition cursor-pointer"
+                                    onClick={() => onOpenDetail(req)}
+                                >
                                     {canApprove && (
                                         <td className="px-3 py-4 align-top">
                                             {isPending ? (
@@ -95,28 +113,41 @@ export default function ApprovalTable({
                                                     type="checkbox"
                                                     checked={isSelected}
                                                     onChange={() => onToggleSelect(req.request_id)}
+                                                    onClick={(e) => e.stopPropagation()}
                                                     className="mt-1"
                                                 />
                                             ) : null}
                                         </td>
                                     )}
                                     <td className="px-6 py-4">
-                                        <div className="font-medium text-indigo-600 dark:text-indigo-400">{req.request_number}</div>
-                                        <div className="text-xs text-gray-500 mt-1">ผู้ขอ: {req.tbl_users?.username}</div>
-                                        <div className="text-xs text-gray-500">
-                                            {req.created_at ? new Date(req.created_at).toLocaleDateString('th-TH') : '-'}
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2">
+                                                <div className="font-mono text-xs font-semibold text-indigo-600 dark:text-indigo-300">
+                                                    {req.request_number}
+                                                </div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                    {formatShortDate(req.request_date || req.created_at)}
+                                                </div>
+                                            </div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                ผู้ขอ: <span className="text-gray-800 dark:text-gray-200 font-medium">{req.tbl_users?.username || '-'}</span>
+                                            </div>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-normal min-w-[280px]">
-                                        <div className="font-medium flex items-center gap-1 mb-1">
-                                            {req.request_type === 'ot' && <Clock size={14} className="text-blue-500" />}
-                                            {req.request_type === 'leave' && <Calendar size={14} className="text-orange-500" />}
-                                            {req.request_type === 'expense' && <DollarSign size={14} className="text-green-500" />}
-                                            {req.request_type === 'purchase' && <DollarSign size={14} className="text-emerald-500" />}
-                                            {(req.request_type === 'other' || !['ot', 'leave', 'expense', 'purchase'].includes(req.request_type)) && <FileText size={14} className="text-slate-500" />}
-                                            {getTypeLabel(req.request_type)}
+                                    <td className="px-6 py-4 whitespace-normal min-w-[340px]">
+                                        <div className="space-y-2">
+                                            <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold bg-gray-100 dark:bg-slate-900 text-gray-700 dark:text-gray-200">
+                                                {req.request_type === 'ot' && <Clock size={14} className="text-blue-500" />}
+                                                {req.request_type === 'leave' && <Calendar size={14} className="text-orange-500" />}
+                                                {req.request_type === 'expense' && <DollarSign size={14} className="text-green-500" />}
+                                                {req.request_type === 'purchase' && <DollarSign size={14} className="text-emerald-500" />}
+                                                {(req.request_type === 'other' || !['ot', 'leave', 'expense', 'purchase'].includes(req.request_type)) && <FileText size={14} className="text-slate-500" />}
+                                                {getTypeLabel(req.request_type)}
+                                            </div>
+                                            <div className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-wrap break-words">
+                                                {req.reason || '-'}
+                                            </div>
                                         </div>
-                                        <div className="text-gray-700 dark:text-gray-300">{req.reason}</div>
                                     </td>
                                     <td className="px-6 py-4">
                                         {req.request_type === 'ot' && req.start_time && req.end_time && (
@@ -154,27 +185,17 @@ export default function ApprovalTable({
                                     {canApprove && (
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex justify-end gap-2">
-                                                {req.request_type === 'purchase' && (
-                                                    <Link
-                                                        href={`/print/purchase-request/${req.request_id}`}
-                                                        target="_blank"
-                                                        className="px-3 py-1.5 bg-slate-50 text-slate-600 hover:bg-slate-100 rounded-md font-medium text-xs transition inline-flex items-center"
-                                                        title="พิมพ์ใบขอซื้อ"
-                                                    >
-                                                        <Printer size={14} />
-                                                    </Link>
-                                                )}
                                                 {isPending && (
                                                     <>
                                                     <button
-                                                        onClick={() => onApprove(req.request_id)}
+                                                        onClick={(e) => { e.stopPropagation(); onApprove(req.request_id); }}
                                                         disabled={isProcessing}
                                                         className="px-3 py-1.5 bg-green-50 text-green-600 hover:bg-green-100 rounded-md font-medium text-xs transition disabled:opacity-60"
                                                     >
                                                         {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                                                     </button>
                                                     <button
-                                                        onClick={() => onOpenReject(req.request_id)}
+                                                        onClick={(e) => { e.stopPropagation(); onOpenReject(req.request_id); }}
                                                         disabled={isProcessing}
                                                         className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-md font-medium text-xs transition disabled:opacity-60"
                                                     >

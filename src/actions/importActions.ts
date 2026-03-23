@@ -98,6 +98,10 @@ export async function importProducts(formData: FormData) {
             const stock = getValue(rowData, ['Stock', 'Qty', 'Quantity', 'จำนวน', 'คงเหลือ', 'p_count']);
             const safety = getValue(rowData, ['Safety', 'Safety Stock', 'จุดสั่งซื้อ', 'safety_stock']);
             const unit = getValue(rowData, ['Unit', 'หน่วย', 'หน่วยนับ', 'p_unit']);
+            const model_name = getValue(rowData, ['Model', 'Model Name', 'รุ่น', 'ชื่อรุ่น', 'model_name']);
+            const brand_name = getValue(rowData, ['Brand', 'Brand Name', 'แบรนด์', 'ชื่อแบรนด์', 'brand_name']);
+            const brand_code = getValue(rowData, ['Brand Code', 'รหัสแบรนด์', 'brand_code']);
+            const size = getValue(rowData, ['Size', 'ขนาด', 'size']);
 
             // Trim values
             const p_id_val = p_id ? String(p_id).trim() : '';
@@ -158,6 +162,17 @@ export async function importProducts(formData: FormData) {
                 const safetyVal = safety ? parseInt(String(safety)) : 0;
                 const unitVal = unit ? String(unit).trim() : 'ชิ้น';
 
+                const optionalText = (value: unknown): string | null => {
+                    if (value === undefined || value === null) return null;
+                    const trimmed = String(value).trim();
+                    return trimmed.length > 0 ? trimmed : null;
+                };
+
+                const modelVal = optionalText(model_name);
+                const brandNameVal = optionalText(brand_name);
+                const brandCodeVal = optionalText(brand_code);
+                const sizeVal = optionalText(size);
+
                 // LOGIC: Check ID first, then Name
                 const existingById = await prisma.tbl_products.findUnique({
                     where: { p_id: p_id_val }
@@ -175,9 +190,19 @@ export async function importProducts(formData: FormData) {
                             price_unit: priceVal,
                             p_count: stockVal,
                             safety_stock: safetyVal,
-                            p_unit: unitVal
+                            p_unit: unitVal,
                         }
                     });
+
+                    // Raw SQL so this works even if Prisma Client wasn't regenerated yet
+                    await prisma.$executeRaw`
+                        UPDATE tbl_products
+                        SET model_name = ${modelVal},
+                            brand_name = ${brandNameVal},
+                            brand_code = ${brandCodeVal},
+                            size = ${sizeVal}
+                        WHERE p_id = ${p_id_val}
+                    `;
                     successCount++;
 
                 } else {
@@ -201,9 +226,19 @@ export async function importProducts(formData: FormData) {
                                 price_unit: priceVal,
                                 p_count: stockVal,
                                 safety_stock: safetyVal,
-                                p_unit: unitVal
+                                p_unit: unitVal,
                             }
                         });
+
+                        // Raw SQL so this works even if Prisma Client wasn't regenerated yet
+                        await prisma.$executeRaw`
+                            UPDATE tbl_products
+                            SET model_name = ${modelVal},
+                                brand_name = ${brandNameVal},
+                                brand_code = ${brandCodeVal},
+                                size = ${sizeVal}
+                            WHERE p_id = ${existingByName.p_id}
+                        `;
 
                         // Treat as success but maybe append a note? For now just count as success to avoid cluttering error log
                         // But if strict, we could log it.
@@ -227,6 +262,16 @@ export async function importProducts(formData: FormData) {
                                 p_image: '',
                             }
                         });
+
+                        // Raw SQL so this works even if Prisma Client wasn't regenerated yet
+                        await prisma.$executeRaw`
+                            UPDATE tbl_products
+                            SET model_name = ${modelVal},
+                                brand_name = ${brandNameVal},
+                                brand_code = ${brandCodeVal},
+                                size = ${sizeVal}
+                            WHERE p_id = ${p_id_val}
+                        `;
                         successCount++;
                     }
                 }

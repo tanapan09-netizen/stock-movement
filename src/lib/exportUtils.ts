@@ -140,6 +140,10 @@ export const EXPORT_COLUMNS = {
     products: [
         { header: 'รหัสสินค้า', key: 'p_code', width: 15 },
         { header: 'ชื่อสินค้า', key: 'p_name', width: 30 },
+        { header: 'ชื่อรุ่น', key: 'model_name', width: 20 },
+        { header: 'ชื่อแบรนด์', key: 'brand_name', width: 20 },
+        { header: 'รหัสแบรนด์', key: 'brand_code', width: 14 },
+        { header: 'ขนาด', key: 'size', width: 14 },
         { header: 'หมวดหมู่', key: 'category_name', width: 20 },
         { header: 'จำนวนคงเหลือ', key: 'p_count', width: 12 },
         { header: 'หน่วย', key: 'p_unit', width: 10 },

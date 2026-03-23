@@ -101,6 +101,10 @@ export default function ImportClient() {
                             <li><strong>ราคาขาย</strong> (Price, Price/Unit)</li>
                             <li><strong>จำนวนคงเหลือ</strong> (Stock, Qty, Amount)</li>
                             <li><strong>จุดสั่งซื้อ</strong> (Safety Stock, Safety)</li>
+                            <li><strong>ชื่อรุ่น</strong> (Model, Model Name)</li>
+                            <li><strong>ชื่อแบรนด์</strong> (Brand, Brand Name)</li>
+                            <li><strong>รหัสแบรนด์</strong> (Brand Code)</li>
+                            <li><strong>ขนาด</strong> (Size)</li>
                         </ul>
                     </div>
                 </div>
