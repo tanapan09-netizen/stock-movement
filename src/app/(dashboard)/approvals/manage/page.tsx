@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
-import ApprovalClient from './ApprovalClient';
+import ApprovalClient from '../ApprovalClient';
 import { getApprovalRequests } from '@/actions/approvalActions';
 import { getMaintenanceRequests } from '@/actions/maintenanceActions';
 
@@ -9,10 +9,10 @@ interface MaintenanceRequestStatusLike {
 }
 
 export const metadata = {
-    title: 'อนุมัติคำขอต่างๆ (OT/เบิก/ลา) | Stock Movement',
+    title: 'จัดการคำขออนุมัติ (OT/เบิก/ลา) | Stock Movement',
 };
 
-export default async function ApprovalsPage() {
+export default async function ApprovalsManagePage() {
     const session = await auth();
 
     if (!session) {
@@ -23,10 +23,11 @@ export default async function ApprovalsPage() {
     if (role === 'purchasing') {
         redirect('/approvals/purchasing');
     }
+
     const isApprover = session.user.is_approver || false;
     const canApprove = role === 'admin' || role === 'manager' || isApprover;
-    if (canApprove) {
-        redirect('/approvals/manage');
+    if (!canApprove) {
+        redirect('/approvals');
     }
 
     const requestsRes = await getApprovalRequests();
@@ -38,11 +39,11 @@ export default async function ApprovalsPage() {
             activeJobs={(maintenanceRes.success && maintenanceRes.data)
                 ? maintenanceRes.data.filter((r: MaintenanceRequestStatusLike) => r.status !== 'completed' && r.status !== 'cancelled')
                 : []}
-            canApprove={false}
+            canApprove={canApprove}
             currentUserId={parseInt(session.user.id as string) || 0}
             initialRequestType="all"
-            variant="report"
-            allowCreate={false}
+            variant="manage"
         />
     );
 }
+

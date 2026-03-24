@@ -139,9 +139,8 @@ export async function approvePettyCash(id: number) {
 
         try {
             const { notifyPettyCashEvent } = await import('@/lib/notifications/notificationManager');
-            // Assuming we reuse the dispense notification type or create an approve one, using 'request' for now as a fallback or adding it
             await notifyPettyCashEvent({
-                eventType: 'dispense', // Notify Accounting it's ready to dispense
+                eventType: 'approved',
                 request_number: request.request_number,
                 requested_by: request.requested_by,
                 purpose: request.purpose,
@@ -379,6 +378,20 @@ export async function rejectPettyCash(id: number, notes?: string) {
         });
 
         revalidatePath('/petty-cash');
+
+        try {
+            const { notifyPettyCashEvent } = await import('@/lib/notifications/notificationManager');
+            await notifyPettyCashEvent({
+                eventType: 'rejected',
+                request_number: request.request_number,
+                requested_by: request.requested_by,
+                purpose: request.purpose,
+                amount: Number(request.requested_amount),
+                notes: notes || `Rejected by ${session.user.name}`
+            });
+        } catch (err) {
+            console.error('[Petty Cash] Notification failed:', err);
+        }
 
         await logSystemAction(
             'ปฏิเสธคำขอเงินสดย่อย',

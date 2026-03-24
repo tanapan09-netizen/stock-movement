@@ -19,6 +19,8 @@ interface ApprovalClientProps {
     activeJobs: ActiveJob[];
     canApprove: boolean;
     currentUserId: number;
+    variant?: 'manage' | 'report';
+    allowCreate?: boolean;
     initialRequestType?: string;
     lockedRequestType?: string | null;
     defaultCreateRequestType?: string;
@@ -68,7 +70,7 @@ const defaultFormData = (requestType = 'ot'): ApprovalFormData => ({
 // ── Card ─────────────────────────────────────────────────────────────────────
 
 function ApprovalCard({
-    request, canApprove, selected, processing,
+    request, canApprove: globalCanApprove, selected, processing,
     onToggle, onApprove, onReject, onDetail
 }: {
     request: ApprovalRequest;
@@ -82,6 +84,7 @@ function ApprovalCard({
 }) {
     const status = STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.pending;
     const StatusIcon = status.icon;
+    const canApprove = request.can_approve ?? globalCanApprove;
     const typeBadge = TYPE_BADGE[request.request_type] ?? 'bg-slate-100 text-slate-600';
     const typeLabel = TYPE_LABEL[request.request_type] ?? request.request_type;
 
@@ -122,21 +125,7 @@ function ApprovalCard({
                         </span>
                     </div>
 
-                    {/* Select checkbox (only when canApprove + pending) */}
-                    {canApprove && isPending && (
-                        <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); onToggle(); }}
-                            className={[
-                                'shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors',
-                                selected
-                                    ? 'bg-indigo-600 border-indigo-600'
-                                    : 'border-slate-300 hover:border-indigo-400'
-                            ].join(' ')}
-                        >
-                            {selected && <Check size={12} className="text-white" strokeWidth={3} />}
-                        </button>
-                    )}
+                    {/* Select checkbox removed as per requirement to disable approvals on this page */}
                 </div>
 
                 {/* Reason */}
@@ -175,31 +164,7 @@ function ApprovalCard({
                         {status.label}
                     </span>
 
-                    {canApprove && isPending && (
-                        <div
-                            className="flex items-center gap-1.5"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <button
-                                type="button"
-                                onClick={onApprove}
-                                disabled={processing}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
-                            >
-                                <Check size={11} strokeWidth={3} />
-                                อนุมัติ
-                            </button>
-                            <button
-                                type="button"
-                                onClick={onReject}
-                                disabled={processing}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 text-rose-600 ring-1 ring-rose-200 hover:bg-rose-100 transition disabled:opacity-50"
-                            >
-                                <X size={11} strokeWidth={3} />
-                                ปฏิเสธ
-                            </button>
-                        </div>
-                    )}
+                    {/* Approval buttons removed to enforce approvals strictly via Manager Dashboard */}
 
                     {request.status !== 'pending' && request.tbl_approver && (
                         <span className="text-xs text-slate-400 truncate max-w-[100px]">
@@ -442,8 +407,10 @@ function DetailModal({ isOpen, request, onClose }: {
 export default function ApprovalClient({
     initialRequests,
     activeJobs,
-    canApprove,
+    canApprove: canApproveProp,
     currentUserId,
+    variant = 'manage',
+    allowCreate = true,
     initialRequestType = 'all',
     lockedRequestType = null,
     defaultCreateRequestType = 'ot',
@@ -452,11 +419,15 @@ export default function ApprovalClient({
 }: ApprovalClientProps) {
     const { showToast } = useToast();
     const [requests, setRequests] = useState<ApprovalRequest[]>(initialRequests);
+    
+    // Determine global canApprove, considering if any request is explicitly approvable
+    const hasApprovableRequests = requests.some(r => r.can_approve);
+    const canApprove = variant === 'manage' && (canApproveProp || hasApprovableRequests);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const [viewMode, setViewMode] = useState<'all' | 'mine' | 'pending_review'>('all');
-    const [filterStatus, setFilterStatus] = useState('all');
+    // Force viewing only personal requests
+    const [filterStatus, setFilterStatus] = useState<string>('all');
     const [filterRequestType, setFilterRequestType] = useState(lockedRequestType || initialRequestType);
     const [searchText, setSearchText] = useState('');
     const [dateFrom, setDateFrom] = useState('');
@@ -493,11 +464,9 @@ export default function ApprovalClient({
     const filteredRequests = useMemo(() => {
         const q = searchText.trim().toLowerCase();
         return requests.filter((r) => {
-            if (viewMode === 'mine') {
-                const ownerId = r.requested_by || r.tbl_users?.p_id || 0;
-                if (ownerId !== currentUserId) return false;
-            }
-            if (viewMode === 'pending_review' && !(canApprove && r.status === 'pending')) return false;
+            const ownerId = r.requested_by || r.tbl_users?.p_id || 0;
+            if (ownerId !== currentUserId) return false;
+
             if (filterStatus !== 'all' && r.status !== filterStatus) return false;
             if (filterRequestType !== 'all' && r.request_type !== filterRequestType) return false;
             if (dateFrom || dateTo) {
@@ -513,7 +482,7 @@ export default function ApprovalClient({
             }
             return true;
         });
-    }, [requests, viewMode, currentUserId, canApprove, filterStatus, filterRequestType, dateFrom, dateTo, searchText]);
+    }, [requests, currentUserId, canApprove, filterStatus, filterRequestType, dateFrom, dateTo, searchText]);
 
     const totalPages = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE));
     const safePage = Math.min(currentPage, totalPages);
@@ -527,6 +496,7 @@ export default function ApprovalClient({
         setRequests((p) => p.map((r) => r.request_id === updated.request_id ? updated : r));
 
     const runStatusUpdate = async (ids: number[], status: 'approved' | 'rejected', reason?: string) => {
+        if (!canApprove) return;
         const targetIds = ids.filter(Boolean);
         if (!targetIds.length) return;
         setRowsProcessing(targetIds, true);
@@ -576,7 +546,7 @@ export default function ApprovalClient({
         } finally { setIsSubmitting(false); }
     };
 
-    const handleApprove = async (id: number) => {
+    const handleApprove = async (id: number) => { 
         if (!confirm('ยืนยันที่จะอนุมัติคำขอนี้?')) return;
         await runStatusUpdate([id], 'approved');
     };
@@ -590,11 +560,12 @@ export default function ApprovalClient({
         setRejectModalOpen(false); setRejectId(null); setRejectionReason('');
     };
 
-    const handleToggleSelect = (id: number) =>
+    const handleToggleSelect = (id: number) => {
         setSelectedIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
+    };
 
-    const handleToggleSelectAllPage = () => {
-        const ids = paginatedRequests.filter((r) => r.status === 'pending').map((r) => r.request_id);
+    const handleToggleSelectAllPage = () => { if (!canApprove) return;
+        const ids = paginatedRequests.filter((r) => r.status === 'pending' && (r.can_approve ?? canApprove)).map((r) => r.request_id);
         if (!ids.length) return;
         const allSelected = ids.every((id) => selectedIds.includes(id));
         setSelectedIds((p) => allSelected ? p.filter((id) => !ids.includes(id)) : Array.from(new Set([...p, ...ids])));
@@ -629,12 +600,19 @@ export default function ApprovalClient({
         URL.revokeObjectURL(url);
     };
 
+    const personalRequests = useMemo(() => {
+        return requests.filter(r => {
+            const ownerId = r.requested_by || r.tbl_users?.p_id || 0;
+            return ownerId === currentUserId;
+        });
+    }, [requests, currentUserId]);
+
     const requestSummary = useMemo(() => ({
-        total: requests.length,
-        pending: requests.filter((r) => r.status === 'pending').length,
-        approved: requests.filter((r) => r.status === 'approved').length,
-        rejected: requests.filter((r) => r.status === 'rejected').length,
-    }), [requests]);
+        total: personalRequests.length,
+        pending: personalRequests.filter((r) => r.status === 'pending').length,
+        approved: personalRequests.filter((r) => r.status === 'approved').length,
+        rejected: personalRequests.filter((r) => r.status === 'rejected').length,
+    }), [personalRequests]);
 
     const defaultRequestTypeFilter = lockedRequestType || initialRequestType;
     const isFilterDirty = Boolean(searchText.trim() || filterStatus !== 'all' || filterRequestType !== defaultRequestTypeFilter || dateFrom || dateTo);
@@ -663,6 +641,7 @@ export default function ApprovalClient({
                             <FileDown size={15} />
                             <span className="hidden sm:inline">Export</span>
                         </button>
+                        {allowCreate && (
                         <button
                             type="button"
                             onClick={() => setIsModalOpen(true)}
@@ -671,6 +650,7 @@ export default function ApprovalClient({
                             <Plus size={15} />
                             <span>สร้างคำขอ</span>
                         </button>
+                        )}
                     </div>
                 </div>
             </header>
@@ -698,33 +678,7 @@ export default function ApprovalClient({
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     {/* Top bar */}
                     <div className="px-4 py-3 flex flex-wrap items-center gap-3 border-b border-slate-100">
-                        {/* View tabs */}
-                        <div className="inline-flex items-center gap-0.5 rounded-xl bg-slate-100 p-1">
-                            {[
-                                { id: 'all', label: 'ทั้งหมด' },
-                                { id: 'mine', label: 'ของฉัน' },
-                                ...(canApprove ? [{ id: 'pending_review', label: 'รอฉันอนุมัติ' }] : []),
-                            ].map((tab) => (
-                                <button
-                                    key={tab.id}
-                                    type="button"
-                                    onClick={() => { setViewMode(tab.id as any); resetToFirstPage(); }}
-                                    className={[
-                                        'px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
-                                        viewMode === tab.id
-                                            ? 'bg-white text-indigo-600 shadow-sm'
-                                            : 'text-slate-500 hover:text-slate-700'
-                                    ].join(' ')}
-                                >
-                                    {tab.label}
-                                    {tab.id === 'pending_review' && requestSummary.pending > 0 && (
-                                        <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 text-white text-[10px] font-bold">
-                                            {requestSummary.pending}
-                                        </span>
-                                    )}
-                                </button>
-                            ))}
-                        </div>
+                        {/* View tabs removed, only showing personal requests */}
 
                         {/* Search */}
                         <div className="flex-1 min-w-[180px] relative">
@@ -830,37 +784,7 @@ export default function ApprovalClient({
                         </div>
                     )}
 
-                    {/* Bulk actions bar */}
-                    {canApprove && selectedIds.length > 0 && (
-                        <div className="px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 flex items-center gap-3">
-                            <span className="text-sm text-indigo-600 font-medium">เลือกแล้ว {selectedIds.length} รายการ</span>
-                            <button
-                                type="button"
-                                onClick={handleBulkApprove}
-                                disabled={isBulkProcessing}
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition"
-                            >
-                                อนุมัติทั้งหมด
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleBulkReject}
-                                disabled={isBulkProcessing}
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50 transition"
-                            >
-                                ปฏิเสธทั้งหมด
-                            </button>
-                            {canApprove && (
-                                <button
-                                    type="button"
-                                    onClick={handleToggleSelectAllPage}
-                                    className="ml-auto text-xs text-indigo-500 hover:text-indigo-700 font-medium transition"
-                                >
-                                    เลือกทั้งหน้า
-                                </button>
-                            )}
-                        </div>
-                    )}
+                    {/* Bulk actions bar removed to enforce approvals strictly via Manager Dashboard */}
                 </div>
 
                 {/* ── Grid ────────────────────────────────────────────── */}

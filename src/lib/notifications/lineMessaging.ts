@@ -97,11 +97,475 @@ export function createTextMessage(text: string): TextMessage {
     };
 }
 
+export function createApprovalDecisionFlexMessage(data: {
+    requestNumber: string;
+    requestType: string;
+    requesterName: string;
+    status: 'approved' | 'rejected';
+    rejectionReason?: string | null;
+    href: string;
+}): FlexMessage {
+    const statusLabel = data.status === 'approved' ? 'อนุมัติแล้ว' : 'ไม่อนุมัติ';
+    const statusColor = data.status === 'approved' ? '#10b981' : '#ef4444';
+
+    return {
+        type: 'flex',
+        altText: `แจ้งผลคำขอ ${data.requestNumber}`,
+        contents: {
+            type: 'bubble',
+            header: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'text',
+                        text: 'แจ้งผลคำขอ',
+                        weight: 'bold',
+                        color: '#ffffff',
+                        size: 'lg',
+                    },
+                ],
+                backgroundColor: statusColor,
+                paddingAll: '20px',
+            },
+            body: {
+                type: 'box',
+                layout: 'vertical',
+                spacing: 'sm',
+                contents: [
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'ประเภท', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: data.requestType, size: 'sm', color: '#111827', wrap: true, flex: 5 },
+                        ],
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'เลขที่', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: data.requestNumber, size: 'sm', color: '#111827', wrap: true, flex: 5 },
+                        ],
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'ผู้ขอ', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: data.requesterName, size: 'sm', color: '#111827', wrap: true, flex: 5 },
+                        ],
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'ผล', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: statusLabel, size: 'sm', color: statusColor, weight: 'bold', wrap: true, flex: 5 },
+                        ],
+                    },
+                    ...(data.rejectionReason
+                        ? [{
+                            type: 'box' as const,
+                            layout: 'vertical' as const,
+                            margin: 'md' as const,
+                            contents: [
+                                { type: 'text' as const, text: 'เหตุผล', size: 'xs' as const, color: '#6b7280' },
+                                { type: 'text' as const, text: data.rejectionReason, size: 'sm' as const, color: '#111827', wrap: true, margin: 'xs' as const },
+                            ],
+                            backgroundColor: '#f9fafb',
+                            cornerRadius: 'md',
+                            paddingAll: '10px',
+                        }]
+                        : []),
+                ],
+            },
+            footer: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'button',
+                        style: 'primary',
+                        action: {
+                            type: 'uri',
+                            label: 'เปิดหน้าคำขอ',
+                            uri: data.href,
+                        },
+                    },
+                ],
+            },
+        },
+    };
+}
+
+export function createApprovalPendingFlexMessage(data: {
+    requestNumber: string;
+    requestType: string;
+    requesterName: string;
+    reason: string;
+    amount?: number | null;
+    referenceJob?: string | null;
+    timeRange?: string | null;
+    href: string;
+}): FlexMessage {
+    return {
+        type: 'flex',
+        altText: `มีคำขอใหม่ ${data.requestNumber}`,
+        contents: {
+            type: 'bubble',
+            header: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'text',
+                        text: 'มีคำขอใหม่',
+                        weight: 'bold',
+                        color: '#ffffff',
+                        size: 'lg',
+                    },
+                ],
+                backgroundColor: '#2563eb',
+                paddingAll: '20px',
+            },
+            body: {
+                type: 'box',
+                layout: 'vertical',
+                spacing: 'sm',
+                contents: [
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'ประเภท', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: data.requestType, size: 'sm', color: '#111827', wrap: true, flex: 5 },
+                        ],
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'เลขที่', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: data.requestNumber, size: 'sm', color: '#111827', wrap: true, flex: 5 },
+                        ],
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'ผู้ขอ', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: data.requesterName, size: 'sm', color: '#111827', wrap: true, flex: 5 },
+                        ],
+                    },
+                    ...(data.amount != null
+                        ? [{
+                            type: 'box' as const,
+                            layout: 'baseline' as const,
+                            contents: [
+                                { type: 'text' as const, text: 'จำนวนเงิน', size: 'sm' as const, color: '#6b7280', flex: 2 },
+                                { type: 'text' as const, text: `${Number(data.amount).toLocaleString()} บาท`, size: 'sm' as const, color: '#111827', wrap: true, flex: 5 },
+                            ],
+                        }]
+                        : []),
+                    ...(data.timeRange
+                        ? [{
+                            type: 'box' as const,
+                            layout: 'baseline' as const,
+                            contents: [
+                                { type: 'text' as const, text: 'เวลา', size: 'sm' as const, color: '#6b7280', flex: 2 },
+                                { type: 'text' as const, text: data.timeRange, size: 'sm' as const, color: '#111827', wrap: true, flex: 5 },
+                            ],
+                        }]
+                        : []),
+                    ...(data.referenceJob
+                        ? [{
+                            type: 'box' as const,
+                            layout: 'baseline' as const,
+                            contents: [
+                                { type: 'text' as const, text: 'อ้างอิงงาน', size: 'sm' as const, color: '#6b7280', flex: 2 },
+                                { type: 'text' as const, text: data.referenceJob, size: 'sm' as const, color: '#111827', wrap: true, flex: 5 },
+                            ],
+                        }]
+                        : []),
+                    {
+                        type: 'box',
+                        layout: 'vertical',
+                        margin: 'md',
+                        contents: [
+                            { type: 'text', text: 'รายละเอียด', size: 'xs', color: '#6b7280' },
+                            { type: 'text', text: data.reason, size: 'sm', color: '#111827', wrap: true, margin: 'xs' },
+                        ],
+                        backgroundColor: '#f9fafb',
+                        cornerRadius: 'md',
+                        paddingAll: '10px',
+                    },
+                ],
+            },
+            footer: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'button',
+                        style: 'primary',
+                        action: {
+                            type: 'uri',
+                            label: 'เปิดหน้าจัดการ',
+                            uri: data.href,
+                        },
+                    },
+                ],
+            },
+        },
+    };
+}
+
+export function createApprovalNextStepFlexMessage(data: {
+    requestNumber: string;
+    requestType: string;
+    requesterName: string;
+    stepNumber: number;
+    totalSteps: number;
+    detail?: string | null;
+    amount?: number | null;
+    href: string;
+}): FlexMessage {
+    return {
+        type: 'flex',
+        altText: `มีคำขอรออนุมัติ ${data.requestNumber}`,
+        contents: {
+            type: 'bubble',
+            header: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'text',
+                        text: 'มีคำขอรออนุมัติ',
+                        weight: 'bold',
+                        color: '#ffffff',
+                        size: 'lg',
+                    },
+                ],
+                backgroundColor: '#2563eb',
+                paddingAll: '20px',
+            },
+            body: {
+                type: 'box',
+                layout: 'vertical',
+                spacing: 'sm',
+                contents: [
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'ประเภท', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: data.requestType, size: 'sm', color: '#111827', wrap: true, flex: 5 },
+                        ],
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'เลขที่', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: data.requestNumber, size: 'sm', color: '#111827', wrap: true, flex: 5 },
+                        ],
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'ผู้ขอ', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: data.requesterName, size: 'sm', color: '#111827', wrap: true, flex: 5 },
+                        ],
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'ขั้นตอน', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: `${data.stepNumber}/${data.totalSteps}`, size: 'sm', color: '#2563eb', weight: 'bold', wrap: true, flex: 5 },
+                        ],
+                    },
+                    ...(data.amount != null
+                        ? [{
+                            type: 'box' as const,
+                            layout: 'baseline' as const,
+                            contents: [
+                                { type: 'text' as const, text: 'จำนวนเงิน', size: 'sm' as const, color: '#6b7280', flex: 2 },
+                                { type: 'text' as const, text: `${Number(data.amount).toLocaleString()} บาท`, size: 'sm' as const, color: '#111827', wrap: true, flex: 5 },
+                            ],
+                        }]
+                        : []),
+                    ...(data.detail
+                        ? [{
+                            type: 'box' as const,
+                            layout: 'vertical' as const,
+                            margin: 'md' as const,
+                            contents: [
+                                { type: 'text' as const, text: 'รายละเอียด', size: 'xs' as const, color: '#6b7280' },
+                                { type: 'text' as const, text: data.detail, size: 'sm' as const, color: '#111827', wrap: true, margin: 'xs' as const },
+                            ],
+                            backgroundColor: '#f9fafb',
+                            cornerRadius: 'md',
+                            paddingAll: '10px',
+                        }]
+                        : []),
+                ],
+            },
+            footer: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'button',
+                        style: 'primary',
+                        action: {
+                            type: 'uri',
+                            label: 'ไปที่หน้าจัดการ',
+                            uri: data.href,
+                        },
+                    },
+                ],
+            },
+        },
+    };
+}
+
+export function createPettyCashDecisionFlexMessage(data: {
+    requestNumber: string;
+    requesterName: string;
+    amount: number;
+    purpose: string;
+    status: 'approved' | 'rejected';
+    actorName?: string | null;
+    note?: string;
+    href: string;
+}): FlexMessage {
+    const statusLabel = data.status === 'approved' ? 'อนุมัติแล้ว' : 'ไม่อนุมัติ';
+    const statusColor = data.status === 'approved' ? '#10b981' : '#ef4444';
+
+    return {
+        type: 'flex',
+        altText: `ผลคำขอ Petty Cash ${data.requestNumber}`,
+        contents: {
+            type: 'bubble',
+            header: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'text',
+                        text: 'แจ้งผล Petty Cash',
+                        weight: 'bold',
+                        color: '#ffffff',
+                        size: 'lg',
+                    },
+                ],
+                backgroundColor: statusColor,
+                paddingAll: '20px',
+            },
+            body: {
+                type: 'box',
+                layout: 'vertical',
+                spacing: 'sm',
+                contents: [
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'เลขที่', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: data.requestNumber, size: 'sm', color: '#111827', wrap: true, flex: 5 },
+                        ],
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'ผู้ขอ', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: data.requesterName, size: 'sm', color: '#111827', wrap: true, flex: 5 },
+                        ],
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'จำนวนเงิน', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: `${data.amount.toLocaleString()} บาท`, size: 'sm', color: '#111827', wrap: true, flex: 5 },
+                        ],
+                    },
+                    {
+                        type: 'box',
+                        layout: 'baseline',
+                        contents: [
+                            { type: 'text', text: 'ผล', size: 'sm', color: '#6b7280', flex: 2 },
+                            { type: 'text', text: statusLabel, size: 'sm', color: statusColor, weight: 'bold', wrap: true, flex: 5 },
+                        ],
+                    },
+                    {
+                        type: 'box',
+                        layout: 'vertical',
+                        margin: 'md',
+                        contents: [
+                            { type: 'text', text: 'วัตถุประสงค์', size: 'xs', color: '#6b7280' },
+                            { type: 'text', text: data.purpose, size: 'sm', color: '#111827', wrap: true, margin: 'xs' },
+                        ],
+                        backgroundColor: '#f9fafb',
+                        cornerRadius: 'md',
+                        paddingAll: '10px',
+                    },
+                    ...(data.actorName
+                        ? [{
+                            type: 'box' as const,
+                            layout: 'baseline' as const,
+                            contents: [
+                                { type: 'text' as const, text: 'ดำเนินการโดย', size: 'sm' as const, color: '#6b7280', flex: 2 },
+                                { type: 'text' as const, text: data.actorName, size: 'sm' as const, color: '#111827', wrap: true, flex: 5 },
+                            ],
+                        }]
+                        : []),
+                    ...(data.note
+                        ? [{
+                            type: 'box' as const,
+                            layout: 'vertical' as const,
+                            margin: 'md' as const,
+                            contents: [
+                                { type: 'text' as const, text: 'หมายเหตุ', size: 'xs' as const, color: '#6b7280' },
+                                { type: 'text' as const, text: data.note, size: 'sm' as const, color: '#111827', wrap: true, margin: 'xs' as const },
+                            ],
+                            backgroundColor: '#f9fafb',
+                            cornerRadius: 'md',
+                            paddingAll: '10px',
+                        }]
+                        : []),
+                ],
+            },
+            footer: {
+                type: 'box',
+                layout: 'vertical',
+                contents: [
+                    {
+                        type: 'button',
+                        style: 'primary',
+                        action: {
+                            type: 'uri',
+                            label: 'เปิดหน้า Petty Cash',
+                            uri: data.href,
+                        },
+                    },
+                ],
+            },
+        },
+    };
+}
+
 /**
  * Create Flex Message for Petty Cash 
  */
 export function createPettyCashFlexMessage(data: {
-    eventType: 'request' | 'dispense' | 'clear' | 'reconcile';
+    eventType: 'request' | 'approved' | 'rejected' | 'dispense' | 'clear' | 'reconcile';
     request_number: string;
     requested_by: string;
     purpose: string;
@@ -121,8 +585,8 @@ export function createPettyCashFlexMessage(data: {
         reconcile: '#10b981' // Green
     };
 
-    const title = titles[data.eventType];
-    const color = colors[data.eventType];
+    const title = (titles as Record<string, string>)[data.eventType] ?? titles.request;
+    const color = (colors as Record<string, string>)[data.eventType] ?? colors.request;
 
     return {
         type: 'flex',

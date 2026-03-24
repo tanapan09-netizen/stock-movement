@@ -24,6 +24,7 @@ export interface ApprovalRequest {
     approved_at?: string | Date | null;
     current_step?: number | null;
     total_steps?: number | null;
+    can_approve?: boolean;
     tbl_users?: ApprovalUser | null;
     tbl_approver?: ApprovalApprover | null;
 }

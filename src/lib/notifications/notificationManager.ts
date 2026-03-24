@@ -3,7 +3,16 @@
  * Centralized service to send notifications via multiple channels (LINE, Email)
  */
 
-import { sendMulticastMessage, createPartRequestFlexMessage, createStatusChangeFlexMessage, createPettyCashFlexMessage, createStorePartsFlexMessage } from './lineMessaging';
+import {
+    createPettyCashDecisionFlexMessage,
+    sendMulticastMessage,
+    createApprovalDecisionFlexMessage,
+    createApprovalPendingFlexMessage,
+    createPartRequestFlexMessage,
+    createStatusChangeFlexMessage,
+    createPettyCashFlexMessage,
+    createStorePartsFlexMessage,
+} from './lineMessaging';
 import { sendEmail, generatePartRequestEmail, generateStatusChangeEmail, generateMaintenanceRequestEmail, generateJobAssignmentEmail, generateMaintenanceStatusChangeEmail } from './emailService';
 
 export interface PartRequestData {
@@ -358,7 +367,7 @@ export async function sendTestNotification(): Promise<{
  */
 export async function notifyPettyCashEvent(
     data: {
-        eventType: 'request' | 'dispense' | 'clear' | 'reconcile';
+        eventType: 'request' | 'approved' | 'rejected' | 'dispense' | 'clear' | 'reconcile';
         request_number: string;
         requested_by: string;
         purpose: string;
@@ -378,6 +387,9 @@ export async function notifyPettyCashEvent(
 
             if (data.eventType === 'request') {
                 targetRoles = ['manager', 'accounting', 'admin'];
+            } else if (data.eventType === 'approved' || data.eventType === 'rejected') {
+                targetRoles = ['manager', 'accounting', 'admin'];
+                targetUsers.push(data.requested_by);
             } else if (data.eventType === 'dispense' || data.eventType === 'reconcile') {
                 targetUsers.push(data.requested_by);
             } else if (data.eventType === 'clear') {
@@ -396,7 +408,17 @@ export async function notifyPettyCashEvent(
             lineIds = [...new Set(lineIds)];
 
             if (lineIds.length > 0) {
-                const flexMessage = createPettyCashFlexMessage(data);
+                const flexMessage = data.eventType === 'approved' || data.eventType === 'rejected'
+                    ? createPettyCashDecisionFlexMessage({
+                        requestNumber: data.request_number,
+                        requesterName: data.requested_by,
+                        amount: data.amount,
+                        purpose: data.purpose,
+                        status: data.eventType,
+                        note: data.notes,
+                        href: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/petty-cash`,
+                    })
+                    : createPettyCashFlexMessage(data);
                 const result = await sendMulticastMessage(lineIds, flexMessage);
                 if (result.success) {
                     console.log(`[Notification] Petty Cash ${data.eventType} sent to`, lineIds.length, 'users');
@@ -430,6 +452,8 @@ export async function notifyApprovalEvent(
         rejection_reason?: string | null;
     }
 ): Promise<void> {
+    return notifyApprovalEventFlex(data);
+
     console.log('[Notification] Approval Event:', data.eventType, data.request_number);
 
     try {
@@ -452,8 +476,8 @@ export async function notifyApprovalEvent(
                 messageText = `📝 *มีรายการคำขอใหม่*\n\nประเภท: ${reqTypeName}\nเลขที่: ${data.request_number}\nผู้ขอ: ${data.requested_by}\n\n💬 เหตุผล: ${data.reason}`;
 
                 if (data.request_type === 'ot' && data.start_time && data.end_time) {
-                    const st = new Date(data.start_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-                    const et = new Date(data.end_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+                    const st = new Date(data.start_time!).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+                    const et = new Date(data.end_time!).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
                     messageText += `\nเวลา: ${st} - ${et}`;
                 }
                 if ((data.request_type === 'expense' || data.request_type === 'purchase') && data.amount) {
@@ -482,13 +506,91 @@ export async function notifyApprovalEvent(
 
                 if (data.requester_line_id) {
                     const fallbackMsg = { type: 'text' as const, text: messageText };
-                    await sendPushMessage(data.requester_line_id, fallbackMsg);
+                    await sendPushMessage(data.requester_line_id!, fallbackMsg);
                     console.log(`[Notification] Approval result sent to requester:`, data.requested_by);
                 }
             }
         }
     } catch (err) {
         console.error('[Notification] Approval event failed:', err);
+    }
+}
+
+export async function notifyApprovalEventFlex(
+    data: {
+        eventType: 'pending' | 'approved' | 'rejected';
+        request_number: string;
+        request_type: string;
+        requested_by: string;
+        requester_line_id?: string | null;
+        reason: string;
+        amount?: number | null;
+        start_time?: Date | null;
+        end_time?: Date | null;
+        reference_job?: string | null;
+        rejection_reason?: string | null;
+    }
+): Promise<void> {
+    console.log('[Notification] Approval Event Flex:', data.eventType, data.request_number);
+
+    try {
+        if (process.env.LINE_MESSAGING_ENABLED === 'false') {
+            return;
+        }
+
+        const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
+
+        const requestTypeLabel =
+            data.request_type === 'ot' ? 'OT'
+                : data.request_type === 'leave' ? 'ลา'
+                    : data.request_type === 'expense' ? 'เบิกค่าใช้จ่าย'
+                        : data.request_type === 'purchase' ? 'จัดซื้อ'
+                            : 'อื่นๆ';
+
+        if (data.eventType === 'pending') {
+            const targetRoles = data.request_type === 'expense' || data.request_type === 'purchase'
+                ? ['manager', 'admin', 'purchasing']
+                : ['manager', 'admin'];
+            const lineIds = await getLineIdsByRoles(targetRoles);
+            if (lineIds.length === 0) {
+                return;
+            }
+
+            const timeRange =
+                data.request_type === 'ot' && data.start_time && data.end_time
+                    ? `${new Date(data.start_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} - ${new Date(data.end_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}`
+                    : null;
+
+            await sendMulticastMessage(lineIds, createApprovalPendingFlexMessage({
+                requestNumber: data.request_number,
+                requestType: requestTypeLabel,
+                requesterName: data.requested_by,
+                reason: data.reason,
+                amount: data.amount ?? null,
+                referenceJob: data.reference_job ?? null,
+                timeRange,
+                href: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/approvals/manage`,
+            }));
+            return;
+        }
+
+        if (!data.requester_line_id) {
+            return;
+        }
+
+        await sendMulticastMessage(
+            [data.requester_line_id],
+            createApprovalDecisionFlexMessage({
+                requestNumber: data.request_number,
+                requestType: requestTypeLabel,
+                requesterName: data.requested_by,
+                status: data.eventType,
+                rejectionReason: data.rejection_reason ?? null,
+                href: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/approvals`,
+            })
+        );
+    } catch (err) {
+        console.error('[Notification] Approval event flex failed:', err);
     }
 }
 
