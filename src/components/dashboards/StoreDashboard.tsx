@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 import { getLowStockItems } from '@/actions/productActions';
 import { prisma } from '@/lib/prisma';
 import {
@@ -6,31 +7,15 @@ import {
     ArrowDownRight,
     ArrowRight,
     ArrowUpRight,
-    ClipboardCheck,
     Clock,
+    ClipboardCheck,
     Package,
     ShieldCheck,
     TrendingUp,
 } from 'lucide-react';
 import Link from 'next/link';
 
-type StatCardProps = {
-    title: string;
-    value: number;
-    subtitle?: string;
-    icon: React.ComponentType<{ className?: string }>;
-    color: 'emerald' | 'blue' | 'purple' | 'orange' | 'rose';
-    link?: string;
-};
-
-type StoreTaskCardProps = {
-    title: string;
-    value: number;
-    description: string;
-    href: string;
-    icon: React.ComponentType<{ className?: string }>;
-    tone: 'orange' | 'blue';
-};
+/* ─── Types ───────────────────────────────────────────────────────────────── */
 
 type LowStockItem = {
     p_id: string;
@@ -47,129 +32,113 @@ type PendingPartRequestItem = {
     priority: string;
     requested_by: string;
     tbl_maintenance_requests: {
-        request_number: string;
+        request_number: string | null;
         title: string;
-        tbl_rooms: {
-            room_code: string;
-        };
+        tbl_rooms: { room_code: string } | null;
     } | null;
 };
 
-const colorMap = {
-    emerald: {
-        style: 'bg-white dark:bg-slate-800 border-emerald-100/50 dark:border-slate-700',
-        iconBg: 'bg-emerald-50 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400',
-        text: 'text-gray-900 dark:text-white',
-        subtext: 'text-gray-500 dark:text-gray-400',
-        linkBg: 'hover:bg-emerald-50 dark:hover:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400',
-    },
-    blue: {
-        style: 'bg-white dark:bg-slate-800 border-blue-100/50 dark:border-slate-700',
-        iconBg: 'bg-blue-50 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400',
-        text: 'text-gray-900 dark:text-white',
-        subtext: 'text-gray-500 dark:text-gray-400',
-        linkBg: 'hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400',
-    },
-    purple: {
-        style: 'bg-white dark:bg-slate-800 border-purple-100/50 dark:border-slate-700',
-        iconBg: 'bg-purple-50 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400',
-        text: 'text-gray-900 dark:text-white',
-        subtext: 'text-gray-500 dark:text-gray-400',
-        linkBg: 'hover:bg-purple-50 dark:hover:bg-purple-900/30 text-purple-600 dark:text-purple-400',
-    },
-    orange: {
-        style: 'bg-white dark:bg-slate-800 border-orange-100/50 dark:border-slate-700',
-        iconBg: 'bg-orange-50 dark:bg-orange-900/50 text-orange-600 dark:text-orange-400',
-        text: 'text-gray-900 dark:text-white',
-        subtext: 'text-gray-500 dark:text-gray-400',
-        linkBg: 'hover:bg-orange-50 dark:hover:bg-orange-900/30 text-orange-600 dark:text-orange-400',
-    },
-    rose: {
-        style: 'bg-white dark:bg-slate-800 border-rose-100/50 dark:border-slate-700',
-        iconBg: 'bg-rose-50 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400',
-        text: 'text-gray-900 dark:text-white',
-        subtext: 'text-gray-500 dark:text-gray-400',
-        linkBg: 'hover:bg-rose-50 dark:hover:bg-rose-900/30 text-rose-600 dark:text-rose-400',
-    },
-} satisfies Record<StatCardProps['color'], { style: string; iconBg: string; text: string; subtext: string; linkBg: string }>;
+/* ─── Sub-components ──────────────────────────────────────────────────────── */
 
-function StatCard({ title, value, subtitle, icon: Icon, color, link }: StatCardProps) {
-    const theme = colorMap[color];
-
-    const content = (
-        <div className={`${theme.style} h-full rounded-2xl border p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg`}>
-            <div className="mb-4 flex items-start justify-between gap-4">
-                <div>
-                    <p className={`${theme.subtext} mb-1 text-sm font-semibold`}>{title}</p>
-                    <h3 className={`text-3xl font-bold tracking-tight ${theme.text}`}>{value}</h3>
-                </div>
-                <div className={`rounded-xl p-3 ${theme.iconBg}`}>
-                    <Icon className="h-6 w-6" />
-                </div>
-            </div>
-            {(subtitle || link) && (
-                <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-3 dark:border-slate-700">
-                    {subtitle && <span className={`text-xs font-medium ${theme.subtext}`}>{subtitle}</span>}
-                    {link && (
-                        <span className={`flex items-center rounded px-2 py-1 text-xs font-medium transition-colors ${theme.linkBg}`}>
-                            ดูรายละเอียด <ArrowRight className="ml-1 h-3 w-3" />
-                        </span>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-
-    if (!link) {
-        return content;
-    }
-
+/** Small KPI tile used in the hero header */
+function HeroKPI({ label, value, sub }: { label: string; value: number; sub: string }) {
     return (
-        <Link href={link} className="group block h-full">
-            {content}
-        </Link>
+        <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm backdrop-blur-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p>
+            <p className="mt-1.5 text-2xl font-black tabular-nums leading-none text-slate-900">{value}</p>
+            <p className="mt-2 text-[11px] text-slate-500 leading-snug">{sub}</p>
+        </div>
     );
 }
 
-function StoreTaskCard({ title, value, description, href, icon: Icon, tone }: StoreTaskCardProps) {
-    const toneMap = {
-        orange: {
-            border: 'border-orange-100 dark:border-orange-900/40',
-            bg: 'from-orange-50 to-white dark:from-orange-950/30 dark:to-slate-800',
-            icon: 'bg-orange-100 dark:bg-orange-900/50 text-orange-600 dark:text-orange-300',
-            text: 'text-orange-700 dark:text-orange-300',
+/** Horizontal bar inside the Operational Mix panel */
+function MixBar({ label, value, total }: { label: string; value: number; total: number }) {
+    const pct = Math.max((value / Math.max(total, 1)) * 100, value > 0 ? 10 : 3);
+    return (
+        <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500">{label}</span>
+                <span className="font-bold tabular-nums text-slate-900">{value}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${pct}%` }} />
+            </div>
+        </div>
+    );
+}
+
+/** Coloured task card that links to an action page */
+function TaskCard({
+    title, value, description, href, icon: Icon, tone,
+}: {
+    title: string; value: number; description: string;
+    href: string; icon: ComponentType<{ className?: string }>;
+    tone: 'indigo' | 'amber';
+}) {
+    const themes = {
+        indigo: {
+            wrap: 'border-indigo-100 from-indigo-50/60 to-white hover:border-indigo-200 hover:shadow-indigo-100/60',
+            iconBg: 'bg-indigo-100 text-indigo-600',
+            label: 'text-indigo-700',
         },
-        blue: {
-            border: 'border-blue-100 dark:border-blue-900/40',
-            bg: 'from-blue-50 to-white dark:from-blue-950/30 dark:to-slate-800',
-            icon: 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-300',
-            text: 'text-blue-700 dark:text-blue-300',
+        amber: {
+            wrap: 'border-amber-100 from-amber-50/60 to-white hover:border-amber-200 hover:shadow-amber-100/60',
+            iconBg: 'bg-amber-100 text-amber-600',
+            label: 'text-amber-700',
         },
     } as const;
-
-    const theme = toneMap[tone];
+    const t = themes[tone];
 
     return (
         <Link
             href={href}
-            className={`group rounded-2xl border bg-gradient-to-br p-5 transition-all hover:shadow-md ${theme.border} ${theme.bg}`}
+            className={`group rounded-2xl border bg-gradient-to-br p-5 shadow-sm transition-all hover:shadow-md ${t.wrap}`}
         >
             <div className="flex items-start justify-between gap-3">
-                <div>
-                    <p className={`text-sm font-semibold ${theme.text}`}>{title}</p>
-                    <p className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">{value}</p>
-                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{description}</p>
+                <div className="min-w-0 flex-1">
+                    <p className={`text-xs font-bold uppercase tracking-wide ${t.label}`}>{title}</p>
+                    <p className="mt-2 text-3xl font-black tabular-nums text-slate-900">{value}</p>
+                    <p className="mt-2 text-sm leading-snug text-slate-500">{description}</p>
                 </div>
-                <div className={`rounded-xl p-3 ${theme.icon}`}>
-                    <Icon className="h-6 w-6" />
+                <div className={`shrink-0 rounded-xl p-3 ${t.iconBg}`}>
+                    <Icon className="h-5 w-5" />
                 </div>
             </div>
-            <div className={`mt-4 flex items-center text-sm font-medium ${theme.text}`}>
-                เปิดรายการ <ArrowRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-1" />
+            <div className={`mt-4 flex items-center text-xs font-semibold ${t.label}`}>
+                เปิดรายการ
+                <ArrowRight className="ml-1 h-3 w-3 transition-transform group-hover:translate-x-0.5" />
             </div>
         </Link>
     );
 }
+
+/** Section header with a left accent bar */
+function SectionHeader({
+    title, action,
+}: {
+    title: React.ReactNode; action?: React.ReactNode;
+}) {
+    return (
+        <div className="mb-5 flex items-center justify-between">
+            <h3 className="flex items-center gap-2.5 text-sm font-bold text-slate-800">
+                <span className="h-5 w-0.5 rounded-full bg-indigo-500" />
+                {title}
+            </h3>
+            {action && <div className="text-xs">{action}</div>}
+        </div>
+    );
+}
+
+/** Card wrapper for dashboard sections */
+function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+    return (
+        <div className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}>
+            {children}
+        </div>
+    );
+}
+
+/* ─── Page ────────────────────────────────────────────────────────────────── */
 
 export default async function StoreDashboard() {
     const today = new Date();
@@ -186,19 +155,15 @@ export default async function StoreDashboard() {
     ] = await Promise.all([
         prisma.tbl_products.count({ where: { active: true } }),
         prisma.tbl_product_movements.findMany({
-            take: 5,
+            take: 6,
             orderBy: { movement_time: 'desc' },
         }),
         prisma.tbl_product_movements.count({
             where: { movement_time: { gte: today } },
         }),
         getLowStockItems(),
-        prisma.tbl_maintenance_parts.count({
-            where: { status: 'pending_verification' },
-        }),
-        prisma.tbl_part_requests.count({
-            where: { status: 'pending' },
-        }),
+        prisma.tbl_maintenance_parts.count({ where: { status: 'pending_verification' } }),
+        prisma.tbl_part_requests.count({ where: { status: 'pending' } }),
         prisma.tbl_part_requests.findMany({
             where: { status: 'pending' },
             include: {
@@ -211,225 +176,258 @@ export default async function StoreDashboard() {
                 },
             },
             orderBy: { created_at: 'desc' },
-            take: 5,
+            take: 6,
         }),
     ]);
 
-    const lowStockList: LowStockItem[] = lowStockResult.success ? ((lowStockResult.data as LowStockItem[]) || []) : [];
-    const outOfStock = lowStockList.filter((product) => product.p_count <= 0).length;
+    const lowStockList: LowStockItem[] = lowStockResult.success
+        ? ((lowStockResult.data as LowStockItem[]) ?? [])
+        : [];
+    const outOfStock = lowStockList.filter(p => p.p_count <= 0).length;
 
-    const productIds = recentMovements.map((movement) => movement.p_id);
+    /* product name lookup for movements */
+    const productIds = recentMovements.map(m => m.p_id);
     const products = productIds.length
         ? await prisma.tbl_products.findMany({
             where: { p_id: { in: productIds } },
             select: { p_id: true, p_name: true },
         })
         : [];
-    const productNameMap = new Map(products.map((product) => [product.p_id, product.p_name]));
+    const productNameMap = new Map(products.map(p => [p.p_id, p.p_name]));
+
+    /* derived metrics */
+    const openWorkload = pendingVerificationCount + pendingPartRequestCount + lowStockList.length;
+    const fulfillmentRate = Math.max(
+        0,
+        100 - Math.min((pendingVerificationCount + pendingPartRequestCount) * 5, 95),
+    );
 
     return (
-        <div className="mx-auto max-w-[1600px] space-y-8">
-            <div className="flex flex-col justify-between gap-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800 md:flex-row md:items-center">
-                <div>
-                    <h1 className="flex items-center gap-3 text-2xl font-bold text-gray-900 dark:text-white">
-                        <span className="rounded-lg bg-indigo-600 p-2 text-white">
-                            <Package className="h-6 w-6" />
-                        </span>
-                        Store Dashboard
-                    </h1>
-                    <p className="mt-1 text-sm font-medium text-gray-600 dark:text-gray-400">
-                        ภาพรวมงานคลังสินค้า การรับเข้า การเบิก และรายการที่ต้องติดตาม
-                    </p>
-                </div>
-                <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2 dark:border-slate-600 dark:bg-slate-700">
-                    <Clock className="h-4 w-4 text-gray-500" />
-                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                        {new Date().toLocaleDateString('th-TH', {
-                            weekday: 'long',
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                        })}
-                    </span>
-                </div>
-            </div>
+        <div className="mx-auto max-w-[1600px] space-y-6 px-1">
 
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard
-                    title="สินค้าทั้งหมด"
-                    value={totalProducts}
-                    icon={Package}
-                    color="blue"
-                    link="/products"
-                    subtitle="รายการที่ยัง Active"
-                />
-                <StatCard
-                    title="ความเคลื่อนไหววันนี้"
-                    value={todayMovements}
-                    icon={Activity}
-                    color="purple"
-                    link="/movements"
-                    subtitle="รับเข้าและเบิกออกวันนี้"
-                />
-                <StatCard
-                    title="สินค้าใกล้หมด"
-                    value={lowStockList.length}
-                    icon={AlertTriangle}
-                    color={lowStockList.length > 0 ? 'rose' : 'emerald'}
-                    subtitle={outOfStock > 0 ? `หมดสต็อก ${outOfStock} รายการ` : 'ควรติดตามการเติมสต็อก'}
-                />
-                <StatCard
-                    title="รอตรวจรับ/ยืนยัน"
-                    value={pendingVerificationCount}
-                    icon={ShieldCheck}
-                    color={pendingVerificationCount > 0 ? 'orange' : 'emerald'}
-                    link="/maintenance/parts"
-                    subtitle="อะไหล่ที่รอคลังตรวจนับ"
-                />
-            </div>
+            {/* ════ HERO ════ */}
+            <section className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-indigo-50/40 p-6 shadow-sm sm:p-8">
+                <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
 
-            <div className="grid grid-cols-1 gap-8 xl:grid-cols-3">
-                <div className="space-y-8 xl:col-span-2">
-                    <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                        <h3 className="mb-4 flex items-center gap-2 font-bold text-gray-800 dark:text-white">
-                            <span className="h-6 w-1 rounded-full bg-indigo-500"></span>
-                            เมนูด่วน
-                        </h3>
-                        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                            <Link href="/stock/adjust" className="group rounded-xl border border-gray-100 bg-gray-50 p-4 text-center transition-all hover:border-blue-200 hover:bg-blue-50">
-                                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600 transition-transform group-hover:scale-110">
-                                    <TrendingUp className="h-5 w-5" />
-                                </div>
-                                <div className="font-semibold text-gray-700 group-hover:text-blue-700">ปรับสต็อก</div>
-                            </Link>
-                            <Link href="/products/new" className="group rounded-xl border border-gray-100 bg-gray-50 p-4 text-center transition-all hover:border-green-200 hover:bg-green-50">
-                                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-600 transition-transform group-hover:scale-110">
-                                    <Package className="h-5 w-5" />
-                                </div>
-                                <div className="font-semibold text-gray-700 group-hover:text-green-700">เพิ่มสินค้าใหม่</div>
-                            </Link>
-                            <Link href="/purchase-orders" className="group rounded-xl border border-gray-100 bg-gray-50 p-4 text-center transition-all hover:border-purple-200 hover:bg-purple-50">
-                                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-purple-100 text-purple-600 transition-transform group-hover:scale-110">
-                                    <ArrowDownRight className="h-5 w-5" />
-                                </div>
-                                <div className="font-semibold text-gray-700 group-hover:text-purple-700">รับสินค้าเข้า (PO)</div>
-                            </Link>
-                            <Link href="/borrow" className="group rounded-xl border border-gray-100 bg-gray-50 p-4 text-center transition-all hover:border-orange-200 hover:bg-orange-50">
-                                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-orange-600 transition-transform group-hover:scale-110">
-                                    <Clock className="h-5 w-5" />
-                                </div>
-                                <div className="font-semibold text-gray-700 group-hover:text-orange-700">ยืม-คืนอุปกรณ์</div>
-                            </Link>
+                    {/* Left — title + KPIs */}
+                    <div>
+                        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 shadow-sm">
+                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                            Store BI Workspace
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <div className="rounded-2xl bg-indigo-600 p-2.5 shadow-md shadow-indigo-200">
+                                <Package className="h-6 w-6 text-white" />
+                            </div>
+                            <h1 className="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
+                                Store Dashboard
+                            </h1>
+                        </div>
+
+                        <p className="mt-3 max-w-xl text-sm leading-7 text-slate-500">
+                            ภาพรวมงานคลังสินค้า การรับเข้า การเบิก การตรวจรับ
+                            และรายการที่ต้องติดตามในมุมมองเดียวแบบ BI
+                        </p>
+
+                        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            <HeroKPI label="สินค้าทั้งหมด" value={totalProducts} sub="รายการที่ยัง Active" />
+                            <HeroKPI label="ความเคลื่อนไหววันนี้" value={todayMovements} sub="รับเข้า + เบิกออก" />
+                            <HeroKPI label="สินค้าใกล้หมด" value={lowStockList.length} sub={outOfStock > 0 ? `หมดสต็อก ${outOfStock} รายการ` : 'ควรเติมสต็อก'} />
+                            <HeroKPI label="รอตรวจรับ" value={pendingVerificationCount} sub="อะไหล่รอคลังตรวจนับ" />
                         </div>
                     </div>
 
-                    <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                        <div className="mb-5 flex items-center justify-between">
-                            <h3 className="flex items-center gap-2 font-bold text-gray-800 dark:text-white">
-                                <span className="h-6 w-1 rounded-full bg-emerald-500"></span>
-                                งานที่ต้องทำของคลัง
-                            </h3>
-                            <Link href="/store-dashboard" className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-                                มุมมองคลังสินค้า
-                            </Link>
+                    {/* Right — Operational Mix */}
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div className="mb-4 flex items-center justify-between">
+                            <div>
+                                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                                    Operational Mix
+                                </p>
+                                <p className="mt-0.5 text-sm font-bold text-slate-800">สัดส่วนงานปัจจุบัน</p>
+                            </div>
+                            <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[10px] font-bold text-indigo-600">
+                                Live
+                            </span>
                         </div>
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                            <StoreTaskCard
+
+                        <div className="space-y-3">
+                            <MixBar label="สินค้าต้องเติม" value={lowStockList.length} total={openWorkload} />
+                            <MixBar label="รอตรวจรับอะไหล่" value={pendingVerificationCount} total={openWorkload} />
+                            <MixBar label="คำขอเบิกอะไหล่" value={pendingPartRequestCount} total={openWorkload} />
+                            <MixBar label="หมดสต็อก" value={outOfStock} total={Math.max(lowStockList.length, 1)} />
+                        </div>
+
+                        <div className="mt-5 grid grid-cols-2 gap-3">
+                            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">Fulfillment Rate</p>
+                                <p className="mt-1 text-xl font-black tabular-nums text-slate-900">{fulfillmentRate}%</p>
+                            </div>
+                            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">Open Workload</p>
+                                <p className="mt-1 text-xl font-black tabular-nums text-slate-900">{openWorkload}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* ════ QUICK ACTIONS ════ */}
+            <Panel className="p-6">
+                <SectionHeader title="เมนูด่วน" />
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {[
+                        { label: 'ปรับสต็อก',         href: '/stock/adjust',      Icon: TrendingUp },
+                        { label: 'เพิ่มสินค้าใหม่',   href: '/products/new',      Icon: Package },
+                        { label: 'รับสินค้าเข้า',     href: '/purchase-orders',   Icon: ArrowDownRight },
+                        { label: 'ยืม-คืนอุปกรณ์',   href: '/borrow',            Icon: Clock },
+                    ].map(({ label, href, Icon }) => (
+                        <Link
+                            key={href}
+                            href={href}
+                            className="group flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center transition-all hover:border-indigo-200 hover:bg-indigo-50/60 hover:shadow-sm"
+                        >
+                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600 transition-transform group-hover:scale-105">
+                                <Icon className="h-5 w-5" />
+                            </div>
+                            <span className="text-sm font-semibold text-slate-700 group-hover:text-indigo-700">{label}</span>
+                        </Link>
+                    ))}
+                </div>
+            </Panel>
+
+            {/* ════ MAIN GRID ════ */}
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+
+                {/* ── Left column ── */}
+                <div className="space-y-6">
+
+                    {/* Task Cards */}
+                    <Panel className="p-6">
+                        <SectionHeader title="งานที่ต้องทำของคลัง" />
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <TaskCard
                                 title="รอตรวจรับอะไหล่"
                                 value={pendingVerificationCount}
                                 description="รายการอะไหล่ที่ต้องตรวจนับและยืนยันรับเข้า"
                                 href="/maintenance/parts"
                                 icon={ClipboardCheck}
-                                tone="orange"
+                                tone="amber"
                             />
-                            <StoreTaskCard
+                            <TaskCard
                                 title="คำขอเบิกอะไหล่รอดำเนินการ"
                                 value={pendingPartRequestCount}
                                 description="รายการที่รอคลังตรวจสอบและจัดเตรียมสินค้า"
                                 href="/maintenance/parts"
                                 icon={ShieldCheck}
-                                tone="blue"
+                                tone="indigo"
                             />
                         </div>
-                    </div>
+                    </Panel>
 
-                    <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                        <div className="mb-5 flex items-center justify-between">
-                            <h3 className="flex items-center gap-2 font-bold text-gray-800 dark:text-white">
-                                <span className="h-6 w-1 rounded-full bg-blue-500"></span>
-                                คำขอเบิกอะไหล่รอคลังตอบกลับ
-                            </h3>
-                            <Link href="/maintenance/parts" className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
-                                เปิดหน้าเบิกอะไหล่
-                            </Link>
-                        </div>
+                    {/* Pending Part Requests list */}
+                    <Panel className="p-6">
+                        <SectionHeader
+                            title="คำขอเบิกอะไหล่รอคลังตอบกลับ"
+                            action={
+                                <Link href="/maintenance/parts" className="font-semibold text-indigo-600 hover:text-indigo-700">
+                                    เปิดหน้าเบิกอะไหล่ →
+                                </Link>
+                            }
+                        />
+
                         {recentPendingPartRequests.length === 0 ? (
-                            <div className="rounded-xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500 dark:border-slate-700 dark:text-gray-400">
+                            <div className="rounded-xl border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-400">
                                 ไม่มีคำขอเบิกอะไหล่ที่รอคลังตอบกลับ
                             </div>
                         ) : (
-                            <div className="space-y-3">
-                                {(recentPendingPartRequests as PendingPartRequestItem[]).map((request) => (
+                            <div className="space-y-2">
+                                {(recentPendingPartRequests as PendingPartRequestItem[]).map(req => (
                                     <Link
-                                        key={request.request_id}
+                                        key={req.request_id}
                                         href="/maintenance/parts"
-                                        className="block rounded-xl border border-gray-100 p-4 transition hover:border-blue-200 hover:bg-blue-50/60 dark:border-slate-700 dark:hover:border-blue-900 dark:hover:bg-slate-700/50"
+                                        className="flex items-start justify-between gap-3 rounded-xl border border-slate-100 p-4 transition hover:border-indigo-200 hover:bg-indigo-50/40"
                                     >
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <p className="font-medium text-gray-900 dark:text-white">{request.item_name}</p>
-                                                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                                    {request.request_number || `REQ-${request.request_id}`} • ผู้ขอ {request.requested_by}
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate text-sm font-semibold text-slate-900">{req.item_name}</p>
+                                            <p className="mt-1 text-xs text-slate-400">
+                                                {req.request_number ?? `REQ-${req.request_id}`} · ผู้ขอ {req.requested_by}
+                                            </p>
+                                            {req.tbl_maintenance_requests && (
+                                                <p className="mt-0.5 text-xs text-slate-400">
+                                                    {req.tbl_maintenance_requests.request_number}
+                                                    {req.tbl_maintenance_requests.tbl_rooms && (
+                                                        <> / {req.tbl_maintenance_requests.tbl_rooms.room_code}</>
+                                                    )}
                                                 </p>
-                                                {request.tbl_maintenance_requests ? (
-                                                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                                        {request.tbl_maintenance_requests.request_number} / {request.tbl_maintenance_requests.tbl_rooms?.room_code}
-                                                    </p>
-                                                ) : null}
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-sm font-bold text-gray-900 dark:text-white">{request.quantity}</p>
-                                                <p className={`mt-1 text-xs font-medium ${request.priority === 'urgent' ? 'text-red-600 dark:text-red-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
-                                                    {request.priority === 'urgent' ? 'ด่วน' : 'ปกติ'}
-                                                </p>
-                                            </div>
+                                            )}
+                                        </div>
+                                        <div className="shrink-0 text-right">
+                                            <p className="text-sm font-bold text-slate-900">×{req.quantity}</p>
+                                            <span
+                                                className={`mt-1 inline-block rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                                                    req.priority === 'urgent'
+                                                        ? 'bg-rose-50 text-rose-600'
+                                                        : 'bg-amber-50 text-amber-600'
+                                                }`}
+                                            >
+                                                {req.priority === 'urgent' ? 'ด่วน' : 'ปกติ'}
+                                            </span>
                                         </div>
                                     </Link>
                                 ))}
                             </div>
                         )}
-                    </div>
+                    </Panel>
                 </div>
 
-                <div className="space-y-8">
-                    <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                        <div className="flex items-center justify-between border-b border-gray-100 bg-gradient-to-r from-red-50 to-white p-5 dark:border-slate-700 dark:from-red-900/30 dark:to-slate-800">
-                            <h3 className="flex items-center gap-2 font-bold text-gray-800 dark:text-white">
-                                <AlertTriangle className="h-5 w-5 text-red-500" />
+                {/* ── Right column ── */}
+                <div className="space-y-6">
+
+                    {/* Low Stock */}
+                    <Panel className="overflow-hidden">
+                        <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-rose-50/60 to-white px-5 py-4">
+                            <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                                <AlertTriangle className="h-4 w-4 text-rose-500" />
                                 สินค้าต้องเติม
-                                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-600">{lowStockList.length}</span>
                             </h3>
+                            <span className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-bold text-rose-600">
+                                {lowStockList.length}
+                            </span>
                         </div>
-                        <div className="max-h-[300px] overflow-y-auto bg-white dark:bg-slate-800">
+
+                        <div className="max-h-72 overflow-y-auto">
                             {lowStockList.length === 0 ? (
-                                <div className="p-8 text-center text-gray-400">
-                                    <Package className="mx-auto mb-2 h-12 w-12 opacity-20" />
-                                    <p>สต็อกเพียงพอทุกรายการ</p>
+                                <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                                    <Package className="mb-3 h-10 w-10 opacity-20" />
+                                    <p className="text-sm">สต็อกเพียงพอทุกรายการ</p>
                                 </div>
                             ) : (
-                                <div className="divide-y divide-gray-50 dark:divide-slate-700">
-                                    {lowStockList.map((product) => (
-                                        <div key={product.p_id} className="p-4 transition-colors hover:bg-gray-50 dark:hover:bg-slate-700/40">
-                                            <div className="mb-1 flex items-start justify-between gap-3">
-                                                <span className="line-clamp-1 text-sm font-medium text-gray-800 dark:text-gray-200">{product.p_name}</span>
-                                                <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${product.p_count <= 0 ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>
+                                <div className="divide-y divide-slate-50">
+                                    {lowStockList.map(product => (
+                                        <div
+                                            key={product.p_id}
+                                            className="flex items-center justify-between gap-3 px-5 py-3.5 transition-colors hover:bg-slate-50"
+                                        >
+                                            <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
+                                                {product.p_name}
+                                            </p>
+                                            <div className="flex shrink-0 items-center gap-3">
+                                                <span
+                                                    className={`rounded-lg px-2.5 py-1 text-xs font-bold ${
+                                                        product.p_count <= 0
+                                                            ? 'bg-rose-50 text-rose-600'
+                                                            : 'bg-amber-50 text-amber-600'
+                                                    }`}
+                                                >
                                                     {product.p_count <= 0 ? 'หมด' : `เหลือ ${product.p_count}`}
                                                 </span>
-                                            </div>
-                                            <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                                                <span>ขั้นต่ำ: {product.safety_stock}</span>
-                                                <Link href={`/stock/adjust?id=${product.p_id}`} className="text-blue-600 hover:underline dark:text-blue-400">
-                                                    เติมของ
+                                                <Link
+                                                    href={`/stock/adjust?id=${product.p_id}`}
+                                                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                                                >
+                                                    เติม
                                                 </Link>
                                             </div>
                                         </div>
@@ -437,54 +435,61 @@ export default async function StoreDashboard() {
                                 </div>
                             )}
                         </div>
-                    </div>
+                    </Panel>
 
-                    <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                        <div className="flex items-center justify-between border-b border-gray-100 p-5 dark:border-slate-700">
-                            <h3 className="flex items-center gap-2 font-bold text-gray-800 dark:text-white">
-                                <Activity className="h-5 w-5 text-gray-500" />
+                    {/* Recent Movements */}
+                    <Panel className="overflow-hidden">
+                        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                            <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                                <Activity className="h-4 w-4 text-slate-400" />
                                 ความเคลื่อนไหวล่าสุด
                             </h3>
-                            <Link href="/movements" className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
-                                ดูทั้งหมด
+                            <Link href="/movements" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+                                ดูทั้งหมด →
                             </Link>
                         </div>
-                        <div className="divide-y divide-gray-50 dark:divide-slate-700">
-                            {recentMovements.map((movement) => {
-                                const isInbound = movement.movement_type === 'รับเข้า';
 
-                                return (
-                                    <div key={movement.movement_id} className="flex items-center gap-3 p-4 transition-colors hover:bg-gray-50 dark:hover:bg-slate-700/40">
-                                        <div className={`shrink-0 rounded-lg p-2 ${isInbound ? 'bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-300'}`}>
-                                            {isInbound ? <ArrowDownRight className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
+                        {recentMovements.length === 0 ? (
+                            <p className="px-5 py-8 text-center text-sm text-slate-400">ยังไม่มีความเคลื่อนไหว</p>
+                        ) : (
+                            <div className="divide-y divide-slate-50">
+                                {recentMovements.map(movement => {
+                                    const isIn = movement.movement_type === 'รับเข้า';
+                                    return (
+                                        <div
+                                            key={movement.movement_id}
+                                            className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-slate-50"
+                                        >
+                                            <div
+                                                className={`shrink-0 rounded-xl p-2 ${
+                                                    isIn ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'
+                                                }`}
+                                            >
+                                                {isIn ? <ArrowDownRight className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate text-sm font-medium text-slate-900">
+                                                    {productNameMap.get(movement.p_id) ?? `Item #${movement.p_id}`}
+                                                </p>
+                                                <p className="mt-0.5 text-xs text-slate-400">
+                                                    {new Date(movement.movement_time).toLocaleTimeString('th-TH', {
+                                                        hour: '2-digit',
+                                                        minute: '2-digit',
+                                                    })}
+                                                    {movement.remarks ? ` · ${movement.remarks}` : ''}
+                                                </p>
+                                            </div>
+                                            <span
+                                                className={`shrink-0 text-sm font-bold ${isIn ? 'text-emerald-600' : 'text-rose-500'}`}
+                                            >
+                                                {isIn ? '+' : '−'}{movement.quantity}
+                                            </span>
                                         </div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
-                                                {productNameMap.get(movement.p_id) || `Item #${movement.p_id}`}
-                                            </p>
-                                            <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                                                {new Date(movement.movement_time).toLocaleTimeString('th-TH', {
-                                                    hour: '2-digit',
-                                                    minute: '2-digit',
-                                                })}
-                                                <span>โดย</span>
-                                                {movement.remarks || 'ไม่มีบันทึก'}
-                                            </p>
-                                        </div>
-                                        <div className={`text-sm font-bold ${isInbound ? 'text-green-600 dark:text-green-300' : 'text-red-600 dark:text-red-300'}`}>
-                                            {isInbound ? '+' : '-'}
-                                            {movement.quantity}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                            {recentMovements.length === 0 && (
-                                <div className="p-6 text-center text-sm text-gray-400">
-                                    ยังไม่มีความเคลื่อนไหว
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </Panel>
                 </div>
             </div>
         </div>
