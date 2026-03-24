@@ -34,28 +34,32 @@ export async function GET(request: Request) {
         const notifications: NotificationItem[] = [];
 
         // ===================================================
-        // Admin / Manager — see everything
+        // Admin / Manager / Owner — see everything
         // ===================================================
-        const isAdminOrManager = role === 'admin' || role === 'manager';
+        const isAdminOrManager = role === 'admin' || role === 'manager' || role === 'owner';
 
         // ===================================================
         // LOW STOCK — Admin, Manager, Operation, Purchasing
         // ===================================================
         if (isAdminOrManager || role === 'operation' || role === 'purchasing') {
-            const lowStockProducts = await prisma.tbl_products.findMany({
+            // Since Prisma doesn't support column comparison in where,
+            // we fetch all active products and filter in JS (assuming count is manageable)
+            // or fetch a larger batch to improve chances of finding low stock items.
+            const products = await prisma.tbl_products.findMany({
                 where: { active: true },
                 select: { p_id: true, p_name: true, p_count: true, safety_stock: true },
-                take: 10,
             });
 
-            lowStockProducts.forEach(product => {
-                if (product.p_count <= (product.safety_stock || 0)) {
+            products.forEach(product => {
+                const stock = product.p_count ?? 0;
+                const safety = product.safety_stock ?? 0;
+                if (stock <= safety) {
                     notifications.push({
                         id: `low_stock_${product.p_id}`,
                         type: 'low_stock',
                         module: 'products',
                         title: 'สต็อกต่ำ',
-                        message: `${product.p_name} เหลือ ${product.p_count} ชิ้น`,
+                        message: `${product.p_name} เหลือ ${stock} ชิ้น (เกณฑ์ ${safety})`,
                         time: new Date(),
                         read: false,
                     });
@@ -143,7 +147,7 @@ export async function GET(request: Request) {
         // ===================================================
         // MAINTENANCE / PART REQUESTS — Technician, Head Tech, Approver
         // ===================================================
-        if (isAdminOrManager || role === 'technician' || role === 'head_technician' || isApprover) {
+        if (isAdminOrManager || role === 'technician' || role === 'head_technician' || role === 'leader_technician' || isApprover) {
             const maintenanceWhere: any = {
                 status: 'pending',
                 category: { not: 'general' },
@@ -189,13 +193,13 @@ export async function GET(request: Request) {
                 });
             });
 
-            if (pendingMaintenance.length < 0) {
+            if (pendingMaintenance.length > 0) {
                 notifications.push({
                     id: `maintenance_pending`,
                     type: 'maintenance',
                     module: 'maintenance',
                     title: 'งานซ่อมรอดำเนินการ',
-                    message: `มี ${pendingMaintenance} งานที่รอรับมอบหมาย`,
+                    message: `มี ${pendingMaintenance.length} งานที่รอรับมอบหมาย`,
                     time: new Date(),
                     read: false,
                 });
@@ -257,7 +261,7 @@ export async function GET(request: Request) {
             }
         }
 
-        if (isAdminOrManager || isApprover || role === 'head_technician' || role === 'purchasing') {
+        if (isAdminOrManager || isApprover || role === 'head_technician' || role === 'leader_technician' || role === 'purchasing') {
             const pendingParts = await prisma.tbl_part_requests.count({
                 where: { status: 'pending' },
             });
@@ -308,10 +312,8 @@ export async function GET(request: Request) {
             'all',
         ]);
 
-        const filtered = requestedModule && allowedModules.has(requestedModule)
-            ? requestedModule === 'all'
-                ? notifications
-                : notifications.filter(n => n.module === requestedModule)
+        const filtered = requestedModule && requestedModule !== 'all' && requestedModule !== 'dashboard' && allowedModules.has(requestedModule)
+            ? notifications.filter(n => n.module === requestedModule)
             : notifications;
 
         // Sort by time descending
