@@ -9,6 +9,8 @@ import {
   FileText,
   Wrench,
   Wallet,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { useToast } from './ToastProvider';
@@ -55,6 +57,17 @@ export default function NotificationBell() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('notification_sound_enabled');
+      return saved === null ? true : saved === 'true';
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('notification_sound_enabled', isSoundEnabled.toString());
+  }, [isSoundEnabled]);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const knownIdsRef = useRef<Set<string>>(new Set());
@@ -141,7 +154,7 @@ export default function NotificationBell() {
   };
 
   const playNotificationSound = useCallback(() => {
-    if (typeof window === 'undefined') return;
+    if (!isSoundEnabled || typeof window === 'undefined') return;
 
     const AudioContextClass =
       window.AudioContext ||
@@ -151,28 +164,42 @@ export default function NotificationBell() {
 
     try {
       const context = new AudioContextClass();
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
+      
+      // Resume context if suspended (common browser behavior)
+      if (context.state === 'suspended') {
+        void context.resume();
+      }
 
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(880, context.currentTime);
-      oscillator.frequency.exponentialRampToValueAtTime(660, context.currentTime + 0.18);
-
-      gain.gain.setValueAtTime(0.0001, context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.05, context.currentTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.22);
-
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-      oscillator.start();
-      oscillator.stop(context.currentTime + 0.22);
-      oscillator.onended = () => {
-        void context.close();
+      // Create a nice "Ding" sound with two oscillators
+      const playDing = (freq: number, volume: number, duration: number) => {
+        const osc = context.createOscillator();
+        const g = context.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, context.currentTime);
+        
+        g.gain.setValueAtTime(0, context.currentTime);
+        g.gain.linearRampToValueAtTime(volume, context.currentTime + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
+        
+        osc.connect(g);
+        g.connect(context.destination);
+        
+        osc.start();
+        osc.stop(context.currentTime + duration);
       };
+
+      // Play fundamental and a clear harmonic for a "metallic" chime
+      playDing(1046.50, 0.1, 0.8); // C6
+      playDing(2093.00, 0.05, 0.5); // C7 (Harmonic)
+
+      setTimeout(() => {
+        void context.close();
+      }, 1000);
     } catch (error) {
       console.error('Failed to play notification sound', error);
     }
-  }, []);
+  }, [isSoundEnabled]);
 
   const markAsRead = useCallback(
     async (id: string) => {
@@ -225,6 +252,8 @@ export default function NotificationBell() {
     [openNotificationTarget],
   );
 
+  const lastReminderTimeRef = useRef<number>(0);
+
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
@@ -267,6 +296,15 @@ export default function NotificationBell() {
             });
 
             playNotificationSound();
+            lastReminderTimeRef.current = Date.now(); // Reset reminder timer
+          } else {
+            // Persistent Alert: Every 1 minute if there are unread notifications
+            const unreadCount = data.filter(n => !n.read).length;
+            if (unreadCount > 0 && Date.now() - lastReminderTimeRef.current >= 60000) {
+              playNotificationSound();
+              showToast(`แจ้งเตือน: คุณมีการแจ้งเตือนที่ยังไม่ได้อ่าน ${unreadCount} รายการ`, 'info');
+              lastReminderTimeRef.current = Date.now();
+            }
           }
 
           knownIdsRef.current = latestIds;
@@ -392,23 +430,35 @@ export default function NotificationBell() {
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <select
-                value={selectedModule}
-                onChange={e => {
-                  userSelectedModuleRef.current = true;
-                  setSelectedModule(e.target.value as NotificationModule);
-                }}
-                className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-600 outline-none"
-              >
-                <option value="all">ทั้งหมด</option>
-                <option value="products">สินค้า</option>
-                <option value="purchase_orders">จัดซื้อ</option>
-                <option value="borrow">ยืม-คืน</option>
-                <option value="maintenance">ซ่อมบำรุง</option>
-                <option value="part_requests">เบิกอะไหล่</option>
-                <option value="petty_cash">Petty Cash</option>
-                <option value="approvals">อนุมัติ</option>
-              </select>
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedModule}
+                  onChange={e => {
+                    userSelectedModuleRef.current = true;
+                    setSelectedModule(e.target.value as NotificationModule);
+                  }}
+                  className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-600 outline-none"
+                >
+                  <option value="all">ทั้งหมด</option>
+                  <option value="products">สินค้า</option>
+                  <option value="purchase_orders">จัดซื้อ</option>
+                  <option value="borrow">ยืม-คืน</option>
+                  <option value="maintenance">ซ่อมบำรุง</option>
+                  <option value="part_requests">เบิกอะไหล่</option>
+                  <option value="petty_cash">Petty Cash</option>
+                  <option value="approvals">อนุมัติ</option>
+                </select>
+
+                <button
+                  onClick={() => setIsSoundEnabled(!isSoundEnabled)}
+                  className={`flex h-6 w-6 items-center justify-center rounded-md transition ${
+                    isSoundEnabled ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                  }`}
+                  title={isSoundEnabled ? 'ปิดเสียง' : 'เปิดเสียง'}
+                >
+                  {isSoundEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                </button>
+              </div>
 
               {unreadCount > 0 && (
                 <button
