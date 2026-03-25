@@ -7,12 +7,14 @@ import { logSystemAction } from '@/lib/logger';
 import { auth } from '@/auth';
 import { uploadFile } from '@/lib/gcs';
 import { notifyRoleViaLine, sendLineMessage, sendLineNotify } from '@/lib/lineNotify';
+import { appendCopiedImageMetadataTags, parseMaintenanceImageUrls } from '@/lib/maintenance-images';
 import { validateData, createMaintenanceRequestSchema } from '@/lib/validation';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
 import {
     canCreateMaintenanceRequest,
     canManageMaintenanceEdit,
     canManageMaintenanceParts,
+    canReassignMaintenanceRequest,
     canReopenMaintenanceRequest,
     canSubmitMaintenanceCompletion,
     canVerifyMaintenanceParts,
@@ -346,6 +348,14 @@ export async function createMaintenanceRequest(formData: FormData) {
         const contact_info = formData.get('contact_info') as string;
         const tags = formData.get('tags') as string;
         const target_role = ((formData.get('target_role') as string) || 'technician').trim();
+        const sourceRequestIdRaw = formData.get('source_request_id');
+        const sourceRequestId = typeof sourceRequestIdRaw === 'string' ? Number.parseInt(sourceRequestIdRaw, 10) : null;
+        const sourceImageCountRaw = formData.get('source_image_count');
+        const sourceImageCount = typeof sourceImageCountRaw === 'string' ? Number.parseInt(sourceImageCountRaw, 10) : 0;
+        const sourceImageUrls = formData
+            .getAll('source_image_urls')
+            .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+            .flatMap((value) => parseMaintenanceImageUrls(value));
 
         const imageFiles = [
             ...(formData.getAll('images') as File[]),
@@ -364,13 +374,20 @@ export async function createMaintenanceRequest(formData: FormData) {
             }
         }
 
+        const finalImageUrls = Array.from(new Set([...sourceImageUrls, ...uploadedImageUrls]));
+        const finalTags = appendCopiedImageMetadataTags(
+            tags || null,
+            Number.isFinite(sourceRequestId ?? NaN) ? sourceRequestId : null,
+            Number.isFinite(sourceImageCount) ? sourceImageCount : 0,
+        );
+
         const request = await prisma.tbl_maintenance_requests.create({
             data: {
                 request_number: generateRequestNumber(),
                 room_id: validData.room_id,
                 title: validData.title,
                 description: validData.description || null,
-                image_url: uploadedImageUrls.length > 0 ? JSON.stringify(uploadedImageUrls) : null,
+                image_url: finalImageUrls.length > 0 ? JSON.stringify(finalImageUrls) : null,
                 priority: validData.priority,
                 status: 'pending',
                 reported_by,
@@ -380,7 +397,7 @@ export async function createMaintenanceRequest(formData: FormData) {
                 category: category || 'general',
                 department: department || null,
                 contact_info: contact_info || null,
-                tags: tags || null
+                tags: finalTags
             }
         });
 
@@ -885,6 +902,7 @@ export async function getMaintenanceStats() {
     try {
         const total = await prisma.tbl_maintenance_requests.count();
         const pending = await prisma.tbl_maintenance_requests.count({ where: { status: 'pending' } });
+        const approved = await prisma.tbl_maintenance_requests.count({ where: { status: 'approved' } });
         const inProgress = await prisma.tbl_maintenance_requests.count({ where: { status: 'in_progress' } });
         const completed = await prisma.tbl_maintenance_requests.count({ where: { status: 'completed' } });
         const recentActivities = await prisma.tbl_maintenance_history.findMany({
@@ -922,7 +940,7 @@ export async function getMaintenanceStats() {
         return {
             success: true,
             data: {
-                counts: { total, pending, processing: inProgress, completed },
+                counts: { total, pending, approved, processing: inProgress, completed },
                 totalCost: Number(costAgg._sum.actual_cost || 0),
                 recentActivities,
                 chartData
@@ -1102,11 +1120,24 @@ export async function updateMaintenanceRequest(
             return { success: false, error: 'Unauthorized' };
         }
 
-        if (!canManageMaintenanceEdit(
+        const submittedFields = Object.entries(data)
+            .filter(([, value]) => value !== undefined)
+            .map(([key]) => key);
+        const isAssignmentOnlyUpdate =
+            submittedFields.length > 0 &&
+            submittedFields.every((field) => field === 'assigned_to');
+        const canEditMaintenance = canManageMaintenanceEdit(
             authContext.role,
             authContext.permissions,
             authContext.isApprover,
-        )) {
+        );
+        const canReassignRequest = canReassignMaintenanceRequest(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        );
+
+        if (!canEditMaintenance && !(isAssignmentOnlyUpdate && canReassignRequest)) {
             return { success: false, error: 'Permission denied' };
         }
 
@@ -1162,6 +1193,26 @@ export async function updateMaintenanceRequest(
                 old_value: current.assigned_to || '',
                 new_value: data.assigned_to || ''
             });
+
+            if (!data.status) {
+                if (current.status === 'pending' && data.assigned_to) {
+                    updateData.status = 'approved';
+                    historyActions.push({
+                        action: 'status_change',
+                        old_value: current.status || '',
+                        new_value: 'approved'
+                    });
+                }
+
+                if (current.status === 'approved' && !data.assigned_to) {
+                    updateData.status = 'pending';
+                    historyActions.push({
+                        action: 'status_change',
+                        old_value: current.status || '',
+                        new_value: 'pending'
+                    });
+                }
+            }
         }
 
         if (data.scheduled_date !== undefined) {
@@ -1309,6 +1360,7 @@ export async function getMaintenanceReportByRoom(filters?: {
 
         const report = filteredRooms.map(room => {
             const pending = room.tbl_maintenance_requests.filter(r => r.status === 'pending').length;
+            const approved = room.tbl_maintenance_requests.filter(r => r.status === 'approved').length;
             const inProgress = room.tbl_maintenance_requests.filter(r => r.status === 'in_progress').length;
             const completed = room.tbl_maintenance_requests.filter(r => r.status === 'completed').length;
             const cancelled = room.tbl_maintenance_requests.filter(r => r.status === 'cancelled').length;
@@ -1321,6 +1373,7 @@ export async function getMaintenanceReportByRoom(filters?: {
                 floor: room.floor,
                 total: room.tbl_maintenance_requests.length,
                 pending,
+                approved,
                 in_progress: inProgress,
                 completed,
                 cancelled,
@@ -1346,9 +1399,10 @@ export async function getMaintenanceReportByRoom(filters?: {
 
 export async function getMaintenanceSummary() {
     try {
-        const [total, pending, inProgress, completed, pendingVerification, costAgg] = await Promise.all([
+        const [total, pending, approved, inProgress, completed, pendingVerification, costAgg] = await Promise.all([
             prisma.tbl_maintenance_requests.count(),
             prisma.tbl_maintenance_requests.count({ where: { status: 'pending' } }),
+            prisma.tbl_maintenance_requests.count({ where: { status: 'approved' } }),
             prisma.tbl_maintenance_requests.count({ where: { status: 'in_progress' } }),
             prisma.tbl_maintenance_requests.count({ where: { status: 'completed' } }),
             prisma.tbl_maintenance_parts.count({ where: { status: 'pending_verification' } }),
@@ -1360,6 +1414,7 @@ export async function getMaintenanceSummary() {
             data: {
                 total,
                 pending,
+                approved,
                 in_progress: inProgress,
                 completed,
                 total_cost: Number(costAgg._sum.actual_cost || 0),
@@ -1500,7 +1555,7 @@ export async function reopenMaintenanceRequest(request_id: number, reason: strin
             return { success: false, error: 'Maintenance request not found' };
         }
 
-        const reopenedStatus = current.assigned_to ? 'in_progress' : 'pending';
+        const reopenedStatus = current.assigned_to ? 'approved' : 'pending';
         const updated = await prisma.tbl_maintenance_requests.update({
             where: { request_id },
             data: {

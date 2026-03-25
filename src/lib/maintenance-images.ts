@@ -1,4 +1,6 @@
 const ABSOLUTE_URL_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
+const COPIED_SOURCE_REQUEST_TAG_PREFIX = '__copied_source_request:';
+const COPIED_SOURCE_IMAGE_COUNT_TAG_PREFIX = '__copied_source_image_count:';
 
 function normalizeMaintenanceImageUrl(url: string): string {
     const trimmed = url.trim();
@@ -40,4 +42,54 @@ export function parseMaintenanceImageUrls(value?: string | null): string[] {
 
 export function getPrimaryMaintenanceImageUrl(value?: string | null): string | null {
     return parseMaintenanceImageUrls(value)[0] ?? null;
+}
+
+function splitTags(value?: string | null): string[] {
+    return (value || '')
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+}
+
+export function appendCopiedImageMetadataTags(
+    tagsValue: string | null | undefined,
+    sourceRequestId: number | null,
+    copiedImageCount: number,
+): string | null {
+    const baseTags = splitTags(tagsValue).filter(
+        (tag) =>
+            !tag.startsWith(COPIED_SOURCE_REQUEST_TAG_PREFIX) &&
+            !tag.startsWith(COPIED_SOURCE_IMAGE_COUNT_TAG_PREFIX),
+    );
+
+    if (sourceRequestId && copiedImageCount > 0) {
+        baseTags.push(
+            `${COPIED_SOURCE_REQUEST_TAG_PREFIX}${sourceRequestId}`,
+            `${COPIED_SOURCE_IMAGE_COUNT_TAG_PREFIX}${copiedImageCount}`,
+        );
+    }
+
+    return baseTags.length > 0 ? baseTags.join(',') : null;
+}
+
+export function getCopiedImageMetadata(tagsValue?: string | null): {
+    sourceRequestId: number | null;
+    copiedImageCount: number;
+} {
+    let sourceRequestId: number | null = null;
+    let copiedImageCount = 0;
+
+    splitTags(tagsValue).forEach((tag) => {
+        if (tag.startsWith(COPIED_SOURCE_REQUEST_TAG_PREFIX)) {
+            const parsed = Number.parseInt(tag.slice(COPIED_SOURCE_REQUEST_TAG_PREFIX.length), 10);
+            sourceRequestId = Number.isFinite(parsed) ? parsed : null;
+        }
+
+        if (tag.startsWith(COPIED_SOURCE_IMAGE_COUNT_TAG_PREFIX)) {
+            const parsed = Number.parseInt(tag.slice(COPIED_SOURCE_IMAGE_COUNT_TAG_PREFIX.length), 10);
+            copiedImageCount = Number.isFinite(parsed) ? parsed : 0;
+        }
+    });
+
+    return { sourceRequestId, copiedImageCount };
 }

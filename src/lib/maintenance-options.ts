@@ -6,9 +6,10 @@ export const MAINTENANCE_PRIORITY_OPTIONS = [
 ] as const;
 
 export const MAINTENANCE_STATUS_OPTIONS = [
-    { value: 'pending', label: 'รอดำเนินการ' },
-    { value: 'in_progress', label: 'กำลังซ่อม' },
-    { value: 'completed', label: 'เสร็จแล้ว' },
+    { value: 'pending', label: 'รอเรื่อง' },
+    { value: 'approved', label: 'แจ้งเรื่องต่อ' },
+    { value: 'in_progress', label: 'ดำเนินการ' },
+    { value: 'completed', label: 'เสร็จสมบูรณ์' },
     { value: 'cancelled', label: 'ยกเลิก' },
 ] as const;
 

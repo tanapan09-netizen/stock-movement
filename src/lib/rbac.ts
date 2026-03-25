@@ -778,6 +778,7 @@ export function canReassignMaintenanceRequest(
   return (
     isManagerRole(normalizedRole) ||
     isApprover ||
+    normalizedRole === 'employee' ||
     normalizedRole === 'head_technician' ||
     canManageMaintenanceEdit(normalizedRole, userPermissions, isApprover)
   );

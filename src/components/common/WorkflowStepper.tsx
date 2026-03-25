@@ -51,6 +51,16 @@ const WorkflowStepper: React.FC<WorkflowStepperProps> = ({
             
             return 1;
         }
+
+        if (totalSteps === 5) {
+            const s = status as string;
+            if (s === 'pending') return 1;
+            if (s === 'approved') return 2;
+            if (s === 'in_progress') return 3;
+            if (s === 'confirmed') return 4;
+            if (s === 'completed' || s === 'verified') return 5;
+            return 1;
+        }
         
         // Default mappings
         if (status === 'pending') return 1;
@@ -73,8 +83,9 @@ const WorkflowStepper: React.FC<WorkflowStepperProps> = ({
             const statusMatchesCompletion = s === 'completed' || s === 'verified' || s === 'received';
             
             if (statusMatchesCompletion && isLastStep) return 'completed';
-            if (s === 'confirmed' && stepNumber === 3) return 'completed';
+            if (s === 'confirmed' && ((stepNumber === 3 && totalSteps === 4) || (stepNumber === 4 && totalSteps === 5))) return 'completed';
             if (s === 'approved' && stepNumber === 2 && totalSteps === 4) return 'completed';
+            if (s === 'approved' && stepNumber === 2 && totalSteps === 5) return 'completed';
             if (s === 'ordered' && stepNumber === 3 && totalSteps === 4) return 'completed';
 
             return 'active';

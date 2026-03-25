@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { getRoleLocalName } from '@/lib/roles';
+import { MAINTENANCE_WORKFLOW_LABELS } from '@/lib/maintenance-workflow';
 import {
     Wrench, Clock, CheckCircle, AlertTriangle, TrendingUp,
     Calendar, DollarSign, User, ArrowRight, BarChart3, ShoppingCart, PieChart as PieChartIcon
@@ -40,11 +41,13 @@ const PRIORITY_COLORS: Record<string, string> = {
     urgent: 'bg-red-100 text-red-600'
 };
 
-const STATUS_LABELS: Record<string, string> = {
-    pending: 'รอดำเนินการ',
-    in_progress: 'กำลังซ่อม',
-    completed: 'เสร็จแล้ว',
-    cancelled: 'ยกเลิก'
+const DISPLAY_STATUS_LABELS: Record<string, string> = {
+    pending: MAINTENANCE_WORKFLOW_LABELS[0],
+    approved: MAINTENANCE_WORKFLOW_LABELS[1],
+    in_progress: MAINTENANCE_WORKFLOW_LABELS[2],
+    confirmed: MAINTENANCE_WORKFLOW_LABELS[3],
+    completed: MAINTENANCE_WORKFLOW_LABELS[4],
+    cancelled: 'ยกเลิก',
 };
 
 interface MaintenanceDashboardClientProps {
@@ -57,7 +60,7 @@ export default function MaintenanceDashboardClient({
     const { data: session } = useSession();
     const user = session?.user as { name?: string; role?: string };
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
-    const [summary, setSummary] = useState({ total: 0, pending: 0, in_progress: 0, completed: 0, total_cost: 0 });
+    const [summary, setSummary] = useState({ total: 0, pending: 0, approved: 0, in_progress: 0, completed: 0, total_cost: 0 });
     const [chartData, setChartData] = useState<{ name: string; value: number }[]>([]);
     const [loading, setLoading] = useState(true);
     const [myTasks, setMyTasks] = useState<MaintenanceRequestItem[]>([]);
@@ -73,10 +76,11 @@ export default function MaintenanceDashboardClient({
         }, {});
 
         const items = [
-            { key: 'pending', label: STATUS_LABELS.pending, color: '#f59e0b' },
-            { key: 'in_progress', label: STATUS_LABELS.in_progress, color: '#3b82f6' },
-            { key: 'completed', label: STATUS_LABELS.completed, color: '#22c55e' },
-            { key: 'cancelled', label: STATUS_LABELS.cancelled, color: '#94a3b8' },
+            { key: 'pending', label: DISPLAY_STATUS_LABELS.pending, color: '#f59e0b' },
+            { key: 'approved', label: DISPLAY_STATUS_LABELS.approved, color: '#f97316' },
+            { key: 'in_progress', label: DISPLAY_STATUS_LABELS.in_progress, color: '#3b82f6' },
+            { key: 'completed', label: DISPLAY_STATUS_LABELS.completed, color: '#22c55e' },
+            { key: 'cancelled', label: DISPLAY_STATUS_LABELS.cancelled, color: '#94a3b8' },
         ];
 
         const knownKeys = new Set(items.map(i => i.key));
@@ -142,6 +146,7 @@ export default function MaintenanceDashboardClient({
                 setSummary({
                     total: data.counts.total,
                     pending: data.counts.pending,
+                    approved: data.counts.approved || 0,
                     in_progress: data.counts.processing,
                     completed: data.counts.completed,
                     total_cost: data.totalCost
@@ -188,7 +193,7 @@ export default function MaintenanceDashboardClient({
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                 <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border-l-4 border-gray-400">
                     <div className="flex items-center gap-3">
                         <BarChart3 className="text-gray-500" size={24} />
@@ -203,7 +208,16 @@ export default function MaintenanceDashboardClient({
                         <Clock className="text-yellow-500" size={24} />
                         <div>
                             <div className="text-2xl font-bold text-yellow-600">{summary.pending}</div>
-                            <div className="text-yellow-600 text-sm">รอดำเนินการ</div>
+                            <div className="text-yellow-600 text-sm">{DISPLAY_STATUS_LABELS.pending}</div>
+                        </div>
+                    </div>
+                </div>
+                <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border-l-4 border-orange-400">
+                    <div className="flex items-center gap-3">
+                        <ArrowRight className="text-orange-500" size={24} />
+                        <div>
+                            <div className="text-2xl font-bold text-orange-600">{summary.approved}</div>
+                            <div className="text-orange-600 text-sm">{DISPLAY_STATUS_LABELS.approved}</div>
                         </div>
                     </div>
                 </div>
@@ -212,7 +226,7 @@ export default function MaintenanceDashboardClient({
                         <Wrench className="text-blue-500" size={24} />
                         <div>
                             <div className="text-2xl font-bold text-blue-600">{summary.in_progress}</div>
-                            <div className="text-blue-600 text-sm">กำลังซ่อม</div>
+                            <div className="text-blue-600 text-sm">{DISPLAY_STATUS_LABELS.in_progress}</div>
                         </div>
                     </div>
                 </div>
@@ -221,7 +235,7 @@ export default function MaintenanceDashboardClient({
                         <CheckCircle className="text-green-500" size={24} />
                         <div>
                             <div className="text-2xl font-bold text-green-600">{summary.completed}</div>
-                            <div className="text-green-600 text-sm">เสร็จแล้ว</div>
+                            <div className="text-green-600 text-sm">{DISPLAY_STATUS_LABELS.completed}</div>
                         </div>
                     </div>
                 </div>
@@ -326,7 +340,7 @@ export default function MaintenanceDashboardClient({
                                         </span>
                                     </div>
                                     <div className="mt-2 flex gap-2">
-                                        {task.status === 'pending' && (
+                                        {task.status === 'approved' && (
                                             <button
                                                 onClick={() => handleQuickStatusChange(task.request_id, 'in_progress')}
                                                 className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
@@ -368,7 +382,7 @@ export default function MaintenanceDashboardClient({
                                     <div className="text-xs text-gray-500">{task.tbl_rooms.room_code} - {task.tbl_rooms.room_name}</div>
                                     <div className="mt-1">
                                         <span className={`text-xs px-2 py-0.5 rounded ${task.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'}`}>
-                                            {STATUS_LABELS[task.status]}
+                                            {DISPLAY_STATUS_LABELS[task.status] || task.status}
                                         </span>
                                     </div>
                                 </div>
@@ -464,7 +478,7 @@ export default function MaintenanceDashboardClient({
                                                 req.status === 'completed' ? 'bg-green-100 text-green-700' :
                                                     'bg-gray-100 text-gray-700'
                                             }`}>
-                                            {STATUS_LABELS[req.status]}
+                                            {DISPLAY_STATUS_LABELS[req.status] || req.status}
                                         </span>
                                     </td>
                                 </tr>

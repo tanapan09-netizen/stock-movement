@@ -2,6 +2,7 @@
 
 import { Wrench, Clock, CheckCircle, XCircle, MapPin, User, Calendar, AlertTriangle, ArrowRight, BellRing, ShieldCheck, AlertCircle } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
+import { getMaintenanceWorkflowStep, MAINTENANCE_WORKFLOW_LABELS } from '@/lib/maintenance-workflow';
 
 // ── AgeBadgeInfo type (ต้อง match กับที่ define ใน MaintenanceClient.tsx) ──
 export interface AgeBadgeInfo {
@@ -20,9 +21,11 @@ interface MaintenanceRequestCardProps {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
-    pending: { label: 'รอดำเนินการ', color: 'text-yellow-600', bg: 'bg-yellow-50', icon: Clock },
-    in_progress: { label: 'กำลังซ่อม', color: 'text-blue-600', bg: 'bg-blue-50', icon: Wrench },
-    completed: { label: 'เสร็จแล้ว', color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle },
+    pending: { label: 'รอเรื่อง', color: 'text-yellow-600', bg: 'bg-yellow-50', icon: Clock },
+    approved: { label: 'แจ้งเรื่องต่อ', color: 'text-orange-600', bg: 'bg-orange-50', icon: ArrowRight },
+    in_progress: { label: 'ดำเนินการ', color: 'text-blue-600', bg: 'bg-blue-50', icon: Wrench },
+    confirmed: { label: 'ยืนยันงาน', color: 'text-purple-600', bg: 'bg-purple-50', icon: CheckCircle },
+    completed: { label: 'เสร็จสมบูรณ์', color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle },
     cancelled: { label: 'ยกเลิก', color: 'text-gray-600', bg: 'bg-gray-50', icon: XCircle }
 };
 
@@ -170,13 +173,9 @@ export default function MaintenanceRequestCard({ request, onClick, onResend, age
                 {/* Workflow Stepper at bottom - Full width */}
                 <div className="pt-2">
                     <WorkflowStepper
-                        currentStep={
-                            request.status === 'completed' ? 4 : 
-                            request.status === 'confirmed' ? 3 : 
-                            request.status === 'in_progress' ? 2 : 1
-                        }
-                        totalSteps={4}
-                        labels={['รอรับเรื่อง', 'ดำเนินการ', 'ยืนยันงาน', 'สำเร็จ']}
+                        currentStep={getMaintenanceWorkflowStep(request.status)}
+                        totalSteps={5}
+                        labels={[...MAINTENANCE_WORKFLOW_LABELS]}
                         status={request.status === 'pending' ? 'pending' : request.status as WorkflowStatus}
                         size="sm"
                     />

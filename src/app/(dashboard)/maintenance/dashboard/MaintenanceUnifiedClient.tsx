@@ -5,8 +5,9 @@ import Swal from 'sweetalert2';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import {
-    Wrench, Plus, Search, X, History, User, DollarSign, Printer, Clock, CheckCircle, XCircle, BarChart3, PieChart, AlertTriangle, Trash2, CalendarCheck
+    Wrench, Plus, Search, X, History, User, DollarSign, Printer, Clock, CheckCircle, XCircle, BarChart3, PieChart, AlertTriangle, Trash2, CalendarCheck, ArrowRight
 } from 'lucide-react';
+import { MAINTENANCE_WORKFLOW_LABELS } from '@/lib/maintenance-workflow';
 import {
     getMaintenanceRequests,
     createMaintenanceRequest,
@@ -76,11 +77,13 @@ interface PmPlanItem {
     frequency_type: string;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
-    pending: { label: 'รอดำเนินการ', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
-    in_progress: { label: 'กำลังซ่อม', color: 'bg-blue-100 text-blue-800', icon: Wrench },
-    completed: { label: 'เสร็จแล้ว', color: 'bg-green-100 text-green-800', icon: CheckCircle },
-    cancelled: { label: 'ยกเลิก', color: 'bg-gray-100 text-gray-800', icon: XCircle }
+const DISPLAY_STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
+    pending: { label: MAINTENANCE_WORKFLOW_LABELS[0], color: 'bg-yellow-100 text-yellow-800', icon: Clock },
+    approved: { label: MAINTENANCE_WORKFLOW_LABELS[1], color: 'bg-orange-100 text-orange-800', icon: ArrowRight },
+    in_progress: { label: MAINTENANCE_WORKFLOW_LABELS[2], color: 'bg-blue-100 text-blue-800', icon: Wrench },
+    confirmed: { label: MAINTENANCE_WORKFLOW_LABELS[3], color: 'bg-purple-100 text-purple-800', icon: CheckCircle },
+    completed: { label: MAINTENANCE_WORKFLOW_LABELS[4], color: 'bg-green-100 text-green-800', icon: CheckCircle },
+    cancelled: { label: 'ยกเลิก', color: 'bg-gray-100 text-gray-800', icon: XCircle },
 };
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
@@ -127,6 +130,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
     interface SummaryData {
         total: number;
         pending: number;
+        approved: number;
         in_progress: number;
         completed: number;
         total_cost: number;
@@ -137,6 +141,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
     const [summary, setSummary] = useState<SummaryData>({
         total: 0,
         pending: 0,
+        approved: 0,
         in_progress: 0,
         completed: 0,
         total_cost: 0,
@@ -385,34 +390,33 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
                     <div>
-                        <div className="text-gray-500 text-sm">รอดำเนินการ</div>
+                        <div className="text-gray-500 text-sm">{DISPLAY_STATUS_CONFIG.pending.label}</div>
                         <div className="text-2xl font-bold text-gray-900">{summary.pending}</div>
                     </div>
-                    <div className="p-3 bg-blue-50 text-blue-600 rounded-full"><Clock size={20} /></div>
+                    <div className="p-3 bg-yellow-50 text-yellow-600 rounded-full"><Clock size={20} /></div>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
                     <div>
-                        <div className="text-gray-500 text-sm">กำลังดำเนินการ</div>
+                        <div className="text-gray-500 text-sm">{DISPLAY_STATUS_CONFIG.approved.label}</div>
+                        <div className="text-2xl font-bold text-gray-900">{summary.approved}</div>
+                    </div>
+                    <div className="p-3 bg-orange-50 text-orange-600 rounded-full"><ArrowRight size={20} /></div>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
+                    <div>
+                        <div className="text-gray-500 text-sm">{DISPLAY_STATUS_CONFIG.in_progress.label}</div>
                         <div className="text-2xl font-bold text-gray-900">{summary.in_progress}</div>
                     </div>
-                    <div className="p-3 bg-orange-50 text-orange-600 rounded-full"><Wrench size={20} /></div>
+                    <div className="p-3 bg-blue-50 text-blue-600 rounded-full"><Wrench size={20} /></div>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
                     <div>
-                        <div className="text-gray-500 text-sm">เสร็จสิ้น</div>
+                        <div className="text-gray-500 text-sm">{DISPLAY_STATUS_CONFIG.completed.label}</div>
                         <div className="text-2xl font-bold text-gray-900">{summary.completed}</div>
                     </div>
                     <div className="p-3 bg-green-50 text-green-600 rounded-full"><CheckCircle size={20} /></div>
                 </div>
-                <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between">
-                    <div>
-                        <div className="text-gray-500 text-sm">ทั้งหมด</div>
-                        <div className="text-2xl font-bold text-gray-900">{summary.total}</div>
-                    </div>
-                    <div className="p-3 bg-purple-50 text-purple-600 rounded-full"><BarChart3 size={20} /></div>
-                </div>
             </div>
-
             {/* Action Bar */}
             <div className="flex justify-between items-center">
                 <h2 className="text-lg font-bold text-gray-800">รายการแจ้งซ่อมของฉัน</h2>
@@ -420,7 +424,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                     onClick={() => setShowForm(true)}
                     className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg flex items-center gap-2 shadow-sm transition-all"
                 >
-                    <Plus size={20} /> แจ้งซ่อมใหม่
+                    <Plus size={20} /> สร้างใบงานใหม่
                 </button>
             </div>
 
@@ -437,7 +441,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {filteredRequests.map(req => {
-                            const status = STATUS_CONFIG[req.status] || STATUS_CONFIG.pending;
+                            const status = DISPLAY_STATUS_CONFIG[req.status] || DISPLAY_STATUS_CONFIG.pending;
                             return (
                                 <tr key={req.request_id} className="hover:bg-gray-50 cursor-pointer" onClick={() => openDetailModal(req)}>
                                     <td className="px-6 py-4">
@@ -467,31 +471,29 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
             {/* Task Status */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-100">
-                    <div className="text-yellow-800 font-medium flex items-center gap-2"><Clock size={18} /> รอรับงาน</div>
+                    <div className="text-yellow-800 font-medium flex items-center gap-2"><Clock size={18} /> {DISPLAY_STATUS_CONFIG.pending.label}</div>
                     <div className="text-2xl font-bold text-yellow-900 mt-2">{summary.pending}</div>
                 </div>
-                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                    <div className="text-blue-800 font-medium flex items-center gap-2"><User size={18} /> มอบหมายแล้ว</div>
-                    <div className="text-2xl font-bold text-blue-900 mt-2">{summary.in_progress}</div>
-                    {/* Simplification: assuming in_progress = assigned for now */}
-                </div>
                 <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
-                    <div className="text-orange-800 font-medium flex items-center gap-2"><Wrench size={18} /> กำลังซ่อม</div>
-                    <div className="text-2xl font-bold text-orange-900 mt-2">{summary.in_progress}</div>
+                    <div className="text-orange-800 font-medium flex items-center gap-2"><ArrowRight size={18} /> {DISPLAY_STATUS_CONFIG.approved.label}</div>
+                    <div className="text-2xl font-bold text-orange-900 mt-2">{summary.approved}</div>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                    <div className="text-blue-800 font-medium flex items-center gap-2"><Wrench size={18} /> {DISPLAY_STATUS_CONFIG.in_progress.label}</div>
+                    <div className="text-2xl font-bold text-blue-900 mt-2">{summary.in_progress}</div>
                 </div>
                 <div className="bg-green-50 p-4 rounded-xl border border-green-100">
-                    <div className="text-green-800 font-medium flex items-center gap-2"><CheckCircle size={18} /> เสร็จสิ้น</div>
+                    <div className="text-green-800 font-medium flex items-center gap-2"><CheckCircle size={18} /> {DISPLAY_STATUS_CONFIG.completed.label}</div>
                     <div className="text-2xl font-bold text-green-900 mt-2">{summary.completed}</div>
                 </div>
             </div>
-
             {/* Search & Filters */}
             <div className="flex gap-4">
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                     <input
                         type="text"
-                        title="Search"
+                        title="ค้นหา"
                         placeholder="ค้นหางานซ่อม..."
                         className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                         value={searchText}
@@ -500,7 +502,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                 </div>
                 <div className="flex gap-2">
                     <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">ทั้งหมด</button>
-                    <button className="px-4 py-2 bg-white border text-gray-600 rounded-lg text-sm hover:bg-gray-50">รอรับงาน</button>
+                    <button className="px-4 py-2 bg-white border text-gray-600 rounded-lg text-sm hover:bg-gray-50">{DISPLAY_STATUS_CONFIG.pending.label}</button>
                     <button className="px-4 py-2 bg-white border text-gray-600 rounded-lg text-sm hover:bg-gray-50">งานของฉัน</button>
                 </div>
             </div>
@@ -532,15 +534,25 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                         </button>
                     </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div className="bg-blue-500 text-white p-5 rounded-xl shadow-lg shadow-blue-200">
-                        <div className="text-blue-100 text-sm font-medium mb-2">คำขอทั้งหมด</div>
+                        <div className="text-blue-100 text-sm font-medium mb-2">ใบงานทั้งหมด</div>
                         <div className="flex items-end gap-2">
                             <div className="text-4xl font-bold">{summary.total}</div>
                             <div className="mb-1 text-sm opacity-80">รายการ</div>
                         </div>
                         <div className="mt-4 pt-4 border-t border-blue-400/30 flex items-center gap-2 text-sm text-blue-100">
                             <BarChart3 size={16} /> สถิติรวมทุกสถานะ
+                        </div>
+                    </div>
+                    <div className="bg-amber-500 text-white p-5 rounded-xl shadow-lg shadow-amber-200">
+                        <div className="text-amber-100 text-sm font-medium mb-2">{DISPLAY_STATUS_CONFIG.approved.label}</div>
+                        <div className="flex items-end gap-2">
+                            <div className="text-4xl font-bold">{summary.approved}</div>
+                            <div className="mb-1 text-sm opacity-80">รายการ</div>
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-amber-400/30 flex items-center gap-2 text-sm text-amber-100">
+                            <ArrowRight size={16} /> {DISPLAY_STATUS_CONFIG.approved.label}
                         </div>
                     </div>
                     <div className="bg-green-500 text-white p-5 rounded-xl shadow-lg shadow-green-200">
@@ -551,7 +563,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                             </div>
                         </div>
                         <div className="mt-4 pt-4 border-t border-green-400/30 flex items-center gap-2 text-sm text-green-100">
-                            <CheckCircle size={16} /> งานที่ทำเสร็จสิ้น
+                            <CheckCircle size={16} /> งานที่เสร็จสมบูรณ์
                         </div>
                     </div>
                     <div className="bg-orange-500 text-white p-5 rounded-xl shadow-lg shadow-orange-200">
@@ -565,7 +577,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                         </div>
                     </div>
                     <div className="bg-purple-500 text-white p-5 rounded-xl shadow-lg shadow-purple-200">
-                        <div className="text-purple-100 text-sm font-medium mb-2">รอดำเนินการ</div>
+                        <div className="text-purple-100 text-sm font-medium mb-2">{DISPLAY_STATUS_CONFIG.pending.label}</div>
                         <div className="flex items-end gap-2">
                             <div className="text-4xl font-bold">{summary.pending}</div>
                             <div className="mb-1 text-sm opacity-80">รายการ</div>
@@ -576,13 +588,13 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                     </div>
                 </div>
             </div>
-
+ 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Category Breakdown (Progress Bars) */}
                 <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
                     <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
                         <PieChart size={20} className="text-blue-500" />
-                        การแจ้งซ่อมตามหมวดหมู่
+                        ใบงานตามหมวดหมู่
                     </h3>
                     <div className="space-y-6">
                         {CATEGORIES.map(cat => {
@@ -693,7 +705,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                         <div className="mb-6 pb-4 border-b bg-blue-600 -m-6 mb-6 p-6 rounded-t-xl">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <h2 className="text-2xl font-bold text-white mb-1">แจ้งซ่อมใหม่</h2>
+                                    <h2 className="text-2xl font-bold text-white mb-1">สร้างใบงานใหม่</h2>
                                     <p className="text-blue-100 text-sm">กรอกรายละเอียดปัญหาหรือสิ่งที่ต้องการซ่อม</p>
                                 </div>
                                 <button onClick={() => setShowForm(false)} className="text-white hover:text-blue-200" title="ปิด">
@@ -897,7 +909,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                                     </svg>
-                                    ส่งคำขอซ่อม
+                                    สร้างใบงาน
                                 </button>
                             </div>
                         </form>
@@ -946,7 +958,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                             {/* Left Column - Info */}
                             <div className="space-y-6">
                                 <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-                                    <h3 className="font-semibold text-gray-800 border-b pb-2">ข้อมูลการแจ้ง</h3>
+                                    <h3 className="font-semibold text-gray-800 border-b pb-2">ข้อมูลใบงาน</h3>
                                     <div>
                                         <div className="text-xs text-gray-500">สถานที่</div>
                                         <div className="font-medium">{selectedRequest.tbl_rooms?.room_code} - {selectedRequest.tbl_rooms?.room_name}</div>
@@ -998,7 +1010,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                             {/* Right Column - Edit (Show only if Admin or Technician) */}
                             {activeRole !== 'reporter' && (
                                 <div className="space-y-4">
-                                    <h3 className="font-semibold text-gray-800 pb-2 border-b">อัปเดตงานซ่อม</h3>
+                                    <h3 className="font-semibold text-gray-800 pb-2 border-b">อัปเดตใบงาน</h3>
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="col-span-2">
@@ -1043,10 +1055,10 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                                             </select>
                                         </div>
                                         <div className="col-span-2">
-                                            <label className="block text-xs font-medium mb-1 text-gray-600">มอบหมายช่าง</label>
+                                            <label className="block text-xs font-medium mb-1 text-gray-600">ผู้รับผิดชอบ/ช่าง</label>
                                             <input
                                                 type="text"
-                                                title="มอบหมายช่าง"
+                                                title="ผู้รับผิดชอบ/ช่าง"
                                                 value={editData.assigned_to}
                                                 onChange={(e) => setEditData({ ...editData, assigned_to: e.target.value })}
                                                 className="w-full border rounded-lg px-3 py-2"
@@ -1070,7 +1082,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                                         onClick={handleUpdateRequest}
                                         className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-sm"
                                     >
-                                        บันทึกการเปลี่ยนแปลง
+                                        บันทึกการแก้ไข
                                     </button>
                                 </div>
                             )}
@@ -1080,7 +1092,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                         {historyItems.length > 0 && (
                             <div className="mt-8 pt-4 border-t">
                                 <h3 className="font-medium mb-3 flex items-center gap-2 text-gray-700">
-                                    <History size={18} /> ไทม์ไลน์การซ่อม
+                                    <History size={18} /> ประวัติการเปลี่ยนแปลง
                                 </h3>
                                 <div className="relative pl-4 space-y-6 before:content-[''] before:absolute before:left-1.5 before:top-2 before:bottom-0 before:w-0.5 before:bg-gray-200">
                                     {historyItems.map(h => (
@@ -1212,3 +1224,4 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
         </div>
     );
 }
+

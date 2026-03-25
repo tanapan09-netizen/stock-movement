@@ -71,7 +71,8 @@ import {
     MAINTENANCE_STATUS_OPTIONS,
     MAINTENANCE_TARGET_ROLE_OPTIONS,
 } from '@/lib/maintenance-options';
-import { parseMaintenanceImageUrls } from '@/lib/maintenance-images';
+import { getMaintenanceWorkflowStep, MAINTENANCE_WORKFLOW_LABELS } from '@/lib/maintenance-workflow';
+import { getCopiedImageMetadata, parseMaintenanceImageUrls } from '@/lib/maintenance-images';
 
 interface Room {
     room_id: number;
@@ -158,10 +159,11 @@ interface Technician {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any; bg?: string }> = {
-    pending: { label: 'รอรับเรื่อง', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: Clock },
-    in_progress: { label: 'กำลังดำเนินการ', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Loader2 },
-    confirmed: { label: 'ยืนยันงานเสร็จ', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: CheckCircle2 },
-    completed: { label: 'เสร็จสิ้น', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle2 },
+    pending: { label: 'รอเรื่อง', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: Clock },
+    approved: { label: 'แจ้งเรื่องต่อ', color: 'bg-orange-100 text-orange-700 border-orange-200', icon: ArrowRight },
+    in_progress: { label: 'ดำเนินการ', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Loader2 },
+    confirmed: { label: 'ยืนยันงาน', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: CheckCircle2 },
+    completed: { label: 'เสร็จสมบูรณ์', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle2 },
     cancelled: { label: 'ยกเลิก', color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle },
     verified: { label: 'ตรวจสอบแล้ว', color: 'bg-cyan-100 text-cyan-700 border-cyan-200', icon: ShieldCheck },
 };
@@ -300,6 +302,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const [summary, setSummary] = useState({
         total: 0,
         pending: 0,
+        approved: 0,
         in_progress: 0,
         completed: 0,
         total_cost: 0,
@@ -368,6 +371,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const [fetchingGeneral, setFetchingGeneral] = useState(false);
     const [selectedGeneralRequestId, setSelectedGeneralRequestId] = useState<number | null>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const selectedPulledRequest = selectedGeneralRequestId
+        ? generalRequests.find((request) => request.request_id === selectedGeneralRequestId) ?? null
+        : null;
+    const selectedPulledRequestImageUrls = parseMaintenanceImageUrls(selectedPulledRequest?.image_url);
     const [roomSearch, setRoomSearch] = useState('');
     const [showReopenModal, setShowReopenModal] = useState(false);
     const [reopenRequest, setReopenRequest] = useState<MaintenanceRequestItem | null>(null);
@@ -693,6 +700,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             data.append('vehicle_plate', vehiclePlate);
         }
         data.append('target_role', formData.target_role);
+        if (pullFromGeneral && selectedPulledRequestImageUrls.length > 0) {
+            data.append('source_request_id', String(selectedPulledRequest?.request_id || ''));
+            data.append('source_image_count', String(selectedPulledRequestImageUrls.length));
+            selectedPulledRequestImageUrls.forEach((imageUrl) => data.append('source_image_urls', imageUrl));
+        }
 
         if (selectedFile) {
             data.append('image_file', selectedFile);
@@ -1158,6 +1170,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     };
 
     const selectedRequestImageUrls = parseMaintenanceImageUrls(selectedRequest?.image_url);
+    const selectedRequestCopiedImageMeta = getCopiedImageMetadata(selectedRequest?.tags);
 
     return (
         <div className="space-y-6">
@@ -1228,22 +1241,26 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                 <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
                     <div className="text-2xl font-bold text-gray-900 dark:text-white">{summary.total}</div>
                     <div className="text-gray-600 dark:text-gray-400 text-sm">ทั้งหมด</div>
                 </div>
                 <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-4">
                     <div className="text-2xl font-bold text-yellow-600">{summary.pending}</div>
-                    <div className="text-yellow-600 text-sm">รอดำเนินการ</div>
+                    <div className="text-yellow-600 text-sm">รอเรื่อง</div>
+                </div>
+                <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-4">
+                    <div className="text-2xl font-bold text-orange-600">{summary.approved}</div>
+                    <div className="text-orange-600 text-sm">แจ้งเรื่องต่อ</div>
                 </div>
                 <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4">
                     <div className="text-2xl font-bold text-blue-600">{summary.in_progress}</div>
-                    <div className="text-blue-600 text-sm">กำลังซ่อม</div>
+                    <div className="text-blue-600 text-sm">ดำเนินการ</div>
                 </div>
                 <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4">
                     <div className="text-2xl font-bold text-green-600">{summary.completed}</div>
-                    <div className="text-green-600 text-sm">เสร็จแล้ว</div>
+                    <div className="text-green-600 text-sm">เสร็จสมบูรณ์</div>
                 </div>
                 <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-4">
                     <div className="text-2xl font-bold text-orange-600">{summary.pending_verification || 0}</div>
@@ -1267,9 +1284,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                         aria-label="กรองตามสถานะ"
                     >
                         <option value="all">ทุกสถานะ</option>
-                        <option value="pending">รอดำเนินการ</option>
-                        <option value="in_progress">กำลังซ่อม</option>
-                        <option value="completed">เสร็จแล้ว</option>
+                        <option value="pending">รอเรื่อง</option>
+                        <option value="approved">แจ้งเรื่องต่อ</option>
+                        <option value="in_progress">ดำเนินการ</option>
+                        <option value="confirmed">ยืนยันงาน</option>
+                        <option value="completed">เสร็จสมบูรณ์</option>
                         <option value="cancelled">ยกเลิก</option>
                     </select>
                 </div>
@@ -1591,8 +1610,32 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         )}
                                         {selectedGeneralRequestId && (
                                             <p className="mt-2 text-xs text-blue-700">
-                                                ห้องที่ดึงมา: {generalRequests.find(r => r.request_id === selectedGeneralRequestId)?.tbl_rooms?.room_code || '-'}
+                                                ห้องที่ดึงมา: {selectedPulledRequest?.tbl_rooms?.room_code || '-'}
                                             </p>
+                                        )}
+                                        {selectedPulledRequestImageUrls.length > 0 && (
+                                            <div className="mt-3 rounded-lg border border-blue-200 bg-white p-3">
+                                                <p className="mb-2 text-xs font-medium text-blue-800">
+                                                    รูปจากเคสด่วนออนไลน์จะถูกแนบไปกับใบงานใหม่อัตโนมัติ ({selectedPulledRequestImageUrls.length} รูป)
+                                                </p>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {selectedPulledRequestImageUrls.map((imageUrl, index) => (
+                                                        <a
+                                                            key={`${selectedPulledRequest?.request_id ?? 'general'}-${index}`}
+                                                            href={imageUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="block overflow-hidden rounded-lg border border-blue-100"
+                                                        >
+                                                            <img
+                                                                src={imageUrl}
+                                                                alt={`รูปแนบจากเคสด่วน ${index + 1}`}
+                                                                className="h-24 w-full object-cover"
+                                                            />
+                                                        </a>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                 )}
@@ -2028,9 +2071,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
                             <div className="px-6 py-8 border-b border-gray-100 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-900/10 mb-6 -mx-6 -mt-6 rounded-t-xl">
                                 <WorkflowStepper 
-                                    totalSteps={4}
+                                    currentStep={getMaintenanceWorkflowStep(selectedRequest.status)}
+                                    totalSteps={5}
                                     status={selectedRequest.status as WorkflowStatus}
-                                    labels={['รอรับเรื่อง', 'ดำเนินการ', 'ยืนยันงาน', 'เสร็จสมบูรณ์']}
+                                    labels={[...MAINTENANCE_WORKFLOW_LABELS]}
                                     size="md"
                                 />
                             </div>
@@ -2065,7 +2109,14 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                             <div className="text-sm text-gray-500 mb-1">รูปภาพ</div>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                 {selectedRequestImageUrls.map((imageUrl, index) => (
-                                                    <a key={`${selectedRequest.request_id}-${index}`} href={imageUrl} target="_blank" rel="noopener noreferrer">
+                                                    <a key={`${selectedRequest.request_id}-${index}`} href={imageUrl} target="_blank" rel="noopener noreferrer" className="relative block">
+                                                        {index < selectedRequestCopiedImageMeta.copiedImageCount && (
+                                                            <span className="absolute left-2 top-2 z-10 rounded-full bg-blue-600 px-2.5 py-1 text-[11px] font-medium text-white shadow">
+                                                                {selectedRequestCopiedImageMeta.sourceRequestId
+                                                                    ? `คัดลอกจากเคสด่วน #${selectedRequestCopiedImageMeta.sourceRequestId}`
+                                                                    : 'คัดลอกจากเคสด่วนออนไลน์'}
+                                                            </span>
+                                                        )}
                                                         <img
                                                             src={imageUrl}
                                                             alt={`รูปภาพปัญหา ${index + 1}`}
@@ -2585,6 +2636,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                             {/* Modal Header */}
                             <div className={`p-5 ${statusChangeData.newStatus === 'in_progress'
                                 ? 'bg-gradient-to-r from-blue-500 to-blue-600'
+                                : statusChangeData.newStatus === 'approved'
+                                    ? 'bg-gradient-to-r from-orange-500 to-amber-600'
                                 : statusChangeData.newStatus === 'completed'
                                     ? 'bg-gradient-to-r from-green-500 to-emerald-600'
                                     : 'bg-gradient-to-r from-gray-500 to-gray-600'
@@ -2593,6 +2646,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                     <div className="p-2 bg-white/20 rounded-lg">
                                         {statusChangeData.newStatus === 'in_progress' ? (
                                             <Wrench className="text-white" size={24} />
+                                        ) : statusChangeData.newStatus === 'approved' ? (
+                                            <ArrowRight className="text-white" size={24} />
                                         ) : statusChangeData.newStatus === 'completed' ? (
                                             <CheckCircle2 className="text-white" size={24} />
                                         ) : (
@@ -2601,6 +2656,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                     </div>
                                     <div>
                                         <h3 className="text-lg font-bold text-white">
+                                            {statusChangeData.newStatus === 'approved' && 'แจ้งเรื่องต่อ'}
                                             {statusChangeData.newStatus === 'in_progress' && 'เริ่มดำเนินการซ่อม'}
                                             {statusChangeData.newStatus === 'completed' && 'ยืนยันการซ่อมเสร็จ'}
                                             {statusChangeData.newStatus === 'pending' && 'ยืนยันการเปลี่ยนสถานะ'}
@@ -2608,10 +2664,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         <p className="text-white/80 text-sm mb-2">
                                             ใบงาน: {statusChangeData.request.request_number}
                                         </p>
-                                        <div className="w-[120px]">
+                                        <div className="w-[180px]">
                                             <WorkflowStepper
-                                                totalSteps={4}
-                                                labels={['รอรับเรื่อง', 'ดำเนินการ', 'ยืนยันงาน', 'เสร็จสมบูรณ์']}
+                                                currentStep={getMaintenanceWorkflowStep(statusChangeData.newStatus)}
+                                                totalSteps={5}
+                                                labels={[...MAINTENANCE_WORKFLOW_LABELS]}
                                                 status={statusChangeData.newStatus === 'pending' ? 'pending' : statusChangeData.newStatus as WorkflowStatus}
                                                 size="sm"
                                             />
@@ -2844,11 +2901,19 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                     disabled={!canEditPage}
                                     className={`flex-1 px-4 py-2.5 text-white rounded-lg font-medium transition flex items-center justify-center gap-2 ${statusChangeData.newStatus === 'in_progress'
                                         ? 'bg-blue-600 hover:bg-blue-700'
+                                        : statusChangeData.newStatus === 'approved'
+                                            ? 'bg-orange-600 hover:bg-orange-700'
                                         : statusChangeData.newStatus === 'completed'
                                             ? 'bg-green-600 hover:bg-green-700'
                                             : 'bg-gray-600 hover:bg-gray-700'
                                         } disabled:cursor-not-allowed disabled:opacity-50`}
                                 >
+                                    {statusChangeData.newStatus === 'approved' && (
+                                        <>
+                                            <ArrowRight size={18} />
+                                            แจ้งเรื่องต่อ
+                                        </>
+                                    )}
                                     {statusChangeData.newStatus === 'in_progress' && (
                                         <>
                                             <Wrench size={18} />
