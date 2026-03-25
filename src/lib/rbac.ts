@@ -228,6 +228,10 @@ const SPECIAL_ROUTE_BASELINE_ACCESS: Record<string, BaselineAccessResolver> = {
     const allowed = isManagerRole(role) || isDepartmentRole(role, 'purchasing') || isApprover;
     return { canReadPage: allowed, canEditPage: allowed };
   },
+  '/accounting-dashboard': ({ role }) => {
+    const allowed = isManagerRole(role) || isDepartmentRole(role, 'accounting');
+    return { canReadPage: allowed, canEditPage: allowed };
+  },
   '/manager-dashboard': ({ role }) => {
     const allowed = isManagerRole(role);
     return { canReadPage: allowed, canEditPage: allowed };
@@ -302,6 +306,13 @@ export function canAccessManagerDashboard(
   userPermissions: PagePermissionMap,
 ) {
   return canAccessDashboardPage(role, userPermissions, '/manager-dashboard');
+}
+
+export function canAccessAccountingDashboard(
+  role: string | null | undefined,
+  userPermissions: PagePermissionMap,
+) {
+  return canAccessDashboardPage(role, userPermissions, '/accounting-dashboard');
 }
 
 export function canViewAdminRoles(
@@ -925,7 +936,7 @@ export function resolveDashboardHomeView(
     return 'manager';
   }
 
-  if (isDepartmentRole(normalizedRole, 'accounting')) {
+  if (canAccessAccountingDashboard(normalizedRole, userPermissions)) {
     return 'accounting';
   }
 

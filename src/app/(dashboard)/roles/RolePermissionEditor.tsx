@@ -157,6 +157,7 @@ function getSelectionState(total: number, checked: number): SelectionState {
 
 const ROUTE_LABELS: Record<string, string> = {
   '/': 'หน้าหลัก',
+  '/accounting-dashboard': 'แดชบอร์ดบัญชี',
   '/approvals/manage': 'อนุมัติ / จัดการ',
   '/approvals/purchasing': 'อนุมัติ / จัดซื้อ',
   '/purchase-request': 'คำขอจัดซื้อ',

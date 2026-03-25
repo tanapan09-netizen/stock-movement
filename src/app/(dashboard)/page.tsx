@@ -29,7 +29,13 @@ export default async function DashboardPage() {
     case 'manager':
       return <ManagerDashboard />;
     case 'accounting':
-      return <AccountingDashboard />;
+      return (
+        <AccountingDashboard
+          role={permissionContext.role}
+          permissions={permissionContext.permissions}
+          isApprover={permissionContext.isApprover}
+        />
+      );
     case 'purchasing':
       return <PurchasingDashboard />;
     case 'technician':

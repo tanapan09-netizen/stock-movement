@@ -94,6 +94,7 @@ export const DASHBOARD_PAGE_ROUTES = [
     '/assets/[id]',
     '/assets/[id]/edit',
     '/assets/new',
+    '/accounting-dashboard',
     '/audit-log',
     '/borrow',
     '/borrow/[id]',
@@ -170,6 +171,7 @@ const ROUTE_REQUIRED_PERMISSIONS: Record<DashboardRoute, RouteRequirement> = {
     '/assets/[id]': PERMISSIONS.ASSETS,
     '/assets/[id]/edit': PERMISSIONS.ASSETS,
     '/assets/new': PERMISSIONS.ASSETS,
+    '/accounting-dashboard': PERMISSIONS.PETTY_CASH,
     '/audit-log': PERMISSIONS.ADMIN_LOGS,
     '/borrow': PERMISSIONS.BORROW,
     '/borrow/[id]': PERMISSIONS.BORROW,
@@ -256,6 +258,7 @@ const MAIN_LIST_EDIT_ROUTES = new Set<DashboardRoute>([
 const MANUAL_BASELINE_ROUTES = new Set<DashboardRoute>([
     '/approvals/manage',
     '/approvals/purchasing',
+    '/accounting-dashboard',
     '/manager-dashboard',
     '/purchasing-dashboard',
     '/purchase-request/manage',

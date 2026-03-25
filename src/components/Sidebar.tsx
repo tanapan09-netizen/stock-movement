@@ -94,6 +94,7 @@ export default function Sidebar(props: SidebarProps) {
     const canMaintenancePage = canAccessPage('/maintenance');
     const canPurchasingApprovalsPage = canAccessPage('/approvals/purchasing');
     const canPurchaseRequestManagePage = canAccessPage('/purchase-request/manage');
+    const canAccountingDashboardPage = canAccessPage('/accounting-dashboard');
     const canPurchasingDashboardPage = canAccessPage('/purchasing-dashboard');
     const canManagerDashboardPage = canAccessPage('/manager-dashboard');
     const canStoreDashboardPage = canAccessPage('/store-dashboard');
@@ -207,6 +208,18 @@ export default function Sidebar(props: SidebarProps) {
                             >
                                 <ScrollText className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/manager-dashboard') && 'group-hover:scale-110 group-hover:text-sky-400'}`} />
                                 {!collapsed && <span className="truncate">Manager Dashboard</span>}
+                            </Link>
+                        )}
+
+                        {(isAdminTeam || isManagerTeam || isDepartmentRole(normalizedRole, 'accounting')) && canAccountingDashboardPage && (
+                            <Link
+                                href="/accounting-dashboard"
+                                onClick={handleLinkClick}
+                                className={getNavItemClass(isActive('/accounting-dashboard'))}
+                                title={collapsed ? 'Accounting Dashboard' : undefined}
+                            >
+                                <DollarSign className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/accounting-dashboard') && 'group-hover:scale-110 group-hover:text-emerald-400'}`} />
+                                {!collapsed && <span className="truncate">Accounting Dashboard</span>}
                             </Link>
                         )}
 
