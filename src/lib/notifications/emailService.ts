@@ -5,6 +5,7 @@
 
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
+import { getPrimaryMaintenanceImageUrl } from '@/lib/maintenance-images';
 
 export interface EmailConfig {
     host: string;
@@ -395,6 +396,7 @@ export function generateMaintenanceRequestEmail(request: {
         high: 'สูง',
         urgent: 'เร่งด่วน',
     }[request.priority] || request.priority;
+    const primaryImageUrl = getPrimaryMaintenanceImageUrl(request.image_url);
 
     return `
 <!DOCTYPE html>
@@ -472,10 +474,16 @@ export function generateMaintenanceRequestEmail(request: {
                                 </tr>
                             </table>
                             
-                            ${request.image_url ? `
+                            ${false && request.image_url ? `
                             <div style="margin-top: 20px;">
                                 <p style="margin: 0 0 8px 0; color: #6b7280; font-weight: 600; font-size: 14px;">รูปภาพประกอบ:</p>
                                 <img src="${request.image_url}" alt="รูปภาพปัญหา" style="max-width: 100%; border-radius: 6px; border: 1px solid #e5e7eb;">
+                            </div>
+                            ` : ''}
+                            ${primaryImageUrl ? `
+                            <div style="margin-top: 20px;">
+                                <p style="margin: 0 0 8px 0; color: #6b7280; font-weight: 600; font-size: 14px;">รูปภาพประกอบ:</p>
+                                <img src="${primaryImageUrl}" alt="รูปภาพปัญหา" style="max-width: 100%; border-radius: 6px; border: 1px solid #e5e7eb;">
                             </div>
                             ` : ''}
                             

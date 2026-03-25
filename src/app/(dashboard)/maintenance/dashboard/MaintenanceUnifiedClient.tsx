@@ -25,6 +25,7 @@ import {
     MAINTENANCE_PRIORITY_OPTIONS,
     MAINTENANCE_STATUS_OPTIONS,
 } from '@/lib/maintenance-options';
+import { parseMaintenanceImageUrls } from '@/lib/maintenance-images';
 
 // ... (Interfaces remain roughly the same, explicitly defined here for safety)
 interface Room {
@@ -114,7 +115,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
     const [showRoomForm, setShowRoomForm] = useState(false);
     const [showDetailModal, setShowDetailModal] = useState(false);
     // const [showPartRequestModal, setShowPartRequestModal] = useState(false);
-    const [selectedRequest, setSelectedRequest] = useState<MaintenanceRequestItem | null>(null);
+    const [selectedRequest, setSelectedRequest] = useState<any>(null);
     const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
     const [upcomingPmPlans, setUpcomingPmPlans] = useState<PmPlanItem[]>([]);
 
@@ -671,6 +672,8 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
     );
 
     // --- MAIN RENDER ---
+    const selectedRequestImageUrls = parseMaintenanceImageUrls(selectedRequest?.image_url);
+
     return (
         <div className="min-h-screen bg-gray-50/50 pb-20">
             <RoleHeader activeRole={activeRole} onRoleChange={setActiveRole} />
@@ -968,10 +971,26 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                                         <div className="text-sm">{new Date(selectedRequest.created_at).toLocaleString('th-TH')}</div>
                                     </div>
                                 </div>
-                                {selectedRequest.image_url && (
+                                {selectedRequest && selectedRequest.image_url && false && (
                                     <div>
                                         <div className="text-xs text-gray-500 mb-1">รูปภาพประกอบ</div>
                                         <img src={selectedRequest.image_url} alt="รูปภาพปัญหา" className="rounded-lg w-full h-48 object-cover shadow-sm" />
+                                    </div>
+                                )}
+                                {selectedRequestImageUrls.length > 0 && (
+                                    <div>
+                                        <div className="text-xs text-gray-500 mb-1">รูปภาพประกอบ</div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {selectedRequestImageUrls.map((imageUrl, index) => (
+                                                <a key={`${selectedRequest?.request_id ?? 'request'}-${index}`} href={imageUrl} target="_blank" rel="noopener noreferrer">
+                                                    <img
+                                                        src={imageUrl}
+                                                        alt={`รูปภาพปัญหา ${index + 1}`}
+                                                        className="rounded-lg w-full h-48 object-cover shadow-sm border hover:opacity-90 transition"
+                                                    />
+                                                </a>
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
                             </div>

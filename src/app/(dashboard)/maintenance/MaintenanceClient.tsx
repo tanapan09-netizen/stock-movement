@@ -71,6 +71,7 @@ import {
     MAINTENANCE_STATUS_OPTIONS,
     MAINTENANCE_TARGET_ROLE_OPTIONS,
 } from '@/lib/maintenance-options';
+import { parseMaintenanceImageUrls } from '@/lib/maintenance-images';
 
 interface Room {
     room_id: number;
@@ -238,6 +239,10 @@ const ALLOWED_NEW_MAINTENANCE_ROLES = new Set([
     'manager',
     'employee',
 ]);
+const FALLBACK_TECHNICIAN_TARGET_ROLE_OPTION = {
+    value: 'technician',
+    label: 'Technician (ช่างซ่อมบำรุง)',
+} as const;
 
 export default function MaintenanceClient({ userPermissions = {}, canEditPage = false }: MaintenanceClientProps) {
     const { data: session } = useSession();
@@ -260,6 +265,9 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     };
     const canCreateNewRequestByRole = ALLOWED_NEW_MAINTENANCE_ROLES.has(loggedInRole);
     const canCreateNewMaintenanceRequest = canEditPage && canCreateNewRequestByRole;
+    const maintenanceTargetRoleOptions = MAINTENANCE_TARGET_ROLE_OPTIONS.some((option) => option.value === 'technician')
+        ? MAINTENANCE_TARGET_ROLE_OPTIONS
+        : [FALLBACK_TECHNICIAN_TARGET_ROLE_OPTION, ...MAINTENANCE_TARGET_ROLE_OPTIONS];
     const ensureCanCreateMaintenanceRequest = () => {
         if (!ensureCanEditPage()) return false;
         if (canCreateNewRequestByRole) return true;
@@ -1149,6 +1157,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         openDetailModal(request);
     };
 
+    const selectedRequestImageUrls = parseMaintenanceImageUrls(selectedRequest?.image_url);
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -1723,7 +1733,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none dark:bg-slate-700 dark:border-slate-600"
                                         required
                                     >
-                                        {MAINTENANCE_TARGET_ROLE_OPTIONS.map((option) => (
+                                        {maintenanceTargetRoleOptions.map((option) => (
                                             <option key={option.value} value={option.value}>
                                                 {option.label}
                                             </option>
@@ -2044,10 +2054,26 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                             <div>{selectedRequest.description}</div>
                                         </div>
                                     )}
-                                    {selectedRequest.image_url && (
+                                    {false && selectedRequest.image_url && (
                                         <div>
                                             <div className="text-sm text-gray-500 mb-1">รูปภาพ</div>
                                             <img src={selectedRequest.image_url} alt="รูปภาพปัญหา" className="rounded-lg max-h-40 object-cover" />
+                                        </div>
+                                    )}
+                                    {selectedRequestImageUrls.length > 0 && (
+                                        <div>
+                                            <div className="text-sm text-gray-500 mb-1">รูปภาพ</div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                {selectedRequestImageUrls.map((imageUrl, index) => (
+                                                    <a key={`${selectedRequest.request_id}-${index}`} href={imageUrl} target="_blank" rel="noopener noreferrer">
+                                                        <img
+                                                            src={imageUrl}
+                                                            alt={`รูปภาพปัญหา ${index + 1}`}
+                                                            className="rounded-lg w-full max-h-40 object-cover border hover:opacity-90 transition"
+                                                        />
+                                                    </a>
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
                                     <div>
