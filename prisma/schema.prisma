@@ -725,6 +725,8 @@ enum tbl_inventory_audits_status {
   draft
   frozen
   counting
+  in_progress
+  completed
   review
   approved
   posted
