@@ -1,19 +1,25 @@
-import { PERMISSIONS } from '@/lib/permissions';
 import { auth } from '@/auth';
-import { getRolePermissions } from '@/actions/roleActions';
 import { redirect } from 'next/navigation';
 import PettyCashClient from './PettyCashClient';
+import { canAccessPettyCashModule } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 export default async function PettyCashPage() {
     const session = await auth();
     if (!session) redirect('/login');
 
-    const role = (session.user as any).role || 'user';
-    const permissions = await getRolePermissions(role);
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
 
-    if (!permissions[PERMISSIONS.PETTY_CASH]) {
+    if (!canAccessPettyCashModule(permissionContext.permissions)) {
         redirect('/dashboard');
     }
 
-    return <PettyCashClient />;
+    return (
+        <PettyCashClient
+            currentUserName={session.user.name || ''}
+            role={permissionContext.role}
+            permissions={permissionContext.permissions}
+            isApprover={permissionContext.isApprover}
+        />
+    );
 }

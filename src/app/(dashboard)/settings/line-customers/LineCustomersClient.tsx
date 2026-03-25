@@ -25,7 +25,11 @@ interface LineCustomer {
     updated_at: Date;
 }
 
-export default function LineCustomersClient() {
+interface Props {
+    canEdit: boolean;
+}
+
+export default function LineCustomersClient({ canEdit }: Props) {
     const [customers, setCustomers] = useState<LineCustomer[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -60,6 +64,10 @@ export default function LineCustomersClient() {
     }, [customers, search]);
 
     async function handleSave(c: LineCustomer) {
+        if (!canEdit) {
+            return;
+        }
+
         const result = await updateLineCustomer({
             id: c.id,
             full_name: c.full_name,
@@ -74,6 +82,10 @@ export default function LineCustomersClient() {
     }
 
     async function handleToggleActive(id: number, current: boolean) {
+        if (!canEdit) {
+            return;
+        }
+
         const result = await toggleLineCustomerActive(id, !current);
         if (result.success) {
             setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, is_active: !current } : c)));
@@ -83,6 +95,10 @@ export default function LineCustomersClient() {
     }
 
     async function handleDelete(id: number) {
+        if (!canEdit) {
+            return;
+        }
+
         if (!confirm('ยืนยันการลบลูกค้า LINE นี้?')) return;
         const result = await deleteLineCustomer(id);
         if (result.success) {
@@ -104,7 +120,7 @@ export default function LineCustomersClient() {
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">LINE Customer Management</h1>
+                        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">จัดการลูกค้า LINE</h1>
                         <p className="text-gray-500 dark:text-gray-400">จัดการรายชื่อลูกค้าที่ลงทะเบียนผ่าน LINE โดยเฉพาะ</p>
                     </div>
                     <button
@@ -164,8 +180,9 @@ export default function LineCustomersClient() {
                                                         prev.map((row) => (row.id === c.id ? { ...row, full_name: e.target.value } : row))
                                                     )
                                                 }
-                                                onBlur={() => handleSave(c)}
-                                                className="w-full border rounded px-2 py-1 dark:bg-slate-700 dark:border-slate-600"
+                                                onBlur={canEdit ? () => handleSave(c) : undefined}
+                                                readOnly={!canEdit}
+                                                className="w-full border rounded px-2 py-1 dark:bg-slate-700 dark:border-slate-600 read-only:bg-gray-50 read-only:text-gray-500 dark:read-only:bg-slate-800/60"
                                             />
                                         </td>
                                         <td className="px-4 py-3">
@@ -177,8 +194,9 @@ export default function LineCustomersClient() {
                                                         prev.map((row) => (row.id === c.id ? { ...row, phone_number: e.target.value } : row))
                                                     )
                                                 }
-                                                onBlur={() => handleSave(c)}
-                                                className="w-full border rounded px-2 py-1 dark:bg-slate-700 dark:border-slate-600"
+                                                onBlur={canEdit ? () => handleSave(c) : undefined}
+                                                readOnly={!canEdit}
+                                                className="w-full border rounded px-2 py-1 dark:bg-slate-700 dark:border-slate-600 read-only:bg-gray-50 read-only:text-gray-500 dark:read-only:bg-slate-800/60"
                                                 placeholder="ระบุเบอร์โทร"
                                             />
                                         </td>
@@ -191,8 +209,9 @@ export default function LineCustomersClient() {
                                                         prev.map((row) => (row.id === c.id ? { ...row, room_number: e.target.value } : row))
                                                     )
                                                 }
-                                                onBlur={() => handleSave(c)}
-                                                className="w-full border rounded px-2 py-1 dark:bg-slate-700 dark:border-slate-600"
+                                                onBlur={canEdit ? () => handleSave(c) : undefined}
+                                                readOnly={!canEdit}
+                                                className="w-full border rounded px-2 py-1 dark:bg-slate-700 dark:border-slate-600 read-only:bg-gray-50 read-only:text-gray-500 dark:read-only:bg-slate-800/60"
                                                 placeholder="เช่น A-1205"
                                             />
                                         </td>
@@ -205,34 +224,47 @@ export default function LineCustomersClient() {
                                                         prev.map((row) => (row.id === c.id ? { ...row, notes: e.target.value } : row))
                                                     )
                                                 }
-                                                onBlur={() => handleSave(c)}
-                                                className="w-full border rounded px-2 py-1 dark:bg-slate-700 dark:border-slate-600"
+                                                onBlur={canEdit ? () => handleSave(c) : undefined}
+                                                readOnly={!canEdit}
+                                                className="w-full border rounded px-2 py-1 dark:bg-slate-700 dark:border-slate-600 read-only:bg-gray-50 read-only:text-gray-500 dark:read-only:bg-slate-800/60"
                                                 placeholder="หมายเหตุ"
                                             />
                                         </td>
                                         <td className="px-4 py-3">
-                                            <button
-                                                onClick={() => handleToggleActive(c.id, c.is_active)}
-                                                className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs ${c.is_active
+                                            {canEdit ? (
+                                                <button
+                                                    onClick={() => handleToggleActive(c.id, c.is_active)}
+                                                    className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs ${c.is_active
+                                                        ? 'bg-green-100 text-green-700'
+                                                        : 'bg-red-100 text-red-700'
+                                                        }`}
+                                                >
+                                                    {c.is_active ? <UserCheck size={13} /> : <UserX size={13} />}
+                                                    {c.is_active ? 'ใช้งาน' : 'ปิดใช้งาน'}
+                                                </button>
+                                            ) : (
+                                                <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs ${c.is_active
                                                     ? 'bg-green-100 text-green-700'
                                                     : 'bg-red-100 text-red-700'
-                                                    }`}
-                                            >
-                                                {c.is_active ? <UserCheck size={13} /> : <UserX size={13} />}
-                                                {c.is_active ? 'Active' : 'Inactive'}
-                                            </button>
+                                                    }`}>
+                                                    {c.is_active ? <UserCheck size={13} /> : <UserX size={13} />}
+                                                    {c.is_active ? 'ใช้งาน' : 'ปิดใช้งาน'}
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-4 py-3 text-xs text-gray-500">
                                             {new Date(c.updated_at).toLocaleString()}
                                         </td>
                                         <td className="px-4 py-3 text-right">
-                                            <button
-                                                onClick={() => handleDelete(c.id)}
-                                                className="text-red-600 hover:text-red-800"
-                                                title="ลบข้อมูล"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                            {canEdit && (
+                                                <button
+                                                    onClick={() => handleDelete(c.id)}
+                                                    className="text-red-600 hover:text-red-800"
+                                                    title="ลบข้อมูล"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}

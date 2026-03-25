@@ -2,6 +2,7 @@
 
 // LINE Notify helper for maintenance notifications
 // Uses LINE Notify API: https://notify-api.line.me/api/notify
+import { isMaintenanceTechnician } from '@/lib/rbac';
 
 const LINE_ADMIN_ID = process.env.LINE_ADMIN_ID || '';
 
@@ -158,7 +159,7 @@ export async function notifyRoleViaLine(
     users.forEach(u => u.line_user_id && lineIds.add(u.line_user_id));
 
     // If role is technician, ALSO check tbl_technicians for backward compatibility
-    if (role === 'technician') {
+    if (isMaintenanceTechnician(role)) {
         const techs = await prisma.tbl_technicians.findMany({
             where: {
                 status: 'active',

@@ -4,12 +4,18 @@ import Link from 'next/link';
 import { auth } from '@/auth';
 import { getPartRequests } from '@/actions/partRequestActions';
 import { DonutChart } from '@/components/DonutChart';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
+import { canReviewMaintenancePartRequests } from '@/lib/rbac';
 
 export default async function TechnicianDashboard() {
     const session = await auth();
     const userName = session?.user?.name || '';
-    const userRole = (session?.user as any)?.role || '';
-    const isApprover = (session?.user as any)?.is_approver || false;
+    const permissionContext = await getUserPermissionContext(session?.user);
+    const canReviewPartRequests = canReviewMaintenancePartRequests(
+        permissionContext.role,
+        permissionContext.permissions,
+        permissionContext.isApprover,
+    );
 
     // --- Global Stats (All Tasks) ---
     const globalPending = await prisma.tbl_maintenance_requests.count({
@@ -40,7 +46,7 @@ export default async function TechnicianDashboard() {
     });
 
     let pendingPartTasks: any[] = [];
-    if (isApprover || userRole === 'head_technician' || userRole === 'admin' || userRole === 'manager') {
+    if (canReviewPartRequests) {
         const partsRes = await getPartRequests({ status: 'pending' });
         if (partsRes.success && partsRes.data) {
             pendingPartTasks = (partsRes.data as any[]).filter(
@@ -201,7 +207,7 @@ export default async function TechnicianDashboard() {
             </div>
 
             {/* Pending Part Requests (For Approvers) */}
-            {(isApprover || userRole === 'admin' || userRole === 'manager' || userRole === 'head_technician') && (
+            {canReviewPartRequests && (
                 <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
                     <div className="px-5 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
                         <div className="flex items-center gap-2">

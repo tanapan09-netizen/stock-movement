@@ -2,17 +2,17 @@ import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 import { Plus, Lock } from 'lucide-react';
 import { auth } from '@/auth';
-import { getRolePermissions } from '@/actions/roleActions';
-import { PERMISSIONS } from '@/lib/permissions';
+import { canEditPurchaseOrders, canViewPurchaseOrders } from '@/lib/rbac';
 import PurchaseOrderActions from './PurchaseOrderActions';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
+import { getProcurementStatusBadgeClass, getProcurementStatusLabel } from '@/lib/procurement-status';
 
 export default async function POListPage() {
     const session = await auth();
-    const userRole = (session?.user as { role?: string })?.role || '';
-    const rolePermissions = await getRolePermissions(userRole);
+    const { permissions: rolePermissions } = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
 
-    const canView = !!rolePermissions[PERMISSIONS.PO_VIEW];
-    const canEdit = !!rolePermissions[PERMISSIONS.PO_EDIT];
+    const canView = canViewPurchaseOrders(rolePermissions);
+    const canEdit = canEditPurchaseOrders(rolePermissions);
 
     // Check View Permission
     if (!canView) {
@@ -66,10 +66,8 @@ export default async function POListPage() {
                                 <td className="px-6 py-4">{po.order_date ? new Date(po.order_date).toLocaleDateString('th-TH') : '-'}</td>
                                 <td className="px-6 py-4 text-right">{Number(po.total_amount).toLocaleString()}</td>
                                 <td className="px-6 py-4 text-center">
-                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase
-                                ${po.status === 'received' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}
-                            `}>
-                                        {po.status}
+                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase border ${getProcurementStatusBadgeClass(po.status || 'draft')}`}>
+                                        {getProcurementStatusLabel(po.status || 'draft')}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 text-right">

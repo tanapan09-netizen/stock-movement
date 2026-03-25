@@ -3,6 +3,9 @@ import { redirect } from 'next/navigation';
 import ApprovalClient from '../ApprovalClient';
 import { getApprovalRequests } from '@/actions/approvalActions';
 import { getMaintenanceRequests } from '@/actions/maintenanceActions';
+import { canManageGeneralApprovals } from '@/lib/rbac';
+import { isDepartmentRole } from '@/lib/roles';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 interface MaintenanceRequestStatusLike {
     status?: string | null;
@@ -19,13 +22,24 @@ export default async function ApprovalsManagePage() {
         redirect('/login');
     }
 
-    const role = session.user.role?.toLowerCase() || '';
-    if (role === 'purchasing') {
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+
+    if (
+        isDepartmentRole(permissionContext.role, 'purchasing') &&
+        !canManageGeneralApprovals(
+            permissionContext.role,
+            permissionContext.permissions,
+            permissionContext.isApprover,
+        )
+    ) {
         redirect('/approvals/purchasing');
     }
 
-    const isApprover = session.user.is_approver || false;
-    const canApprove = role === 'admin' || role === 'manager' || isApprover;
+    const canApprove = canManageGeneralApprovals(
+        permissionContext.role,
+        permissionContext.permissions,
+        permissionContext.isApprover,
+    );
     if (!canApprove) {
         redirect('/approvals');
     }
@@ -46,4 +60,3 @@ export default async function ApprovalsManagePage() {
         />
     );
 }
-

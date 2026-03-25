@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { getApprovalWorkflows, saveApprovalWorkflow, toggleWorkflowStatus } from '@/actions/approvalActions';
 import { Plus, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import { useToast } from '@/components/ToastProvider';
+import { APPROVAL_WORKFLOW_REQUEST_TYPE_OPTIONS } from '@/lib/approval-options';
 
 interface WorkflowStep {
     step_order: number;
@@ -201,10 +202,11 @@ export default function WorkflowsPage() {
                                         onChange={(e) => setCurrentWorkflow({ ...currentWorkflow, request_type: e.target.value })}
                                         className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600 dark:text-white"
                                     >
-                                        <option value="ot">OT</option>
-                                        <option value="leave">Leave</option>
-                                        <option value="expense">Expense</option>
-                                        <option value="purchase">Purchase</option>
+                                        {APPROVAL_WORKFLOW_REQUEST_TYPE_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>

@@ -1,7 +1,8 @@
 import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
-import { isDepartmentRole, isManagerRole } from '@/lib/roles';
+import { canManagePurchaseRequests } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import PurchaseRequestManagementClient from './PurchaseRequestManagementClient';
 
 export const metadata = {
@@ -15,8 +16,8 @@ export default async function PurchaseRequestManagementPage() {
         redirect('/login');
     }
 
-    const role = (session.user.role || '').toLowerCase();
-    if (!isManagerRole(role) && !isDepartmentRole(role, 'purchasing')) {
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+    if (!canManagePurchaseRequests(permissionContext.role, permissionContext.permissions)) {
         redirect('/');
     }
 

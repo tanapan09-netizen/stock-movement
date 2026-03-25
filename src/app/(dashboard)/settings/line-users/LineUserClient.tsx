@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Trash2, UserCheck, UserX, Plus } from 'lucide-react';
+import { LINE_USER_ROLE_OPTIONS, partitionLineUsersByAssignment } from '@/lib/line-users';
 import {
     getLineUsers,
     toggleApprover,
@@ -136,8 +137,7 @@ export default function LineUserClient() {
         }
     };
 
-    const pendingUsers = users.filter((user) => user.role === 'pending');
-    const assignedUsers = users.filter((user) => user.role !== 'pending');
+    const { pending: pendingUsers, assigned: assignedUsers } = partitionLineUsersByAssignment(users);
 
     const renderRows = (list: LineUser[]) => (
         list.map((user) => (
@@ -182,28 +182,11 @@ export default function LineUserClient() {
                         onChange={(e) => handleUpdateRole(user.id, e.target.value)}
                         className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2 dark:text-white"
                     >
-                        <option value="pending">Pending (waiting for assignment)</option>
-                        <option value="general">General</option>
-                        <option value="leader_general">Leader General</option>
-                        <option value="employee">Employee</option>
-                        <option value="leader_employee">Leader Employee</option>
-                        <option value="technician">Technician</option>
-                        <option value="leader_technician">Leader Technician</option>
-                        <option value="maid">Maid</option>
-                        <option value="leader_maid">Leader Maid</option>
-                        <option value="driver">Driver</option>
-                        <option value="leader_driver">Leader Driver</option>
-                        <option value="purchasing">Purchasing</option>
-                        <option value="leader_purchasing">Leader Purchasing</option>
-                        <option value="store">Store</option>
-                        <option value="leader_store">Leader Store</option>
-                        <option value="accounting">Accounting</option>
-                        <option value="leader_accounting">Leader Accounting</option>
-                        <option value="operation">Operation</option>
-                        <option value="leader_operation">Leader Operation</option>
-                        <option value="manager">Manager</option>
-                        <option value="admin">Admin</option>
-                        <option value="owner">Owner</option>
+                        {LINE_USER_ROLE_OPTIONS.map((roleOption) => (
+                            <option key={roleOption.value} value={roleOption.value}>
+                                {roleOption.label}
+                            </option>
+                        ))}
                     </select>
                 </td>
                 <td className="p-4">

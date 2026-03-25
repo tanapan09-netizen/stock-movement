@@ -8,6 +8,15 @@ import { auth } from '@/auth';
 import { uploadFile } from '@/lib/gcs';
 import { notifyRoleViaLine, sendLineMessage, sendLineNotify } from '@/lib/lineNotify';
 import { validateData, createMaintenanceRequestSchema } from '@/lib/validation';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
+import {
+    canCreateMaintenanceRequest,
+    canManageMaintenanceEdit,
+    canManageMaintenanceParts,
+    canReopenMaintenanceRequest,
+    canSubmitMaintenanceCompletion,
+    canVerifyMaintenanceParts,
+} from '@/lib/rbac';
 
 // ==================== ROOMS ====================
 
@@ -219,6 +228,20 @@ function getErrorMessage(error: unknown, fallback: string): string {
     return error instanceof Error ? error.message : fallback;
 }
 
+async function getMaintenanceAuthContext() {
+    const session = await auth();
+    if (!session?.user) {
+        return null;
+    }
+
+    const permissionContext = await getUserPermissionContext(session.user);
+
+    return {
+        session,
+        ...permissionContext,
+    };
+}
+
 export async function getMaintenanceRequests(filters?: {
     status?: string | string[];
     room_id?: number;
@@ -292,14 +315,16 @@ export async function getMaintenanceRequestById(request_id: number) {
 
 export async function createMaintenanceRequest(formData: FormData) {
     try {
-        const session = await auth();
-        if (!session?.user) {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
         }
 
-        const allowedRoles = new Set(['admin', 'manager', 'employee']);
-        const userRole = (session.user.role || '').toString().trim().toLowerCase();
-        if (!allowedRoles.has(userRole)) {
+        if (!canCreateMaintenanceRequest(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        )) {
             return { success: false, error: 'Permission denied: role cannot create maintenance request' };
         }
 
@@ -525,6 +550,15 @@ export async function withdrawPartForMaintenance(data: {
     notes?: string;
 }) {
     try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canManageMaintenanceParts(authContext.role, authContext.permissions)) {
+            return { success: false, error: 'Permission denied' };
+        }
+
         const wh01 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-01' } });
         const wh03 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-03' } });
 
@@ -679,6 +713,15 @@ export async function confirmPartsUsed(data: {
 
 export async function returnPartToStock(data: { part_id: number; returned_qty: number; returned_by: string }) {
     try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canManageMaintenanceParts(authContext.role, authContext.permissions)) {
+            return { success: false, error: 'Permission denied' };
+        }
+
         const part = await prisma.tbl_maintenance_parts.findUnique({ where: { part_id: data.part_id } });
         if (!part) return { success: false, error: 'Part record not found' };
 
@@ -718,6 +761,15 @@ export async function returnPartToStock(data: { part_id: number; returned_qty: n
 
 export async function completeMaintenanceWithParts(request_id: number, changed_by: string) {
     try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canManageMaintenanceParts(authContext.role, authContext.permissions)) {
+            return { success: false, error: 'Permission denied' };
+        }
+
         const parts = await prisma.tbl_maintenance_parts.findMany({
             where: { request_id, status: 'used' }
         });
@@ -764,8 +816,20 @@ export async function completeMaintenanceWithParts(request_id: number, changed_b
 export async function submitRepairCompletion(formData: FormData) {
     try {
         const request_id = parseInt(formData.get('request_id') as string);
-        const session = await auth();
-        const changed_by = (formData.get('changed_by') as string) || session?.user?.name || 'System';
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canSubmitMaintenanceCompletion(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        )) {
+            return { success: false, error: 'Permission denied' };
+        }
+
+        const changed_by = (formData.get('changed_by') as string) || authContext.session.user.name || 'System';
         const completionNotes = (formData.get('completionNotes') as string) || (formData.get('notes') as string) || '';
         const technician_signature = formData.get('technician_signature') as string;
         const customer_signature = formData.get('customer_signature') as string;
@@ -955,6 +1019,15 @@ export async function getWithdrawnPartsForMaintenance() {
 
 export async function clearAllReservedParts(adminName: string) {
     try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canManageMaintenanceParts(authContext.role, authContext.permissions)) {
+            return { success: false, error: 'Permission denied' };
+        }
+
         const pendingParts = await prisma.tbl_maintenance_parts.findMany({
             where: { status: 'withdrawn' }
         });
@@ -1024,6 +1097,19 @@ export async function updateMaintenanceRequest(
     changed_by: string
 ) {
     try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canManageMaintenanceEdit(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        )) {
+            return { success: false, error: 'Permission denied' };
+        }
+
         const current = await prisma.tbl_maintenance_requests.findUnique({
             where: { request_id }
         });
@@ -1330,6 +1416,15 @@ export async function storeVerifyParts(data: {
     notes?: string;
 }) {
     try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canVerifyMaintenanceParts(authContext.role, authContext.permissions)) {
+            return { success: false, error: 'Permission denied' };
+        }
+
         const part = await prisma.tbl_maintenance_parts.findUnique({
             where: { part_id: data.part_id }
         });
@@ -1375,6 +1470,15 @@ export async function storeVerifyParts(data: {
 
 export async function reopenMaintenanceRequest(request_id: number, reason: string, password: string) {
     try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canReopenMaintenanceRequest(authContext.role, authContext.permissions)) {
+            return { success: false, error: 'Permission denied' };
+        }
+
         const overridePassword =
             process.env.MAINTENANCE_REOPEN_PASSWORD ||
             process.env.MANAGER_OVERRIDE_PASSWORD ||

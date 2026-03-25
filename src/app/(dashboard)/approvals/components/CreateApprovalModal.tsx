@@ -4,6 +4,10 @@ import { Plus, XCircle } from 'lucide-react';
 import SearchableSelect from '@/components/SearchableSelect';
 import { ApprovalFormData } from '../types';
 import { FormEvent } from 'react';
+import {
+    APPROVAL_REQUEST_TYPE_OPTIONS,
+    getApprovalRequestTypeLabel,
+} from '@/lib/approval-options';
 
 interface JobOption {
     value: string;
@@ -20,14 +24,6 @@ interface CreateApprovalModalProps {
     onSubmit: (e: FormEvent) => void;
     onChange: (patch: Partial<ApprovalFormData>) => void;
 }
-
-const REQUEST_TYPE_LABELS: Record<string, string> = {
-    ot: 'ทำงานล่วงเวลา (OT)',
-    leave: 'ลาหยุด',
-    expense: 'เบิกค่าใช้จ่าย',
-    purchase: 'คำขอซื้อ',
-    other: 'อื่นๆ',
-};
 
 export default function CreateApprovalModal({
     isOpen,
@@ -61,7 +57,7 @@ export default function CreateApprovalModal({
                                 <input
                                     type="text"
                                     className="w-full border rounded-lg px-3 py-2 bg-gray-50 dark:bg-slate-700 dark:border-slate-600"
-                                    value={REQUEST_TYPE_LABELS[lockedRequestType] || lockedRequestType}
+                                    value={getApprovalRequestTypeLabel(lockedRequestType, 'create') || lockedRequestType}
                                     readOnly
                                 />
                             ) : (
@@ -71,11 +67,11 @@ export default function CreateApprovalModal({
                                     onChange={e => onChange({ request_type: e.target.value })}
                                     required
                                 >
-                                    <option value="ot">ทำงานล่วงเวลา (OT)</option>
-                                    <option value="leave">ลาหยุด</option>
-                                    <option value="expense">เบิกค่าใช้จ่ายอื่นๆ</option>
-                                    <option value="purchase">คำขอซื้อ</option>
-                                    <option value="other">อื่นๆ</option>
+                                    {APPROVAL_REQUEST_TYPE_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
                                 </select>
                             )}
                         </div>

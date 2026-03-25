@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
-import { isDepartmentRole, isManagerRole } from '@/lib/roles';
+import { canViewPurchaseRequestDocument } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { Lock, Pencil } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import PrintButton from './PrintButton';
@@ -126,9 +127,8 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
         );
     }
 
-    const role = String(session.user.role || '').toLowerCase();
     const currentUserId = Number(session.user.id) || 0;
-    const isApprover = Boolean(session.user.is_approver);
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
 
     const [request, settings] = await Promise.all([
         prisma.tbl_approval_requests.findUnique({
@@ -174,7 +174,15 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
     }
 
     const ownerId = request.requested_by || request.tbl_users?.p_id || 0;
-    const canView = ownerId === currentUserId || isManagerRole(role) || isDepartmentRole(role, 'purchasing') || isApprover;
+    const canView = canViewPurchaseRequestDocument(
+        permissionContext.role,
+        permissionContext.permissions,
+        {
+            currentUserId,
+            ownerId,
+            isApprover: permissionContext.isApprover,
+        },
+    );
 
     if (!canView) {
         return (

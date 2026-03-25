@@ -1,6 +1,10 @@
 import { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+import { auth } from '@/auth';
 import PettyCashDashboardClient from './PettyCashDashboardClient';
 import { getPettyCashAnalytics } from '@/actions/pettyCashAnalyticsActions';
+import { canAccessPettyCashDashboard } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +14,14 @@ export const metadata: Metadata = {
 };
 
 export default async function PettyCashDashboardPage() {
+    const session = await auth();
+    if (!session) redirect('/login');
+
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+    if (!canAccessPettyCashDashboard(permissionContext.role, permissionContext.permissions)) {
+        redirect('/petty-cash');
+    }
+
     const analyticsRes = await getPettyCashAnalytics();
 
     if (!analyticsRes.success) {

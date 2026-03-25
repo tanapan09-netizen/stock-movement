@@ -3,6 +3,7 @@
 import { Calendar, CheckCircle2, Clock, DollarSign, FileText, Loader2, XCircle } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import { ApprovalRequest } from '../types';
+import { getApprovalRequestTypeLabel } from '@/lib/approval-options';
 
 interface ApprovalGridProps {
     requests: ApprovalRequest[];
@@ -13,17 +14,6 @@ interface ApprovalGridProps {
     onApprove: (id: number) => void;
     onOpenReject: (id: number) => void;
     onOpenDetail: (req: ApprovalRequest) => void;
-}
-
-function getTypeLabel(type: string) {
-    switch (type) {
-        case 'ot': return 'ล่วงเวลา (OT)';
-        case 'leave': return 'ลาหยุด';
-        case 'expense': return 'เบิกค่าใช้จ่าย';
-        case 'purchase': return 'คำขอซื้อ';
-        case 'other': return 'อื่นๆ';
-        default: return type;
-    }
 }
 
 function toSafeDate(value: string | Date | null | undefined) {
@@ -109,7 +99,7 @@ export default function ApprovalGrid({
                         <div className="mt-3 space-y-2">
                             <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold bg-gray-100 dark:bg-slate-900 text-gray-700 dark:text-slate-200">
                                 <TypeIcon type={req.request_type} />
-                                {getTypeLabel(req.request_type)}
+                                {getApprovalRequestTypeLabel(req.request_type, 'full')}
                             </div>
 
                             <div className="text-sm text-gray-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap break-words">

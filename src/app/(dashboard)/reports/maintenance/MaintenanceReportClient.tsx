@@ -4,6 +4,11 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { Building, Building2, ChevronDown, ChevronRight, Clock, Wrench, CheckCircle, Filter, X, Package, User, Calendar, Hash, Layers } from 'lucide-react';
 import { getMaintenanceReportByRoom, getAllRooms, getProducts } from '@/actions/maintenanceActions';
 import { getActiveTechnicians } from '@/actions/technicianActions';
+import {
+    MAINTENANCE_PART_STATUS_CONFIG,
+    MAINTENANCE_REPORT_PRIORITY_CONFIG,
+    MAINTENANCE_REPORT_STATUS_CONFIG,
+} from '@/lib/maintenance-report-options';
 
 interface RoomReport {
     room_id: number;
@@ -42,28 +47,8 @@ interface FilterState {
     endDate: string;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-    pending:     { label: 'รอดำเนินการ', color: 'text-amber-700',  bg: 'bg-amber-50 border border-amber-200',   dot: 'bg-amber-400' },
-    in_progress: { label: 'กำลังซ่อม',   color: 'text-blue-700',   bg: 'bg-blue-50 border border-blue-200',     dot: 'bg-blue-500' },
-    completed:   { label: 'เสร็จแล้ว',   color: 'text-emerald-700',bg: 'bg-emerald-50 border border-emerald-200',dot: 'bg-emerald-500' },
-    cancelled:   { label: 'ยกเลิก',       color: 'text-gray-500',   bg: 'bg-gray-50 border border-gray-200',     dot: 'bg-gray-400' },
-};
-
-const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-    high:   { label: 'เร่งด่วนสูง', color: 'text-red-600' },
-    medium: { label: 'ปกติ',        color: 'text-amber-600' },
-    low:    { label: 'ไม่เร่งด่วน', color: 'text-gray-400' },
-};
-
-const PART_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-    verified:             { label: 'ตรวจสอบแล้ว',  color: 'text-emerald-700', bg: 'bg-emerald-50 border border-emerald-200' },
-    pending_verification: { label: 'รอตรวจสอบ',    color: 'text-amber-700',   bg: 'bg-amber-50 border border-amber-200' },
-    defective:            { label: 'ของเสีย',       color: 'text-red-700',     bg: 'bg-red-50 border border-red-200' },
-    withdrawn:            { label: 'เบิกแล้ว',      color: 'text-blue-700',    bg: 'bg-blue-50 border border-blue-200' },
-};
-
 function StatusBadge({ status }: { status: string }) {
-    const cfg = STATUS_CONFIG[status] ?? { label: status, color: 'text-gray-600', bg: 'bg-gray-100', dot: 'bg-gray-400' };
+    const cfg = MAINTENANCE_REPORT_STATUS_CONFIG[status] ?? { label: status, color: 'text-gray-600', bg: 'bg-gray-100', dot: 'bg-gray-400' };
     return (
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${cfg.bg} ${cfg.color}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
@@ -645,7 +630,7 @@ export default function MaintenanceReportClient() {
                                                                                                     </td>
                                                                                                     <td className="px-4 py-3 align-top">
                                                                                                         <div className="font-medium text-gray-800 dark:text-white text-sm leading-snug">{req.title}</div>
-                                                                                                        <div className={`text-xs mt-0.5 ${PRIORITY_CONFIG[req.priority]?.color ?? 'text-gray-400'}`}>{PRIORITY_CONFIG[req.priority]?.label ?? req.priority}</div>
+                                                                                <div className={`text-xs mt-0.5 ${MAINTENANCE_REPORT_PRIORITY_CONFIG[req.priority]?.color ?? 'text-gray-400'}`}>{MAINTENANCE_REPORT_PRIORITY_CONFIG[req.priority]?.label ?? req.priority}</div>
                                                                                                     </td>
                                                                                                     <td className="px-4 py-3 align-top"><StatusBadge status={req.status} /></td>
                                                                                                     <td className="px-4 py-3 align-top text-xs text-gray-500 whitespace-nowrap">{new Date(req.created_at).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })}</td>
@@ -663,7 +648,7 @@ export default function MaintenanceReportClient() {
                                                                                                                 {req.parts.map((p, idx) => (
                                                                                                                     <div key={idx} className="flex items-center gap-2 flex-wrap">
                                                                                                                         <span className="text-xs text-gray-700 dark:text-gray-300">{p.p_name}<span className="text-gray-400 ml-1">×{p.quantity}{p.unit ? ` ${p.unit}` : ''}</span></span>
-                                                                                                                        {p.status && <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${PART_STATUS_CONFIG[p.status]?.bg ?? 'bg-gray-100'} ${PART_STATUS_CONFIG[p.status]?.color ?? 'text-gray-600'}`}>{PART_STATUS_CONFIG[p.status]?.label ?? p.status}</span>}
+                                                                            {p.status && <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${MAINTENANCE_PART_STATUS_CONFIG[p.status]?.bg ?? 'bg-gray-100'} ${MAINTENANCE_PART_STATUS_CONFIG[p.status]?.color ?? 'text-gray-600'}`}>{MAINTENANCE_PART_STATUS_CONFIG[p.status]?.label ?? p.status}</span>}
                                                                                                                     </div>
                                                                                                                 ))}
                                                                                                             </div>

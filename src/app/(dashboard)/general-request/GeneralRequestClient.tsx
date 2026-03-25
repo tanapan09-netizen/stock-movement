@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable react/no-unescaped-entities */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useToast } from '@/components/ToastProvider';
 import {
     Search, Plus, CheckCircle2, Clock, AlertCircle, XCircle,
@@ -18,8 +18,13 @@ import {
     getRooms
 } from '@/actions/maintenanceActions';
 import { getAllVehicles } from '@/actions/vehicleActions';
-import { getPagePermissionKey } from '@/lib/permissions';
-import type { LucideIcon } from 'lucide-react';
+import { resolveGeneralRequestAccess } from '@/lib/rbac';
+import {
+    GENERAL_REQUEST_CATEGORY_OPTIONS,
+    GENERAL_REQUEST_PRIORITY_CONFIG,
+    GENERAL_REQUEST_PRIORITY_OPTIONS,
+    GENERAL_REQUEST_STATUS_CONFIG,
+} from '@/lib/general-request-options';
 
 interface Room {
     room_id: number;
@@ -66,33 +71,6 @@ interface Vehicle {
     active: boolean;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: LucideIcon }> = {
-    pending: { label: 'รอรับเรื่อง', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: Clock },
-    in_progress: { label: 'กำลังดำเนินการ', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Loader2 },
-    confirmed: { label: 'ยืนยันงานเสร็จ', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: CheckCircle2 },
-    completed: { label: 'เสร็จสิ้น', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle2 },
-    cancelled: { label: 'ยกเลิก', color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle },
-    verified: { label: 'ตรวจสอบแล้ว', color: 'bg-cyan-100 text-cyan-700 border-cyan-200', icon: ShieldCheck },
-};
-
-const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-    urgent: { label: 'เร่งด่วนมาก', color: 'bg-red-100 text-red-700' },
-    high: { label: 'เร่งด่วน', color: 'bg-orange-100 text-orange-700' },
-    normal: { label: 'ปกติ', color: 'bg-blue-100 text-blue-700' },
-    low: { label: 'ไม่เร่งด่วน', color: 'bg-gray-100 text-gray-700' },
-};
-
-const CATEGORY_OPTIONS = [
-    { value: 'general', label: 'ทั่วไป' },
-    { value: 'electrical', label: 'ไฟฟ้า' },
-    { value: 'plumbing', label: 'ประปา' },
-    { value: 'air_conditioning', label: 'แอร์/ระบบปรับอากาศ' },
-    { value: 'structural', label: 'โครงสร้าง/อาคาร' },
-    { value: 'it', label: 'IT/คอมพิวเตอร์' },
-    { value: 'furniture', label: 'เฟอร์นิเจอร์/ของตกแต่ง' },
-    { value: 'other', label: 'อื่นๆ' },
-];
-
 interface Props {
     userPermissions: Record<string, boolean>;
 }
@@ -102,15 +80,6 @@ type SessionUserLike = {
     name?: string | null;
     email?: string | null;
 };
-
-const GENERAL_REQUEST_CREATOR_ROLES = new Set([
-    'admin',
-    'manager',
-    'general',
-    'employee',
-    'maid',
-    'driver',
-]);
 
 const hasCustomerTag = (tags?: string | null) =>
     (tags || '')
@@ -123,14 +92,20 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
     const { showToast } = useToast();
     const searchParams = useSearchParams();
     const reqQueryParam = searchParams.get('req');
+
     const currentUser = session?.user as SessionUserLike | undefined;
     const currentRole = (currentUser?.role || '').toLowerCase();
-    const canEditGeneralRequestPage = Boolean(
-        userPermissions[getPagePermissionKey('/general-request', 'edit')]
-    );
-    const canCreateGeneralRequest =
-        GENERAL_REQUEST_CREATOR_ROLES.has(currentRole) && canEditGeneralRequestPage;
 
+    const access = useMemo(
+        () => resolveGeneralRequestAccess(currentRole, userPermissions),
+        [currentRole, userPermissions]
+    );
+
+    const canViewGeneralRequest = access.canViewPage;
+    const canCreateGeneralRequest = access.canCreate;
+    const canEditGeneralRequest = access.canEditPage;
+    const canApproveGeneralRequest = access.canApprove;
+    const canDeleteGeneralRequest = access.canDelete;
     // Data
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
     const [rooms, setRooms] = useState<Room[]>([]);
@@ -164,10 +139,15 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         department: '',
         tags: '',
         tagInput: '',
-        target_role: 'general', // Key: targets ธุรการ role
+        target_role: 'general',
     });
 
     const loadData = useCallback(async () => {
+        if (!canViewGeneralRequest) {
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         try {
             const [reqResult, roomResult, vehicleResult] = await Promise.all([
@@ -175,6 +155,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 getRooms(),
                 getAllVehicles()
             ]);
+
             if (reqResult.success && reqResult.data) {
                 const normalizedRequests = (reqResult.data as unknown as MaintenanceRequestItem[]).map((request) =>
                     hasCustomerTag(request.tags)
@@ -183,22 +164,25 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 );
                 setRequests(normalizedRequests);
             }
+
             if (roomResult.success && roomResult.data) {
                 setRooms(roomResult.data);
             }
+
             if (vehicleResult) {
                 setVehicles(vehicleResult as Vehicle[]);
             }
         } catch (err) {
             console.error('Failed to load data', err);
+            showToast('โหลดข้อมูลไม่สำเร็จ', 'error');
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [canViewGeneralRequest, showToast]);
 
     useEffect(() => {
-        loadData();
-        // Pre-fill reported_by from session
+        void loadData();
+
         if (currentUser) {
             const user = currentUser;
             setFormData(f => ({ ...f, reported_by: user.name || user.email || '' }));
@@ -220,7 +204,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         window.history.replaceState({}, '', url.toString());
     }, [reqQueryParam, requests, hasOpenedFromUrl]);
 
-     useEffect(() => {
+    useEffect(() => {
         const handleSubmenuPosition = (e: MouseEvent) => {
             const target = e.target as HTMLElement;
             const parent = target.closest('.room-type-item, .floor-item, [data-has-submenu]');
@@ -238,11 +222,12 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         return () => document.removeEventListener('mouseenter', handleSubmenuPosition, true);
     }, []);
 
-    // Filtered requests
     const filteredRequests = requests.filter(req => {
-        const matchSearch = req.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        const matchSearch =
+            req.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
             req.request_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
             req.tbl_rooms?.room_name?.toLowerCase().includes(searchQuery.toLowerCase());
+
         const matchStatus = statusFilter === 'all' || req.status === statusFilter;
         return matchSearch && matchStatus;
     });
@@ -250,6 +235,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
     const handleAddTag = () => {
         const tag = formData.tagInput.trim();
         if (!tag) return;
+
         const existing = formData.tags ? formData.tags.split(',').map(t => t.trim()) : [];
         if (!existing.includes(tag)) {
             const newTags = [...existing, tag].join(',');
@@ -260,20 +246,26 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
     };
 
     const handleRemoveTag = (tag: string) => {
-        const newTags = formData.tags.split(',').filter(t => t.trim() !== tag).join(',');
+        const newTags = formData.tags
+            .split(',')
+            .filter(t => t.trim() !== tag)
+            .join(',');
         setFormData({ ...formData, tags: newTags });
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
         if (!canCreateGeneralRequest) {
             showToast('คุณไม่มีสิทธิ์สร้างรายการแจ้งซ่อม', 'warning');
             return;
         }
+
         if (!formData.title.trim()) {
             showToast('กรุณาระบุชื่อเรื่อง', 'warning');
             return;
         }
+
         if (!formData.reported_by.trim()) {
             showToast('กรุณาระบุชื่อผู้แจ้ง', 'warning');
             return;
@@ -310,6 +302,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         setSubmitting(true);
         try {
             const roomIdToSend = locationMode === 'vehicle' ? derivedRoomIdFromVehicle : formData.room_id;
+
             const data = new FormData();
             data.append('room_id', roomIdToSend.toString());
             data.append('title', formData.title);
@@ -324,8 +317,12 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             const vehicleTag = vehiclePlate ? `รถ:${vehiclePlate}` : '';
 
             const tagsToSend = (() => {
-                const current = formData.tags ? formData.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
-                if (vehicleTag && !current.some(t => t.toLowerCase() === vehicleTag.toLowerCase())) current.push(vehicleTag);
+                const current = formData.tags
+                    ? formData.tags.split(',').map(t => t.trim()).filter(Boolean)
+                    : [];
+                if (vehicleTag && !current.some(t => t.toLowerCase() === vehicleTag.toLowerCase())) {
+                    current.push(vehicleTag);
+                }
                 return current.join(',');
             })();
 
@@ -336,7 +333,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 data.append('vehicle_id', formData.vehicle_id.toString());
                 data.append('vehicle_plate', vehiclePlate);
             }
-            data.append('target_role', 'general'); // Always 'general' for this page
+            data.append('target_role', 'general');
             data.set('priority', priorityToSend);
 
             if (selectedFile) {
@@ -344,6 +341,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             }
 
             const result = await createMaintenanceRequest(data);
+
             if (result.success) {
                 setShowForm(false);
                 setLocationMode('location');
@@ -362,7 +360,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                     target_role: 'general',
                 });
                 setSelectedFile(null);
-                loadData();
+                void loadData();
                 showToast('บันทึกเรียบร้อย ระบบจะแจ้งเตือนฝ่ายธุรการ', 'success');
             } else {
                 showToast('เกิดข้อผิดพลาด: ' + result.error, 'error');
@@ -376,12 +374,29 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
     const formatDate = (date: Date | null | string) => {
         if (!date) return '-';
-        return new Date(date).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' });
+        return new Date(date).toLocaleDateString('th-TH', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+        });
     };
+
+    if (!canViewGeneralRequest) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+                <div className="bg-white border border-gray-200 rounded-2xl p-8 max-w-md w-full text-center shadow-sm">
+                    <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                    <h2 className="text-lg font-bold text-gray-900">ไม่มีสิทธิ์เข้าถึงหน้านี้</h2>
+                    <p className="text-sm text-gray-500 mt-2">
+                        คุณไม่มีสิทธิ์ดูข้อมูลการแจ้งซ่อมในหน้านี้
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* Header */}
             <div className="bg-white border-b sticky top-0 z-30">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
                     <div className="flex items-center justify-between">
@@ -390,25 +405,37 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 <ClipboardList className="w-6 h-6 text-blue-600" />
                                 รับแจ้งซ่อม (ธุรการ)
                             </h1>
-                            <p className="text-sm text-gray-500 mt-0.5">ส่งคำขอซ่อม — ระบบจะแจ้งเตือนฝ่ายธุรการโดยตรง</p>
+                            <p className="text-sm text-gray-500 mt-0.5">
+                                ส่งคำขอซ่อม — ระบบจะแจ้งเตือนฝ่ายธุรการโดยตรง
+                            </p>
                         </div>
+
                         <div className="flex items-center gap-3">
                             <div className="flex bg-gray-100 p-1 rounded-lg">
                                 <button
                                     onClick={() => setViewMode('grid')}
-                                    className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                    className={`p-1.5 rounded-md transition-all ${
+                                        viewMode === 'grid'
+                                            ? 'bg-white shadow-sm text-blue-600'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                    }`}
                                     title="Grid View"
                                 >
                                     <LayoutGrid className="w-4 h-4" />
                                 </button>
                                 <button
                                     onClick={() => setViewMode('table')}
-                                    className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                    className={`p-1.5 rounded-md transition-all ${
+                                        viewMode === 'table'
+                                            ? 'bg-white shadow-sm text-blue-600'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                    }`}
                                     title="Table View"
                                 >
                                     <TableProperties className="w-4 h-4" />
                                 </button>
                             </div>
+
                             {canCreateGeneralRequest && (
                                 <button
                                     onClick={() => setShowForm(true)}
@@ -423,7 +450,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 </div>
             </div>
 
-            {/* Stats bar */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {[
@@ -440,7 +466,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 </div>
             </div>
 
-            {/* Filters */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-4">
                 <div className="flex flex-col sm:flex-row gap-3">
                     <div className="relative flex-1">
@@ -453,6 +478,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                             className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                         />
                     </div>
+
                     <select
                         value={statusFilter}
                         onChange={e => setStatusFilter(e.target.value)}
@@ -460,14 +486,13 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         aria-label="กรองตามสถานะ"
                     >
                         <option value="all">ทุกสถานะ</option>
-                        {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
+                        {Object.entries(GENERAL_REQUEST_STATUS_CONFIG).map(([key, cfg]) => (
                             <option key={key} value={key}>{cfg.label}</option>
                         ))}
                     </select>
                 </div>
             </div>
 
-            {/* Request List */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
                 {loading ? (
                     <div className="flex items-center justify-center py-20">
@@ -477,7 +502,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                     <div className="text-center py-20 text-gray-500 border-2 border-dashed border-gray-200 rounded-2xl">
                         <ClipboardList className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                         <p className="font-medium">ยังไม่มีรายการแจ้งซ่อม</p>
-                        <p className="text-sm mt-1">กดปุ่ม &quot;แจ้งซ่อม&quot; เพื่อสร้างรายการใหม่</p>
+                        <p className="text-sm mt-1">กดปุ่ม "Create" เพื่อสร้างรายการใหม่</p>
                     </div>
                 ) : viewMode === 'table' ? (
                     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -494,13 +519,17 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {filteredRequests.map(req => {
-                                        const statusCfg = STATUS_CONFIG[req.status] || STATUS_CONFIG.pending;
-                                        const priorityCfg = PRIORITY_CONFIG[req.priority] || PRIORITY_CONFIG.normal;
+                                        const statusCfg = GENERAL_REQUEST_STATUS_CONFIG[req.status] || GENERAL_REQUEST_STATUS_CONFIG.pending;
+                                        const priorityCfg = GENERAL_REQUEST_PRIORITY_CONFIG[req.priority] || GENERAL_REQUEST_PRIORITY_CONFIG.normal;
+
                                         return (
-                                            <tr 
-                                                key={req.request_id} 
+                                            <tr
+                                                key={req.request_id}
                                                 className="hover:bg-gray-50/80 transition-colors cursor-pointer"
-                                                onClick={() => { setSelectedRequest(req); setShowDetail(true); }}
+                                                onClick={() => {
+                                                    setSelectedRequest(req);
+                                                    setShowDetail(true);
+                                                }}
                                             >
                                                 <td className="px-6 py-4">
                                                     <div className="flex flex-col">
@@ -512,10 +541,15 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                     <div className="flex items-start gap-2">
                                                         <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
                                                         <div className="flex flex-col">
-                                                            <span className="text-sm text-gray-700 font-medium">[{req.tbl_rooms?.room_code}] {req.tbl_rooms?.room_name}</span>
+                                                            <span className="text-sm text-gray-700 font-medium">
+                                                                [{req.tbl_rooms?.room_code}] {req.tbl_rooms?.room_name}
+                                                            </span>
                                                             <span className="text-[10px] text-gray-500">
-                                                                {[req.tbl_rooms?.zone, req.tbl_rooms?.building, req.tbl_rooms?.floor ? `ชั้น ${req.tbl_rooms.floor}` : null]
-                                                                    .filter(Boolean).join(' • ')}
+                                                                {[
+                                                                    req.tbl_rooms?.zone,
+                                                                    req.tbl_rooms?.building,
+                                                                    req.tbl_rooms?.floor ? `ชั้น ${req.tbl_rooms.floor}` : null
+                                                                ].filter(Boolean).join(' • ')}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -538,9 +572,13 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <button 
+                                                    <button
                                                         className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                                                        onClick={e => { e.stopPropagation(); setSelectedRequest(req); setShowDetail(true); }}
+                                                        onClick={e => {
+                                                            e.stopPropagation();
+                                                            setSelectedRequest(req);
+                                                            setShowDetail(true);
+                                                        }}
                                                     >
                                                         <Eye className="w-4 h-4" />
                                                     </button>
@@ -555,14 +593,18 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filteredRequests.map(req => {
-                            const statusCfg = STATUS_CONFIG[req.status] || STATUS_CONFIG.pending;
-                            const priorityCfg = PRIORITY_CONFIG[req.priority] || PRIORITY_CONFIG.normal;
+                            const statusCfg = GENERAL_REQUEST_STATUS_CONFIG[req.status] || GENERAL_REQUEST_STATUS_CONFIG.pending;
+                            const priorityCfg = GENERAL_REQUEST_PRIORITY_CONFIG[req.priority] || GENERAL_REQUEST_PRIORITY_CONFIG.normal;
                             const StatusIcon = statusCfg.icon;
+
                             return (
                                 <div
                                     key={req.request_id}
                                     className="bg-white rounded-xl border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer group"
-                                    onClick={() => { setSelectedRequest(req); setShowDetail(true); }}
+                                    onClick={() => {
+                                        setSelectedRequest(req);
+                                        setShowDetail(true);
+                                    }}
                                 >
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="flex-1 min-w-0">
@@ -581,7 +623,9 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                     </span>
                                                 )}
                                             </div>
-                                            <h3 className="font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors">{req.title}</h3>
+                                            <h3 className="font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+                                                {req.title}
+                                            </h3>
                                             <div className="mt-2 space-y-1">
                                                 <div className="flex items-start gap-1.5 text-[11px] text-gray-500">
                                                     <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />
@@ -589,7 +633,11 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                         [{req.tbl_rooms?.room_code}] {req.tbl_rooms?.room_name}
                                                         <br />
                                                         <span className="text-[10px] text-gray-400">
-                                                            {[req.tbl_rooms?.zone, req.tbl_rooms?.building, req.tbl_rooms?.floor ? `ชั้น ${req.tbl_rooms.floor}` : null].filter(Boolean).join(' • ')}
+                                                            {[
+                                                                req.tbl_rooms?.zone,
+                                                                req.tbl_rooms?.building,
+                                                                req.tbl_rooms?.floor ? `ชั้น ${req.tbl_rooms.floor}` : null
+                                                            ].filter(Boolean).join(' • ')}
                                                         </span>
                                                     </span>
                                                 </div>
@@ -599,9 +647,14 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                 </div>
                                             </div>
                                         </div>
+
                                         <button
                                             className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors self-start"
-                                            onClick={e => { e.stopPropagation(); setSelectedRequest(req); setShowDetail(true); }}
+                                            onClick={e => {
+                                                e.stopPropagation();
+                                                setSelectedRequest(req);
+                                                setShowDetail(true);
+                                            }}
                                         >
                                             <Eye className="w-4 h-4" />
                                         </button>
@@ -613,7 +666,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 )}
             </div>
 
-            {/* Detail Modal */}
             {showDetail && selectedRequest && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -623,14 +675,15 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
+
                         <div className="space-y-3">
                             <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-mono text-sm text-gray-500">{selectedRequest.request_number}</span>
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-medium border ${STATUS_CONFIG[selectedRequest.status]?.color}`}>
-                                    {STATUS_CONFIG[selectedRequest.status]?.label}
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-medium border ${GENERAL_REQUEST_STATUS_CONFIG[selectedRequest.status]?.color}`}>
+                                    {GENERAL_REQUEST_STATUS_CONFIG[selectedRequest.status]?.label}
                                 </span>
-                                <span className={`px-2.5 py-1 rounded-full text-sm font-medium ${PRIORITY_CONFIG[selectedRequest.priority]?.color}`}>
-                                    {PRIORITY_CONFIG[selectedRequest.priority]?.label}
+                                <span className={`px-2.5 py-1 rounded-full text-sm font-medium ${GENERAL_REQUEST_PRIORITY_CONFIG[selectedRequest.priority]?.color}`}>
+                                    {GENERAL_REQUEST_PRIORITY_CONFIG[selectedRequest.priority]?.label}
                                 </span>
                                 {selectedRequest.tags?.includes('ลูกค้า') && (
                                     <span className="px-2.5 py-1 rounded-full text-sm font-medium bg-pink-100 text-pink-700 border border-pink-200">
@@ -638,10 +691,13 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                     </span>
                                 )}
                             </div>
+
                             <h3 className="text-xl font-bold text-gray-900">{selectedRequest.title}</h3>
+
                             {selectedRequest.description && (
                                 <p className="text-gray-600 text-sm leading-relaxed">{selectedRequest.description}</p>
                             )}
+
                             <div className="grid grid-cols-2 gap-3 pt-2">
                                 <div className="bg-gray-50 rounded-lg p-3">
                                     <p className="text-xs text-gray-500 mb-1">สถานที่</p>
@@ -665,6 +721,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 )}
                             </div>
                         </div>
+
                         <div className="mt-6 pt-4 border-t">
                             <button
                                 onClick={() => setShowDetail(false)}
@@ -677,11 +734,9 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 </div>
             )}
 
-            {/* Create Request Modal */}
             {showForm && canCreateGeneralRequest && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[95vh] overflow-y-auto">
-                        {/* Modal Header */}
                         <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
                             <div>
                                 <h2 className="text-lg font-bold text-gray-900">แจ้งซ่อม (ส่งถึงธุรการ)</h2>
@@ -693,7 +748,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         </div>
 
                         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-                            {/* Location Mode */}
                             <div>
                                 <label className="block text-sm font-medium mb-2 text-gray-700">เลือกอย่างใดอย่างหนึ่ง</label>
                                 <div className="grid grid-cols-2 gap-2">
@@ -777,7 +831,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 </div>
                             )}
 
-                            {/* Title */}
                             <div>
                                 <label className="block text-sm font-medium mb-1.5 text-gray-700">
                                     หัวเรื่อง <span className="text-red-500">*</span>
@@ -792,7 +845,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 />
                             </div>
 
-                            {/* Description */}
                             <div>
                                 <label className="block text-sm font-medium mb-1.5 text-gray-700">รายละเอียด</label>
                                 <textarea
@@ -804,7 +856,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 />
                             </div>
 
-                            {/* Category & Priority */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium mb-1.5 text-gray-700">ประเภท</label>
@@ -814,7 +865,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                                         aria-label="เลือกประเภทงาน"
                                     >
-                                        {CATEGORY_OPTIONS.map(opt => (
+                                        {GENERAL_REQUEST_CATEGORY_OPTIONS.map(opt => (
                                             <option key={opt.value} value={opt.value}>{opt.label}</option>
                                         ))}
                                     </select>
@@ -827,15 +878,15 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                                         aria-label="เลือกความเร่งด่วน"
                                     >
-                                        <option value="low">ไม่เร่งด่วน</option>
-                                        <option value="normal">ปกติ</option>
-                                        <option value="high">เร่งด่วน</option>
-                                        <option value="urgent">เร่งด่วนมาก</option>
+                                        {GENERAL_REQUEST_PRIORITY_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>
 
-                            {/* Reported by & Contact */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium mb-1.5 text-gray-700">
@@ -862,7 +913,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 </div>
                             </div>
 
-                            {/* Department */}
                             <div>
                                 <label className="block text-sm font-medium mb-1.5 text-gray-700">แผนก / ฝ่าย</label>
                                 <input
@@ -874,7 +924,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 />
                             </div>
 
-                            {/* Tags */}
                             <div>
                                 <label className="block text-sm font-medium mb-1.5 text-gray-700">แท็ก</label>
                                 <div className="flex gap-2 mb-2">
@@ -890,6 +939,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                         เพิ่ม
                                     </button>
                                 </div>
+
                                 {formData.tags && (
                                     <div className="flex flex-wrap gap-2">
                                         {formData.tags.split(',').filter(t => t.trim()).map((tag, i) => (
@@ -904,7 +954,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 )}
                             </div>
 
-                            {/* File Upload */}
                             <div>
                                 <label className="block text-sm font-medium mb-1.5 text-gray-700">แนบรูปภาพ (ถ้ามี)</label>
                                 <div className="relative border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
@@ -931,7 +980,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 </div>
                             </div>
 
-                            {/* Notification banner */}
                             <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
                                 <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                                 <div className="text-sm text-blue-800">
@@ -940,7 +988,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 </div>
                             </div>
 
-                            {/* Buttons */}
                             <div className="flex gap-3 pt-2 border-t">
                                 <button
                                     type="button"

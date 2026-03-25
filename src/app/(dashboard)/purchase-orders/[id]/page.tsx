@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { ArrowLeft, CheckCircle, Printer, Lock, Box, FilePlus, Hourglass, BadgeCheck, Truck, Warehouse } from 'lucide-react';
 import { receivePO } from '@/actions/poActions';
 import { auth } from '@/auth';
-import { getRolePermissions } from '@/actions/roleActions';
-import { PERMISSIONS } from '@/lib/permissions';
+import { canEditPurchaseOrders, canPrintPurchaseOrders, canReceivePurchaseOrders, canViewPurchaseOrders } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
+import { getProcurementStatusBadgeClass, getProcurementStatusLabel } from '@/lib/procurement-status';
 
 
 const PO_STEPS = [
@@ -114,10 +115,9 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
     if (isNaN(poId)) notFound();
 
     const session = await auth();
-    const userRole = (session?.user as { role?: string })?.role || '';
-    const rolePermissions = await getRolePermissions(userRole);
+    const { permissions: rolePermissions } = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
 
-    if (!rolePermissions[PERMISSIONS.PO_VIEW]) {
+    if (!canViewPurchaseOrders(rolePermissions)) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
                 <Lock className="w-12 h-12 mb-4 text-gray-400" />
@@ -177,7 +177,7 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
                     <ArrowLeft className="w-5 h-5 mr-1" /> กลับ
                 </Link>
                 <div className="space-x-2 flex">
-                    {po.status !== 'received' && rolePermissions[PERMISSIONS.PO_EDIT] && (
+                    {po.status !== 'received' && canEditPurchaseOrders(rolePermissions) && (
                         <Link
                             href={`/purchase-orders/${poId}/edit`}
                             className="bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-4 py-2 rounded-lg flex items-center inline-flex"
@@ -185,7 +185,7 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
                             <Box className="w-4 h-4 mr-2" /> Edit
                         </Link>
                     )}
-                    {rolePermissions[PERMISSIONS.PO_PRINT] && (
+                    {canPrintPurchaseOrders(rolePermissions) && (
                         <Link
                             href={`/print/purchase-orders/${poId}`}
                             target="_blank"
@@ -213,8 +213,8 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
                         </div>
                     </div>
                     <div className="text-right">
-                        <span className={`px-3 py-1 rounded-full text-sm font-bold uppercase ${po.status === 'received' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                            {po.status}
+                        <span className={`px-3 py-1 rounded-full text-sm font-bold uppercase border ${getProcurementStatusBadgeClass(po.status ?? 'draft')}`}>
+                            {getProcurementStatusLabel(po.status ?? 'draft')}
                         </span>
                     </div>
                 </div>
@@ -276,7 +276,7 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
             </div>
 
             {/* Receive */}
-            {po.status !== 'received' && rolePermissions[PERMISSIONS.PO_RECEIVE] && (
+            {po.status !== 'received' && canReceivePurchaseOrders(rolePermissions) && (
                 <form action={handleReceive} className="bg-white p-6 rounded-lg shadow flex flex-col items-center justify-center text-center">
                     <h3 className="font-bold text-gray-800 mb-2">ดำเนินการรับสินค้า</h3>
                     <p className="text-gray-500 text-sm mb-4">เมื่อกดปุ่มนี้ ระบบจะปรับสถานะเป็น "Received" และเพิ่มสต็อกสินค้าอัตโนมัติ</p>

@@ -3,61 +3,63 @@
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
-// import { redirect } from 'next/navigation'; // Unused
+import { COMMON_ACTION_MESSAGES, MOVEMENT_ACTION_MESSAGES } from '@/lib/action-messages';
+
+type MovementQuery = {
+    OR?: Array<
+        | { p_id: { contains: string } }
+        | { username: { contains: string } }
+        | { remarks: { contains: string } }
+    >;
+    movement_time?: {
+        gte?: Date;
+        lte?: Date;
+    };
+};
 
 export async function adjustStock(formData: FormData) {
     const session = await auth();
-    if (!session || !session.user) {
-        return { error: 'Unauthorized' };
+    if (!session?.user) {
+        return { error: COMMON_ACTION_MESSAGES.unauthorized };
     }
-    const username = session.user.name || 'Unknown';
 
+    const username = session.user.name || COMMON_ACTION_MESSAGES.unknownUser;
     const p_id = formData.get('p_id') as string;
-    const type = formData.get('type') as string; // 'in' or 'out'
-    const quantity = parseInt(formData.get('quantity') as string);
+    const type = formData.get('type') as string;
+    const quantity = parseInt(formData.get('quantity') as string, 10);
     const remarks = formData.get('remarks') as string;
 
     if (!p_id || !type || !quantity || quantity <= 0) {
-        return { error: 'Invalid input' };
+        return { error: MOVEMENT_ACTION_MESSAGES.invalidInput };
     }
 
-    // Map to Thai DB values
-    const movementType = type === 'in' ? 'รับเข้า' : 'ออก';
+    const movementType = type === 'in' ? 'เธฃเธฑเธเน€เธเนเธฒ' : 'เธญเธญเธ';
 
     const transactionDateStr = formData.get('transaction_date') as string;
     let movementTime = new Date();
     if (transactionDateStr) {
         movementTime = new Date(transactionDateStr);
-        // If the date is valid, we might want to set the time to current time or keep it 00:00 depending on requirement.
-        // Usually for back-dated entries, keeping time as 00:00 or 12:00 is fine, or we can add current time component.
-        // For simplicity and to match the user's intent of "that day", we can use the date as is (defaults to 00:00 UTC or local depending on parsing).
-        // A safer bet for "transaction date" is to assume end of day or current time on that day? 
-        // Let's just use the provided date. The input is YYYY-MM-DD.
-        // new Date("2026-01-21") -> 2026-01-21T00:00:00.000Z (UTC).
-        // If we want to capture the "day", this is fine.
     }
 
     try {
-        // 1. Get current product to check stock and validate
         const product = await prisma.tbl_products.findUnique({
             where: { p_id },
         });
 
         if (!product) {
-            return { error: 'Product not found' };
+            return { error: MOVEMENT_ACTION_MESSAGES.productNotFound };
         }
 
         let newStock = product.p_count;
         if (type === 'out') {
             if (product.p_count < quantity) {
-                return { error: `สินค้าคงเหลือไม่เพียงพอ (มี ${product.p_count})` };
+                return { error: MOVEMENT_ACTION_MESSAGES.insufficientStock(product.p_count) };
             }
             newStock -= quantity;
         } else {
             newStock += quantity;
         }
 
-        // 2. Transaction: Create Movement + Update Product
         await prisma.$transaction([
             prisma.tbl_product_movements.create({
                 data: {
@@ -74,10 +76,9 @@ export async function adjustStock(formData: FormData) {
                 data: { p_count: newStock },
             }),
         ]);
-
     } catch (error) {
         console.error('Stock adjustment failed:', error);
-        return { error: 'Failed to adjust stock' };
+        return { error: MOVEMENT_ACTION_MESSAGES.adjustFailed };
     }
 
     revalidatePath('/movements');
@@ -85,66 +86,58 @@ export async function adjustStock(formData: FormData) {
     return { success: true };
 }
 
-// Delete movement (Admin only) - reverses the stock change
 export async function deleteMovement(formData: FormData) {
     const session = await auth();
     if (!session?.user) {
-        return { error: 'Unauthorized' };
+        return { error: COMMON_ACTION_MESSAGES.unauthorized };
     }
 
-    // Check admin role from session
-    const userRole = (session.user as any).role;
-
+    const userRole = (session.user as { role?: string }).role;
     if (userRole !== 'admin') {
-        return { error: 'Permission denied: Admin only' };
+        return { error: COMMON_ACTION_MESSAGES.adminOnly };
     }
 
-    const movementId = parseInt(formData.get('movement_id') as string);
-
+    const movementId = parseInt(formData.get('movement_id') as string, 10);
     if (!movementId) {
-        return { error: 'Invalid movement ID' };
+        return { error: MOVEMENT_ACTION_MESSAGES.invalidMovementId };
     }
 
     try {
-        // Get the movement to reverse
         const movement = await prisma.tbl_product_movements.findUnique({
-            where: { movement_id: movementId }
+            where: { movement_id: movementId },
         });
 
         if (!movement) {
-            return { error: 'Movement not found' };
+            return { error: MOVEMENT_ACTION_MESSAGES.movementNotFound };
         }
 
-        // Reverse the stock change
         const product = await prisma.tbl_products.findUnique({
-            where: { p_id: movement.p_id }
+            where: { p_id: movement.p_id },
         });
 
         if (product) {
-            const isIn = movement.movement_type === 'รับเข้า' || movement.movement_type === 'in' || movement.movement_type === 'add';
+            const isIn = movement.movement_type === 'เธฃเธฑเธเน€เธเนเธฒ' || movement.movement_type === 'in' || movement.movement_type === 'add';
             const newStock = isIn
                 ? product.p_count - movement.quantity
                 : product.p_count + movement.quantity;
 
             await prisma.$transaction([
                 prisma.tbl_product_movements.delete({
-                    where: { movement_id: movementId }
+                    where: { movement_id: movementId },
                 }),
                 prisma.tbl_products.update({
                     where: { p_id: movement.p_id },
-                    data: { p_count: Math.max(0, newStock) }
-                })
+                    data: { p_count: Math.max(0, newStock) },
+                }),
             ]);
         } else {
-            // Just delete if product doesn't exist
             await prisma.tbl_product_movements.delete({
-                where: { movement_id: movementId }
+                where: { movement_id: movementId },
             });
         }
-
     } catch (error) {
         console.error('Delete movement failed:', error);
-        return { error: 'Failed to delete movement' };
+        return { error: MOVEMENT_ACTION_MESSAGES.deleteFailed };
     }
 
     revalidatePath('/movements');
@@ -152,46 +145,41 @@ export async function deleteMovement(formData: FormData) {
     return { success: true };
 }
 
-// Update movement (Admin only)
 export async function updateMovement(formData: FormData) {
     const session = await auth();
     if (!session?.user) {
-        return { error: 'Unauthorized' };
+        return { error: COMMON_ACTION_MESSAGES.unauthorized };
     }
 
-    // Check admin role from session
-    const userRole = (session.user as any).role;
-
+    const userRole = (session.user as { role?: string }).role;
     if (userRole !== 'admin') {
-        return { error: 'Permission denied: Admin only' };
+        return { error: COMMON_ACTION_MESSAGES.adminOnly };
     }
 
-    const movementId = parseInt(formData.get('movement_id') as string);
-    const newQuantity = parseInt(formData.get('quantity') as string);
+    const movementId = parseInt(formData.get('movement_id') as string, 10);
+    const newQuantity = parseInt(formData.get('quantity') as string, 10);
     const newRemarks = formData.get('remarks') as string;
 
     if (!movementId) {
-        return { error: 'Invalid movement ID' };
+        return { error: MOVEMENT_ACTION_MESSAGES.invalidMovementId };
     }
 
     try {
-        // Get current movement
         const movement = await prisma.tbl_product_movements.findUnique({
-            where: { movement_id: movementId }
+            where: { movement_id: movementId },
         });
 
         if (!movement) {
-            return { error: 'Movement not found' };
+            return { error: MOVEMENT_ACTION_MESSAGES.movementNotFound };
         }
 
-        // Calculate stock difference if quantity changed
         if (newQuantity && newQuantity !== movement.quantity) {
             const product = await prisma.tbl_products.findUnique({
-                where: { p_id: movement.p_id }
+                where: { p_id: movement.p_id },
             });
 
             if (product) {
-                const isIn = movement.movement_type === 'รับเข้า' || movement.movement_type === 'in' || movement.movement_type === 'add';
+                const isIn = movement.movement_type === 'เธฃเธฑเธเน€เธเนเธฒ' || movement.movement_type === 'in' || movement.movement_type === 'add';
                 const diff = newQuantity - movement.quantity;
                 const newStock = isIn
                     ? product.p_count + diff
@@ -202,28 +190,26 @@ export async function updateMovement(formData: FormData) {
                         where: { movement_id: movementId },
                         data: {
                             quantity: newQuantity,
-                            remarks: newRemarks !== undefined ? newRemarks : movement.remarks
-                        }
+                            remarks: newRemarks !== undefined ? newRemarks : movement.remarks,
+                        },
                     }),
                     prisma.tbl_products.update({
                         where: { p_id: movement.p_id },
-                        data: { p_count: Math.max(0, newStock) }
-                    })
+                        data: { p_count: Math.max(0, newStock) },
+                    }),
                 ]);
             }
         } else {
-            // Just update remarks
             await prisma.tbl_product_movements.update({
                 where: { movement_id: movementId },
                 data: {
-                    remarks: newRemarks !== undefined ? newRemarks : movement.remarks
-                }
+                    remarks: newRemarks !== undefined ? newRemarks : movement.remarks,
+                },
             });
         }
-
     } catch (error) {
         console.error('Update movement failed:', error);
-        return { error: 'Failed to update movement' };
+        return { error: MOVEMENT_ACTION_MESSAGES.updateFailed };
     }
 
     revalidatePath('/movements');
@@ -231,14 +217,13 @@ export async function updateMovement(formData: FormData) {
     return { success: true };
 }
 
-// Get filtered movements for pagination and export
 export async function getFilteredMovements({
     page = 1,
     limit = 50,
     search = '',
     startDate,
     endDate,
-    all = false
+    all = false,
 }: {
     page?: number;
     limit?: number;
@@ -248,10 +233,9 @@ export async function getFilteredMovements({
     all?: boolean;
 }) {
     const session = await auth();
-    if (!session?.user) return { error: 'Unauthorized', movements: [], total: 0 };
+    if (!session?.user) return { error: COMMON_ACTION_MESSAGES.unauthorized, movements: [], total: 0 };
 
-    // Search condition
-    const where: any = {};
+    const where: MovementQuery = {};
 
     if (search) {
         where.OR = [
@@ -261,7 +245,6 @@ export async function getFilteredMovements({
         ];
     }
 
-    // Date range condition
     if (startDate || endDate) {
         where.movement_time = {};
         if (startDate) {
@@ -284,29 +267,26 @@ export async function getFilteredMovements({
             skip: all ? undefined : (page - 1) * limit,
         });
 
-        // Get product details for these movements
-        const pIds = Array.from(new Set(movements.map(m => m.p_id)));
+        const pIds = Array.from(new Set(movements.map(movement => movement.p_id)));
         const products = await prisma.tbl_products.findMany({
             where: { p_id: { in: pIds } },
-            select: { p_id: true, p_name: true, p_image: true }
+            select: { p_id: true, p_name: true, p_image: true },
         });
 
-        const productMap = new Map(products.map(p => [p.p_id, p]));
+        const productMap = new Map(products.map(product => [product.p_id, product]));
 
-        // Enrich data
-        const enrichedMovements = movements.map(m => {
-            const product = productMap.get(m.p_id);
+        const enrichedMovements = movements.map(movement => {
+            const product = productMap.get(movement.p_id);
             return {
-                ...m,
-                p_name: product?.p_name || m.p_id,
+                ...movement,
+                p_name: product?.p_name || movement.p_id,
                 p_image: product?.p_image || null,
             };
         });
 
         return { movements: enrichedMovements, total };
-
     } catch (error) {
         console.error('Failed to fetch movements:', error);
-        return { error: 'Failed to fetch data', movements: [], total: 0 };
+        return { error: MOVEMENT_ACTION_MESSAGES.loadFailed, movements: [], total: 0 };
     }
 }

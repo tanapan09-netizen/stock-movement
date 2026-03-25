@@ -12,10 +12,14 @@ interface FundStatus {
 }
 
 interface FundDisplayProps {
-    isAdminOrAccounting: boolean;
+    canReplenishFund: boolean;
+    canUpdateFundLimit: boolean;
 }
 
-export default function PettyCashFundDisplay({ isAdminOrAccounting }: FundDisplayProps) {
+export default function PettyCashFundDisplay({
+    canReplenishFund,
+    canUpdateFundLimit,
+}: FundDisplayProps) {
     const [fund, setFund] = useState<FundStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [isReplenishing, setIsReplenishing] = useState(false);
@@ -125,7 +129,7 @@ export default function PettyCashFundDisplay({ isAdminOrAccounting }: FundDispla
                 <div className="flex mb-3 items-center justify-between text-sm">
                     <div className="font-medium text-gray-700 flex items-center gap-2">
                         วงเงินอนุมัติ: <span className="font-bold">฿{max.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                        {isAdminOrAccounting && (
+                        {canUpdateFundLimit && (
                             <button
                                 onClick={() => {
                                     setLimitAmount(max.toString());
@@ -147,7 +151,7 @@ export default function PettyCashFundDisplay({ isAdminOrAccounting }: FundDispla
                 </div>
             </div>
 
-            {isAdminOrAccounting && (
+            {canReplenishFund && (
                 <div className="mt-4 pt-5 border-t border-gray-100 flex justify-end">
                     <button
                         onClick={() => setShowReplenishModal(true)}

@@ -2,8 +2,6 @@
 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
-
-// ... imports
 import { logSystemAction } from '@/lib/logger';
 
 export type AuditAction =
@@ -32,7 +30,7 @@ export type AuditAction =
 
 export type AuditEntity =
     | 'product'
-    | 'Product' // Case sensitivity matching
+    | 'Product'
     | 'asset'
     | 'user'
     | 'User'
@@ -58,14 +56,21 @@ interface AuditLogData {
     newValue?: Record<string, unknown>;
 }
 
-// Log an action
+const AUDIT_ACTION_COPY = {
+    systemUser: 'System',
+    unknownSource: 'unknown',
+    logError: 'Audit log error:',
+    fetchError: 'Error fetching audit logs:',
+    createError: 'Create audit error:',
+    updateItemError: 'Update audit item error:',
+} as const;
+
 export async function logAudit(data: AuditLogData) {
     try {
         const session = await auth();
         const userId = session?.user?.id ? (parseInt(session.user.id as string) || 0) : null;
-        const username = session?.user?.name || 'System';
+        const username = session?.user?.name || AUDIT_ACTION_COPY.systemUser;
 
-        // Use the centralized logger
         await logSystemAction(
             data.action,
             data.entity,
@@ -74,21 +79,20 @@ export async function logAudit(data: AuditLogData) {
                 ...data.details,
                 oldValue: data.oldValue,
                 newValue: data.newValue,
-                entityName: data.entityName
+                entityName: data.entityName,
             },
             userId,
             username,
-            'unknown'
+            AUDIT_ACTION_COPY.unknownSource,
         );
 
         return { success: true };
     } catch (error) {
-        console.error('Audit log error:', error);
+        console.error(AUDIT_ACTION_COPY.logError, error);
         return { success: false, error: String(error) };
     }
 }
 
-// Get audit logs (for admin view)
 export async function getAuditLogs(options?: {
     entity?: AuditEntity | string;
     action?: AuditAction | string;
@@ -99,7 +103,7 @@ export async function getAuditLogs(options?: {
     offset?: number;
 }) {
     try {
-        const where: any = {};
+        const where: Record<string, unknown> = {};
 
         if (options?.entity) {
             where.entity = options.entity;
@@ -114,13 +118,14 @@ export async function getAuditLogs(options?: {
         }
 
         if (options?.dateFrom || options?.dateTo) {
-            where.created_at = {};
-            if (options.dateFrom) where.created_at.gte = options.dateFrom;
+            const createdAt: { gte?: Date; lte?: Date } = {};
+            if (options.dateFrom) createdAt.gte = options.dateFrom;
             if (options.dateTo) {
                 const end = new Date(options.dateTo);
                 end.setHours(23, 59, 59);
-                where.created_at.lte = end;
+                createdAt.lte = end;
             }
+            where.created_at = createdAt;
         }
 
         const [logs, total] = await Promise.all([
@@ -128,106 +133,86 @@ export async function getAuditLogs(options?: {
                 where,
                 orderBy: { created_at: 'desc' },
                 take: options?.limit || 50,
-                skip: options?.offset || 0
+                skip: options?.offset || 0,
             }),
-            prisma.tbl_system_logs.count({ where })
+            prisma.tbl_system_logs.count({ where }),
         ]);
 
         const mappedLogs = logs.map(log => {
-            let detailsObj: any = {};
+            let detailsObj: Record<string, unknown> = {};
             try {
                 detailsObj = log.details ? JSON.parse(log.details) : {};
-            } catch (e) {
+            } catch {
                 detailsObj = { message: log.details };
             }
+
+            const entityName = typeof detailsObj.entityName === 'string' || typeof detailsObj.entityName === 'number'
+                ? detailsObj.entityName
+                : log.entity_id;
 
             return {
                 id: log.id,
                 timestamp: log.created_at,
-                username: log.username || 'System',
+                username: log.username || AUDIT_ACTION_COPY.systemUser,
                 action: log.action as AuditAction,
                 entity: log.entity as AuditEntity,
                 entityId: log.entity_id,
-                entityName: detailsObj.entityName || log.entity_id, // Fallback
-                details: detailsObj
+                entityName,
+                details: detailsObj,
             };
         });
 
         return {
             logs: mappedLogs,
-            total
+            total,
         };
     } catch (error) {
-        console.error('Error fetching audit logs:', error);
+        console.error(AUDIT_ACTION_COPY.fetchError, error);
         return { logs: [], total: 0 };
     }
 }
 
-// Create new inventory audit
 export async function createAudit(formData: FormData) {
     'use server';
     try {
         const warehouseId = parseInt(formData.get('warehouse_id') as string);
         const auditDate = formData.get('audit_date') as string;
-        const notes = formData.get('notes') as string || '';
+        const notes = (formData.get('notes') as string) || '';
 
-        // console.log('[AUDIT] Creating new audit:', { warehouseId, auditDate, notes });
+        void warehouseId;
+        void auditDate;
+        void notes;
 
-        // Mock implementation - in production use prisma
-        /*
-        const audit = await prisma.tbl_inventory_audits.create({
-            data: {
-                warehouse_id: warehouseId,
-                audit_date: new Date(auditDate),
-                audit_number: `AUD-${Date.now()}`,
-                status: 'draft',
-                notes,
-                created_at: new Date()
-            }
-        });
-        return { success: true, audit_id: audit.audit_id };
-        */
-
-        // Mock return
         return { success: true, audit_id: 1 };
     } catch (error) {
-        console.error('Create audit error:', error);
+        console.error(AUDIT_ACTION_COPY.createError, error);
         return { success: false, error: String(error) };
     }
 }
 
-// Inventory Audit Functions
 export async function startAudit(auditId: number): Promise<void> {
     'use server';
-    // console.log('[AUDIT] Starting audit:', auditId);
-    // Mock implementation - in production use prisma and revalidatePath
+    void auditId;
 }
 
 export async function completeAudit(auditId: number): Promise<void> {
     'use server';
-    // console.log('[AUDIT] Completing audit:', auditId);
+    void auditId;
 }
 
 export async function cancelAudit(auditId: number): Promise<void> {
     'use server';
-    // console.log('[AUDIT] Cancelling audit:', auditId);
+    void auditId;
 }
 
 export async function updateAuditItem(itemId: number, countedQty: number) {
     'use server';
     try {
-        // console.log('[AUDIT] Updating item:', itemId, 'count:', countedQty);
-
-        /*
-        await prisma.tbl_audit_items.update({
-            where: { item_id: itemId },
-            data: { counted_qty: countedQty }
-        });
-        */
-
+        void itemId;
+        void countedQty;
         return { success: true };
     } catch (error) {
-        console.error('Update audit item error:', error);
+        console.error(AUDIT_ACTION_COPY.updateItemError, error);
         return { success: false, error: String(error) };
     }
 }

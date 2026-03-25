@@ -4,8 +4,8 @@ import { notFound, redirect } from 'next/navigation';
 import { ArrowLeft, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { auth } from '@/auth';
-import { getRolePermissions } from '@/actions/roleActions';
-import { PERMISSIONS } from '@/lib/permissions';
+import { canEditPurchaseOrders } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 export default async function EditPOPage(props: { params: Promise<{ id: string }> }) {
     const params = await props.params;
@@ -13,11 +13,10 @@ export default async function EditPOPage(props: { params: Promise<{ id: string }
     if (isNaN(poId)) notFound();
 
     const session = await auth();
-    const userRole = (session?.user as { role?: string })?.role || '';
-    const rolePermissions = await getRolePermissions(userRole);
+    const { permissions: rolePermissions } = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
 
     // Check Edit Permission
-    if (!rolePermissions[PERMISSIONS.PO_EDIT]) {
+    if (!canEditPurchaseOrders(rolePermissions)) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
                 <Lock className="w-12 h-12 mb-4 text-gray-400" />

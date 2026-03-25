@@ -3,6 +3,7 @@
 import { Calendar, CheckCircle2, Clock, DollarSign, FileText, Loader2, Square, SquareCheckBig, XCircle } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import { ApprovalRequest } from '../types';
+import { getApprovalRequestTypeLabel } from '@/lib/approval-options';
 
 interface ApprovalTableProps {
     requests: ApprovalRequest[];
@@ -14,17 +15,6 @@ interface ApprovalTableProps {
     onApprove: (id: number) => void;
     onOpenReject: (id: number) => void;
     onOpenDetail: (req: ApprovalRequest) => void;
-}
-
-function getTypeLabel(type: string) {
-    switch (type) {
-        case 'ot': return 'ล่วงเวลา (OT)';
-        case 'leave': return 'ลาหยุด';
-        case 'expense': return 'เบิกค่าใช้จ่าย';
-        case 'purchase': return 'คำขอซื้อ';
-        case 'other': return 'อื่นๆ';
-        default: return type;
-    }
 }
 
 function StatusBadge({ req }: { req: ApprovalRequest }) {
@@ -142,7 +132,7 @@ export default function ApprovalTable({
                                                 {req.request_type === 'expense' && <DollarSign size={14} className="text-green-500" />}
                                                 {req.request_type === 'purchase' && <DollarSign size={14} className="text-emerald-500" />}
                                                 {(req.request_type === 'other' || !['ot', 'leave', 'expense', 'purchase'].includes(req.request_type)) && <FileText size={14} className="text-slate-500" />}
-                                                {getTypeLabel(req.request_type)}
+                                                {getApprovalRequestTypeLabel(req.request_type, 'full')}
                                             </div>
                                             <div className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-wrap break-words">
                                                 {req.reason || '-'}

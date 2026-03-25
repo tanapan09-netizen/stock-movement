@@ -1,10 +1,36 @@
 'use server';
 
+import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { canManageMaintenanceTechnicians, canViewMaintenanceTechnicians } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { revalidatePath } from 'next/cache';
+
+async function getTechnicianAuthContext(level: 'read' | 'edit' = 'read') {
+    const session = await auth();
+    if (!session?.user) {
+        return null;
+    }
+
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+    const allowed = level === 'edit'
+        ? canManageMaintenanceTechnicians(permissionContext.role, permissionContext.permissions)
+        : canViewMaintenanceTechnicians(permissionContext.role, permissionContext.permissions, permissionContext.isApprover);
+
+    if (!allowed) {
+        return null;
+    }
+
+    return { session };
+}
 
 export async function getTechnicians() {
     try {
+        const authContext = await getTechnicianAuthContext('read');
+        if (!authContext) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
         const technicians = await prisma.tbl_technicians.findMany({
             orderBy: { name: 'asc' }
         });
@@ -17,6 +43,11 @@ export async function getTechnicians() {
 
 export async function getLineTechnicians() {
     try {
+        const authContext = await getTechnicianAuthContext('read');
+        if (!authContext) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
         const lineUsers = await prisma.tbl_line_users.findMany({
             where: { role: 'technician' },
             orderBy: { created_at: 'desc' }
@@ -30,6 +61,11 @@ export async function getLineTechnicians() {
 
 export async function getActiveTechnicians() {
     try {
+        const authContext = await getTechnicianAuthContext('read');
+        if (!authContext) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
         const technicians = await prisma.tbl_technicians.findMany({
             where: { status: 'active' },
             orderBy: { name: 'asc' }
@@ -50,6 +86,11 @@ export async function createTechnician(data: {
     notes?: string;
 }) {
     try {
+        const authContext = await getTechnicianAuthContext('edit');
+        if (!authContext) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
         const technician = await prisma.tbl_technicians.create({
             data: {
                 name: data.name,
@@ -79,6 +120,11 @@ export async function updateTechnician(tech_id: number, data: {
     notes?: string;
 }) {
     try {
+        const authContext = await getTechnicianAuthContext('edit');
+        if (!authContext) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
         const technician = await prisma.tbl_technicians.update({
             where: { tech_id },
             data: {
@@ -101,6 +147,11 @@ export async function updateTechnician(tech_id: number, data: {
 
 export async function deleteTechnician(tech_id: number) {
     try {
+        const authContext = await getTechnicianAuthContext('edit');
+        if (!authContext) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
         await prisma.tbl_technicians.delete({
             where: { tech_id }
         });

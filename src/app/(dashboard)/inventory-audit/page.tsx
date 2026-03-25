@@ -1,17 +1,6 @@
-'use client';
+﻿'use client';
 
-/**
- * InventoryAuditPage — Production-grade with full anti-fraud controls
- *
- * Security layers:
- * 1. Role-based access guard (auditor/supervisor/admin roles via Server Action)
- * 2. Dual-control: auditor name locked from session; approver verified via PIN from DB
- * 3. Edit tracking: first_entered_at, last_edited_at, edit_count, prev_count per item
- * 4. Immutable save: write-once; is_locked flag set server-side after save
- * 5. High-variance threshold alerts (absolute + percentage)
- * 6. Session auto-lock after inactivity
- * 7. Audit Trail tab: read-only log of every action with IP + timestamp
- */
+// Inventory audit page
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -28,10 +17,20 @@ import {
     verifyApproverPin,
     getCurrentUserRole,
 } from '@/actions/inventoryAuditActions';
+import {
+    INVENTORY_AUDIT_COPY,
+    INVENTORY_AUDIT_HISTORY_TABLE_HEADERS,
+    INVENTORY_AUDIT_FILTER_OPTIONS,
+    INVENTORY_AUDIT_PRODUCT_TABLE_HEADERS,
+    INVENTORY_AUDIT_REPORT_TABLE_HEADERS,
+    INVENTORY_AUDIT_SUMMARY_CARD_META,
+    INVENTORY_AUDIT_TAB_OPTIONS,
+    INVENTORY_AUDIT_TRAIL_TABLE_HEADERS,
+    INVENTORY_AUDIT_TRAIL_ACTION_META,
+    getInventoryAuditVarianceResultLabel,
+} from '@/lib/inventory-audit';
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Types
-// ─────────────────────────────────────────────────────────────────────────────
 
 type UserRole = 'auditor' | 'supervisor' | 'admin' | 'viewer';
 
@@ -79,18 +78,14 @@ interface TrailEntry {
     ip_address: string | null;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Config
-// ─────────────────────────────────────────────────────────────────────────────
 
 const HIGH_VARIANCE_ABS  = 10;
 const HIGH_VARIANCE_PCT  = 20;
 const SESSION_TIMEOUT_MIN = 30;
 const ALLOWED_ROLES: UserRole[] = ['auditor', 'supervisor', 'admin'];
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 const fmtThai = (d: Date | string | null) =>
     d ? new Date(d).toLocaleString('th-TH', {
@@ -105,9 +100,7 @@ const isHighRisk = (p: Product) => {
     return abs >= HIGH_VARIANCE_ABS || pct >= HIGH_VARIANCE_PCT;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Sub-components
-// ─────────────────────────────────────────────────────────────────────────────
 
 function AccessDenied() {
     return (
@@ -115,10 +108,10 @@ function AccessDenied() {
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
                 <Lock className="w-8 h-8 text-red-500" />
             </div>
-            <h2 className="text-xl font-bold text-gray-800">ไม่มีสิทธิ์เข้าถึง</h2>
+            <h2 className="text-xl font-bold text-gray-800">{INVENTORY_AUDIT_COPY.accessDeniedTitle}</h2>
             <p className="text-gray-500 text-sm max-w-xs">
-                คุณไม่มีสิทธิ์ใช้งานหน้าตรวจนับสต็อก<br />
-                กรุณาติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์
+                {INVENTORY_AUDIT_COPY.accessDeniedBody}<br />
+                {INVENTORY_AUDIT_COPY.accessDeniedContact}
             </p>
         </div>
     );
@@ -131,14 +124,14 @@ function SessionLockOverlay({ onUnlock }: { onUnlock: () => void }) {
                 <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Lock className="w-8 h-8 text-amber-500" />
                 </div>
-                <h2 className="text-xl font-bold text-gray-800 mb-2">Session หมดอายุ</h2>
+                <h2 className="text-xl font-bold text-gray-800 mb-2">{INVENTORY_AUDIT_COPY.sessionExpiredTitle}</h2>
                 <p className="text-gray-500 text-sm mb-6">
-                    ระบบล็อกอัตโนมัติหลังจากไม่มีการใช้งาน {SESSION_TIMEOUT_MIN} นาที<br />
-                    ข้อมูลที่กรอกไว้ยังคงอยู่
+                    {INVENTORY_AUDIT_COPY.sessionExpiredBody} {SESSION_TIMEOUT_MIN} {INVENTORY_AUDIT_COPY.sessionExpiredSuffix}<br />
+                    {INVENTORY_AUDIT_COPY.sessionExpiredKeepData}
                 </p>
                 <button onClick={onUnlock}
                     className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition">
-                    ปลดล็อกและดำเนินการต่อ
+                    {INVENTORY_AUDIT_COPY.unlock}
                 </button>
             </div>
         </div>
@@ -182,9 +175,9 @@ function ConfirmSaveDialog({
                             <ShieldCheck className="w-5 h-5 text-blue-600" />
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-800 text-lg">ยืนยันบันทึกผลตรวจนับ</h3>
+                            <h3 className="font-bold text-gray-800 text-lg">{INVENTORY_AUDIT_COPY.confirmSaveTitle}</h3>
                             <p className="text-gray-500 text-xs mt-0.5">
-                                ข้อมูลจะถูก lock และไม่สามารถแก้ไขได้ภายหลัง
+                                {INVENTORY_AUDIT_COPY.confirmSaveBody}
                             </p>
                         </div>
                     </div>
@@ -193,13 +186,13 @@ function ConfirmSaveDialog({
                 <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
                     {/* Summary */}
                     <div className="bg-gray-50 rounded-xl p-4 text-sm space-y-2">
-                        <Row label="ผู้ตรวจนับ"       value={auditor} />
-                        <Row label="ผู้อนุมัติ"        value={approver} />
-                        <Row label="รายการที่ตรวจ"     value={`${stats.counted}/${stats.total} รายการ`} />
+                        <Row label={INVENTORY_AUDIT_COPY.auditor} value={auditor} />
+                        <Row label={INVENTORY_AUDIT_COPY.approver} value={approver} />
+                        <Row label={INVENTORY_AUDIT_COPY.checkedItems} value={`${stats.counted}/${stats.total} รายการ`} />
                         {editedItems.length > 0 && (
                             <div className="flex justify-between text-amber-700 pt-1 border-t border-amber-100">
                                 <span className="flex items-center gap-1">
-                                    <FileWarning className="w-3.5 h-3.5" /> รายการที่แก้ไข
+                                    <FileWarning className="w-3.5 h-3.5" /> {INVENTORY_AUDIT_COPY.editedItems}
                                 </span>
                                 <span className="font-bold">{editedItems.length} รายการ</span>
                             </div>
@@ -210,7 +203,7 @@ function ConfirmSaveDialog({
                     {false && (
                         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                             <p className="text-red-700 font-bold text-sm mb-2">
-                                ⚠ พบรายการความเสี่ยงสูง {highRiskItems.length} รายการ
+                                ⚠ {INVENTORY_AUDIT_COPY.highRiskItems} {highRiskItems.length} รายการ
                             </p>
                             <ul className="text-red-600 text-xs space-y-1">
                                 {highRiskItems.slice(0, 6).map(p => (
@@ -224,7 +217,7 @@ function ConfirmSaveDialog({
                                     </li>
                                 ))}
                                 {highRiskItems.length > 6 &&
-                                    <li className="text-red-400">และอีก {highRiskItems.length - 6} รายการ</li>}
+                                    <li className="text-red-400">{INVENTORY_AUDIT_COPY.andMore} {highRiskItems.length - 6} รายการ</li>}
                             </ul>
                         </div>
                     )}
@@ -232,17 +225,17 @@ function ConfirmSaveDialog({
                     {/* PIN input */}
                     <div className="border border-green-200 bg-green-50 rounded-xl p-4">
                         <p className="text-green-800 text-sm font-semibold mb-1 flex items-center gap-2">
-                            <Shield className="w-4 h-4" /> ยืนยันตัวตนผู้อนุมัติ
+                            <Shield className="w-4 h-4" /> {INVENTORY_AUDIT_COPY.confirmApproverIdentity}
                         </p>
                         <p className="text-green-700 text-xs mb-3">
-                            ผู้อนุมัติ <strong>{approver}</strong> กรุณาใส่ PIN เพื่อลงนามอนุมัติ
+                            {INVENTORY_AUDIT_COPY.approverPinPromptPrefix} <strong>{approver}</strong> {INVENTORY_AUDIT_COPY.approverPinPromptSuffix}
                         </p>
                         <div className="relative">
                             <input
                                 type={showPin ? 'text' : 'password'}
                                 value={approverPin}
                                 onChange={e => setApproverPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                                placeholder="PIN ผู้อนุมัติ (4–8 หลัก)"
+                                placeholder={INVENTORY_AUDIT_COPY.approverPinPlaceholder}
                                 autoFocus
                                 className="w-full p-2.5 pr-10 border border-green-300 rounded-xl text-sm focus:ring-2 focus:ring-green-400 focus:outline-none bg-white"
                             />
@@ -254,21 +247,21 @@ function ConfirmSaveDialog({
                     </div>
 
                     <p className="text-gray-400 text-xs text-center">
-                        การบันทึกนี้จะถูก log พร้อม IP address, timestamp และ checksum — ไม่สามารถย้อนกลับได้
+                        {INVENTORY_AUDIT_COPY.saveLogNotice}
                     </p>
                 </div>
 
                 <div className="p-4 bg-gray-50 flex justify-end gap-3 border-t">
                     <button onClick={onCancel} disabled={verifying}
                         className="px-4 py-2 rounded-xl border text-gray-600 hover:bg-gray-100 font-medium transition text-sm">
-                        ยกเลิก
+                        {INVENTORY_AUDIT_COPY.cancel}
                     </button>
                     <button onClick={onConfirm}
                         disabled={approverPin.length < 4 || verifying}
                         className="px-6 py-2 rounded-xl text-white font-bold transition text-sm flex items-center gap-2 disabled:opacity-50 bg-blue-600 hover:bg-blue-700">
                         {verifying
-                            ? <><Loader2 className="w-4 h-4 animate-spin" /> กำลังยืนยัน...</>
-                            : <><Save className="w-4 h-4" /> อนุมัติและบันทึก</>}
+                            ? <><Loader2 className="w-4 h-4 animate-spin" /> {INVENTORY_AUDIT_COPY.confirming}</>
+                            : <><Save className="w-4 h-4" /> {INVENTORY_AUDIT_COPY.approveAndSave}</>}
                     </button>
                 </div>
             </div>
@@ -277,20 +270,14 @@ function ConfirmSaveDialog({
 }
 
 function ActionBadge({ action }: { action: TrailEntry['action'] }) {
-    const map: Record<TrailEntry['action'], { label: string; cls: string }> = {
-        enter:   { label: 'กรอกข้อมูล', cls: 'bg-blue-100 text-blue-700' },
-        edit:    { label: 'แก้ไข',       cls: 'bg-amber-100 text-amber-700' },
-        save:    { label: 'บันทึก',      cls: 'bg-emerald-100 text-emerald-700' },
-        approve: { label: 'อนุมัติ',     cls: 'bg-purple-100 text-purple-700' },
-        view:    { label: 'ดูข้อมูล',   cls: 'bg-gray-100 text-gray-500' },
+    const { label, cls } = INVENTORY_AUDIT_TRAIL_ACTION_META[action] ?? {
+        label: action,
+        cls: 'bg-gray-100 text-gray-600',
     };
-    const { label, cls } = map[action] ?? { label: action, cls: 'bg-gray-100 text-gray-600' };
     return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{label}</span>;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main Page
-// ─────────────────────────────────────────────────────────────────────────────
+// Main page
 
 export default function InventoryAuditPage() {
 
@@ -337,7 +324,7 @@ export default function InventoryAuditPage() {
     const [sessionWarning, setSessionWarning] = useState(false);
     const lastActivityRef                   = useRef(Date.now());
 
-    // ── Auth check ──────────────────────────────────────────────────────────
+    // Auth check
     useEffect(() => {
         getCurrentUserRole().then((res: Awaited<ReturnType<typeof getCurrentUserRole>>) => {
             if (!res.success || !res.user) {
@@ -351,7 +338,7 @@ export default function InventoryAuditPage() {
         });
     }, []);
 
-    // ── Load products ────────────────────────────────────────────────────────
+    // Load products
     useEffect(() => {
         if (!currentUser) return;
         getProductsForAudit()
@@ -369,11 +356,11 @@ export default function InventoryAuditPage() {
                     prev_count: null,
                 })));
             })
-            .catch(() => setErrorMsg('ไม่สามารถโหลดข้อมูลสินค้าได้'))
+            .catch(() => setErrorMsg(INVENTORY_AUDIT_COPY.failedToLoadProducts))
             .finally(() => setLoading(false));
     }, [currentUser]);
 
-    // ── Load history / trail on tab switch ──────────────────────────────────
+    // Load history / trail on tab switch
     useEffect(() => {
         if (activeTab === 'history')
             getInventoryAuditHistory(20).then((r: Awaited<ReturnType<typeof getInventoryAuditHistory>>) => { if (r.success) setHistory(r.data); });
@@ -381,7 +368,7 @@ export default function InventoryAuditPage() {
             getAuditTrailLog(50).then((r: Awaited<ReturnType<typeof getAuditTrailLog>>) => { if (r.success) setTrailLog(r.data); });
     }, [activeTab]);
 
-    // ── Session timeout ──────────────────────────────────────────────────────
+    // Session timeout
     useEffect(() => {
         const tick = setInterval(() => {
             const idle = (Date.now() - lastActivityRef.current) / 60000;
@@ -397,7 +384,7 @@ export default function InventoryAuditPage() {
         setSessionWarning(false);
     }, []);
 
-    // ── Update count with full edit tracking ────────────────────────────────
+    // Update count
     const updateCount = useCallback((id: string, raw: string) => {
         if (sessionLocked) return;
         resetActivity();
@@ -422,7 +409,7 @@ export default function InventoryAuditPage() {
         }));
     }, [sessionLocked, resetActivity]);
 
-    // ── Stats ──────────────────────────────────────────────────────────────
+    // Stats
     const stats = {
         total:         products.length,
         pending:       products.filter(p => p.status === 'pending').length,
@@ -434,46 +421,43 @@ export default function InventoryAuditPage() {
         counted:       products.filter(p => p.actual_count !== null).length,
     };
 
-    // ── Validate & open confirm ──────────────────────────────────────────────
+    // Validate before save
     const handleSaveClick = () => {
         setSuccessMsg(''); setErrorMsg('');
         if (!currentUser) return;
         if (!ALLOWED_ROLES.includes(currentUser.role)) {
-            setErrorMsg('คุณไม่มีสิทธิ์บันทึกผลตรวจนับ'); return;
+            setErrorMsg(INVENTORY_AUDIT_COPY.saveDenied); return;
         }
         if (!approver.trim()) {
-            setErrorMsg('กรุณาระบุชื่อผู้อนุมัติ (Supervisor)'); return;
+            setErrorMsg(INVENTORY_AUDIT_COPY.approverRequired); return;
         }
-        // Dual control guard
         if (currentUser.name.toLowerCase() === approver.trim().toLowerCase() ||
             currentUser.employee_id.toLowerCase() === approver.trim().toLowerCase()) {
-            setErrorMsg('ผู้ตรวจนับและผู้อนุมัติต้องเป็นคนละคน (Dual Control)'); return;
+            setErrorMsg(INVENTORY_AUDIT_COPY.dualControlRequired); return;
         }
         if (stats.counted === 0) {
-            setErrorMsg('ยังไม่มีรายการที่ตรวจนับ'); return;
+            setErrorMsg(INVENTORY_AUDIT_COPY.noCheckedItems); return;
         }
         setApproverPin('');
         setShowConfirm(true);
     };
 
-    // ── Verify PIN → Save ────────────────────────────────────────────────────
+    // Verify PIN and save
     const handleConfirmSave = async () => {
         if (!currentUser) return;
         setVerifying(true); setErrorMsg('');
         try {
-            // 1. Verify approver PIN server-side (bcrypt comparison in Server Action)
             const pinResult = await verifyApproverPin({
                 approver_name: approver.trim(),
                 pin: approverPin,
             });
             if (!pinResult.success) {
-                setErrorMsg(pinResult.error || 'PIN ผู้อนุมัติไม่ถูกต้อง');
+                setErrorMsg(pinResult.error || INVENTORY_AUDIT_COPY.invalidApproverPin);
                 setVerifying(false); return;
             }
 
             setVerifying(false); setShowConfirm(false); setSaving(true);
 
-            // 2. Write-once save with full audit metadata
             const result = await saveInventoryAudit({
                 audit_date:    auditDate,
                 auditor_id:    currentUser.employee_id,
@@ -503,7 +487,7 @@ export default function InventoryAuditPage() {
                     savedAt: new Date().toISOString(),
                     items: snapshotItems,
                 });
-                setSuccessMsg(`✓ บันทึกสำเร็จ เลขที่ ${result.auditNumber} — ข้อมูลถูก lock แล้ว`);
+                setSuccessMsg(`✓ บันทึกสำเร็จ เลขที่ ${result.auditNumber} — ข้อมูลถูกล็อกแล้ว`);
                 setProducts(prev => prev.map(p => ({
                     ...p, actual_count: null, variance: 0, status: 'pending',
                     first_entered_at: null, last_edited_at: null,
@@ -511,26 +495,26 @@ export default function InventoryAuditPage() {
                 })));
                 setApprover(''); setApproverPin('');
             } else {
-                setErrorMsg(result.error || 'บันทึกไม่สำเร็จ');
+                setErrorMsg(result.error || INVENTORY_AUDIT_COPY.saveFailed);
             }
         } catch {
-            setErrorMsg('เกิดข้อผิดพลาด กรุณาลองใหม่');
+            setErrorMsg(INVENTORY_AUDIT_COPY.genericError);
         } finally {
             setVerifying(false); setSaving(false);
         }
     };
 
-    // ── Print report ─────────────────────────────────────────────────────────
+    // Print report
     const printReport = () => {
         if (!lastSavedReport) {
-            setErrorMsg('กรุณาบันทึกผลตรวจนับก่อน เพื่อดูรายงาน');
+            setErrorMsg(INVENTORY_AUDIT_COPY.reportRequired);
             return;
         }
         const done = lastSavedReport.items.filter(p => p.actual_count !== null);
         const w = window.open('', '_blank');
         if (!w) return;
         const { auditDate: reportDate, auditNumber, auditorName, auditorEmployeeId, approverName } = lastSavedReport;
-        w.document.write(`<!DOCTYPE html><html><head><title>รายงานตรวจนับสต็อก</title>
+        w.document.write(`<!DOCTYPE html><html><head><title>${INVENTORY_AUDIT_COPY.reportTitle}</title>
         <style>
           body{font-family:sans-serif;padding:20px;font-size:12px}
           h1{text-align:center;color:#1e3a8a;margin-bottom:4px}
@@ -543,17 +527,13 @@ export default function InventoryAuditPage() {
           .footer{margin-top:16px;color:#94a3b8;font-size:10px;border-top:1px solid #e2e8f0;padding-top:8px}
           @media print{button{display:none}}
         </style></head><body>
-        <h1>รายงานผลการตรวจนับสต็อก</h1>
+        <h1>${INVENTORY_AUDIT_COPY.reportResultTitle}</h1>
         <div class="sub">
-          เลขที่: ${auditNumber || '—'} | วันที่: ${fmtThai(reportDate)} | ผู้ตรวจนับ: ${auditorName} (${auditorEmployeeId}) | ผู้อนุมัติ: ${approverName || '—'}<br>
-          พิมพ์เมื่อ: ${fmtThai(new Date())}
+          ${INVENTORY_AUDIT_COPY.reportNumber}: ${auditNumber || '—'} | ${INVENTORY_AUDIT_COPY.auditDate}: ${fmtThai(reportDate)} | ${INVENTORY_AUDIT_COPY.auditor}: ${auditorName} (${auditorEmployeeId}) | ${INVENTORY_AUDIT_COPY.approver}: ${approverName || '—'}<br>
+          ${INVENTORY_AUDIT_COPY.printedAt}: ${fmtThai(new Date())}
         </div>
         <table>
-          <thead><tr>
-            <th>#</th><th>รหัส</th><th>ชื่อสินค้า</th>
-            <th>ในระบบ</th><th>นับจริง</th><th>ผลต่าง</th>
-            <th>แก้ไข</th><th>เวลากรอกแรก</th><th>สถานะ</th>
-          </tr></thead><tbody>
+          <thead><tr>${INVENTORY_AUDIT_REPORT_TABLE_HEADERS.map(header => `<th>${header}</th>`).join('')}</tr></thead><tbody>
           ${done.map((p, i) => `
             <tr class="${isHighRisk(p) ? 'risk' : p.edit_count > 0 ? 'warn' : ''}">
               <td>${i + 1}</td><td>${p.p_id}</td><td>${p.p_name}</td>
@@ -562,21 +542,21 @@ export default function InventoryAuditPage() {
               <td class="${p.variance === 0 ? 'ok' : 'bad'} bold" style="text-align:right">
                 ${p.variance > 0 ? '+' : ''}${p.variance}
               </td>
-              <td style="text-align:center">${p.edit_count > 0 ? `⚠ ${p.edit_count}ครั้ง` : '—'}</td>
+              <td style="text-align:center">${p.edit_count > 0 ? `⚠ ${p.edit_count} ครั้ง` : '—'}</td>
               <td style="font-size:10px">${fmtThai(p.first_entered_at)}</td>
-              <td class="${p.variance === 0 ? 'ok' : 'bad'}">${p.variance === 0 ? '✓ ตรงกัน' : isHighRisk(p) ? '✗ เสี่ยงสูง' : '✗ มีผลต่าง'}</td>
+              <td class="${p.variance === 0 ? 'ok' : 'bad'}">${getInventoryAuditVarianceResultLabel(p.variance, isHighRisk(p))}</td>
             </tr>`).join('')}
           </tbody>
         </table>
         <div class="footer">
-          🟡 สีเหลือง = มีการแก้ไขหลังกรอกครั้งแรก | 🔴 สีแดง = ผลต่าง ≥${HIGH_VARIANCE_ABS} หน่วย หรือ ≥${HIGH_VARIANCE_PCT}%<br>
-          เอกสารนี้ถูกสร้างโดยระบบอัตโนมัติ — ห้ามแก้ไข
+          🟡 ${INVENTORY_AUDIT_COPY.editLegend} | 🔴 ${INVENTORY_AUDIT_COPY.highRiskLegend} ≥${HIGH_VARIANCE_ABS} หน่วย หรือ ≥${HIGH_VARIANCE_PCT}%<br>
+          ${INVENTORY_AUDIT_COPY.autoGeneratedNotice}
         </div>
         <script>window.onload=()=>window.print()</script></body></html>`);
         w.document.close();
     };
 
-    // ── Filter ────────────────────────────────────────────────────────────────
+    // Filter
     const filtered = products.filter(p => {
         const q = search.toLowerCase();
         const matchSearch = p.p_id.toLowerCase().includes(q) || p.p_name.toLowerCase().includes(q);
@@ -587,27 +567,25 @@ export default function InventoryAuditPage() {
         return matchSearch && matchFilter;
     });
 
-    // ── Guards ────────────────────────────────────────────────────────────────
+    // Guards
     if (authLoading) return (
         <div className="flex items-center justify-center h-64 gap-3 text-blue-600">
             <Loader2 className="w-6 h-6 animate-spin" />
-            <span className="text-sm font-medium">กำลังตรวจสอบสิทธิ์...</span>
+            <span className="text-sm font-medium">{INVENTORY_AUDIT_COPY.checkingPermission}</span>
         </div>
     );
     if (accessDenied) return <AccessDenied />;
     if (loading) return (
         <div className="flex items-center justify-center h-64 gap-3 text-blue-600">
             <Loader2 className="w-6 h-6 animate-spin" />
-            <span className="text-sm font-medium">กำลังโหลดข้อมูล...</span>
+            <span className="text-sm font-medium">{INVENTORY_AUDIT_COPY.loadingData}</span>
         </div>
     );
 
     const highRiskItems = products.filter(isHighRisk);
     const progress = stats.total > 0 ? (stats.counted / stats.total) * 100 : 0;
 
-    // ─────────────────────────────────────────────────────────────────────────
     // Render
-    // ─────────────────────────────────────────────────────────────────────────
     return (
         <div className="space-y-5" onMouseMove={resetActivity} onKeyDown={resetActivity}>
 
@@ -628,7 +606,7 @@ export default function InventoryAuditPage() {
                 verifying={verifying}
             />
 
-            {/* ── Header ── */}
+            {/* Header */}
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
@@ -647,7 +625,7 @@ export default function InventoryAuditPage() {
                         )}
                         {sessionWarning && !sessionLocked && (
                             <span className="text-xs text-amber-600 font-semibold animate-pulse">
-                                ⚠ session ใกล้หมดอายุ
+                                {INVENTORY_AUDIT_COPY.sessionWarning}
                             </span>
                         )}
                     </div>
@@ -656,7 +634,7 @@ export default function InventoryAuditPage() {
                     <button onClick={printReport}
                         disabled={!lastSavedReport}
                         className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition text-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                        <Printer className="w-4 h-4" /> พิมพ์รายงานล่าสุด
+                        <Printer className="w-4 h-4" /> {INVENTORY_AUDIT_COPY.printLatestReport}
                     </button>
                     <button onClick={handleSaveClick}
                         disabled={saving || stats.counted === 0 || sessionLocked}
@@ -664,12 +642,12 @@ export default function InventoryAuditPage() {
                         {saving
                             ? <Loader2 className="w-4 h-4 animate-spin" />
                             : <Save className="w-4 h-4" />}
-                        บันทึกผลตรวจนับ
+                        {INVENTORY_AUDIT_COPY.saveAuditResult}
                     </button>
                 </div>
             </div>
 
-            {/* ── Alerts ── */}
+            {/* Alerts */}
             {successMsg && (
                 <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-sm font-medium">
                     <ShieldCheck className="w-5 h-5 shrink-0" /> {successMsg}
@@ -685,17 +663,17 @@ export default function InventoryAuditPage() {
             {lastSavedReport && (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-center justify-between gap-3">
                     <div>
-                        <p className="text-xs text-gray-400">รายงานล่าสุด</p>
+                        <p className="text-xs text-gray-400">{INVENTORY_AUDIT_COPY.latestReport}</p>
                         <p className="font-semibold text-gray-800">
-                            เลขที่ {lastSavedReport.auditNumber || '—'} • วันที่ {fmtThai(lastSavedReport.auditDate)}
+                            {INVENTORY_AUDIT_COPY.reportLatestPrefix} {lastSavedReport.auditNumber || '—'} • {INVENTORY_AUDIT_COPY.reportDatePrefix} {fmtThai(lastSavedReport.auditDate)}
                         </p>
                         <p className="text-xs text-gray-500 mt-1">
-                            นับแล้ว {lastSavedReport.items.filter(i => i.actual_count !== null).length} รายการ • มีผลต่าง {lastSavedReport.items.filter(i => i.actual_count !== null && i.variance !== 0).length} รายการ
+                            {INVENTORY_AUDIT_COPY.latestReportSummaryCounted} {lastSavedReport.items.filter(i => i.actual_count !== null).length} รายการ • {INVENTORY_AUDIT_COPY.latestReportSummaryVariance} {lastSavedReport.items.filter(i => i.actual_count !== null && i.variance !== 0).length} รายการ
                         </p>
                     </div>
                     <button onClick={printReport}
                         className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition text-sm">
-                        <Printer className="w-4 h-4" /> พิมพ์รายงานล่าสุด
+                        <Printer className="w-4 h-4" /> {INVENTORY_AUDIT_COPY.printLatestReport}
                     </button>
                 </div>
             )}
@@ -713,37 +691,41 @@ export default function InventoryAuditPage() {
                 </div>
             )}
 
-            {/* ── Tabs ── */}
+            {/* Tabs */}
             <div className="flex gap-1 border-b border-gray-200">
-                {([
-                    { key: 'audit',   label: 'ตรวจนับสต็อก',       icon: <ClipboardCheck className="w-4 h-4" /> },
-                    { key: 'history', label: 'ประวัติการตรวจนับ',   icon: <History className="w-4 h-4" /> },
-                    { key: 'trail',   label: 'Audit Trail',          icon: <Activity className="w-4 h-4" /> },
-                ] as const).map(({ key, label, icon }) => (
+                {INVENTORY_AUDIT_TAB_OPTIONS.map(({ key, label }) => {
+                    const icon = key === 'audit'
+                        ? <ClipboardCheck className="w-4 h-4" />
+                        : key === 'history'
+                            ? <History className="w-4 h-4" />
+                            : <Activity className="w-4 h-4" />;
+
+                    return (
                     <button key={key} onClick={() => setActiveTab(key)}
                         className={`flex items-center gap-2 px-4 py-2.5 font-medium text-sm transition border-b-2 -mb-px
                             ${activeTab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
                         {icon} {label}
                     </button>
-                ))}
+                    );
+                })}
             </div>
 
-            {/* ══════════════════════ TAB — AUDIT ══════════════════════ */}
+            {/* Audit tab */}
             {activeTab === 'audit' && (
                 <>
                     {/* Audit info panel */}
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                         <div className="flex items-center gap-2 mb-5">
                             <Shield className="w-5 h-5 text-blue-600" />
-                            <h2 className="font-semibold text-gray-700">ข้อมูลการตรวจนับ</h2>
+                            <h2 className="font-semibold text-gray-700">{INVENTORY_AUDIT_COPY.auditInfo}</h2>
                             <span className="ml-auto text-xs text-gray-400 flex items-center gap-1">
-                                <Lock className="w-3 h-3" /> Dual Control บังคับใช้
+                                <Lock className="w-3 h-3" /> {INVENTORY_AUDIT_COPY.dualControlBadge}
                             </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">
-                                    วันที่ตรวจนับ
+                                    {INVENTORY_AUDIT_COPY.auditDate}
                                 </label>
                                 <input type="date" value={auditDate}
                                     max={new Date().toISOString().split('T')[0]}
@@ -752,7 +734,7 @@ export default function InventoryAuditPage() {
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">
-                                    ผู้ตรวจนับ <span className="text-blue-500 normal-case font-normal">(จาก session)</span>
+                                    {INVENTORY_AUDIT_COPY.auditor} <span className="text-blue-500 normal-case font-normal">({INVENTORY_AUDIT_COPY.fromSession})</span>
                                 </label>
                                 <div className="w-full p-2.5 border border-gray-100 rounded-xl text-sm bg-gray-50 text-gray-700 flex items-center gap-2">
                                     <User className="w-4 h-4 text-gray-400 shrink-0" />
@@ -762,27 +744,27 @@ export default function InventoryAuditPage() {
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">
-                                    ผู้อนุมัติ (Supervisor) <span className="text-red-500">*</span>
+                                    {INVENTORY_AUDIT_COPY.approverSupervisor} <span className="text-red-500">*</span>
                                 </label>
                                 <input type="text" value={approver}
                                     onChange={e => setApprover(e.target.value)}
-                                    placeholder="ชื่อ หรือ รหัสพนักงาน"
+                                    placeholder={INVENTORY_AUDIT_COPY.approverInputPlaceholder}
                                     className={`w-full p-2.5 border rounded-xl text-sm focus:ring-2 focus:outline-none transition
                                         ${approver && approver.toLowerCase() === currentUser?.name.toLowerCase()
                                             ? 'border-red-400 bg-red-50 focus:ring-red-300'
                                             : 'border-gray-200 focus:ring-blue-400'}`} />
                                 {approver && approver.toLowerCase() === currentUser?.name.toLowerCase()
                                     ? <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
-                                        <AlertCircle className="w-3 h-3" /> ต้องเป็นคนละคนกับผู้ตรวจนับ
+                                        <AlertCircle className="w-3 h-3" /> {INVENTORY_AUDIT_COPY.approverMustDiffer}
                                       </p>
-                                    : <p className="text-gray-400 text-xs mt-1">PIN จะถูกขอเมื่อกด &quot;บันทึก&quot;</p>
+                                    : <p className="text-gray-400 text-xs mt-1">{INVENTORY_AUDIT_COPY.approverPinHint}</p>
                                 }
                             </div>
                         </div>
                         {/* Progress */}
                         <div className="mt-5 flex items-center gap-4">
                             <span className="text-sm text-gray-500 whitespace-nowrap">
-                                ความคืบหน้า: <strong className="text-blue-600">{stats.counted}</strong>/{stats.total}
+                                {INVENTORY_AUDIT_COPY.progress}: <strong className="text-blue-600">{stats.counted}</strong>/{stats.total}
                             </span>
                             <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                                 <div className="h-full bg-blue-500 rounded-full transition-all duration-300"
@@ -797,9 +779,9 @@ export default function InventoryAuditPage() {
                     {/* Stats cards */}
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                         {[
-                            { label: 'รอตรวจนับ',        value: stats.pending,       color: 'text-gray-500',    bg: 'bg-gray-50'    },
-                            { label: 'นับแล้ว',           value: stats.counted,       color: 'text-blue-600',    bg: 'bg-blue-50'    },
-                            { label: 'รายการที่แก้ไข',      value: stats.editedItems.length, color: 'text-amber-700',   bg: 'bg-amber-50'   },
+                            { ...INVENTORY_AUDIT_SUMMARY_CARD_META.pending, value: stats.pending },
+                            { ...INVENTORY_AUDIT_SUMMARY_CARD_META.counted, value: stats.counted },
+                            { ...INVENTORY_AUDIT_SUMMARY_CARD_META.edited, value: stats.editedItems.length },
                         ].map(({ label, value, color, bg }) => (
                             <div key={label} className={`${bg} rounded-xl p-4 shadow-sm`}>
                                 <p className="text-xs text-gray-400 mb-1">{label}</p>
@@ -814,11 +796,10 @@ export default function InventoryAuditPage() {
                             <FileWarning className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                             <div>
                                 <p className="font-semibold text-amber-800 text-sm">
-                                    ตรวจพบการแก้ไขใน {stats.editedItems.length} รายการ
+                                    {INVENTORY_AUDIT_COPY.editDetectedPrefix} {stats.editedItems.length} {INVENTORY_AUDIT_COPY.editDetectedSuffix}
                                 </p>
                                 <p className="text-amber-700 text-xs mt-0.5">
-                                    แถวสีเหลืองในตาราง = มีการแก้ไขหลังกรอกครั้งแรก
-                                    ข้อมูลทุก version จะถูกบันทึกลง audit trail
+                                    {INVENTORY_AUDIT_COPY.editTrackingNotice}
                                 </p>
                             </div>
                         </div>
@@ -829,15 +810,11 @@ export default function InventoryAuditPage() {
                         <div className="relative flex-1 min-w-[200px]">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-                                placeholder="ค้นหารหัสหรือชื่อสินค้า..."
+                                placeholder={INVENTORY_AUDIT_COPY.searchPlaceholder}
                                 className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" />
                         </div>
                         <div className="flex gap-1.5 flex-wrap">
-                            {([
-                                { key: 'all',      label: 'ทั้งหมด' },
-                                { key: 'pending',  label: 'รอตรวจ' },
-                                { key: 'counted',  label: 'นับแล้ว' },
-                            ] as const).map(({ key, label }) => (
+                            {INVENTORY_AUDIT_FILTER_OPTIONS.map(({ key, label }) => (
                                 <button key={key} onClick={() => setFilter(key)}
                                     className={`px-3 py-2 rounded-xl text-sm font-medium transition
                                         ${filter === key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
@@ -852,7 +829,7 @@ export default function InventoryAuditPage() {
                         <table className="w-full text-sm">
                             <thead className="bg-gray-50 border-b border-gray-100">
                                 <tr>
-                                    {['รหัส', 'ชื่อสินค้า', 'นับจริง', 'แก้ไข', 'เวลากรอกแรก'].map(h => (
+                                    {INVENTORY_AUDIT_PRODUCT_TABLE_HEADERS.map(h => (
                                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">{h}</th>
                                     ))}
                                 </tr>
@@ -874,7 +851,7 @@ export default function InventoryAuditPage() {
                                         <td className="px-4 py-3 text-center text-xs">
                                             {product.edit_count > 0
                                                 ? <span className="text-amber-600 font-bold" title={`ค่าก่อนแก้: ${product.prev_count}`}>
-                                                    ⚠ {product.edit_count}ครั้ง
+                                                    ⚠ {product.edit_count} ครั้ง
                                                   </span>
                                                 : <span className="text-gray-300">—</span>}
                                         </td>
@@ -887,7 +864,7 @@ export default function InventoryAuditPage() {
                                     <tr>
                                         <td colSpan={8} className="text-center py-16 text-gray-300">
                                             <Search className="w-8 h-8 mx-auto mb-2" />
-                                            ไม่พบรายการ
+                                            {INVENTORY_AUDIT_COPY.noItemsFound}
                                         </td>
                                     </tr>
                                 )}
@@ -897,29 +874,29 @@ export default function InventoryAuditPage() {
                 </>
             )}
 
-            {/* ══════════════════════ TAB — HISTORY ══════════════════════ */}
+            {/* History tab */}
             {activeTab === 'history' && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                         <h2 className="font-semibold text-gray-800 flex items-center gap-2">
-                            <History className="w-4 h-4 text-blue-600" /> ประวัติการตรวจนับ (20 รายการล่าสุด)
+                            <History className="w-4 h-4 text-blue-600" /> {INVENTORY_AUDIT_COPY.historyLatest}
                         </h2>
                         <button onClick={() => getInventoryAuditHistory(20).then(r => r.success && setHistory(r.data as AuditRecord[]))}
                             className="text-sm text-gray-400 hover:text-blue-600 flex items-center gap-1 transition">
-                            <RefreshCw className="w-3.5 h-3.5" /> รีเฟรช
+                            <RefreshCw className="w-3.5 h-3.5" /> {INVENTORY_AUDIT_COPY.refresh}
                         </button>
                     </div>
                     <table className="w-full text-sm">
                         <thead className="bg-gray-50">
                             <tr>
-                                {['เลขที่', 'วันที่', 'รายการ', 'ผลต่าง', 'ผู้ตรวจนับ', 'ผู้อนุมัติ', 'สถานะ'].map(h => (
+                                {INVENTORY_AUDIT_HISTORY_TABLE_HEADERS.map(h => (
                                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {history.length === 0
-                                ? <tr><td colSpan={7} className="text-center py-16 text-gray-300">ยังไม่มีประวัติ</td></tr>
+                                ? <tr><td colSpan={7} className="text-center py-16 text-gray-300">{INVENTORY_AUDIT_COPY.noHistory}</td></tr>
                                 : history.map(h => (
                                     <tr key={h.audit_id} className="hover:bg-gray-50">
                                         <td className="px-4 py-3 font-mono font-semibold text-blue-600 text-xs">{h.audit_number ?? '—'}</td>
@@ -931,13 +908,13 @@ export default function InventoryAuditPage() {
                                         <td className="px-4 py-3 text-gray-700">{h.completed_by ?? '—'}</td>
                                         <td className="px-4 py-3 text-gray-700 flex items-center gap-1">
                                             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                            {h.approved_by ?? <span className="text-gray-300 text-xs">ไม่มีข้อมูล</span>}
+                                            {h.approved_by ?? <span className="text-gray-300 text-xs">{INVENTORY_AUDIT_COPY.noInfo}</span>}
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-1.5">
-                                                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">สำเร็จ</span>
+                                                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">{INVENTORY_AUDIT_COPY.completed}</span>
                                                 {h.is_locked && (
-                                                    <span title="ข้อมูลถูก lock">
+                                                    <span title={INVENTORY_AUDIT_COPY.lockedData}>
                                                         <Lock className="w-3.5 h-3.5 text-gray-400" />
                                                     </span>
                                                 )}
@@ -951,33 +928,33 @@ export default function InventoryAuditPage() {
                 </div>
             )}
 
-            {/* ══════════════════════ TAB — AUDIT TRAIL ══════════════════════ */}
+            {/* Audit trail tab */}
             {activeTab === 'trail' && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                         <div>
                             <h2 className="font-semibold text-gray-800 flex items-center gap-2">
-                                <Activity className="w-4 h-4 text-blue-600" /> Audit Trail (50 รายการล่าสุด)
+                                <Activity className="w-4 h-4 text-blue-600" /> {INVENTORY_AUDIT_COPY.trailLatest}
                             </h2>
-                            <p className="text-xs text-gray-400 mt-0.5">บันทึกทุก action — อ่านได้อย่างเดียว</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{INVENTORY_AUDIT_COPY.trailReadOnly}</p>
                         </div>
                         <button onClick={() => getAuditTrailLog(50).then((r: Awaited<ReturnType<typeof getAuditTrailLog>>) => r.success && setTrailLog(r.data))}
                             className="text-sm text-gray-400 hover:text-blue-600 flex items-center gap-1 transition">
-                            <RefreshCw className="w-3.5 h-3.5" /> รีเฟรช
+                            <RefreshCw className="w-3.5 h-3.5" /> {INVENTORY_AUDIT_COPY.refresh}
                         </button>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-xs">
                             <thead className="bg-gray-50">
                                 <tr>
-                                    {['เวลา', 'Action', 'สินค้า', 'ค่าเดิม → ใหม่', 'ผู้ดำเนินการ', 'IP Address'].map(h => (
+                                    {INVENTORY_AUDIT_TRAIL_TABLE_HEADERS.map(h => (
                                         <th key={h} className="px-4 py-3 text-left font-semibold text-gray-400 uppercase whitespace-nowrap">{h}</th>
                                     ))}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
                                 {trailLog.length === 0
-                                    ? <tr><td colSpan={6} className="text-center py-16 text-gray-300">ยังไม่มีข้อมูล</td></tr>
+                                    ? <tr><td colSpan={6} className="text-center py-16 text-gray-300">{INVENTORY_AUDIT_COPY.noData}</td></tr>
                                     : trailLog.map(t => (
                                         <tr key={t.trail_id} className={`hover:bg-gray-50 ${t.action === 'edit' ? 'bg-amber-50/40' : ''}`}>
                                             <td className="px-4 py-3 font-mono text-gray-400 whitespace-nowrap">{fmtThai(t.performed_at)}</td>

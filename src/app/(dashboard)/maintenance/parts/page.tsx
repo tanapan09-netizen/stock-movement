@@ -1,3 +1,6 @@
+import { auth } from '@/auth';
+import { canManageMaintenanceParts, canUpdatePartRequestStatus } from '@/lib/rbac';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
 import PartsManagementClient from './PartsManagementClient';
 
 export const metadata = {
@@ -5,6 +8,21 @@ export const metadata = {
     description: 'เบิก/คืนอะไหล่สำหรับงานซ่อม'
 };
 
-export default function PartsManagementPage() {
-    return <PartsManagementClient />;
+export default async function PartsManagementPage() {
+    const session = await auth();
+    const permissionContext = await getUserPermissionContext(session?.user);
+
+    return (
+        <PartsManagementClient
+            canManageParts={canManageMaintenanceParts(
+                permissionContext.role,
+                permissionContext.permissions,
+            )}
+            canRespondPartAvailability={canUpdatePartRequestStatus(
+                permissionContext.role,
+                permissionContext.permissions,
+                permissionContext.isApprover,
+            )}
+        />
+    );
 }

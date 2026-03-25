@@ -295,6 +295,101 @@ const GLOBAL_STYLE = `
 .d2 { animation:dp 1.2s ease-in-out infinite 0.2s; }
 .d3 { animation:dp 1.2s ease-in-out infinite 0.4s; }
 
+/* Success Dialog */
+.sd-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(26,18,9,0.58);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.18s ease;
+}
+.sd {
+  width: 100%; max-width: 400px;
+  background: #fff;
+  border-radius: 24px;
+  box-shadow: 0 26px 70px rgba(26,18,9,0.24), 0 8px 24px rgba(26,18,9,0.12);
+  overflow: hidden;
+}
+.sd-head {
+  padding: 24px 22px 18px;
+  background: linear-gradient(145deg,#2d8a5e 0%,#246f4b 100%);
+  color: #fff;
+  text-align: center;
+}
+.sd-icon {
+  width: 58px; height: 58px;
+  margin: 0 auto 12px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.18);
+  display: flex; align-items: center; justify-content: center;
+}
+.sd-title {
+  margin: 0;
+  font-family: 'Sora', sans-serif;
+  font-size: 1.08rem;
+  font-weight: 700;
+}
+.sd-sub {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.82);
+  line-height: 1.55;
+}
+.sd-body {
+  padding: 18px 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sd-card {
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+.sd-label {
+  font-size: 0.69rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.sd-value {
+  margin-top: 5px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.sd-note {
+  border-radius: 14px;
+  background: var(--success-bg);
+  border: 1.5px solid #bde8d1;
+  padding: 12px 14px;
+  color: var(--success);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+.sd-actions {
+  display: flex;
+  gap: 10px;
+}
+.sd-back {
+  flex: 1;
+  border: none;
+  border-radius: 14px;
+  padding: 12px 16px;
+  background: linear-gradient(130deg,#2d8a5e,#246f4b);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(45,138,94,0.28);
+}
+.sd-back:hover {
+  transform: translateY(-1px);
+}
+
 @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
 .spin { animation: spin 1s linear infinite; }
 `;
@@ -359,13 +454,18 @@ const T: Record<Lang, Record<string, string>> = {
         errCaptcha:'รหัสยืนยันไม่ถูกต้อง กรุณาลองอีกครั้ง',
         closeAlert:'ปิด', required:'จำเป็น', optional:'ไม่บังคับ',
         detailSection:'รายละเอียดปัญหา', footer:'ข้อมูลของท่านปลอดภัยและเป็นความลับ',
-        captchaLabel:'รหัสยืนยัน', captchaPlaceholder:'พิมพ์ตัวเลข 4 หลัก', captchaRefresh:'รหัสใหม่',
+        captchaLabel:'รหัสยืนยัน', captchaPlaceholder:'พิมพ์ตัวเลข 4 หลัก', captchaRefresh:'รหัสใหม่', captchaVerified:'ยืนยันรหัสสำเร็จ',
         confirmTitle:'ยืนยันการแจ้งซ่อม', confirmSub:'ตรวจสอบข้อมูลก่อนส่ง',
         confirmLocation:'สถานที่', confirmIssue:'หัวข้อปัญหา',
         confirmDesc:'รายละเอียด', confirmNoDesc:'ไม่ระบุ',
         confirmImages:'รูปภาพ', confirmImagesCount:'{n} รูป',
         confirmCancel:'แก้ไข', confirmSubmit:'ยืนยันส่ง',
         confirmSubmitting:'กำลังส่ง...',
+        successTitle:'ส่งเรื่องแจ้งซ่อมเรียบร้อยแล้ว',
+        successSub:'ระบบได้รับรายการของท่านแล้ว และจะพากลับไปยังหน้าก่อนหน้าโดยอัตโนมัติ',
+        successReference:'เลขที่รายการ',
+        successAutoBack:'กำลังย้อนกลับภายใน {n} วินาที',
+        successBackNow:'กลับหน้าก่อนทันที',
     },
     en: {
         pageTitle:'Repair Request', pageSubtitle:'Submit your maintenance issue for prompt assistance',
@@ -389,13 +489,18 @@ const T: Record<Lang, Record<string, string>> = {
         errCaptcha:'Incorrect verification code. Please try again.',
         closeAlert:'Dismiss', required:'Required', optional:'Optional',
         detailSection:'Issue Details', footer:'Your information is safe and confidential.',
-        captchaLabel:'Verification Code', captchaPlaceholder:'Enter 4 digits', captchaRefresh:'New code',
+        captchaLabel:'Verification Code', captchaPlaceholder:'Enter 4 digits', captchaRefresh:'New code', captchaVerified:'Code verified',
         confirmTitle:'Confirm Repair Request', confirmSub:'Review details before submitting',
         confirmLocation:'Location', confirmIssue:'Issue',
         confirmDesc:'Details', confirmNoDesc:'None provided',
         confirmImages:'Photos', confirmImagesCount:'{n} photo(s)',
         confirmCancel:'Edit', confirmSubmit:'Confirm & Send',
         confirmSubmitting:'Submitting...',
+        successTitle:'Repair request submitted',
+        successSub:'Your request has been received. This page will return to the previous screen automatically.',
+        successReference:'Reference No.',
+        successAutoBack:'Returning in {n} seconds',
+        successBackNow:'Back now',
     },
     jp: {
         pageTitle:'修理リクエスト', pageSubtitle:'お問い合わせいただければ迅速に対応いたします',
@@ -419,13 +524,18 @@ const T: Record<Lang, Record<string, string>> = {
         errCaptcha:'認証コードが間違っています。もう一度お試しください。',
         closeAlert:'閉じる', required:'必須', optional:'任意',
         detailSection:'問題の詳細', footer:'情報は安全に保護されます。',
-        captchaLabel:'認証コード', captchaPlaceholder:'4桁を入力', captchaRefresh:'更新',
+        captchaLabel:'認証コード', captchaPlaceholder:'4桁を入力', captchaRefresh:'更新', captchaVerified:'コード確認済み',
         confirmTitle:'修理リクエストの確認', confirmSub:'送信前に内容をご確認ください',
         confirmLocation:'場所', confirmIssue:'問題',
         confirmDesc:'詳細', confirmNoDesc:'なし',
         confirmImages:'写真', confirmImagesCount:'{n}枚',
         confirmCancel:'修正', confirmSubmit:'確認して送信',
         confirmSubmitting:'送信中...',
+        successTitle:'修理依頼を送信しました',
+        successSub:'受付が完了しました。まもなく前の画面へ自動で戻ります。',
+        successReference:'受付番号',
+        successAutoBack:'{n}秒後に前の画面へ戻ります',
+        successBackNow:'今すぐ戻る',
     },
 };
 
@@ -556,6 +666,53 @@ function ConfirmDialog({
     );
 }
 
+function SuccessDialog({
+    t, requestNumber, roomDisplay, issueTitle, countdown, onBack,
+}: {
+    t: (k: string) => string;
+    requestNumber?: string | null;
+    roomDisplay: string;
+    issueTitle: string;
+    countdown: number;
+    onBack: () => void;
+}) {
+    return (
+        <div className="sd-backdrop">
+            <div className="sd" role="dialog" aria-modal="true">
+                <div className="sd-head">
+                    <div className="sd-icon"><CheckCircle2 size={28} color="#fff"/></div>
+                    <h2 className="sd-title">{t('successTitle')}</h2>
+                    <p className="sd-sub">{t('successSub')}</p>
+                </div>
+                <div className="sd-body">
+                    {requestNumber && (
+                        <div className="sd-card">
+                            <div className="sd-label">{t('successReference')}</div>
+                            <div className="sd-value">{requestNumber}</div>
+                        </div>
+                    )}
+                    <div className="sd-card">
+                        <div className="sd-label">{t('confirmLocation')}</div>
+                        <div className="sd-value">{roomDisplay}</div>
+                    </div>
+                    <div className="sd-card">
+                        <div className="sd-label">{t('confirmIssue')}</div>
+                        <div className="sd-value">{issueTitle}</div>
+                    </div>
+                    <div className="sd-note">
+                        {t('successAutoBack').replace('{n}', String(countdown))}
+                    </div>
+                    <div className="sd-actions">
+                        <button type="button" className="sd-back" onClick={onBack}>
+                            {t('successBackNow')}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function LineRepairRequestClient() {
     const searchParams = useSearchParams();
@@ -591,6 +748,43 @@ export default function LineRepairRequestClient() {
     const [detectingLineId, setDetectingLineId] = useState(true);
     const [alert, setAlert] = useState<{ kind: AlertKind; text: string } | null>(null);
     const [showConfirm, setShowConfirm] = useState(false);
+    const [successRequestNumber, setSuccessRequestNumber] = useState<string | null>(null);
+    const [successCountdown, setSuccessCountdown] = useState(3);
+
+    const returnToPreviousPage = useCallback(() => {
+        if (typeof window === 'undefined') return;
+        if (window.history.length > 1) {
+            window.history.back();
+            return;
+        }
+        if (document.referrer) {
+            window.location.href = document.referrer;
+            return;
+        }
+        if (window.liff?.closeWindow) {
+            window.liff.closeWindow();
+            return;
+        }
+        window.close();
+    }, []);
+
+    useEffect(() => {
+        if (!successRequestNumber) return;
+        setSuccessCountdown(3);
+
+        const intervalId = window.setInterval(() => {
+            setSuccessCountdown((prev) => (prev > 1 ? prev - 1 : prev));
+        }, 1000);
+
+        const timeoutId = window.setTimeout(() => {
+            returnToPreviousPage();
+        }, 3000);
+
+        return () => {
+            window.clearInterval(intervalId);
+            window.clearTimeout(timeoutId);
+        };
+    }, [returnToPreviousPage, successRequestNumber]);
 
     const refreshCaptcha = () => {
         setRefreshing(true);
@@ -691,7 +885,8 @@ export default function LineRepairRequestClient() {
             const result = await submitCustomerRepairRequest(fd);
             if (result.success) {
                 setShowConfirm(false);
-                setAlert({ kind:'success', text:t('successMsg') });
+                setAlert(null);
+                setSuccessRequestNumber(result.data?.request_number ?? null);
                 setTitle(''); setDescription(''); setRoomId(0); setSelectedFiles([]); setPreviews([]);
                 setCaptchaInput(''); setCaptchaStatus('idle'); refreshCaptcha();
             } else { setAlert({ kind:'error', text:result.error||t('errGeneric') }); setShowConfirm(false); }
@@ -825,7 +1020,7 @@ export default function LineRepairRequestClient() {
                                 {captchaStatus==='right'&&(
                                     <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:'0.76rem', color:'var(--success)', fontWeight:600 }}>
                                         <CheckCircle2 size={13}/>
-                                        {lang==='th'?'ยืนยันรหัสสำเร็จ':lang==='en'?'Code verified':'コード確認済み'}
+                                        {t('captchaVerified')}
                                     </div>
                                 )}
                             </div>
@@ -834,11 +1029,6 @@ export default function LineRepairRequestClient() {
                                 {t('submit')}<ChevronRight size={16} className="arr"/>
                             </button>
 
-                            {alert?.kind==='success'&&(
-                                <button type="button" className="bb" onClick={()=>{ if(window.liff?.closeWindow){window.liff.closeWindow();return;}window.close(); }}>
-                                    {t('backToHome')}
-                                </button>
-                            )}
                         </form>
 
                         {alert&&(
@@ -867,6 +1057,17 @@ export default function LineRepairRequestClient() {
                     loading={loading}
                     onCancel={()=>setShowConfirm(false)}
                     onConfirm={handleConfirmedSubmit}
+                />
+            )}
+
+            {successRequestNumber && (
+                <SuccessDialog
+                    t={t}
+                    requestNumber={successRequestNumber}
+                    roomDisplay={customerInfo?.room_number || t('noLocation')}
+                    issueTitle={title || '-'}
+                    countdown={successCountdown}
+                    onBack={returnToPreviousPage}
                 />
             )}
         </div>

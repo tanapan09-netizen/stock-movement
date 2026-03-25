@@ -5,6 +5,8 @@ import { Plus, Filter, ShoppingCart, CheckCircle, XCircle, Clock, Upload, Link a
 import { getPartRequests, createPartRequest, updatePartRequestStatus, deletePartRequest, approvePartRequest } from '@/actions/partRequestActions';
 import { getMaintenanceRequests } from '@/actions/maintenanceActions';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
+import type { PagePermissionMap } from '@/lib/rbac';
+import { canApprovePartRequestStage } from '@/lib/rbac';
 
 interface PartRequest {
     request_id: number;
@@ -42,6 +44,15 @@ interface MaintenanceRequest {
     status: string;
 }
 
+interface PartRequestClientProps {
+    role: string;
+    permissions: PagePermissionMap;
+    isApprover: boolean;
+    canCreateRequest: boolean;
+    canUpdateStatus: boolean;
+    canDeleteRequest: boolean;
+}
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
     pending: { label: 'รออนุมัติ', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
     approved: { label: 'อนุมัติแล้ว', color: 'bg-blue-100 text-blue-800', icon: CheckCircle },
@@ -50,7 +61,14 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
     rejected: { label: 'ไม่อนุมัติ', color: 'bg-red-100 text-red-800', icon: XCircle },
 };
 
-export default function PartRequestClient() {
+export default function PartRequestClient({
+    role,
+    permissions,
+    isApprover,
+    canCreateRequest,
+    canUpdateStatus,
+    canDeleteRequest,
+}: PartRequestClientProps) {
     const [requests, setRequests] = useState<PartRequest[]>([]);
     const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
     const [loading, setLoading] = useState(true);
@@ -164,12 +182,14 @@ export default function PartRequestClient() {
                     <h1 className="text-2xl font-bold text-gray-900 dark:text-white">รายการขอซื้ออะไหล่</h1>
                     <p className="text-gray-600 dark:text-gray-400">รายการอะไหล่ที่ไม่มีในสต็อกและต้องการสั่งซื้อ</p>
                 </div>
-                <button
-                    onClick={() => setShowForm(true)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-                >
+                {canCreateRequest && (
+                    <button
+                        onClick={() => setShowForm(true)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                    >
                     <Plus size={18} /> ขอซื้ออะไหล่
-                </button>
+                    </button>
+                )}
             </div>
 
             {/* Filters */}
@@ -217,6 +237,14 @@ export default function PartRequestClient() {
                                 requests.map(req => {
                                     const status = STATUS_CONFIG[req.status] || STATUS_CONFIG.pending;
                                     const StatusIcon = status.icon;
+                                    const canApproveCurrentStage = req.status === 'pending'
+                                        && (req.current_stage === undefined || req.current_stage < 3)
+                                        && canApprovePartRequestStage(
+                                            role,
+                                            permissions,
+                                            req.current_stage || 0,
+                                            isApprover,
+                                        );
                                     return (
                                         <tr key={req.request_id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
                                             <td className="px-4 py-3">
@@ -267,8 +295,7 @@ export default function PartRequestClient() {
                                             </td>
                                             <td className="px-4 py-3 text-sm">{req.requested_by}</td>
                                             <td className="px-4 py-3 text-right flex gap-2 justify-end">
-                                                {/* Approve Button */}
-                                                {req.status === 'pending' && (req.current_stage === undefined || req.current_stage < 3) && (
+                                                {canApproveCurrentStage && (
                                                     <button
                                                         onClick={() => handleApprove(req.request_id)}
                                                         className="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
@@ -281,7 +308,8 @@ export default function PartRequestClient() {
                                                     title="Change Status"
                                                     value={req.status}
                                                     onChange={(e) => handleStatusChange(req.request_id, e.target.value)}
-                                                    className="text-sm border rounded px-2 py-1 mr-2 dark:bg-slate-700 dark:border-slate-600"
+                                                    disabled={!canUpdateStatus}
+                                                    className="text-sm border rounded px-2 py-1 mr-2 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-700 dark:border-slate-600"
                                                 >
                                                     <option value="pending">รอ</option>
                                                     <option value="approved">อนุมัติ</option>
@@ -289,7 +317,9 @@ export default function PartRequestClient() {
                                                     <option value="received">ได้รับ</option>
                                                     <option value="rejected">ปัดตก</option>
                                                 </select>
-                                                <button onClick={() => handleDelete(req.request_id)} className="text-red-600 text-sm">ลบ</button>
+                                                {canDeleteRequest && (
+                                                    <button onClick={() => handleDelete(req.request_id)} className="text-red-600 text-sm">ลบ</button>
+                                                )}
                                             </td>
                                         </tr>
                                     );
@@ -302,7 +332,7 @@ export default function PartRequestClient() {
 
             {/* Modal */}
             {
-                showForm && (
+                showForm && canCreateRequest && (
                     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                         <div className="bg-white dark:bg-slate-800 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
                             {/* Header */}

@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
+import { getRoleLocalName } from '@/lib/roles';
 import {
     Wrench, Clock, CheckCircle, AlertTriangle, TrendingUp,
     Calendar, DollarSign, User, ArrowRight, BarChart3, ShoppingCart, PieChart as PieChartIcon
@@ -46,7 +47,13 @@ const STATUS_LABELS: Record<string, string> = {
     cancelled: 'ยกเลิก'
 };
 
-export default function MaintenanceDashboardClient() {
+interface MaintenanceDashboardClientProps {
+    canReviewPartRequests?: boolean;
+}
+
+export default function MaintenanceDashboardClient({
+    canReviewPartRequests = false,
+}: MaintenanceDashboardClientProps) {
     const { data: session } = useSession();
     const user = session?.user as { name?: string; role?: string };
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
@@ -90,10 +97,13 @@ export default function MaintenanceDashboardClient() {
         setLoading(true);
         try {
             const { getPartRequests } = await import('@/actions/partRequestActions');
+            const pendingPartsPromise = canReviewPartRequests
+                ? getPartRequests({ status: 'pending' })
+                : Promise.resolve({ success: false, data: [] });
             const [reqResult, statsResult, partRes] = await Promise.all([
                 getMaintenanceRequests(),
                 getMaintenanceStats(),
-                getPartRequests({ status: 'pending' })
+                pendingPartsPromise,
             ]);
 
             if (reqResult.success) {
@@ -119,7 +129,7 @@ export default function MaintenanceDashboardClient() {
                 ));
             }
 
-            if (partRes?.success && partRes.data) {
+            if (canReviewPartRequests && partRes?.success && partRes.data) {
                 console.log("partRes:", partRes.data);
                 // Filter parts that need technician / head approval (stage 0 or pending)
                 const pendingParts = (partRes.data as any[]).filter(r => r.status === 'pending' && (r.current_stage === 0 || r.current_stage === undefined));
@@ -169,7 +179,7 @@ export default function MaintenanceDashboardClient() {
                         <Wrench className="text-blue-500" /> Dashboard งานซ่อม
                     </h1>
                     <p className="text-gray-600 dark:text-gray-400">
-                        ยินดีต้อนรับ, {user?.name || 'ช่าง'} ({user?.role === 'technician' ? 'ช่างซ่อม' : user?.role === 'operation' ? 'Operation' : user?.role})
+                        ยินดีต้อนรับ, {user?.name || 'ช่าง'} ({getRoleLocalName(user?.role)})
                     </p>
                 </div>
                 <Link href="/maintenance" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
@@ -391,7 +401,7 @@ export default function MaintenanceDashboardClient() {
                 </div>
 
                 {/* Pending Part Requests (For Head Technician) */}
-                {((user as any)?.is_approver || user?.role === 'admin' || user?.role === 'manager' || user?.role === 'head_technician') && (
+                {canReviewPartRequests && (
                     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm overflow-hidden">
                         <div className="p-4 bg-purple-50 dark:bg-purple-900/20 border-b flex items-center gap-2">
                             <ShoppingCart className="text-purple-500" size={20} />

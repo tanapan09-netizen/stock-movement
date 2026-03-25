@@ -1,10 +1,10 @@
 import { prisma } from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import { auth } from '@/auth';
-import { getRolePermissions } from '@/actions/roleActions';
-import { PERMISSIONS } from '@/lib/permissions';
+import { canPrintPurchaseOrders, canViewPurchaseOrders } from '@/lib/rbac';
 import { Lock } from 'lucide-react';
 import PrintButton from './PrintButton';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 type PoStamp = {
     stepKey: string;
@@ -58,11 +58,10 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
     if (isNaN(poId)) notFound();
 
     const session = await auth();
-    const userRole = (session?.user as { role?: string })?.role || '';
-    const rolePermissions = await getRolePermissions(userRole);
+    const { permissions: rolePermissions } = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
 
     // Check Print Permission (reuses PO_PRINT or PO_VIEW if strict)
-    if (!rolePermissions[PERMISSIONS.PO_PRINT] && !rolePermissions[PERMISSIONS.PO_VIEW]) {
+    if (!canPrintPurchaseOrders(rolePermissions) && !canViewPurchaseOrders(rolePermissions)) {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen text-gray-500">
                 <Lock className="w-12 h-12 mb-4 text-gray-400" />

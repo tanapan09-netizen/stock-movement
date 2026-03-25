@@ -3,7 +3,7 @@
 import { updateUserPermissions } from '@/actions/userActions';
 import { DEFAULT_PERMISSIONS, PERMISSION_LIST, RolePermissions } from '@/lib/permissions';
 import { getRoleDisplayName } from '@/lib/roles';
-import { Key, Save, X } from 'lucide-react';
+import { Key, Lock, Save, X } from 'lucide-react';
 import { useState } from 'react';
 
 interface Props {
@@ -14,47 +14,14 @@ interface Props {
         custom_permissions: string | null;
     };
     dbRolePermissions?: string | null;
+    isLocked?: boolean;
 }
 
 function formatPermissionLabel(label: string): string {
-    if (label === 'Purchasing Approvals' || label === 'อนุมัติจัดซื้อ') {
-        return 'อนุมัติจัดซื้อ';
-    }
-
-    if (label === 'Approvals' || label === 'อนุมัติทั่วไป') {
-        return 'อนุมัติทั่วไป';
-    }
-
-    if (label.includes('/approvals/purchasing')) {
-        return label
-            .replace('/approvals/purchasing', 'อนุมัติรายการ / จัดซื้อ')
-            .replace('/approvals', 'อนุมัติรายการ');
-    }
-
-    if (label.includes('/purchase-request') && !label.includes('/purchase-request/manage')) {
-        return label.replace('/purchase-request', 'ส่งคำขอซื้อ');
-    }
-
-    if (label.includes('/purchase-request/manage')) {
-        return label.replace('/purchase-request/manage', 'จัดการระบบคำขอซื้อ');
-    }
-
-    if (label.includes('/manager-dashboard')) {
-        return label.replace('/manager-dashboard', 'Manager Dashboard');
-    }
-
-    if (label.includes('/store-dashboard')) {
-        return label.replace('/store-dashboard', 'Store Dashboard');
-    }
-
-    if (label.includes('/purchasing-dashboard')) {
-        return label.replace('/purchasing-dashboard', 'Purchasing Dashboard');
-    }
-
     return label;
 }
 
-export default function UserPermissionButton({ user, dbRolePermissions }: Props) {
+export default function UserPermissionButton({ user, dbRolePermissions, isLocked = false }: Props) {
     const [isOpen, setIsOpen] = useState(false);
     let basePerms: RolePermissions = DEFAULT_PERMISSIONS[user.role] || {};
 
@@ -62,7 +29,7 @@ export default function UserPermissionButton({ user, dbRolePermissions }: Props)
         try {
             basePerms = JSON.parse(dbRolePermissions);
         } catch {
-            // ignore invalid JSON and fall back to defaults
+            basePerms = DEFAULT_PERMISSIONS[user.role] || {};
         }
     }
 
@@ -71,7 +38,7 @@ export default function UserPermissionButton({ user, dbRolePermissions }: Props)
         try {
             userPerms = JSON.parse(user.custom_permissions);
         } catch {
-            // ignore invalid JSON and fall back to empty overrides
+            userPerms = {};
         }
     }
 
@@ -79,6 +46,9 @@ export default function UserPermissionButton({ user, dbRolePermissions }: Props)
     const [isSaving, setIsSaving] = useState(false);
 
     const handleOpen = () => {
+        if (isLocked) {
+            return;
+        }
         setPermissions({ ...basePerms, ...userPerms });
         setIsOpen(true);
     };
@@ -97,7 +67,7 @@ export default function UserPermissionButton({ user, dbRolePermissions }: Props)
             return;
         }
 
-        alert(res.error || 'Failed to update permissions');
+        alert(res.error || 'ไม่สามารถบันทึกสิทธิ์ได้');
     };
 
     const categories = Array.from(new Set(PERMISSION_LIST.map((permission) => permission.category)));
@@ -106,10 +76,11 @@ export default function UserPermissionButton({ user, dbRolePermissions }: Props)
         <>
             <button
                 onClick={handleOpen}
-                className="rounded-full p-2 text-gray-400 transition hover:bg-amber-50 hover:text-amber-600"
-                title="กำหนดสิทธิ์รายบุคคล"
+                disabled={isLocked}
+                className="rounded-full p-2 text-gray-400 transition hover:bg-amber-50 hover:text-amber-600 disabled:cursor-not-allowed disabled:bg-amber-50 disabled:text-amber-500"
+                title={isLocked ? 'ผู้ใช้ที่เป็น admin จะถูกบังคับให้มีสิทธิ์ครบเสมอ' : 'กำหนดสิทธิ์รายบุคคล'}
             >
-                <Key className="h-5 w-5" />
+                {isLocked ? <Lock className="h-5 w-5" /> : <Key className="h-5 w-5" />}
             </button>
 
             {isOpen && (
@@ -126,9 +97,9 @@ export default function UserPermissionButton({ user, dbRolePermissions }: Props)
                             กำหนดสิทธิ์รายบุคคล: {user.username}
                         </h2>
                         <p className="mb-6 text-sm text-gray-500">
-                            สิทธิ์พื้นฐานมาจากกลุ่ม <b>{getRoleDisplayName(user.role)}</b>
+                            สิทธิ์พื้นฐานอ้างอิงจาก role <b>{getRoleDisplayName(user.role)}</b>
                             <br />
-                            คุณสามารถเปิดหรือปิดสิทธิ์เฉพาะของ {user.username} ได้ที่นี่ โดยค่าที่บันทึกจะทำหน้าที่เป็น override ของสิทธิ์ตาม role
+                            ค่าที่บันทึกในหน้านี้จะเป็นการ override สิทธิ์เฉพาะของผู้ใช้รายนี้
                         </p>
 
                         <div className="grid max-h-[60vh] grid-cols-1 gap-6 overflow-y-auto px-2 md:grid-cols-2 lg:grid-cols-3">

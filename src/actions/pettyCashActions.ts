@@ -6,6 +6,18 @@ import { auth } from '@/auth';
 import { uploadFile } from '@/lib/gcs';
 import { adjustFundBalance, getPettyCashFundStatus } from './pettyCashFundActions';
 import { logSystemAction } from '@/lib/logger';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
+import {
+    canApprovePettyCashRequest,
+    canCreatePettyCashRequest,
+    canDeletePettyCashEntry,
+    canDispensePettyCashRequest,
+    canManagePettyCashApprovals,
+    canReconcilePettyCashRequest,
+    canSubmitPettyCashClearance,
+    canVerifyPettyCashReceipt,
+    canViewPettyCashRequest,
+} from '@/lib/rbac';
 
 // Generate PC Request Number (e.g., PC-20260226-001)
 async function generatePettyCashNumber() {
@@ -29,17 +41,34 @@ async function generatePettyCashNumber() {
     return `${prefix}${autoIncrement.toString().padStart(3, '0')}`;
 }
 
+async function getPettyCashAuthContext() {
+    const session = await auth();
+    if (!session?.user) {
+        return null;
+    }
+
+    const permissionContext = await getUserPermissionContext(session.user);
+
+    return {
+        session,
+        ...permissionContext,
+    };
+}
+
 export async function getPettyCashRequests() {
     try {
-        const session = await auth();
-        if (!session || !session.user) return { success: false, error: 'Unauthorized' };
+        const authContext = await getPettyCashAuthContext();
+        if (!authContext?.session?.user) return { success: false, error: 'Unauthorized' };
 
-        // Employees only see their own requests. Admin/Accounting/Manager see all.
-        const isAdminOrAccounting = ['admin', 'manager', 'accounting'].includes((session.user as any).role?.toLowerCase() || '');
+        const canReviewAllRequests = canManagePettyCashApprovals(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        );
 
         let where = {};
-        if (!isAdminOrAccounting) {
-            where = { requested_by: session.user.name };
+        if (!canReviewAllRequests) {
+            where = { requested_by: authContext.session.user.name };
         }
 
         const requests = await prisma.tbl_petty_cash.findMany({
@@ -65,8 +94,16 @@ export async function getPettyCashRequests() {
 
 export async function createPettyCashRequest(formData: FormData) {
     try {
-        const session = await auth();
-        if (!session || !session.user) return { success: false, error: 'Unauthorized' };
+        const authContext = await getPettyCashAuthContext();
+        if (!authContext?.session?.user) return { success: false, error: 'Unauthorized' };
+
+        if (!canCreatePettyCashRequest(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        )) {
+            return { success: false, error: 'Permission denied' };
+        }
 
         const requested_amount = Number(formData.get('requested_amount'));
         const purpose = formData.get('purpose') as string;
@@ -80,7 +117,7 @@ export async function createPettyCashRequest(formData: FormData) {
         const request = await prisma.tbl_petty_cash.create({
             data: {
                 request_number,
-                requested_by: session.user.name || 'Unknown',
+                requested_by: authContext.session.user.name || 'Unknown',
                 purpose,
                 requested_amount,
                 status: 'pending'
@@ -107,9 +144,9 @@ export async function createPettyCashRequest(formData: FormData) {
             'สร้างคำขอเบิกเงินสดย่อย',
             'PettyCash',
             request.id,
-            `เลขที่: ${request_number} | จำนวนเงิน: ${requested_amount.toLocaleString()} บาท | วัตถุประสงค์: ${purpose} | ผู้ขอ: ${session.user.name} | สถานะ: รออนุมัติ`,
-            (session.user as any).p_id || (session.user as any).id,
-            session.user.name
+            `เลขที่: ${request_number} | จำนวนเงิน: ${requested_amount.toLocaleString()} บาท | วัตถุประสงค์: ${purpose} | ผู้ขอ: ${authContext.session.user.name} | สถานะ: รออนุมัติ`,
+            (authContext.session.user as any).p_id || (authContext.session.user as any).id,
+            authContext.session.user.name
         );
 
         return { success: true, data: request };
@@ -121,13 +158,15 @@ export async function createPettyCashRequest(formData: FormData) {
 
 export async function approvePettyCash(id: number) {
     try {
-        const session = await auth();
-        if (!session || !session.user) return { success: false, error: 'Unauthorized' };
+        const authContext = await getPettyCashAuthContext();
+        if (!authContext?.session?.user) return { success: false, error: 'Unauthorized' };
 
-        const role = (session.user as any).role?.toLowerCase() || '';
-        const isApprover = (session.user as any).is_approver === true;
-        if (!['admin', 'manager', 'accounting'].includes(role) && !isApprover) {
-            return { success: false, error: 'Permission denied: Requires Approver status' };
+        if (!canApprovePettyCashRequest(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        )) {
+            return { success: false, error: 'Permission denied' };
         }
 
         const request = await prisma.tbl_petty_cash.update({
@@ -145,7 +184,7 @@ export async function approvePettyCash(id: number) {
                 requested_by: request.requested_by,
                 purpose: request.purpose,
                 amount: Number(request.requested_amount),
-                notes: `Approved by ${session.user.name}`
+                notes: `Approved by ${authContext.session.user.name}`
             });
         } catch (err) {
             console.error('[Petty Cash] Notification failed:', err);
@@ -155,9 +194,9 @@ export async function approvePettyCash(id: number) {
             'อนุมัติคำขอเงินสดย่อย',
             'PettyCash',
             id,
-            `อนุมัติคำขอเลขที่: ${request.request_number} | จำนวนเงิน: ${Number(request.requested_amount).toLocaleString()} บาท | วัตถุประสงค์: ${request.purpose} | ผู้ขอ: ${request.requested_by} | อนุมัติโดย: ${session.user.name}`,
-            (session.user as any).p_id || (session.user as any).id,
-            session.user.name
+            `อนุมัติคำขอเลขที่: ${request.request_number} | จำนวนเงิน: ${Number(request.requested_amount).toLocaleString()} บาท | วัตถุประสงค์: ${request.purpose} | ผู้ขอ: ${request.requested_by} | อนุมัติโดย: ${authContext.session.user.name}`,
+            (authContext.session.user as any).p_id || (authContext.session.user as any).id,
+            authContext.session.user.name
         );
 
         return { success: true, data: request };
@@ -169,19 +208,19 @@ export async function approvePettyCash(id: number) {
 
 export async function dispensePettyCash(id: number, dispensed_amount: number, notes?: string) {
     try {
-        const session = await auth();
-        if (!session || !session.user) return { success: false, error: 'Unauthorized' };
+        const authContext = await getPettyCashAuthContext();
+        if (!authContext?.session?.user) return { success: false, error: 'Unauthorized' };
 
-        // Only accounting or admin
-        const isAdminOrAccounting = ['admin', 'manager', 'accounting'].includes((session.user as any).role?.toLowerCase() || '');
-        if (!isAdminOrAccounting) return { success: false, error: 'Permission denied' };
+        if (!canDispensePettyCashRequest(authContext.role, authContext.permissions)) {
+            return { success: false, error: 'Permission denied' };
+        }
 
         const request = await prisma.tbl_petty_cash.update({
             where: { id, status: { in: ['pending', 'approved'] } },
             data: {
                 status: 'dispensed',
                 dispensed_amount,
-                dispensed_by: session.user.name || 'Unknown',
+                dispensed_by: authContext.session.user.name || 'Unknown',
                 dispensed_at: new Date(),
                 notes: notes || undefined
             }
@@ -213,9 +252,9 @@ export async function dispensePettyCash(id: number, dispensed_amount: number, no
             'จ่ายเงินสดย่อย',
             'PettyCash',
             id,
-            `จ่ายเงินสดย่อยเลขที่: ${request.request_number} | จำนวนที่จ่าย: ${dispensed_amount.toLocaleString()} บาท | ผู้รับ: ${request.requested_by} | วัตถุประสงค์: ${request.purpose} | จ่ายโดย: ${session.user.name}${notes ? ' | หมายเหตุ: ' + notes : ''}`,
-            (session.user as any).p_id || (session.user as any).id,
-            session.user.name
+            `จ่ายเงินสดย่อยเลขที่: ${request.request_number} | จำนวนที่จ่าย: ${dispensed_amount.toLocaleString()} บาท | ผู้รับ: ${request.requested_by} | วัตถุประสงค์: ${request.purpose} | จ่ายโดย: ${authContext.session.user.name}${notes ? ' | หมายเหตุ: ' + notes : ''}`,
+            (authContext.session.user as any).p_id || (authContext.session.user as any).id,
+            authContext.session.user.name
         );
 
         return { success: true, data: request };
@@ -227,8 +266,8 @@ export async function dispensePettyCash(id: number, dispensed_amount: number, no
 
 export async function submitClearance(id: number, formData: FormData) {
     try {
-        const session = await auth();
-        if (!session || !session.user) return { success: false, error: 'Unauthorized' };
+        const authContext = await getPettyCashAuthContext();
+        if (!authContext?.session?.user) return { success: false, error: 'Unauthorized' };
 
         const actual_spent = Number(formData.get('actual_spent'));
         const notes = formData.get('notes') as string | undefined;
@@ -248,6 +287,14 @@ export async function submitClearance(id: number, formData: FormData) {
         const request = await prisma.tbl_petty_cash.findUnique({ where: { id } });
         if (!request || request.status !== 'dispensed') {
             return { success: false, error: 'Invalid operation' };
+        }
+
+        if (!canSubmitPettyCashClearance(authContext.role, authContext.permissions, {
+            currentUserName: authContext.session.user.name,
+            ownerName: request.requested_by,
+            isApprover: authContext.isApprover,
+        })) {
+            return { success: false, error: 'Permission denied' };
         }
 
         const requested_or_dispensed = request.dispensed_amount || request.requested_amount;
@@ -287,9 +334,9 @@ export async function submitClearance(id: number, formData: FormData) {
             'ส่งเอกสารเคลียร์เงินสดย่อย',
             'PettyCash',
             id,
-            `ส่งเคลียร์เงินสดย่อยเลขที่: ${updated.request_number} | ยอดใช้จริง: ${actual_spent.toLocaleString()} บาท | เงินทอนคืน: ${change_returned.toLocaleString()} บาท | ใบเสร็จ: ${receipt_urls.length} ไฟล์ | ผู้ส่ง: ${session.user.name}${notes ? ' | หมายเหตุ: ' + notes : ''}`,
-            (session.user as any).p_id || (session.user as any).id,
-            session.user.name
+            `ส่งเคลียร์เงินสดย่อยเลขที่: ${updated.request_number} | ยอดใช้จริง: ${actual_spent.toLocaleString()} บาท | เงินทอนคืน: ${change_returned.toLocaleString()} บาท | ใบเสร็จ: ${receipt_urls.length} ไฟล์ | ผู้ส่ง: ${authContext.session.user.name}${notes ? ' | หมายเหตุ: ' + notes : ''}`,
+            (authContext.session.user as any).p_id || (authContext.session.user as any).id,
+            authContext.session.user.name
         );
 
         return { success: true, data: updated };
@@ -301,11 +348,12 @@ export async function submitClearance(id: number, formData: FormData) {
 
 export async function reconcilePettyCash(id: number, notes?: string) {
     try {
-        const session = await auth();
-        if (!session || !session.user) return { success: false, error: 'Unauthorized' };
+        const authContext = await getPettyCashAuthContext();
+        if (!authContext?.session?.user) return { success: false, error: 'Unauthorized' };
 
-        const isAdminOrAccounting = ['admin', 'manager', 'accounting'].includes((session.user as any).role?.toLowerCase() || '');
-        if (!isAdminOrAccounting) return { success: false, error: 'Permission denied' };
+        if (!canReconcilePettyCashRequest(authContext.role, authContext.permissions)) {
+            return { success: false, error: 'Permission denied' };
+        }
 
         const currentRequest = await prisma.tbl_petty_cash.findUnique({ where: { id } });
 
@@ -313,7 +361,7 @@ export async function reconcilePettyCash(id: number, notes?: string) {
             where: { id },
             data: {
                 status: 'reconciled',
-                reconciled_by: session.user.name || 'Unknown',
+                reconciled_by: authContext.session.user.name || 'Unknown',
                 reconciled_at: new Date(),
                 notes: notes ? `${currentRequest?.notes ? currentRequest?.notes + '\n' : ''}Accounting: ${notes}` : undefined
             }
@@ -347,9 +395,9 @@ export async function reconcilePettyCash(id: number, notes?: string) {
             'ปิดยอดเงินสดย่อย',
             'PettyCash',
             id,
-            `ปิดยอด (Reconcile) เลขที่: ${updated.request_number} | ยอดใช้จริง: ${Number(updated.actual_spent).toLocaleString()} บาท | เงินทอน: ${Number(updated.change_returned).toLocaleString()} บาท | ผู้ปิดยอด: ${session.user.name}`,
-            (session.user as any).p_id || (session.user as any).id,
-            session.user.name
+            `ปิดยอด (Reconcile) เลขที่: ${updated.request_number} | ยอดใช้จริง: ${Number(updated.actual_spent).toLocaleString()} บาท | เงินทอน: ${Number(updated.change_returned).toLocaleString()} บาท | ผู้ปิดยอด: ${authContext.session.user.name}`,
+            (authContext.session.user as any).p_id || (authContext.session.user as any).id,
+            authContext.session.user.name
         );
 
         return { success: true, data: updated };
@@ -361,11 +409,16 @@ export async function reconcilePettyCash(id: number, notes?: string) {
 
 export async function rejectPettyCash(id: number, notes?: string) {
     try {
-        const session = await auth();
-        if (!session || !session.user) return { success: false, error: 'Unauthorized' };
+        const authContext = await getPettyCashAuthContext();
+        if (!authContext?.session?.user) return { success: false, error: 'Unauthorized' };
 
-        const isAdminOrAccounting = ['admin', 'manager', 'accounting'].includes((session.user as any).role?.toLowerCase() || '');
-        if (!isAdminOrAccounting) return { success: false, error: 'Permission denied' };
+        if (!canApprovePettyCashRequest(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        )) {
+            return { success: false, error: 'Permission denied' };
+        }
 
         const currentRequest = await prisma.tbl_petty_cash.findUnique({ where: { id } });
 
@@ -387,7 +440,7 @@ export async function rejectPettyCash(id: number, notes?: string) {
                 requested_by: request.requested_by,
                 purpose: request.purpose,
                 amount: Number(request.requested_amount),
-                notes: notes || `Rejected by ${session.user.name}`
+                notes: notes || `Rejected by ${authContext.session.user.name}`
             });
         } catch (err) {
             console.error('[Petty Cash] Notification failed:', err);
@@ -397,9 +450,9 @@ export async function rejectPettyCash(id: number, notes?: string) {
             'ปฏิเสธคำขอเงินสดย่อย',
             'PettyCash',
             id,
-            `ปฏิเสธคำขอเลขที่: ${currentRequest?.request_number || id} | จำนวนเงิน: ${Number(currentRequest?.requested_amount).toLocaleString()} บาท | ผู้ขอ: ${currentRequest?.requested_by} | ปฏิเสธโดย: ${session.user.name}${notes ? ' | เหตุผล: ' + notes : ''}`,
-            (session.user as any).p_id || (session.user as any).id,
-            session.user.name
+            `ปฏิเสธคำขอเลขที่: ${currentRequest?.request_number || id} | จำนวนเงิน: ${Number(currentRequest?.requested_amount).toLocaleString()} บาท | ผู้ขอ: ${currentRequest?.requested_by} | ปฏิเสธโดย: ${authContext.session.user.name}${notes ? ' | เหตุผล: ' + notes : ''}`,
+            (authContext.session.user as any).p_id || (authContext.session.user as any).id,
+            authContext.session.user.name
         );
 
         return { success: true, data: request };
@@ -411,13 +464,29 @@ export async function rejectPettyCash(id: number, notes?: string) {
 
 export async function deletePettyCashRequest(id: number) {
     try {
-        const session = await auth();
-        if (!session || !session.user) return { success: false, error: 'Unauthorized' };
+        const authContext = await getPettyCashAuthContext();
+        if (!authContext?.session?.user) return { success: false, error: 'Unauthorized' };
 
-        // Need admin, manager, or approver to delete
-        const role = (session.user as any).role?.toLowerCase() || '';
-        if (!['admin', 'manager'].includes(role) && !session.user.is_approver) {
-            return { success: false, error: 'Permission denied: Requires Approver status' };
+        const request = await prisma.tbl_petty_cash.findUnique({
+            where: { id },
+            select: {
+                request_number: true,
+                requested_by: true,
+                status: true,
+            }
+        });
+
+        if (!request) {
+            return { success: false, error: 'Not found' };
+        }
+
+        if (!canDeletePettyCashEntry(authContext.role, authContext.permissions, {
+            currentUserName: authContext.session.user.name,
+            ownerName: request.requested_by,
+            status: request.status,
+            isApprover: authContext.isApprover,
+        })) {
+            return { success: false, error: 'Permission denied' };
         }
 
         await prisma.tbl_petty_cash.delete({
@@ -430,9 +499,9 @@ export async function deletePettyCashRequest(id: number) {
             'ลบคำขอเงินสดย่อย',
             'PettyCash',
             id,
-            `ลบใบเบิกเงินสดย่อย ID: ${id} | ลบโดย: ${session.user.name} (สิทธิ์: ${(session.user as any).role || 'N/A'})`,
-            (session.user as any).p_id || (session.user as any).id,
-            session.user.name
+            `ลบใบเบิกเงินสดย่อย ${request.request_number} | ลบโดย: ${authContext.session.user.name} (สิทธิ์: ${(authContext.session.user as any).role || 'N/A'})`,
+            (authContext.session.user as any).p_id || (authContext.session.user as any).id,
+            authContext.session.user.name
         );
 
         return { success: true };
@@ -444,11 +513,12 @@ export async function deletePettyCashRequest(id: number) {
 
 export async function verifyOriginalReceipt(id: number, hasReceived: boolean) {
     try {
-        const session = await auth();
-        if (!session || !session.user) return { success: false, error: 'Unauthorized' };
+        const authContext = await getPettyCashAuthContext();
+        if (!authContext?.session?.user) return { success: false, error: 'Unauthorized' };
 
-        const isAdminOrAccounting = ['admin', 'manager', 'accounting'].includes((session.user as any).role?.toLowerCase() || '');
-        if (!isAdminOrAccounting) return { success: false, error: 'Permission denied' };
+        if (!canVerifyPettyCashReceipt(authContext.role, authContext.permissions)) {
+            return { success: false, error: 'Permission denied' };
+        }
 
         const updated = await prisma.tbl_petty_cash.update({
             where: { id },
@@ -462,8 +532,8 @@ export async function verifyOriginalReceipt(id: number, hasReceived: boolean) {
             'PettyCash',
             id,
             `เปลี่ยนสถานะรับเอกสารต้นฉบับเป็น: ${hasReceived ? 'ได้รับ' : 'ยังไม่ได้รับ'} (PC: ${updated.request_number})`,
-            (session.user as any).p_id || (session.user as any).id,
-            session.user.name
+            (authContext.session.user as any).p_id || (authContext.session.user as any).id,
+            authContext.session.user.name
         );
 
         return { success: true, data: updated };
@@ -476,14 +546,22 @@ export async function verifyOriginalReceipt(id: number, hasReceived: boolean) {
 // Ensure the request by ID also converts values cleanly
 export async function getPettyCashRequestById(id: number) {
     try {
-        const session = await auth();
-        if (!session || !session.user) return { success: false, error: 'Unauthorized' };
+        const authContext = await getPettyCashAuthContext();
+        if (!authContext?.session?.user) return { success: false, error: 'Unauthorized' };
 
         const request = await prisma.tbl_petty_cash.findUnique({
             where: { id },
         });
 
         if (!request) return { success: false, error: 'Not found' };
+
+        if (!canViewPettyCashRequest(authContext.role, authContext.permissions, {
+            currentUserName: authContext.session.user.name,
+            ownerName: request.requested_by,
+            isApprover: authContext.isApprover,
+        })) {
+            return { success: false, error: 'Permission denied' };
+        }
 
         return {
             success: true,
@@ -503,8 +581,8 @@ export async function getPettyCashRequestById(id: number) {
 
 export async function savePettyCashSignatures(id: number, payeeSignature?: string, payerSignature?: string) {
     try {
-        const session = await auth();
-        if (!session || !session.user) {
+        const authContext = await getPettyCashAuthContext();
+        if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
         }
 
@@ -514,6 +592,26 @@ export async function savePettyCashSignatures(id: number, payeeSignature?: strin
 
         if (Object.keys(dataToUpdate).length === 0) {
             return { success: true, message: 'Nothing to update' };
+        }
+
+        const currentRequest = await prisma.tbl_petty_cash.findUnique({
+            where: { id },
+            select: {
+                request_number: true,
+                requested_by: true,
+            },
+        });
+
+        if (!currentRequest) {
+            return { success: false, error: 'Not found' };
+        }
+
+        if (!canViewPettyCashRequest(authContext.role, authContext.permissions, {
+            currentUserName: authContext.session.user.name,
+            ownerName: currentRequest.requested_by,
+            isApprover: authContext.isApprover,
+        })) {
+            return { success: false, error: 'Permission denied' };
         }
 
         const request = await prisma.tbl_petty_cash.update({
@@ -529,8 +627,8 @@ export async function savePettyCashSignatures(id: number, payeeSignature?: strin
             'PettyCash',
             id,
             `บันทึกลายเซ็น ${payeeSignature ? '[ผู้รับเงิน]' : ''} ${payerSignature ? '[ผู้จ่ายเงิน]' : ''} (PC: ${request.request_number})`,
-            (session.user as any).p_id || (session.user as any).id,
-            session.user.name
+            (authContext.session.user as any).p_id || (authContext.session.user as any).id,
+            authContext.session.user.name
         );
 
         return { success: true, data: request };

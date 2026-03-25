@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
+import { canViewHealthMetrics } from '@/lib/rbac';
 
 interface HealthStatus {
     status: 'healthy' | 'degraded' | 'unhealthy';
@@ -30,10 +32,8 @@ export async function GET(request: NextRequest) {
 
     // Check session
     const session = await auth();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const isAdmin = session?.user && (session.user as any).role === 'admin';
-
-    const isAuthorized = hasCronSecret || isAdmin;
+    const permissionContext = await getUserPermissionContext(session?.user);
+    const isAuthorized = hasCronSecret || canViewHealthMetrics(permissionContext.role, permissionContext.permissions);
 
     const health: HealthStatus = {
         status: 'healthy',

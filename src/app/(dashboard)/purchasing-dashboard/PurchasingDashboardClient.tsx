@@ -1,6 +1,6 @@
 'use client';
 
-import { 
+import {
     ShoppingCart, 
     FileText, 
     CreditCard, 
@@ -11,6 +11,7 @@ import {
     Truck
 } from 'lucide-react';
 import Link from 'next/link';
+import { getProcurementStatusBadgeClass, getProcurementStatusLabel } from '@/lib/procurement-status';
 
 interface RecentPR {
     request_id: number;
@@ -86,34 +87,6 @@ export default function PurchasingDashboardClient({
             link: '/purchase-orders'
         }
     ];
-
-    const getStatusStyle = (status: string) => {
-        switch (status) {
-            case 'approved':
-            case 'received':
-                return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 border-emerald-200';
-            case 'rejected':
-            case 'cancelled':
-                return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400 border-rose-200';
-            case 'ordered':
-                return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 border-blue-200';
-            default:
-                return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border-amber-200';
-        }
-    };
-
-    const getStatusLabel = (status: string) => {
-        switch (status) {
-            case 'pending': return 'รอดำเนินการ';
-            case 'approved': return 'อนุมัติแล้ว';
-            case 'rejected': return 'ปฏิเสธ';
-            case 'draft': return 'ร่าง';
-            case 'ordered': return 'สั่งซื้อแล้ว';
-            case 'received': return 'รับสินค้าแล้ว';
-            case 'cancelled': return 'ยกเลิก';
-            default: return status;
-        }
-    };
 
     return (
         <div className="space-y-6 max-w-[1400px] mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
@@ -208,8 +181,8 @@ export default function PurchasingDashboardClient({
                                                     <p className="text-sm font-bold text-gray-900 dark:text-white truncate">
                                                         {pr.request_number}
                                                     </p>
-                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getStatusStyle(pr.status)} shrink-0`}>
-                                                        {getStatusLabel(pr.status)}
+                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getProcurementStatusBadgeClass(pr.status)} shrink-0`}>
+                                                        {getProcurementStatusLabel(pr.status)}
                                                     </span>
                                                 </div>
                                                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-1 bg-white dark:bg-slate-800 px-2 py-1 rounded inline-block border border-gray-100 dark:border-slate-700 max-w-fit">
@@ -265,8 +238,8 @@ export default function PurchasingDashboardClient({
                                                     <p className="text-sm font-bold text-gray-900 dark:text-white truncate">
                                                         {String(po.po_number)}
                                                     </p>
-                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getStatusStyle(String(po.status))} shrink-0`}>
-                                                        {getStatusLabel(String(po.status))}
+                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getProcurementStatusBadgeClass(String(po.status))} shrink-0`}>
+                                                        {getProcurementStatusLabel(String(po.status))}
                                                     </span>
                                                 </div>
                                                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-1 bg-white dark:bg-slate-800 px-2 py-1 rounded inline-block border border-gray-100 dark:border-slate-700 max-w-fit flex items-center gap-1">

@@ -49,10 +49,10 @@ const BASE_PERMISSION_LIST: PermissionItem[] = [
     { key: PERMISSIONS.STOCK_ADJUST, label: 'Stock Adjust', description: 'Adjust stock quantities', category: 'Core' },
     { key: PERMISSIONS.BORROW, label: 'Borrow/Return', description: 'Manage borrow and return', category: 'Core' },
     { key: PERMISSIONS.ASSETS, label: 'Assets', description: 'Manage fixed assets', category: 'Core' },
-    { key: PERMISSIONS.GENERAL_REQUEST, label: 'รับแจ้งซ่อม', description: 'เข้าถึงหน้ารับแจ้งซ่อม', category: 'Maintenance' },
+    { key: PERMISSIONS.GENERAL_REQUEST, label: 'General Request', description: 'Access general request page', category: 'Maintenance' },
     { key: PERMISSIONS.MAINTENANCE, label: 'Maintenance', description: 'Access maintenance requests', category: 'Core' },
-    { key: PERMISSIONS.APPROVALS, label: 'อนุมัติทั่วไป', description: 'เข้าถึงรายการอนุมัติทั่วไป', category: 'Core' },
-    { key: PERMISSIONS.PURCHASING_APPROVALS, label: 'อนุมัติจัดซื้อ', description: 'เข้าถึงรายการอนุมัติของฝ่ายจัดซื้อ', category: 'Core' },
+    { key: PERMISSIONS.APPROVALS, label: 'Approvals', description: 'Access approval requests', category: 'Core' },
+    { key: PERMISSIONS.PURCHASING_APPROVALS, label: 'Purchasing Approvals', description: 'Access purchasing approval requests', category: 'Core' },
     { key: PERMISSIONS.PETTY_CASH, label: 'Petty Cash', description: 'Access petty cash module', category: 'Core' },
 
     // Maintenance
@@ -87,6 +87,7 @@ export const DASHBOARD_PAGE_ROUTES = [
     '/admin/security',
     '/api-docs',
     '/approvals',
+    '/approvals/manage',
     '/approvals/purchasing',
     '/approvals/workflows',
     '/assets',
@@ -118,6 +119,7 @@ export const DASHBOARD_PAGE_ROUTES = [
     '/petty-cash/[id]/print',
     '/petty-cash/dashboard',
     '/petty-cash/new',
+    '/purchasing-dashboard',
     '/purchase-request',
     '/purchase-request/manage',
     '/products',
@@ -161,6 +163,7 @@ const ROUTE_REQUIRED_PERMISSIONS: Record<DashboardRoute, RouteRequirement> = {
     '/admin/security': PERMISSIONS.ADMIN_SECURITY,
     '/api-docs': PERMISSIONS.ADMIN_SETTINGS,
     '/approvals': PERMISSIONS.APPROVALS,
+    '/approvals/manage': PERMISSIONS.APPROVALS,
     '/approvals/purchasing': PERMISSIONS.PURCHASING_APPROVALS,
     '/approvals/workflows': PERMISSIONS.APPROVALS,
     '/assets': PERMISSIONS.ASSETS,
@@ -192,6 +195,7 @@ const ROUTE_REQUIRED_PERMISSIONS: Record<DashboardRoute, RouteRequirement> = {
     '/petty-cash/[id]/print': PERMISSIONS.PETTY_CASH,
     '/petty-cash/dashboard': PERMISSIONS.PETTY_CASH,
     '/petty-cash/new': PERMISSIONS.PETTY_CASH,
+    '/purchasing-dashboard': PERMISSIONS.PURCHASING_APPROVALS,
     '/purchase-request': PERMISSIONS.APPROVALS,
     '/purchase-request/manage': PERMISSIONS.PURCHASING_APPROVALS,
     '/products': PERMISSIONS.PRODUCTS,
@@ -249,6 +253,15 @@ const MAIN_LIST_EDIT_ROUTES = new Set<DashboardRoute>([
     '/warehouses',
 ]);
 
+const MANUAL_BASELINE_ROUTES = new Set<DashboardRoute>([
+    '/approvals/manage',
+    '/approvals/purchasing',
+    '/manager-dashboard',
+    '/purchasing-dashboard',
+    '/purchase-request/manage',
+    '/store-dashboard',
+]);
+
 const routeToCategory = (route: string): PermissionItem['category'] => {
     if (route.startsWith('/maintenance') || route === '/general-request') {
         return 'Maintenance';
@@ -303,6 +316,12 @@ const PAGE_PERMISSION_LIST: PermissionItem[] = DASHBOARD_PAGE_ROUTES.flatMap((ro
 export const PERMISSION_LIST: PermissionItem[] = [...BASE_PERMISSION_LIST, ...PAGE_PERMISSION_LIST];
 
 export type RolePermissions = Record<string, boolean>;
+
+export const FULL_ACCESS_PERMISSIONS: RolePermissions = Object.freeze(
+    Object.fromEntries(PERMISSION_LIST.map((permission) => [permission.key, true])) as RolePermissions,
+);
+
+export const getFullAccessPermissions = (): RolePermissions => ({ ...FULL_ACCESS_PERMISSIONS });
 
 const ALL_PERMISSION_FALSE: RolePermissions = Object.fromEntries(
     PERMISSION_LIST.map((permission) => [permission.key, false]),
@@ -384,6 +403,10 @@ const applyRouteDefaultPermissions = (permissions: RolePermissions, explicitPerm
     const merged = { ...permissions };
 
     for (const route of DASHBOARD_PAGE_ROUTES) {
+        if (MANUAL_BASELINE_ROUTES.has(route)) {
+            continue;
+        }
+
         const readKey = getPagePermissionKey(route, 'read');
         const editKey = getPagePermissionKey(route, 'edit');
         const canAccessRoute = hasRequiredPermission(merged, ROUTE_REQUIRED_PERMISSIONS[route]);
@@ -411,10 +434,10 @@ const buildRolePermissions = (enabled: RolePermissions): RolePermissions => {
 };
 
 export const DEFAULT_PERMISSIONS: Record<string, RolePermissions> = {
-    owner: Object.fromEntries(PERMISSION_LIST.map((permission) => [permission.key, true])),
-    admin: Object.fromEntries(PERMISSION_LIST.map((permission) => [permission.key, true])),
+    owner: getFullAccessPermissions(),
+    admin: getFullAccessPermissions(),
     manager: {
-        ...Object.fromEntries(PERMISSION_LIST.map((permission) => [permission.key, true])),
+        ...getFullAccessPermissions(),
     },
     technician: buildRolePermissions({
         [PERMISSIONS.DASHBOARD]: true,

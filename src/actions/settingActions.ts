@@ -2,6 +2,23 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { auth } from '@/auth';
+import { canManageAdminSecurity } from '@/lib/rbac';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
+
+async function getSettingsAuthContext() {
+    const session = await auth();
+    if (!session?.user) {
+        return null;
+    }
+
+    const permissionContext = await getUserPermissionContext(session.user);
+
+    return {
+        session,
+        ...permissionContext,
+    };
+}
 
 export async function getSystemSettings() {
     try {
@@ -20,8 +37,12 @@ export async function getSystemSettings() {
 
 export async function updateSystemSetting(key: string, value: string, description?: string) {
     try {
-        const { auth } = await import('@/auth');
-        const session = await auth();
+        const authContext = await getSettingsAuthContext();
+        const session = authContext?.session;
+
+        if (!authContext || !canManageAdminSecurity(authContext.role, authContext.permissions)) {
+            return { success: false, error: 'Unauthorized' };
+        }
 
         // Get old value for logging
         const oldSetting = await prisma.tbl_system_settings.findUnique({
@@ -61,10 +82,8 @@ export async function updateSystemSetting(key: string, value: string, descriptio
 
 export async function sendTestEmail(recipientEmail: string) {
     try {
-        const { auth } = await import('@/auth');
-        const session = await auth();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (!session || (session.user as any).role !== 'admin') {
+        const authContext = await getSettingsAuthContext();
+        if (!authContext || !canManageAdminSecurity(authContext.role, authContext.permissions)) {
             return { success: false, message: 'Unauthorized: Admin access required' };
         }
 

@@ -4,12 +4,18 @@ import { Plus, Search, MapPin, Tag } from 'lucide-react';
 import { auth } from '@/auth';
 import AssetActions from '@/components/AssetActions';
 import AssetImage from '@/components/AssetImage';
+import { canAccessDashboardPage } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 export default async function AssetsPage() {
     const session = await auth();
-
-    // Check if user is admin from session role
-    const isAdmin = (session?.user as any)?.role === 'admin';
+    const permissionContext = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
+    const canEditPage = canAccessDashboardPage(
+        permissionContext.role,
+        permissionContext.permissions,
+        '/assets',
+        { isApprover: permissionContext.isApprover, level: 'edit' },
+    );
 
     const assets = await prisma.tbl_assets.findMany({
         orderBy: { created_at: 'desc' }
@@ -33,17 +39,19 @@ export default async function AssetsPage() {
                     <p className="text-sm text-gray-500">จัดการข้อมูลทรัพย์สินและค่าเสื่อมราคา</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    {isAdmin && (
+                    {canEditPage && (
                         <div className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm font-medium">
                             Admin Mode
                         </div>
                     )}
+                    {canEditPage && (
                     <Link
                         href="/assets/new"
                         className="flex items-center rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
                     >
                         <Plus className="mr-2 h-4 w-4" /> เพิ่มทรัพย์สิน
                     </Link>
+                    )}
                 </div>
             </div>
 
@@ -119,14 +127,14 @@ export default async function AssetsPage() {
                                                 <Link href={`/assets/${asset.asset_id}`} className="text-blue-600 hover:text-blue-900 font-medium text-sm">
                                                     รายละเอียด
                                                 </Link>
-                                                {isAdmin && (
+                                                {canEditPage && (
                                                     <AssetActions
                                                         asset={{
                                                             asset_id: asset.asset_id,
                                                             asset_code: asset.asset_code,
                                                             asset_name: asset.asset_name
                                                         }}
-                                                        isAdmin={isAdmin}
+                                                        isAdmin={canEditPage}
                                                     />
                                                 )}
                                             </div>

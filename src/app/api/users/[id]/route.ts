@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { canViewAdminRoles } from '@/lib/rbac';
+import { isLockedPermissionRole } from '@/lib/roles';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
 
 export async function GET(
     request: NextRequest,
@@ -9,14 +12,19 @@ export async function GET(
     try {
         const session = await auth();
         if (!session?.user) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            return NextResponse.json({ error: 'กรุณาเข้าสู่ระบบ' }, { status: 401 });
+        }
+
+        const permissionContext = await getUserPermissionContext(session.user);
+        if (!canViewAdminRoles(permissionContext.role, permissionContext.permissions)) {
+            return NextResponse.json({ error: 'ไม่มีสิทธิ์เข้าถึงข้อมูลผู้ใช้' }, { status: 403 });
         }
 
         const { id } = await params;
         const userId = parseInt(id);
 
         if (isNaN(userId)) {
-            return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 });
+            return NextResponse.json({ error: 'รหัสผู้ใช้ไม่ถูกต้อง' }, { status: 400 });
         }
 
         const user = await prisma.tbl_users.findUnique({
@@ -33,12 +41,16 @@ export async function GET(
         });
 
         if (!user) {
-            return NextResponse.json({ error: 'User not found' }, { status: 404 });
+            return NextResponse.json({ error: 'ไม่พบผู้ใช้' }, { status: 404 });
         }
 
-        return NextResponse.json(user);
+        return NextResponse.json({
+            ...user,
+            is_current_user: Number(session.user.id) === user.p_id,
+            is_role_locked: isLockedPermissionRole(user.role),
+        });
     } catch (error) {
         console.error('Error fetching user:', error);
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+        return NextResponse.json({ error: 'เกิดข้อผิดพลาดภายในระบบ' }, { status: 500 });
     }
 }

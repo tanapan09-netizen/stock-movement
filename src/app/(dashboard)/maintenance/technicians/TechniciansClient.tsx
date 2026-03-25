@@ -10,6 +10,7 @@ import {
     updateTechnician,
     deleteTechnician
 } from '@/actions/technicianActions';
+import { TECHNICIAN_STATUS_OPTIONS } from '@/lib/maintenance-options';
 
 interface Technician {
     tech_id: number;
@@ -36,7 +37,11 @@ interface LineTechnician {
     created_at: Date;
 }
 
-export default function TechniciansClient() {
+interface Props {
+    canEdit: boolean;
+}
+
+export default function TechniciansClient({ canEdit }: Props) {
     const [technicians, setTechnicians] = useState<Technician[]>([]);
     const [lineTechnicians, setLineTechnicians] = useState<LineTechnician[]>([]);
     const [loading, setLoading] = useState(true);
@@ -74,6 +79,10 @@ export default function TechniciansClient() {
     }, [loadData]);
 
     function openForm(tech?: Technician) {
+        if (!canEdit) {
+            return;
+        }
+
         if (tech) {
             setEditingTech(tech);
             setFormData({
@@ -94,6 +103,10 @@ export default function TechniciansClient() {
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
+        if (!canEdit) {
+            return;
+        }
+
         if (!formData.name) {
             alert('กรุณากรอกชื่อช่าง');
             return;
@@ -115,6 +128,10 @@ export default function TechniciansClient() {
     }
 
     async function handleDelete(tech_id: number) {
+        if (!canEdit) {
+            return;
+        }
+
         if (!confirm('ต้องการลบช่างคนนี้หรือไม่?')) return;
         const result = await deleteTechnician(tech_id);
         if (result.success) {
@@ -149,7 +166,6 @@ export default function TechniciansClient() {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -161,16 +177,17 @@ export default function TechniciansClient() {
                     <Link href="/maintenance" className="px-4 py-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700">
                         กลับหน้าแจ้งซ่อม
                     </Link>
-                    <button
-                        onClick={() => openForm()}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-                    >
-                        <Plus size={18} /> เพิ่มช่าง
-                    </button>
+                    {canEdit && (
+                        <button
+                            onClick={() => openForm()}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                        >
+                            <Plus size={18} /> เพิ่มช่าง
+                        </button>
+                    )}
                 </div>
             </div>
 
-            {/* Summary */}
             <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
                     <div className="text-2xl font-bold text-gray-900 dark:text-white">{totalCount}</div>
@@ -182,7 +199,6 @@ export default function TechniciansClient() {
                 </div>
             </div>
 
-            {/* Search */}
             <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
                 <div className="relative">
                     <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -201,7 +217,6 @@ export default function TechniciansClient() {
                 <div className="text-center text-gray-500 py-8">กำลังโหลด...</div>
             ) : (
                 <>
-                    {/* LINE Technicians Section */}
                     {filteredLineTechnicians.length > 0 && (
                         <div className="space-y-4">
                             <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2">
@@ -214,7 +229,6 @@ export default function TechniciansClient() {
                                         <div className="flex justify-between items-start">
                                             <div className="flex items-center gap-3">
                                                 {lt.picture_url ? (
-                                                    // eslint-disable-next-line @next/next/no-img-element
                                                     <img
                                                         src={lt.picture_url}
                                                         alt={lt.display_name || 'LINE user'}
@@ -237,7 +251,7 @@ export default function TechniciansClient() {
                                                 </div>
                                             </div>
                                             <span className={`px-2 py-1 rounded text-xs ${lt.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                                {lt.is_active ? 'พร้อมงาน' : 'ไม่พร้อม'}
+                                                {lt.is_active ? 'พร้อมปฏิบัติงาน' : 'ไม่พร้อม/พักงาน'}
                                             </span>
                                         </div>
                                         <div className="mt-3 text-xs text-gray-500">
@@ -251,7 +265,6 @@ export default function TechniciansClient() {
                         </div>
                     )}
 
-                    {/* Manual Technicians Section */}
                     {filteredTechnicians.length > 0 && (
                         <div className="space-y-4">
                             {filteredLineTechnicians.length > 0 && (
@@ -276,7 +289,7 @@ export default function TechniciansClient() {
                                                 </div>
                                             </div>
                                             <span className={`px-2 py-1 rounded text-xs ${tech.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                                {tech.status === 'active' ? 'พร้อมงาน' : 'ไม่พร้อม'}
+                                                {tech.status === 'active' ? 'พร้อมปฏิบัติงาน' : 'ไม่พร้อม/พักงาน'}
                                             </span>
                                         </div>
 
@@ -293,20 +306,22 @@ export default function TechniciansClient() {
                                             )}
                                         </div>
 
-                                        <div className="mt-4 pt-3 border-t flex gap-2">
-                                            <button
-                                                onClick={() => openForm(tech)}
-                                                className="flex-1 text-sm py-1.5 border rounded hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center justify-center gap-1"
-                                            >
-                                                <Edit2 size={14} /> แก้ไข
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(tech.tech_id)}
-                                                className="text-sm py-1.5 px-3 border border-red-200 text-red-600 rounded hover:bg-red-50 flex items-center gap-1"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
+                                        {canEdit && (
+                                            <div className="mt-4 pt-3 border-t flex gap-2">
+                                                <button
+                                                    onClick={() => openForm(tech)}
+                                                    className="flex-1 text-sm py-1.5 border rounded hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center justify-center gap-1"
+                                                >
+                                                    <Edit2 size={14} /> แก้ไข
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(tech.tech_id)}
+                                                    className="text-sm py-1.5 px-3 border border-red-200 text-red-600 rounded hover:bg-red-50 flex items-center gap-1"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -319,8 +334,7 @@ export default function TechniciansClient() {
                 </>
             )}
 
-            {/* Form Modal */}
-            {showForm && (
+            {showForm && canEdit && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-white dark:bg-slate-800 rounded-xl p-6 w-full max-w-md mx-4">
                         <div className="flex justify-between items-center mb-4">
@@ -384,8 +398,11 @@ export default function TechniciansClient() {
                                         className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
                                         aria-label="สถานะช่าง"
                                     >
-                                        <option value="active">พร้อมปฏิบัติงาน</option>
-                                        <option value="inactive">ไม่พร้อม/พักงาน</option>
+                                        {TECHNICIAN_STATUS_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                             )}

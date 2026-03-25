@@ -21,6 +21,12 @@ import {
 import { updateApprovalStatus } from '@/actions/approvalActions';
 import { ApprovalRequest } from '../../approvals/types';
 import { updatePurchaseRequest } from '@/actions/approvalActions';
+import {
+    getProcurementStatusBadgeClass,
+    getProcurementStatusLabel,
+    getProcurementStatusOrder,
+    PURCHASE_REQUEST_STATUS_FILTER_OPTIONS,
+} from '@/lib/procurement-status';
 
 interface Props {
     initialRequests: ApprovalRequest[];
@@ -28,40 +34,12 @@ interface Props {
 
 type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
 
-const statusOrder: Record<string, number> = {
-    pending: 0,
-    approved: 1,
-    rejected: 2,
-};
-
 function formatCurrency(value: unknown) {
     const amount = Number(value || 0);
     return amount.toLocaleString('th-TH', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
     });
-}
-
-function getStatusLabel(status: string) {
-    switch (status) {
-        case 'approved':
-            return 'อนุมัติแล้ว';
-        case 'rejected':
-            return 'ไม่อนุมัติ';
-        default:
-            return 'รอดำเนินการ';
-    }
-}
-
-function getStatusBadgeClass(status: string) {
-    switch (status) {
-        case 'approved':
-            return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-        case 'rejected':
-            return 'border-rose-200 bg-rose-50 text-rose-700';
-        default:
-            return 'border-amber-200 bg-amber-50 text-amber-700';
-    }
 }
 
 function getSummaryLine(reason?: string | null) {
@@ -117,7 +95,7 @@ export default function PurchaseRequestManagementClient({ initialRequests }: Pro
                 return haystack.includes(keyword);
             })
             .sort((a, b) => {
-                const statusCompare = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
+                const statusCompare = getProcurementStatusOrder(a.status) - getProcurementStatusOrder(b.status);
                 if (statusCompare !== 0) {
                     return statusCompare;
                 }
@@ -315,10 +293,11 @@ export default function PurchaseRequestManagementClient({ initialRequests }: Pro
                                 onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
                                 className="min-w-[180px] rounded-xl border border-slate-200 py-2.5 pl-10 pr-8 text-sm text-slate-700 outline-none transition focus:border-emerald-400"
                             >
-                                <option value="all">ทุกสถานะ</option>
-                                <option value="pending">รอดำเนินการ</option>
-                                <option value="approved">อนุมัติแล้ว</option>
-                                <option value="rejected">ไม่อนุมัติ</option>
+                                {PURCHASE_REQUEST_STATUS_FILTER_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
                             </select>
                         </div>
                     </div>
@@ -364,8 +343,8 @@ export default function PurchaseRequestManagementClient({ initialRequests }: Pro
                                                 ฿{formatCurrency(request.amount)}
                                             </td>
                                             <td className="px-5 py-4">
-                                                <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getStatusBadgeClass(request.status)}`}>
-                                                    {getStatusLabel(request.status)}
+                                                <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getProcurementStatusBadgeClass(request.status)}`}>
+                                                    {getProcurementStatusLabel(request.status)}
                                                 </span>
                                             </td>
                                             <td className="px-5 py-4 text-slate-500">

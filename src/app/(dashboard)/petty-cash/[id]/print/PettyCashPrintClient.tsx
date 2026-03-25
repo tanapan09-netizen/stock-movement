@@ -5,6 +5,7 @@ import SignatureCanvas from 'react-signature-canvas';
 import { getPettyCashRequestById, savePettyCashSignatures } from '@/actions/pettyCashActions';
 import { getSystemSettings } from '@/actions/settingActions';
 import { useToast } from '@/components/ToastProvider';
+import { getPettyCashSignatureRoleLabel, type PettyCashSignatureRole } from '@/lib/pettyCash';
 import { Printer, Save, ArrowLeft, PenTool, X } from 'lucide-react';
 import Link from 'next/link';
 
@@ -23,7 +24,7 @@ export default function PettyCashPrintClient({ requestId }: PettyCashPrintClient
     const [payeeDirty, setPayeeDirty] = useState(false);
     const [payerDirty, setPayerDirty] = useState(false);
 
-    const [activeSignatureRole, setActiveSignatureRole] = useState<'payee' | 'payer' | null>(null);
+    const [activeSignatureRole, setActiveSignatureRole] = useState<PettyCashSignatureRole | null>(null);
     const signatureModalRef = useRef<SignatureCanvas>(null);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -62,13 +63,16 @@ export default function PettyCashPrintClient({ requestId }: PettyCashPrintClient
         setActiveSignatureRole(null);
     };
 
-    const handleDeleteSignature = (role: 'payee' | 'payer') => {
-        if (role === 'payee') {
-            setSavedPayeeSig(null);
-            setPayeeDirty(true);
-        } else {
-            setSavedPayerSig(null);
-            setPayerDirty(true);
+    const handleDeleteSignature = (role: PettyCashSignatureRole) => {
+        switch (role) {
+            case 'payee':
+                setSavedPayeeSig(null);
+                setPayeeDirty(true);
+                break;
+            case 'payer':
+                setSavedPayerSig(null);
+                setPayerDirty(true);
+                break;
         }
     };
 
@@ -179,7 +183,7 @@ export default function PettyCashPrintClient({ requestId }: PettyCashPrintClient
                     <div className="bg-white w-full max-w-lg rounded-2xl overflow-hidden flex flex-col shadow-2xl">
                         <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                             <h3 className="font-bold text-lg text-gray-800">
-                                เซ็นชื่อ ({activeSignatureRole === 'payee' ? 'ผู้เบิกเงิน' : 'ผู้จ่ายเงิน'})
+                                เซ็นชื่อ ({getPettyCashSignatureRoleLabel(activeSignatureRole)})
                             </h3>
                             <button onClick={() => setActiveSignatureRole(null)} className="text-gray-500 hover:text-gray-800 p-2">
                                 <X className="w-5 h-5" />

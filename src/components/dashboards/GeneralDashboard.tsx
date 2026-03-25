@@ -2,8 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { Wrench, Clock, FileText, ArrowRight, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
 import { auth } from '@/auth';
-import { getRolePermissions } from '@/actions/roleActions';
-import { getPagePermissionKey, RolePermissions } from '@/lib/permissions';
+import { canAccessDashboardPage } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 interface QuickActionItem {
     href: string;
@@ -19,37 +19,10 @@ interface QuickActionItem {
 export default async function GeneralDashboard() {
     const session = await auth();
     const userName = session?.user?.name || '';
-    const sessionUser = session?.user as {
-        role?: string;
-        id?: string;
-        is_linked?: boolean;
-    };
-
-    const role = sessionUser?.role || 'user';
-    const defaultPermissions = await getRolePermissions(role);
-    let customPermissions: RolePermissions = {};
-
-    if (sessionUser?.id && sessionUser.is_linked) {
-        const user = await prisma.tbl_users.findUnique({
-            where: { p_id: Number(sessionUser.id) },
-            select: { custom_permissions: true },
-        });
-
-        if (user?.custom_permissions) {
-            try {
-                customPermissions = JSON.parse(user.custom_permissions) as RolePermissions;
-            } catch (error) {
-                console.error('Failed to parse custom permissions in GeneralDashboard', error);
-            }
-        }
-    }
-
-    const permissions: RolePermissions = { ...defaultPermissions, ...customPermissions };
-    const canAccessPage = (route: string) => {
-        const readKey = getPagePermissionKey(route, 'read');
-        const editKey = getPagePermissionKey(route, 'edit');
-        return Boolean(permissions[readKey] || permissions[editKey]);
-    };
+    const permissionContext = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
+    const { role, isApprover, permissions } = permissionContext;
+    const canAccessPage = (route: string) =>
+        canAccessDashboardPage(role, permissions, route, { isApprover });
 
     const quickActions: QuickActionItem[] = [
         {

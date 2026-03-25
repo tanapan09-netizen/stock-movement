@@ -3,10 +3,18 @@ import Link from 'next/link';
 import { Plus, Building2, Phone, Mail, MapPin, User, Edit2, Trash2 } from 'lucide-react';
 import SupplierActions from '@/components/SupplierActions';
 import { auth } from '@/auth';
+import { canAccessDashboardPage } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 export default async function SuppliersPage() {
     const session = await auth();
-    const isAdmin = (session?.user as { role?: string })?.role === 'admin';
+    const permissionContext = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
+    const canEditPage = canAccessDashboardPage(
+        permissionContext.role,
+        permissionContext.permissions,
+        '/suppliers',
+        { isApprover: permissionContext.isApprover, level: 'edit' },
+    );
 
     const suppliers = await prisma.tbl_suppliers.findMany({
         orderBy: { name: 'asc' }
@@ -22,6 +30,7 @@ export default async function SuppliersPage() {
                     </h1>
                     <p className="text-sm text-gray-500 mt-1">รายการผู้ขาย/Vendor ทั้งหมด {suppliers.length} ราย</p>
                 </div>
+                {canEditPage && (
                 <Link
                     href="/suppliers/new"
                     className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-lg flex items-center gap-2 shadow transition"
@@ -29,6 +38,7 @@ export default async function SuppliersPage() {
                     <Plus className="w-5 h-5" />
                     เพิ่มผู้ขายใหม่
                 </Link>
+                )}
             </div>
 
             {suppliers.length === 0 ? (
@@ -36,6 +46,7 @@ export default async function SuppliersPage() {
                     <Building2 className="w-16 h-16 mx-auto text-gray-300 mb-4" />
                     <h3 className="text-lg font-medium text-gray-600 mb-2">ยังไม่มีข้อมูลผู้ขาย</h3>
                     <p className="text-gray-400 mb-6">เริ่มต้นเพิ่มผู้ขายรายแรกของคุณ</p>
+                    {canEditPage && (
                     <Link
                         href="/suppliers/new"
                         className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
@@ -43,6 +54,7 @@ export default async function SuppliersPage() {
                         <Plus className="w-5 h-5" />
                         เพิ่มผู้ขาย
                     </Link>
+                    )}
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -62,7 +74,7 @@ export default async function SuppliersPage() {
                                         )}
                                     </div>
                                 </div>
-                                <SupplierActions supplier={supplier} isAdmin={isAdmin} />
+                                <SupplierActions supplier={supplier} isAdmin={canEditPage} />
                             </div>
 
                             <div className="space-y-2 text-sm text-gray-600">
@@ -88,12 +100,14 @@ export default async function SuppliersPage() {
 
                             <div className="mt-4 pt-3 border-t flex justify-between items-center text-xs text-gray-400">
                                 <span>เพิ่มเมื่อ: {new Date(supplier.created_at).toLocaleDateString('th-TH')}</span>
+                                {canEditPage && (
                                 <Link
                                     href={`/suppliers/${supplier.id}/edit`}
                                     className="text-blue-600 hover:underline flex items-center gap-1"
                                 >
                                     <Edit2 className="w-3 h-3" /> แก้ไข
                                 </Link>
+                                )}
                             </div>
                         </div>
                     ))}

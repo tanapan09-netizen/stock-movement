@@ -458,7 +458,7 @@ export async function notifyApprovalEvent(
 
     try {
         if (process.env.LINE_MESSAGING_ENABLED !== 'false') {
-            const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
+            const { getApprovalRecipientLineIds } = await import('@/actions/lineUserActions');
             const { sendPushMessage, sendMulticastMessage } = await import('./lineMessaging');
 
             const typeMap: Record<string, string> = {
@@ -487,10 +487,7 @@ export async function notifyApprovalEvent(
                     messageText += `\nอ้างอิงงาน: ${data.reference_job}`;
                 }
 
-                const targetRoles = data.request_type === 'expense' || data.request_type === 'purchase'
-                    ? ['manager', 'admin', 'purchasing']
-                    : ['manager', 'admin'];
-                const lineIds = await getLineIdsByRoles(targetRoles);
+                const lineIds = await getApprovalRecipientLineIds(data.request_type);
                 if (lineIds.length > 0) {
                     const fallbackMsg = { type: 'text' as const, text: messageText };
                     await sendMulticastMessage(lineIds, fallbackMsg);
@@ -538,7 +535,7 @@ export async function notifyApprovalEventFlex(
             return;
         }
 
-        const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
+        const { getApprovalRecipientLineIds } = await import('@/actions/lineUserActions');
 
         const requestTypeLabel =
             data.request_type === 'ot' ? 'OT'
@@ -548,10 +545,7 @@ export async function notifyApprovalEventFlex(
                             : 'อื่นๆ';
 
         if (data.eventType === 'pending') {
-            const targetRoles = data.request_type === 'expense' || data.request_type === 'purchase'
-                ? ['manager', 'admin', 'purchasing']
-                : ['manager', 'admin'];
-            const lineIds = await getLineIdsByRoles(targetRoles);
+            const lineIds = await getApprovalRecipientLineIds(data.request_type);
             if (lineIds.length === 0) {
                 return;
             }

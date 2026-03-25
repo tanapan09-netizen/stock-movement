@@ -7,6 +7,8 @@ import AssetActions from '@/components/AssetActions';
 import PrintButton from '@/components/PrintButton';
 import { auth } from '@/auth';
 import AssetImage from '@/components/AssetImage';
+import { canAccessDashboardPage } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 const translateActionType = (type: string) => {
     switch (type) {
@@ -31,7 +33,13 @@ const translateDescription = (desc: string | null) => {
 export default async function AssetDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
     const session = await auth();
-    const isAdmin = (session?.user as any)?.role === 'admin';
+    const permissionContext = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
+    const canEditPage = canAccessDashboardPage(
+        permissionContext.role,
+        permissionContext.permissions,
+        '/assets/[id]',
+        { isApprover: permissionContext.isApprover, level: 'edit' },
+    );
 
     const asset = await prisma.tbl_assets.findUnique({
         where: { asset_id: parseInt(id) },
@@ -151,7 +159,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                             asset_code: asset.asset_code,
                             asset_name: asset.asset_name
                         }}
-                        isAdmin={isAdmin}
+                        isAdmin={canEditPage}
                         variant="button"
                     />
                 </div>
@@ -218,6 +226,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                     </div>
 
                     {/* Quick Actions (Add History) */}
+                    {canEditPage && (
                     <div className="bg-white rounded-lg shadow p-6">
                         <h3 className="font-bold text-gray-800 mb-4 flex items-center">
                             <Activity className="w-4 h-4 mr-2" /> บันทึกประวัติ
@@ -238,6 +247,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                             </button>
                         </form>
                     </div>
+                    )}
                 </div>
 
                 {/* Right Col: Depreciation & History */}

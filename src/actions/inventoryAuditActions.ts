@@ -5,6 +5,9 @@ import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import bcrypt from 'bcryptjs';
+import { mergeRoleAndCustomPermissions, getUserPermissionContext } from '@/lib/server/permission-service';
+import { canApproveInventoryAudit, resolveInventoryAuditUserRole } from '@/lib/rbac';
+import { INVENTORY_AUDIT_COPY } from '@/lib/inventory-audit';
 
 export async function getProductsForAudit() {
     try {
@@ -45,15 +48,15 @@ type SaveInventoryAuditInput = {
 export async function saveInventoryAudit(data: SaveInventoryAuditInput) {
     try {
         const session = await auth();
-        if (!session) return { success: false, error: 'Unauthorized' };
+        if (!session) return { success: false, error: INVENTORY_AUDIT_COPY.unauthorized };
 
-        const username = session.user?.name || 'Unknown';
+        const username = session.user?.name || INVENTORY_AUDIT_COPY.unknownUser;
         const auditBy = data.auditor_name || data.auditor || username;
 
         // Only save items that were actually counted
         const countedItems = data.items.filter(i => i.counted_qty !== null);
         if (countedItems.length === 0) {
-            return { success: false, error: 'ไม่มีรายการที่ตรวจนับ' };
+            return { success: false, error: INVENTORY_AUDIT_COPY.noCheckedItems };
         }
 
         const totalDiscrepancy = countedItems.reduce((sum, i) => {
@@ -78,7 +81,7 @@ export async function saveInventoryAudit(data: SaveInventoryAuditInput) {
                 audit_number: auditNumber,
                 audit_date: new Date(data.audit_date),
                 status: 'completed',
-                notes: data.notes || `ผู้ตรวจนับ: ${data.auditor}`,
+                notes: data.notes || `${INVENTORY_AUDIT_COPY.auditNotePrefix} ${data.auditor}`,
                 total_items: countedItems.length,
                 total_discrepancy: totalDiscrepancy,
                 created_by: username,
@@ -99,16 +102,16 @@ export async function saveInventoryAudit(data: SaveInventoryAuditInput) {
         // Minimal audit trail log entry (save only)
         try {
             const head = await headers();
-            const ip = head.get('x-forwarded-for') || head.get('x-real-ip') || 'unknown';
+            const ip = head.get('x-forwarded-for') || head.get('x-real-ip') || INVENTORY_AUDIT_COPY.unknownIp;
             await prisma.tbl_action_log.create({
                 data: {
                     username,
-                    action: 'Inventory Audit: save',
+                    action: INVENTORY_AUDIT_COPY.auditTrailSaveAction,
                     p_id: null,
                     ip_address: ip,
-                    description: `Saved inventory audit ${auditNumber}`,
+                    description: `${INVENTORY_AUDIT_COPY.auditTrailSaveDescriptionPrefix} ${auditNumber}`,
                     quantity: countedItems.length,
-                    remarks: data.approver_name ? `Approver: ${data.approver_name}` : null,
+                    remarks: data.approver_name ? `${INVENTORY_AUDIT_COPY.approverRemarkPrefix} ${data.approver_name}` : null,
                     details: JSON.stringify({
                         audit_id: audit.audit_id,
                         audit_number: auditNumber,
@@ -124,14 +127,14 @@ export async function saveInventoryAudit(data: SaveInventoryAuditInput) {
                 }
             });
         } catch (e) {
-            console.warn('Inventory audit trail log skipped:', e);
+            console.warn(`${INVENTORY_AUDIT_COPY.auditTrailLogSkipped}:`, e);
         }
 
         revalidatePath('/inventory-audit');
         return { success: true, auditId: audit.audit_id, auditNumber };
     } catch (error) {
         console.error('saveInventoryAudit error:', error);
-        return { success: false, error: 'บันทึกไม่สำเร็จ กรุณาลองใหม่' };
+        return { success: false, error: INVENTORY_AUDIT_COPY.saveFailed };
     }
 }
 
@@ -166,38 +169,39 @@ export async function getInventoryAuditHistory(limit = 10) {
 export async function getCurrentUserRole() {
     try {
         const session = await auth();
-        if (!session?.user?.id) return { success: false as const, user: null, error: 'Unauthorized' };
+        if (!session?.user?.id) return { success: false as const, user: null, error: INVENTORY_AUDIT_COPY.unauthorized };
 
-        const rawRole = (session.user.role || '').toLowerCase();
-        const role =
-            rawRole === 'admin'
-                ? 'admin'
-                : rawRole === 'manager' || rawRole === 'supervisor'
-                    ? 'supervisor'
-                    : 'auditor';
+        const permissionContext = await getUserPermissionContext(session.user);
+        const role = resolveInventoryAuditUserRole(
+            permissionContext.role,
+            permissionContext.permissions,
+            permissionContext.isApprover,
+        );
 
         return {
             success: true as const,
             user: {
                 user_id: String(session.user.id),
-                name: session.user.name || 'Unknown',
+                name: session.user.name || INVENTORY_AUDIT_COPY.unknownUser,
                 role,
                 employee_id: String(session.user.id),
             }
         };
     } catch (error) {
         console.error('getCurrentUserRole error:', error);
-        return { success: false as const, user: null, error: 'Failed to read session' };
+        return { success: false as const, user: null, error: INVENTORY_AUDIT_COPY.failedToReadSession };
     }
 }
 
 export async function verifyApproverPin(input: { approver_name: string; pin: string }) {
     try {
         const session = await auth();
-        if (!session) return { success: false as const, error: 'Unauthorized' };
+        if (!session) return { success: false as const, error: INVENTORY_AUDIT_COPY.unauthorized };
 
         const approverName = input.approver_name.trim();
-        if (!approverName || !input.pin) return { success: false as const, error: 'Missing approver or PIN' };
+        if (!approverName || !input.pin) {
+            return { success: false as const, error: INVENTORY_AUDIT_COPY.missingApproverOrPin };
+        }
 
         const approverId = Number.isFinite(Number(approverName)) ? Number(approverName) : null;
 
@@ -205,21 +209,29 @@ export async function verifyApproverPin(input: { approver_name: string; pin: str
             where: approverId
                 ? { p_id: approverId }
                 : { username: approverName },
-            select: { p_id: true, username: true, role: true, password: true, is_approver: true }
+            select: {
+                p_id: true,
+                username: true,
+                role: true,
+                password: true,
+                is_approver: true,
+                custom_permissions: true,
+            }
         });
 
-        if (!user) return { success: false as const, error: 'Approver not found' };
+        if (!user) return { success: false as const, error: INVENTORY_AUDIT_COPY.approverNotFound };
 
-        const allowed = user.is_approver || user.role === 'admin' || user.role === 'manager' || user.role === 'supervisor';
-        if (!allowed) return { success: false as const, error: 'User is not allowed to approve' };
+        const userPermissions = await mergeRoleAndCustomPermissions(user.role, user.custom_permissions);
+        const allowed = canApproveInventoryAudit(user.role, userPermissions, Boolean(user.is_approver));
+        if (!allowed) return { success: false as const, error: INVENTORY_AUDIT_COPY.approverNotAllowed };
 
         const ok = await bcrypt.compare(input.pin, user.password);
-        if (!ok) return { success: false as const, error: 'Invalid PIN' };
+        if (!ok) return { success: false as const, error: INVENTORY_AUDIT_COPY.invalidApproverPin };
 
         return { success: true as const, approver_id: user.p_id, approver_name: user.username };
     } catch (error) {
         console.error('verifyApproverPin error:', error);
-        return { success: false as const, error: 'PIN verification failed' };
+        return { success: false as const, error: INVENTORY_AUDIT_COPY.pinVerificationFailed };
     }
 }
 
@@ -229,6 +241,7 @@ export async function getAuditTrailLog(limit = 50) {
             where: {
                 OR: [
                     { action: { contains: 'Inventory Audit' } },
+                    { action: { contains: 'ตรวจนับสต็อก' } },
                     { action: { contains: 'ตรวจนับ' } },
                 ]
             },
@@ -239,7 +252,12 @@ export async function getAuditTrailLog(limit = 50) {
 
         const data = logs.map(l => ({
             trail_id: l.id,
-            action: (l.action.includes('save') ? 'save' : 'view') as 'enter' | 'edit' | 'save' | 'approve' | 'view',
+            action: (
+                l.action.includes('save')
+                || l.action.includes('บันทึก')
+                ? 'save'
+                : 'view'
+            ) as 'enter' | 'edit' | 'save' | 'approve' | 'view',
             p_id: l.p_id ?? null,
             p_name: l.tbl_products?.p_name ?? null,
             old_value: null as number | null,

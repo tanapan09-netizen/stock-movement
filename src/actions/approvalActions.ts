@@ -2,7 +2,12 @@
 
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
-import { isDepartmentRole, isManagerRole } from '@/lib/roles';
+import {
+    canAccessDashboardPage,
+    canApproveApprovalRequest,
+    canEditPurchaseRequestRecord,
+    canViewApprovalQueue,
+} from '@/lib/rbac';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { notifyApprovalEventFlex } from '@/lib/notifications/notificationManager';
@@ -11,7 +16,9 @@ import {
     createApprovalNextStepFlexMessage,
     sendMulticastMessage,
 } from '@/lib/notifications/lineMessaging';
+import { COMMON_ACTION_MESSAGES } from '@/lib/action-messages';
 import { validateData, createApprovalRequestSchema } from '@/lib/validation';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 type ApprovalAction = 'pending' | 'approved' | 'rejected';
 
@@ -71,7 +78,7 @@ interface WorkflowStepNotificationInput {
 
 function getErrorMessage(error: unknown): string {
     if (error instanceof Error && error.message) return error.message;
-    return 'Unexpected error';
+    return COMMON_ACTION_MESSAGES.unexpectedError;
 }
 
 function toIntOrNull(value: string | number | null | undefined): number | null {
@@ -115,21 +122,12 @@ async function sendApprovalRecipientsNotification(
     try {
         if (process.env.LINE_MESSAGING_ENABLED === 'false') return;
 
-        const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
-
-        const targetRoles = request.request_type === 'expense' || request.request_type === 'purchase'
-            ? ['manager', 'admin', 'purchasing']
-            : ['manager', 'admin'];
-
-        const recipientIds = [
-            ...new Set([
-                ...await getLineIdsByRoles(targetRoles),
-            ]),
-        ];
+        const { getApprovalRecipientLineIds } = await import('@/actions/lineUserActions');
+        const recipientIds = await getApprovalRecipientLineIds(request.request_type);
 
         if (recipientIds.length === 0) return;
 
-        const requesterName = request.tbl_users?.username || 'Unknown';
+        const requesterName = request.tbl_users?.username || COMMON_ACTION_MESSAGES.unknownUser;
         await sendMulticastMessage(
             recipientIds,
             createApprovalDecisionFlexMessage({
@@ -154,7 +152,7 @@ async function sendNextApprovalStepNotification(
     try {
         if (process.env.LINE_MESSAGING_ENABLED === 'false') return;
 
-        const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
+        const { getApprovalStepLineIds } = await import('@/actions/lineUserActions');
 
         let recipientIds: string[] = [];
 
@@ -169,17 +167,13 @@ async function sendNextApprovalStepNotification(
         }
 
         if (recipientIds.length === 0 && nextStep.approver_role) {
-            const roleTargets =
-                nextStep.approver_role === 'any_manager' || nextStep.approver_role === 'manager'
-                    ? ['manager', 'admin']
-                    : [nextStep.approver_role];
-            recipientIds = await getLineIdsByRoles(roleTargets);
+            recipientIds = await getApprovalStepLineIds(nextStep.approver_role);
         }
 
         recipientIds = [...new Set(recipientIds)];
         if (recipientIds.length === 0) return;
 
-        const requesterName = request.tbl_users?.username || 'Unknown';
+        const requesterName = request.tbl_users?.username || COMMON_ACTION_MESSAGES.unknownUser;
         await sendMulticastMessage(
             recipientIds,
             createApprovalNextStepFlexMessage({
@@ -202,7 +196,7 @@ export async function createApprovalRequest(data: CreateApprovalRequestInput) {
     try {
         const session = await auth();
         if (!session?.user?.id) {
-            return { success: false, error: 'Unauthorized' };
+            return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
         }
 
         const userId = parseInt(session.user.id as string) || 0;
@@ -295,18 +289,32 @@ export async function getApprovalRequests() {
     try {
         const session = await auth();
         if (!session?.user?.id) {
-            return { success: false, error: 'Unauthorized' };
+            return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
         }
 
         const userId = parseInt(session.user.id as string) || 0;
-        const role = session.user.role?.toLowerCase() || '';
-        const isApprover = session.user.is_approver;
+        const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
 
-        let whereClause = {};
+        let whereClause: Prisma.tbl_approval_requestsWhereInput = {};
 
-        // If not manager, admin, or approver -> only see own requests
-        if (role !== 'admin' && role !== 'manager' && !isApprover) {
+        if (!canViewApprovalQueue(
+            permissionContext.role,
+            permissionContext.permissions,
+            permissionContext.isApprover,
+        )) {
             whereClause = { requested_by: userId };
+        } else if (!canAccessDashboardPage(
+            permissionContext.role,
+            permissionContext.permissions,
+            '/approvals/manage',
+            { isApprover: permissionContext.isApprover },
+        )) {
+            whereClause = {
+                OR: [
+                    { requested_by: userId },
+                    { request_type: 'purchase' },
+                ],
+            };
         }
 
         const requests = await prisma.tbl_approval_requests.findMany({
@@ -328,36 +336,18 @@ export async function getApprovalRequests() {
         });
 
         const dataWithPermissions = requests.map(req => {
-            let canApprove = false;
-            
-            // Evaluated permission stringency
-            if (role === 'admin') {
-                canApprove = true;
-            } else if (req.workflow_id && req.workflow) {
-                const currentStep = req.workflow.steps.find((s: any) => s.step_order === req.current_step);
-                if (currentStep) {
-                    if (currentStep.approver_id) {
-                        canApprove = (userId === currentStep.approver_id);
-                    } else if (currentStep.approver_role) {
-                        if (currentStep.approver_role === 'any_manager' || currentStep.approver_role === 'manager') {
-                            canApprove = isManagerRole(role) || !!isApprover;
-                        } else {
-                            canApprove = (role === currentStep.approver_role);
-                        }
-                    }
-                }
-            } else {
-                // Fallback for requests without workflow
-                const canApprovePurchaseRequest =
-                    isDepartmentRole(role, 'purchasing') && req.request_type === 'purchase';
+            const currentStep = req.workflow?.steps.find((step) => step.step_order === req.current_step) || null;
+            const canApprove = canApproveApprovalRequest(
+                permissionContext.role,
+                permissionContext.permissions,
+                {
+                    currentUserId: userId,
+                    requestType: req.request_type,
+                    workflowStep: currentStep,
+                    isApprover: permissionContext.isApprover,
+                },
+            );
 
-                if (isManagerRole(role) || isApprover || canApprovePurchaseRequest) {
-                    canApprove = true;
-                }
-            }
-            
-            // Remove workflow from response to reduce payload, but we can keep it if needed.
-            // Keeping it for debugging or detail view.
             return {
                 ...req,
                 can_approve: canApprove
@@ -375,11 +365,11 @@ export async function updatePurchaseRequest(data: UpdatePurchaseRequestInput) {
     try {
         const session = await auth();
         if (!session?.user?.id) {
-            return { success: false, error: 'Unauthorized' };
+            return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
         }
 
         const userId = parseInt(session.user.id as string) || 0;
-        const role = session.user.role?.toLowerCase() || '';
+        const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
 
         const existing = await prisma.tbl_approval_requests.findUnique({
             where: { request_id: data.requestId },
@@ -389,7 +379,14 @@ export async function updatePurchaseRequest(data: UpdatePurchaseRequestInput) {
             return { success: false, error: 'Purchase request not found' };
         }
 
-        const canEdit = existing.requested_by === userId || isManagerRole(role) || isDepartmentRole(role, 'purchasing');
+        const canEdit = canEditPurchaseRequestRecord(
+            permissionContext.role,
+            permissionContext.permissions,
+            {
+                currentUserId: userId,
+                requestedBy: existing.requested_by,
+            },
+        );
         if (!canEdit) {
             return { success: false, error: 'Permission denied' };
         }
@@ -442,12 +439,11 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
     try {
         const session = await auth();
         if (!session?.user?.id) {
-            return { success: false, error: 'Unauthorized' };
+            return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
         }
 
         const userId = parseInt(session.user.id as string) || 0;
-        const role = session.user.role?.toLowerCase() || '';
-        const isApprover = session.user.is_approver;
+        const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
 
         const currentRequest = await prisma.tbl_approval_requests.findUnique({
             where: { request_id: requestId },
@@ -463,32 +459,19 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
             return { success: false, error: 'Request not found' };
         }
 
-        let canApprove = false;
-        
-        if (role === 'admin') {
-            canApprove = true;
-        } else if (currentRequest.workflow_id && currentRequest.workflow) {
-            const currentStep = currentRequest.workflow.steps.find((s: any) => s.step_order === currentRequest.current_step);
-            if (currentStep) {
-                if (currentStep.approver_id) {
-                    canApprove = (userId === currentStep.approver_id);
-                } else if (currentStep.approver_role) {
-                    if (currentStep.approver_role === 'any_manager' || currentStep.approver_role === 'manager') {
-                        canApprove = isManagerRole(role) || !!isApprover;
-                    } else {
-                        canApprove = (role === currentStep.approver_role);
-                    }
-                }
-            }
-        } else {
-            // Fallback for requests without workflow
-            const canApprovePurchaseRequest =
-                isDepartmentRole(role, 'purchasing') && currentRequest.request_type === 'purchase';
-
-            if (isManagerRole(role) || isApprover || canApprovePurchaseRequest) {
-                canApprove = true;
-            }
-        }
+        const currentStep = currentRequest.workflow?.steps.find(
+            (step) => step.step_order === currentRequest.current_step
+        ) || null;
+        const canApprove = canApproveApprovalRequest(
+            permissionContext.role,
+            permissionContext.permissions,
+            {
+                currentUserId: userId,
+                requestType: currentRequest.request_type,
+                workflowStep: currentStep,
+                isApprover: permissionContext.isApprover,
+            },
+        );
 
         if (!canApprove) {
             return { success: false, error: 'Permission denied' };
@@ -599,8 +582,18 @@ async function sendLineNotification(request: ApprovalNotificationRequest, action
 export async function getApprovalWorkflows() {
     try {
         const session = await auth();
-        if (session?.user?.role !== 'admin' && session?.user?.role !== 'manager') {
-            return { success: false, error: 'Unauthorized' };
+        if (!session?.user) {
+            return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
+        }
+
+        const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+        if (!canAccessDashboardPage(
+            permissionContext.role,
+            permissionContext.permissions,
+            '/approvals/workflows',
+            { isApprover: permissionContext.isApprover, level: 'edit' },
+        )) {
+            return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
         }
 
         const workflows = await prisma.tbl_approval_workflows.findMany({
@@ -624,8 +617,18 @@ export async function getApprovalWorkflows() {
 export async function saveApprovalWorkflow(data: SaveApprovalWorkflowInput) {
     try {
         const session = await auth();
-        if (session?.user?.role !== 'admin') {
-            return { success: false, error: 'Unauthorized. Admin only.' };
+        if (!session?.user) {
+            return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
+        }
+
+        const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+        if (!canAccessDashboardPage(
+            permissionContext.role,
+            permissionContext.permissions,
+            '/approvals/workflows',
+            { isApprover: permissionContext.isApprover, level: 'edit' },
+        )) {
+            return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
         }
 
         // Validate basic payload
@@ -696,8 +699,18 @@ export async function saveApprovalWorkflow(data: SaveApprovalWorkflowInput) {
 export async function toggleWorkflowStatus(id: number, active: boolean) {
     try {
         const session = await auth();
-        if (session?.user?.role !== 'admin') {
-            return { success: false, error: 'Unauthorized' };
+        if (!session?.user) {
+            return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
+        }
+
+        const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+        if (!canAccessDashboardPage(
+            permissionContext.role,
+            permissionContext.permissions,
+            '/approvals/workflows',
+            { isApprover: permissionContext.isApprover, level: 'edit' },
+        )) {
+            return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
         }
 
         const updated = await prisma.tbl_approval_workflows.update({

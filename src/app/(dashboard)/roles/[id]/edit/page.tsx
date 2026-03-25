@@ -14,6 +14,8 @@ type UserData = {
     email?: string | null;
     line_user_id?: string | null;
     is_approver?: boolean;
+    is_current_user?: boolean;
+    is_role_locked?: boolean;
 };
 
 export default function EditUserPage({ params }: { params: Promise<{ id: string }> }) {
@@ -91,6 +93,8 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
         );
     }
 
+    const isSelfLockedRole = Boolean(userData?.is_current_user && userData?.is_role_locked);
+
     return (
         <div className="mx-auto mt-10 max-w-md">
             <Link href="/roles" className="mb-4 flex items-center text-sm text-gray-500 hover:text-gray-700">
@@ -109,6 +113,11 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
 
                     {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
                     {success && <div className="rounded-lg bg-green-50 p-3 text-sm text-green-600">{success}</div>}
+                    {isSelfLockedRole && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                            role ของบัญชี admin ของตัวเองถูกล็อกไว้ เปลี่ยนไม่ได้ แต่ยังแก้ไขข้อมูลอื่นได้
+                        </div>
+                    )}
 
                     <div>
                         <label htmlFor="username" className="mb-1 block text-sm font-medium text-gray-700">Username</label>
@@ -122,7 +131,7 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
                                 className="w-full cursor-not-allowed rounded-md border border-gray-300 bg-gray-100 px-3 py-2 pl-10 text-gray-500"
                             />
                         </div>
-                        <p className="mt-1 text-xs text-gray-500">Username ไม่สามารถเปลี่ยนได้</p>
+                        <p className="mt-1 text-xs text-gray-500">Username เปลี่ยนไม่ได้</p>
                     </div>
 
                     <div>
@@ -147,13 +156,17 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
                                 id="role"
                                 name="role"
                                 defaultValue={userData?.role || 'employee'}
-                                className="w-full rounded-md border border-gray-300 px-3 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                disabled={isSelfLockedRole}
+                                className="w-full rounded-md border border-gray-300 px-3 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
                             >
                                 {ROLE_OPTIONS.map((role) => (
                                     <option key={role.value} value={role.value}>{role.label}</option>
                                 ))}
                             </select>
                         </div>
+                        {isSelfLockedRole && (
+                            <p className="mt-1 text-xs text-amber-700">ระบบล็อก role `admin` ของบัญชีตัวเองไว้เสมอ</p>
+                        )}
                     </div>
 
                     <div>
@@ -207,6 +220,7 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
                             onClick={handleDelete}
                             disabled={isDeleting}
                             className="rounded-lg bg-red-100 px-4 py-3 font-bold text-red-600 transition hover:bg-red-200 disabled:opacity-50"
+                            title="ลบผู้ใช้"
                         >
                             <Trash2 className="h-5 w-5" />
                         </button>

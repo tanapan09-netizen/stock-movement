@@ -70,6 +70,11 @@ interface PartRequestItem {
     } | null;
 }
 
+interface PartsManagementClientProps {
+    canManageParts?: boolean;
+    canRespondPartAvailability?: boolean;
+}
+
 const STATUS_COLORS: Record<string, string> = {
     withdrawn: 'bg-yellow-100 text-yellow-700',
     used: 'bg-green-100 text-green-700',
@@ -82,7 +87,10 @@ const STATUS_LABELS: Record<string, string> = {
     returned: 'คืนแล้ว'
 };
 
-export default function PartsManagementClient() {
+export default function PartsManagementClient({
+    canManageParts = false,
+    canRespondPartAvailability = false,
+}: PartsManagementClientProps) {
     const { data: session } = useSession();
     const [withdrawnParts, setWithdrawnParts] = useState<MaintenancePart[]>([]);
     const [pendingPartRequests, setPendingPartRequests] = useState<PartRequestItem[]>([]);
@@ -100,9 +108,6 @@ export default function PartsManagementClient() {
         quantity: 1,
         withdrawn_by: ''
     });
-    const normalizedRole = (session?.user?.role || '').toLowerCase();
-    const canRespondPartAvailability = ['store', 'leader_store', 'manager', 'admin', 'owner'].includes(normalizedRole);
-
     async function loadData() {
         setLoading(true);
         try {
@@ -170,7 +175,7 @@ export default function PartsManagementClient() {
         const result = await returnPartToStock({
             part_id: selectedPart.part_id,
             returned_qty: returnQty,
-            returned_by: 'Admin'
+            returned_by: session?.user?.name || 'System'
         });
 
         if (result.success) {
@@ -185,7 +190,7 @@ export default function PartsManagementClient() {
     async function handleCompleteWithParts(request_id: number) {
         if (!confirm('ยืนยันเสร็จสิ้นงานและตัดสต็อกอะไหล่ที่เบิกไป?')) return;
 
-        const result = await completeMaintenanceWithParts(request_id, 'Admin');
+        const result = await completeMaintenanceWithParts(request_id, session?.user?.name || 'System');
         if (result.success) {
             loadData();
             alert('ตัดสต็อกเรียบร้อย!');
@@ -198,7 +203,7 @@ export default function PartsManagementClient() {
         if (!confirm('ต้องการเคลียร์อะไหล่ที่ค้างในระบบทั้งหมด (คืนค่าสต็อก) หรือไม่?')) return;
 
         setLoading(true);
-        const result = await clearAllReservedParts('Admin');
+        const result = await clearAllReservedParts(session?.user?.name || 'System');
         if (result.success) {
             loadData();
             alert(`เคลียร์ข้อมูลเรียบร้อย (${result.count || 0} รายการ)`);
@@ -245,6 +250,7 @@ export default function PartsManagementClient() {
                     <Link href="/maintenance" className="px-4 py-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700">
                         กลับหน้าแจ้งซ่อม
                     </Link>
+                    {canManageParts && (
                     <button
                         onClick={() => {
                             setWithdrawForm(prev => ({ ...prev, withdrawn_by: session?.user?.name || '' }));
@@ -254,12 +260,15 @@ export default function PartsManagementClient() {
                     >
                         <Plus size={18} /> เบิกอะไหล่
                     </button>
+                    )}
+                    {canManageParts && (
                     <button
                         onClick={handleClearReserved}
                         className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
                     >
                         <Undo2 size={18} /> เคลียร์คืนรายวัน
                     </button>
+                    )}
                 </div>
             </div>
 
@@ -428,7 +437,7 @@ export default function PartsManagementClient() {
                                             {part.withdrawn_by}
                                         </td>
                                         <td className="px-4 py-3 text-right">
-                                            {part.status === 'withdrawn' && (
+                                            {part.status === 'withdrawn' && canManageParts && (
                                                 <div className="flex gap-2 justify-end">
                                                     <button
                                                         onClick={() => { setSelectedPart(part); setReturnQty(part.quantity - part.returned_qty); }}

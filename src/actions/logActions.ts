@@ -2,6 +2,8 @@
 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { canManageAdminSecurity } from '@/lib/rbac';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
 
 // ... existing imports
 
@@ -9,7 +11,8 @@ import { auth } from '@/auth';
 
 export async function getSystemLogs(page = 1, limit = 20, filters?: any) {
     const session = await auth();
-    if (!session || (session.user as any).role !== 'admin') {
+    const permissionContext = await getUserPermissionContext(session?.user);
+    if (!session || !canManageAdminSecurity(permissionContext.role, permissionContext.permissions)) {
         return { success: false, error: 'Unauthorized' };
     }
 

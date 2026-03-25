@@ -20,6 +20,11 @@ import {
 import { getUpcomingPmPlans } from '@/actions/pmActions';
 import RoleHeader from '@/components/dashboard/RoleHeader';
 import MaintenanceRequestCard from '@/components/maintenance/MaintenanceRequestCard';
+import {
+    MAINTENANCE_CATEGORY_OPTIONS,
+    MAINTENANCE_PRIORITY_OPTIONS,
+    MAINTENANCE_STATUS_OPTIONS,
+} from '@/lib/maintenance-options';
 
 // ... (Interfaces remain roughly the same, explicitly defined here for safety)
 interface Room {
@@ -736,11 +741,11 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                                         required
                                     >
-                                        <option value="electrical">ไฟฟ้า</option>
-                                        <option value="plumbing">ประปา</option>
-                                        <option value="internet">อินเตอร์เน็ต</option>
-                                        <option value="furniture">เฟอร์นิเจอร์</option>
-                                        <option value="other">อื่นๆ</option>
+                                        {MAINTENANCE_CATEGORY_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div>
@@ -752,10 +757,11 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                                         required
                                     >
-                                        <option value="low">ต่ำ</option>
-                                        <option value="normal">ปานกลาง</option>
-                                        <option value="high">สูง</option>
-                                        <option value="urgent">เร่งด่วน</option>
+                                        {MAINTENANCE_PRIORITY_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>
@@ -984,10 +990,11 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                                                 onChange={(e) => setEditData({ ...editData, status: e.target.value })}
                                                 className="w-full border rounded-lg px-3 py-2 bg-white"
                                             >
-                                                <option value="pending">รอดำเนินการ</option>
-                                                <option value="in_progress">กำลังซ่อม</option>
-                                                <option value="completed">เสร็จแล้ว</option>
-                                                <option value="cancelled">ยกเลิก</option>
+                                                {MAINTENANCE_STATUS_OPTIONS.map((option) => (
+                                                    <option key={option.value} value={option.value}>
+                                                        {option.label}
+                                                    </option>
+                                                ))}
                                             </select>
                                         </div>
                                         <div>
@@ -998,10 +1005,11 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                                                 onChange={(e) => setEditData({ ...editData, priority: e.target.value })}
                                                 className="w-full border rounded-lg px-3 py-2 bg-white"
                                             >
-                                                <option value="low">ต่ำ</option>
-                                                <option value="normal">ปกติ</option>
-                                                <option value="high">สูง</option>
-                                                <option value="urgent">เร่งด่วน</option>
+                                                {MAINTENANCE_PRIORITY_OPTIONS.map((option) => (
+                                                    <option key={option.value} value={option.value}>
+                                                        {option.label}
+                                                    </option>
+                                                ))}
                                             </select>
                                         </div>
                                         <div>

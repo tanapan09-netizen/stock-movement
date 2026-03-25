@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ExternalLink, FileText, Printer, XCircle } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import { ApprovalRequest } from '../types';
+import { getApprovalRequestTypeLabel } from '@/lib/approval-options';
 
 interface ApprovalDetailModalProps {
     isOpen: boolean;
@@ -34,17 +35,6 @@ function formatTime(value: string | Date | null | undefined) {
     const date = toSafeDate(value);
     if (!date) return '-';
     return date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-}
-
-function getTypeLabel(type: string) {
-    switch (type) {
-        case 'ot': return 'ทำงานล่วงเวลา (OT)';
-        case 'leave': return 'ลาหยุด';
-        case 'expense': return 'เบิกค่าใช้จ่าย';
-        case 'purchase': return 'คำขอซื้อ';
-        case 'other': return 'อื่นๆ';
-        default: return type;
-    }
 }
 
 function getStatusLabel(status: string) {
@@ -79,7 +69,7 @@ export default function ApprovalDetailModal({ isOpen, request, onClose }: Approv
                                 {request.request_number}
                             </h2>
                             <span className="text-xs text-gray-500 dark:text-gray-400">
-                                {getTypeLabel(request.request_type)}
+                                {getApprovalRequestTypeLabel(request.request_type, 'full')}
                             </span>
                         </div>
                         <div className="mt-1 flex items-center gap-3">

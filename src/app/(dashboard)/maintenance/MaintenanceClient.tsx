@@ -56,6 +56,21 @@ import { createPartRequest } from '@/actions/partRequestActions';
 import { getActiveTechnicians } from '@/actions/technicianActions';
 import { getLineUsers } from '@/actions/lineUserActions';
 import { format } from 'date-fns';
+import {
+    canAdjustMaintenancePriority,
+    canApproveMaintenanceCompletion,
+    canConfirmMaintenancePartUsage,
+    canReassignMaintenanceRequest,
+    canReopenMaintenanceRequest,
+    canVerifyMaintenanceParts,
+    isMaintenanceTechnician,
+} from '@/lib/rbac';
+import {
+    MAINTENANCE_CATEGORY_OPTIONS,
+    MAINTENANCE_PRIORITY_OPTIONS,
+    MAINTENANCE_STATUS_OPTIONS,
+    MAINTENANCE_TARGET_ROLE_OPTIONS,
+} from '@/lib/maintenance-options';
 
 interface Room {
     room_id: number;
@@ -228,7 +243,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const { data: session } = useSession();
     const loggedInRole = ((session?.user as any)?.role || '').toString().trim().toLowerCase();
     const derivedDepartment = resolveDepartmentFromRole(loggedInRole);
-    const isApprover = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'manager' || userPermissions.can_approve;
+    const sessionIsApprover = Boolean((session?.user as any)?.is_approver || userPermissions.can_approve);
+    const canPrioritizeMaintenance = canAdjustMaintenancePriority(loggedInRole, userPermissions, sessionIsApprover);
+    const canAssignMaintenance = canReassignMaintenanceRequest(loggedInRole, userPermissions, sessionIsApprover);
+    const canVerifyParts = canVerifyMaintenanceParts(loggedInRole, userPermissions);
+    const canApproveCompletion = canApproveMaintenanceCompletion(loggedInRole, userPermissions, sessionIsApprover);
+    const canReopenClosedRequest = canReopenMaintenanceRequest(loggedInRole, userPermissions);
     const searchParams = useSearchParams();
     const reqQueryParam = searchParams.get('req');
     const [hasOpenedFromUrl, setHasOpenedFromUrl] = useState(false);
@@ -494,7 +514,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             else setTechnicians([]);
             
             if (lineUserResult.success) {
-                const lineTechs = Array.isArray(lineUserResult.data) ? (lineUserResult.data as any[]).filter(u => u.role === 'technician' && u.display_name && u.is_active) : [];
+                const lineTechs = Array.isArray(lineUserResult.data) ? (lineUserResult.data as any[]).filter(u => isMaintenanceTechnician(u.role) && u.display_name && u.is_active) : [];
                 setLineTechnicians(lineTechs);
             } else setLineTechnicians([]);
             
@@ -1039,7 +1059,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         if (!ensureCanEditPage()) return;
 
         // Validation for technician role and in_progress status
-        const isTechnician = (session?.user as any)?.role === 'technician';
+        const isTechnician = isMaintenanceTechnician(loggedInRole);
         if (isTechnician && editData.status === 'completed') {
             const hasParts = parts.length > 0;
             const allVerified = parts.every(p => p.status === 'verified');
@@ -1059,7 +1079,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             notes: editData.notes || undefined
         };
 
-        if ((session?.user as any)?.role === 'technician' && submitData.status === 'completed') {
+        if (isMaintenanceTechnician(loggedInRole) && submitData.status === 'completed') {
             submitData.status = 'confirmed';
         }
 
@@ -1634,11 +1654,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                                         required
                                     >
-                                        <option value="electrical">ไฟฟ้า</option>
-                                        <option value="plumbing">ประปา</option>
-                                        <option value="internet">อินเตอร์เน็ต</option>
-                                        <option value="furniture">เฟอร์นิเจอร์</option>
-                                        <option value="other">อื่นๆ</option>
+                                        {MAINTENANCE_CATEGORY_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div>
@@ -1650,10 +1670,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:border-slate-600"
                                         required
                                     >
-                                        <option value="low">ต่ำ</option>
-                                        <option value="normal">ปานกลาง</option>
-                                        <option value="high">สูง</option>
-                                        <option value="urgent">เร่งด่วน</option>
+                                        {MAINTENANCE_PRIORITY_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>
@@ -1702,15 +1723,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none dark:bg-slate-700 dark:border-slate-600"
                                         required
                                     >
-                                        <option value="general">General (ทั่วไป)</option>
-                                        <option value="technician">Technician (ช่างซ่อมบำรุง)</option>
-                                        <option value="maid">Maid (แม่บ้าน)</option>
-                                        <option value="driver">Driver (คนขับรถ)</option>
-                                        <option value="purchasing">Purchasing (จัดซื้อ)</option>
-                                        <option value="store">Store (คลังสินค้า)</option>
-                                        <option value="accounting">Accounting (บัญชี)</option>
-                                        <option value="manager">Manager (ผู้จัดการ)</option>
-                                        <option value="admin">Admin (ผู้ดูแลระบบ)</option>
+                                        {MAINTENANCE_TARGET_ROLE_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>
@@ -2057,11 +2074,19 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                             }}
                                             className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
                                         >
-                                            {(!isApprover && editData.status === 'pending') && <option value="pending">รอดำเนินการ</option>}
-                                            {isApprover && <option value="pending">รอดำเนินการ</option>}
-                                            <option value="in_progress">กำลังซ่อม</option>
-                                            <option value="completed">เสร็จแล้ว</option>
-                                            {isApprover && <option value="cancelled">ยกเลิก</option>}
+                                            {MAINTENANCE_STATUS_OPTIONS.filter((option) => {
+                                                if (option.value === 'pending') {
+                                                    return sessionIsApprover || editData.status === 'pending';
+                                                }
+                                                if (option.value === 'cancelled') {
+                                                    return sessionIsApprover;
+                                                }
+                                                return true;
+                                            }).map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
                                         </select>
                                     </div>
                                     <div>
@@ -2069,13 +2094,14 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         <select
                                             value={editData.priority}
                                             onChange={(e) => setEditData({ ...editData, priority: e.target.value })}
-                                            className={`w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 ${!isApprover ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                                            disabled={!isApprover}
+                                            className={`w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 ${!canPrioritizeMaintenance ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                            disabled={!canPrioritizeMaintenance}
                                         >
-                                            <option value="low">ต่ำ</option>
-                                            <option value="normal">ปกติ</option>
-                                            <option value="high">สูง</option>
-                                            <option value="urgent">เร่งด่วน</option>
+                                            {MAINTENANCE_PRIORITY_OPTIONS.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
                                         </select>
                                     </div>
                                     <div>
@@ -2083,8 +2109,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         <select
                                             value={editData.assigned_to || ''}
                                             onChange={(e) => setEditData({ ...editData, assigned_to: e.target.value })}
-                                            className={`w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 ${selectedRequest.status === 'in_progress' && !isApprover ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                                            disabled={selectedRequest.status === 'in_progress' && !isApprover}
+                                            className={`w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 ${selectedRequest.status === 'in_progress' && !canAssignMaintenance ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                                            disabled={selectedRequest.status === 'in_progress' && !canAssignMaintenance}
                                         >
                                             <option value="">-- ไม่ระบุ --</option>
                                             {Array.from(new Set([
@@ -2267,7 +2293,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                                 </div>
 
                                                 {/* Technician Action: Confirm Usage */}
-                                                {part.status === 'withdrawn' && (session?.user as any)?.role !== 'store' && (
+                                                {part.status === 'withdrawn' && canConfirmMaintenancePartUsage(loggedInRole) && (
                                                     <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
                                                         {confirmingPartId === part.part_id ? (
                                                             <div className="flex flex-col gap-2">
@@ -2326,7 +2352,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                                 )}
 
                                                 {/* Store Action: Verify */}
-                                                {part.status === 'pending_verification' && ((session?.user as any)?.role === 'store' || (session?.user as any)?.role === 'admin') && (
+                                                {part.status === 'pending_verification' && canVerifyParts && (
                                                     <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600 bg-yellow-50/50 dark:bg-yellow-900/10 -mx-3 px-3 pb-2 rounded-b-lg">
                                                         {verifyingPartId === part.part_id ? (
                                                             <div className="flex flex-col gap-2">
@@ -2461,11 +2487,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                                 <div>
                                                     <span className="font-medium">{getHistoryActionLabel(h.action)}</span>
                                                     {h.old_value && h.new_value && (
-                                                        <span className="text-gray-500"> ({h.old_value} เนยโ€ {h.new_value})</span>
+                                                        <span className="text-gray-500"> ({h.old_value} → {h.new_value})</span>
                                                     )}
                                                 </div>
                                                 <div className="text-gray-500">
-                                                    {h.changed_by} โ€ข {new Date(h.changed_at).toLocaleString('th-TH')}
+                                                   โดย {h.changed_by} เมื่อ {new Date(h.changed_at).toLocaleString('th-TH')}
                                                 </div>
                                             </div>
                                         ))}
@@ -2481,7 +2507,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                     ปิด
                                 </button>
 
-                                {(session?.user as any)?.role === 'manager' && ['completed', 'cancelled'].includes(selectedRequest.status) && (
+                                {canReopenClosedRequest && ['completed', 'cancelled'].includes(selectedRequest.status) && (
                                     <button
                                         onClick={() => {
                                             setReopenRequest(selectedRequest);
@@ -2496,7 +2522,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                     </button>
                                 )}
 
-                                {['head_technician', 'admin', 'manager'].includes((session?.user as any)?.role || '') && selectedRequest.status === 'confirmed' && (
+                                {canApproveCompletion && selectedRequest.status === 'confirmed' && (
                                     <button
                                         onClick={handleHeadTechnicianApproval}
                                         disabled={!canEditPage}
@@ -2508,7 +2534,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                 )}
 
                                 {!['completed', 'cancelled'].includes(selectedRequest.status)
-                                    && !((session?.user as any)?.role === 'head_technician' && selectedRequest.status === 'confirmed') && (
+                                    && !(loggedInRole === 'head_technician' && selectedRequest.status === 'confirmed') && (
                                     <button
                                         onClick={handleUpdateRequest}
                                         disabled={!canEditPage}

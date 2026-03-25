@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { canManageAdminSecurity } from '@/lib/rbac';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
 
 // Default Fallback Values
 const DEFAULTS = {
@@ -25,7 +27,8 @@ const DEFAULTS = {
 export async function GET() {
     try {
         const session = await auth();
-        if (!session || (session.user as any).role !== 'admin') {
+        const permissionContext = await getUserPermissionContext(session?.user);
+        if (!session || !canManageAdminSecurity(permissionContext.role, permissionContext.permissions)) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -67,7 +70,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
     try {
         const session = await auth();
-        if (!session || (session.user as any).role !== 'admin') {
+        const permissionContext = await getUserPermissionContext(session?.user);
+        if (!session || !canManageAdminSecurity(permissionContext.role, permissionContext.permissions)) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 

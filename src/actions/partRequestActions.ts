@@ -6,8 +6,29 @@ import { auth } from '@/auth';
 import { uploadFile } from '@/lib/gcs';
 import { logSystemAction } from '@/lib/logger';
 import { generatePurchaseRequestNumber } from '@/lib/requestUtils';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
+import {
+    canApprovePartRequestStage,
+    canCreatePartRequest,
+    canDeletePartRequest,
+    canUpdatePartRequestStatus,
+} from '@/lib/rbac';
 
 // ...
+
+async function getPartRequestAuthContext() {
+    const session = await auth();
+    if (!session?.user) {
+        return null;
+    }
+
+    const permissionContext = await getUserPermissionContext(session.user);
+
+    return {
+        session,
+        ...permissionContext,
+    };
+}
 
 export async function getPartRequests(filters?: {
     status?: string;
@@ -45,9 +66,17 @@ export async function getPartRequests(filters?: {
 
 export async function createPartRequest(formData: FormData) {
     try {
-        const session = await auth();
-        if (!session || !session.user) {
+        const authContext = await getPartRequestAuthContext();
+        if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canCreatePartRequest(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        )) {
+            return { success: false, error: 'Permission denied' };
         }
 
         // Extract form data
@@ -102,7 +131,7 @@ export async function createPartRequest(formData: FormData) {
                 quotation_file: quotation_file_path,
                 quotation_link,
                 status: 'pending',
-                requested_by: session.user.name || 'Unknown',
+                requested_by: authContext.session.user.name || 'Unknown',
                 approval_notes: null,
                 // Phase 1 Fields
                 request_type,
@@ -142,8 +171,8 @@ export async function createPartRequest(formData: FormData) {
             'PartRequest',
             request.request_id,
             `Created part request: ${request.item_name} (Qty: ${request.quantity})`,
-            (parseInt(session.user.id as string) || 0),
-            session.user.name,
+            (parseInt(authContext.session.user.id as string) || 0),
+            authContext.session.user.name,
             'unknown'
         );
 
@@ -159,9 +188,17 @@ export async function updatePartRequestStatus(
     status: string
 ) {
     try {
-        const session = await auth();
-        if (!session || !session.user) {
+        const authContext = await getPartRequestAuthContext();
+        if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canUpdatePartRequestStatus(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        )) {
+            return { success: false, error: 'Permission denied' };
         }
 
         // Get current request for notification
@@ -206,8 +243,8 @@ export async function updatePartRequestStatus(
             'PartRequest',
             request_id,
             `Updated status to ${status} for item: ${currentRequest?.item_name}`,
-            (parseInt(session.user.id as string) || 0),
-            session.user.name,
+            (parseInt(authContext.session.user.id as string) || 0),
+            authContext.session.user.name,
             'unknown'
         );
 
@@ -220,9 +257,17 @@ export async function updatePartRequestStatus(
 
 export async function deletePartRequest(request_id: number) {
     try {
-        const session = await auth();
-        if (!session || !session.user) {
+        const authContext = await getPartRequestAuthContext();
+        if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canDeletePartRequest(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        )) {
+            return { success: false, error: 'Permission denied' };
         }
 
         // Get details before delete for logging
@@ -240,8 +285,8 @@ export async function deletePartRequest(request_id: number) {
             'PartRequest',
             request_id,
             `Deleted part request: ${request?.item_name}`,
-            (parseInt(session.user.id as string) || 0),
-            session.user.name,
+            (parseInt(authContext.session.user.id as string) || 0),
+            authContext.session.user.name,
             'unknown'
         );
 
@@ -260,12 +305,12 @@ export async function approvePartRequest(
     notes?: string
 ) {
     try {
-        const session = await auth();
-        if (!session || !session.user) {
+        const authContext = await getPartRequestAuthContext();
+        if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
         }
 
-        const user_name = session.user.name || 'Unknown';
+        const user_name = authContext.session.user.name || 'Unknown';
 
         // Get current request
         const request = await prisma.tbl_part_requests.findUnique({
@@ -277,6 +322,15 @@ export async function approvePartRequest(
         }
 
         const currentStage = request.current_stage || 0;
+        if (!canApprovePartRequestStage(
+            authContext.role,
+            authContext.permissions,
+            currentStage,
+            authContext.isApprover,
+        )) {
+            return { success: false, error: 'Permission denied' };
+        }
+
         const data: any = {};
 
         if (action === 'reject') {
@@ -343,8 +397,8 @@ export async function approvePartRequest(
             'PartRequest',
             request_id,
             `${action === 'approve' ? 'Approved' : 'Rejected'} part request (Stage ${currentStage})`,
-            (parseInt(session.user.id as string) || 0),
-            session.user.name,
+            (parseInt(authContext.session.user.id as string) || 0),
+            authContext.session.user.name,
             'unknown'
         );
 

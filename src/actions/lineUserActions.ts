@@ -9,6 +9,34 @@ import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import { logSystemAction } from '@/lib/logger';
+import {
+    canManageAdminSecurity,
+    canReceiveApprovalRequestNotification,
+    canReceiveApprovalStepNotification,
+    canReceiveDailySummary,
+    mergePermissionMaps,
+    type PagePermissionMap,
+} from '@/lib/rbac';
+import { DEFAULT_PERMISSIONS, type RolePermissions } from '@/lib/permissions';
+import { normalizeRole } from '@/lib/roles';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
+
+async function getLineUserAdminContext() {
+    const session = await auth();
+    if (!session?.user) {
+        return null;
+    }
+
+    const permissionContext = await getUserPermissionContext(session.user);
+    if (!canManageAdminSecurity(permissionContext.role, permissionContext.permissions)) {
+        return null;
+    }
+
+    return {
+        session,
+        ...permissionContext,
+    };
+}
 
 /**
  * Get LINE user ID by username
@@ -31,6 +59,11 @@ export async function getLineIdByUsername(username: string): Promise<string | nu
  */
 export async function getLineUsers() {
     try {
+        const authContext = await getLineUserAdminContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
         const users = await prisma.tbl_line_users.findMany({
             orderBy: [
                 { is_approver: 'desc' },
@@ -89,13 +122,108 @@ export async function getLineIdsByRoles(roles: string[]): Promise<string[]> {
     }
 }
 
+export async function getDailySummaryLineIds(): Promise<string[]> {
+    try {
+        return await collectEligibleLineIds((role, permissions) =>
+            canReceiveDailySummary(role, permissions)
+        );
+    } catch (error) {
+        console.error('Error fetching LINE IDs for daily summary:', error);
+        return [];
+    }
+}
+
+async function collectEligibleLineIds(
+    predicate: (role: string, permissions: PagePermissionMap) => boolean,
+): Promise<string[]> {
+    const userRows = await prisma.tbl_users.findMany({
+        where: {
+            line_user_id: { not: null },
+        },
+        select: {
+            role: true,
+            custom_permissions: true,
+            line_user_id: true,
+        },
+    });
+
+    const lineUserRows = await prisma.tbl_line_users.findMany({
+        where: {
+            is_active: true,
+            line_user_id: { not: '' },
+        },
+        select: {
+            role: true,
+            line_user_id: true,
+        },
+    });
+
+    const ids = new Set<string>();
+
+    userRows.forEach((user) => {
+        const normalizedRole = normalizeRole(user.role);
+        const defaultPermissions = DEFAULT_PERMISSIONS[normalizedRole] || {};
+        let customPermissions: RolePermissions = {};
+
+        if (user.custom_permissions) {
+            try {
+                customPermissions = JSON.parse(user.custom_permissions) as RolePermissions;
+            } catch (error) {
+                console.error('Failed to parse custom permissions for LINE recipient:', error);
+            }
+        }
+
+        const mergedPermissions = mergePermissionMaps<PagePermissionMap>(
+            defaultPermissions,
+            customPermissions,
+        );
+
+        if (user.line_user_id && predicate(normalizedRole, mergedPermissions)) {
+            ids.add(user.line_user_id);
+        }
+    });
+
+    lineUserRows.forEach((user) => {
+        const normalizedRole = normalizeRole(user.role);
+        const defaultPermissions = (DEFAULT_PERMISSIONS[normalizedRole] || {}) as PagePermissionMap;
+
+        if (predicate(normalizedRole, defaultPermissions)) {
+            ids.add(user.line_user_id);
+        }
+    });
+
+    return Array.from(ids);
+}
+
+export async function getApprovalRecipientLineIds(requestType: string): Promise<string[]> {
+    try {
+        return await collectEligibleLineIds((role, permissions) =>
+            canReceiveApprovalRequestNotification(role, permissions, requestType)
+        );
+    } catch (error) {
+        console.error('Error fetching LINE IDs for approval recipients:', error);
+        return [];
+    }
+}
+
+export async function getApprovalStepLineIds(approverRole: string): Promise<string[]> {
+    try {
+        return await collectEligibleLineIds((role, permissions) =>
+            canReceiveApprovalStepNotification(role, permissions, approverRole)
+        );
+    } catch (error) {
+        console.error('Error fetching LINE IDs for approval step recipients:', error);
+        return [];
+    }
+}
+
 /**
  * Toggle approver status
  */
 export async function toggleApprover(id: number, isApprover: boolean) {
     try {
-        const session = await auth();
-        if (!session || !session.user) {
+        const authContext = await getLineUserAdminContext();
+        if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
         }
 
@@ -111,8 +239,8 @@ export async function toggleApprover(id: number, isApprover: boolean) {
             'LineUser',
             id,
             `Toggled approver status to ${isApprover}`,
-            (parseInt(session.user.id as string) || 0),
-            session.user.name,
+            (parseInt(authContext.session.user.id as string) || 0),
+            authContext.session.user.name,
             'unknown'
         );
 
@@ -128,8 +256,8 @@ export async function toggleApprover(id: number, isApprover: boolean) {
  */
 export async function toggleLineUserActive(id: number, isActive: boolean) {
     try {
-        const session = await auth();
-        if (!session || !session.user) {
+        const authContext = await getLineUserAdminContext();
+        if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
         }
 
@@ -145,8 +273,8 @@ export async function toggleLineUserActive(id: number, isActive: boolean) {
             'LineUser',
             id,
             `Toggled active status to ${isActive}`,
-            (parseInt(session.user.id as string) || 0),
-            session.user.name,
+            (parseInt(authContext.session.user.id as string) || 0),
+            authContext.session.user.name,
             'unknown'
         );
 
@@ -162,8 +290,8 @@ export async function toggleLineUserActive(id: number, isActive: boolean) {
  */
 export async function updateLineUserRole(id: number, role: string) {
     try {
-        const session = await auth();
-        if (!session || !session.user) {
+        const authContext = await getLineUserAdminContext();
+        if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
         }
 
@@ -179,8 +307,8 @@ export async function updateLineUserRole(id: number, role: string) {
             'LineUser',
             id,
             `Updated role to ${role}`,
-            (parseInt(session.user.id as string) || 0),
-            session.user.name || 'System',
+            (parseInt(authContext.session.user.id as string) || 0),
+            authContext.session.user.name || 'System',
             'unknown'
         );
 
@@ -196,8 +324,8 @@ export async function updateLineUserRole(id: number, role: string) {
  */
 export async function updateLineUserFullName(id: number, fullName: string) {
     try {
-        const session = await auth();
-        if (!session || !session.user) {
+        const authContext = await getLineUserAdminContext();
+        if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
         }
 
@@ -213,8 +341,8 @@ export async function updateLineUserFullName(id: number, fullName: string) {
             'LineUser',
             id,
             `Updated full name to ${fullName}`,
-            (parseInt(session.user.id as string) || 0),
-            session.user.name || 'System',
+            (parseInt(authContext.session.user.id as string) || 0),
+            authContext.session.user.name || 'System',
             'unknown'
         );
 
@@ -230,8 +358,8 @@ export async function updateLineUserFullName(id: number, fullName: string) {
  */
 export async function deleteLineUser(id: number) {
     try {
-        const session = await auth();
-        if (!session || !session.user) {
+        const authContext = await getLineUserAdminContext();
+        if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
         }
 
@@ -244,8 +372,8 @@ export async function deleteLineUser(id: number) {
             'LineUser',
             id,
             'Deleted LINE user',
-            (parseInt(session.user.id as string) || 0),
-            session.user.name,
+            (parseInt(authContext.session.user.id as string) || 0),
+            authContext.session.user.name,
             'unknown'
         );
 
@@ -263,8 +391,8 @@ export async function deleteLineUser(id: number) {
  */
 export async function refreshLineUserProfiles() {
     try {
-        const session = await auth();
-        if (!session || !session.user) {
+        const authContext = await getLineUserAdminContext();
+        if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
         }
 

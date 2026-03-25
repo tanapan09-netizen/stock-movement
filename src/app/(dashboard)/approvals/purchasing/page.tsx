@@ -3,7 +3,8 @@ import { redirect } from 'next/navigation';
 import ApprovalClient from '../ApprovalClient';
 import { getApprovalRequests } from '@/actions/approvalActions';
 import { getMaintenanceRequests } from '@/actions/maintenanceActions';
-import { isDepartmentRole, isManagerRole } from '@/lib/roles';
+import { canAccessPurchasingApprovals } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 interface MaintenanceRequestStatusLike {
     status?: string | null;
@@ -23,9 +24,16 @@ export default async function PurchasingApprovalsPage() {
     const requestsRes = await getApprovalRequests();
     const maintenanceRes = await getMaintenanceRequests();
 
-    const role = session.user.role?.toLowerCase() || '';
-    const isApprover = session.user.is_approver || false;
-    const canApprove = isManagerRole(role) || isDepartmentRole(role, 'purchasing') || isApprover;
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+    const canApprove = canAccessPurchasingApprovals(
+        permissionContext.role,
+        permissionContext.permissions,
+        permissionContext.isApprover,
+    );
+
+    if (!canApprove) {
+        redirect('/approvals');
+    }
 
     return (
         <ApprovalClient

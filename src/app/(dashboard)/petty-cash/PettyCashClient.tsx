@@ -12,11 +12,30 @@ import {
     deletePettyCashRequest,
     verifyOriginalReceipt
 } from '@/actions/pettyCashActions';
-import { getSession } from 'next-auth/react';
 import Link from 'next/link';
 import { Eye, Edit, Trash2, CheckCircle, XCircle, Search, ExternalLink, FileText, Upload, Printer, Plus, DollarSign, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/components/ToastProvider';
 import PettyCashFundDisplay from './components/PettyCashFundDisplay';
+import type { PagePermissionMap } from '@/lib/rbac';
+import {
+    getPettyCashStatusBadgeClass,
+    getPettyCashStatusLabel,
+    isPettyCashActiveStatus,
+    isPettyCashHistoryStatus,
+} from '@/lib/pettyCash';
+import {
+    canAccessPettyCashDashboard,
+    canApprovePettyCashRequest,
+    canCreatePettyCashRequest,
+    canDeletePettyCashEntry,
+    canDispensePettyCashRequest,
+    canManagePettyCashAccounting,
+    canReplenishPettyCashFund,
+    canReconcilePettyCashRequest,
+    canSubmitPettyCashClearance,
+    canUpdatePettyCashFundLimit,
+    canVerifyPettyCashReceipt,
+} from '@/lib/rbac';
 
 // --- Custom Confirm Modal Component ---
 function ConfirmModal({ open, title, message, confirmLabel, confirmColor, onConfirm, onCancel }: {
@@ -162,16 +181,29 @@ type PettyCash = {
     reconciled_at: Date | null;
 };
 
-export default function PettyCashClient() {
+interface PettyCashClientProps {
+    currentUserName: string;
+    role: string;
+    permissions: PagePermissionMap;
+    isApprover: boolean;
+}
+
+export default function PettyCashClient({
+    currentUserName,
+    role,
+    permissions,
+    isApprover,
+}: PettyCashClientProps) {
     const [requests, setRequests] = useState<PettyCash[]>([]);
     const [loading, setLoading] = useState(true);
-    const [userRole, setUserRole] = useState<string>('');
-    const [userName, setUserName] = useState<string>('');
-    const [isApprover, setIsApprover] = useState<boolean>(false);
     const [currentTab, setCurrentTab] = useState('active'); // active, history
     const { showToast } = useToast();
 
-    const isAdminOrAccounting = ['admin', 'manager', 'accounting'].includes(userRole);
+    const canManageAccounting = canManagePettyCashAccounting(role, permissions);
+    const canOpenDashboard = canAccessPettyCashDashboard(role, permissions);
+    const canCreateRequest = canCreatePettyCashRequest(role, permissions, isApprover);
+    const canReplenishFund = canReplenishPettyCashFund(role, permissions);
+    const canEditFundLimit = canUpdatePettyCashFundLimit(role, permissions);
 
     // Modals
     const [showDispenseModal, setShowDispenseModal] = useState(false);
@@ -253,13 +285,6 @@ export default function PettyCashClient() {
 
     const loadData = async () => {
         setLoading(true);
-        const session = await getSession();
-        if (session?.user) {
-            setUserRole((session.user as any).role?.toLowerCase() || '');
-            setUserName(session.user.name || '');
-            setIsApprover((session.user as any).is_approver === true);
-        }
-
         const res = await getPettyCashRequests();
         if (res.success && res.data) {
             setRequests(res.data as any);
@@ -269,13 +294,11 @@ export default function PettyCashClient() {
         setLoading(false);
     };
 
-    const isAccountingOrAdmin = ['admin', 'accounting'].includes(userRole);
-
     const filteredRequests = requests.filter(req => {
         if (currentTab === 'active') {
-            return ['pending', 'approved', 'dispensed', 'clearing'].includes(req.status);
+            return isPettyCashActiveStatus(req.status);
         } else {
-            return ['reconciled', 'rejected'].includes(req.status);
+            return isPettyCashHistoryStatus(req.status);
         }
     });
 
@@ -432,18 +455,11 @@ export default function PettyCashClient() {
         });
     };
 
-    const getStatusBadge = (status: string) => {
-        const styles = {
-            pending: { class: 'bg-yellow-100 text-yellow-800', label: 'รออนุมัติ' },
-            approved: { class: 'bg-emerald-100 text-emerald-800', label: 'อนุมัติแล้ว' },
-            dispensed: { class: 'bg-blue-100 text-blue-800', label: 'จ่ายเงินแล้ว' },
-            clearing: { class: 'bg-indigo-100 text-indigo-800', label: 'รอตรวจเคลียร์' },
-            reconciled: { class: 'bg-green-100 text-green-800', label: 'ปิดยอดแล้ว' },
-            rejected: { class: 'bg-red-100 text-red-800', label: 'ถูกปฏิเสธ' }
-        };
-        const st = styles[status as keyof typeof styles] || { class: 'bg-gray-100 text-gray-800', label: status };
-        return <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${st.class}`}>{st.label}</span>;
-    };
+    const getStatusBadge = (status: string) => (
+        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getPettyCashStatusBadgeClass(status)}`}>
+            {getPettyCashStatusLabel(status)}
+        </span>
+    );
 
     return (
         <div className="p-6">
@@ -453,7 +469,7 @@ export default function PettyCashClient() {
                     <p className="text-sm text-gray-500">จัดการการเบิกเงินสดสำรองจ่ายและเคลียร์เงิน</p>
                 </div>
                 <div className="flex gap-3">
-                    {isAdminOrAccounting && (
+                    {canOpenDashboard && (
                         <Link
                             href="/petty-cash/dashboard"
                             className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition"
@@ -461,17 +477,22 @@ export default function PettyCashClient() {
                             <FileText className="w-5 h-5 mr-2" /> ภาพรวมเงินสดย่อย
                         </Link>
                     )}
-                    <Link
-                        href="/petty-cash/new"
-                        className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
-                    >
+                    {canCreateRequest && (
+                        <Link
+                            href="/petty-cash/new"
+                            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+                        >
                         <Plus className="w-5 h-5 mr-2" /> เบิกเงินสดย่อย
-                    </Link>
+                        </Link>
+                    )}
                 </div>
             </div>
 
             {/* Fund Display */}
-            <PettyCashFundDisplay isAdminOrAccounting={isAdminOrAccounting} />
+            <PettyCashFundDisplay
+                canReplenishFund={canReplenishFund}
+                canUpdateFundLimit={canEditFundLimit}
+            />
 
             {/* Tabs */}
             <div className="border-b border-gray-200 mb-6">
@@ -550,7 +571,7 @@ export default function PettyCashClient() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
                                             {/* Receipt Toggle logic */}
-                                            {isAdminOrAccounting ? (
+                                            {canVerifyPettyCashReceipt(role, permissions) ? (
                                                 <button
                                                     onClick={() => handleVerifyReceipt(req.id, req.has_original_receipt)}
                                                     className={`p-1.5 rounded-full transition-colors ${req.has_original_receipt ? 'bg-green-100 text-green-600 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
@@ -575,25 +596,34 @@ export default function PettyCashClient() {
                                             <button onClick={() => { setSelectedRequest(req); setShowDetailsModal(true); }} className="text-gray-600 hover:text-gray-900 mr-3" title="ดูรายละเอียด">
                                                 <ExternalLink className="w-4 h-4 inline" />
                                             </button>
-                                            {req.status === 'pending' && (isApprover || userRole === 'admin' || userRole === 'manager') && (
+                                            {req.status === 'pending' && canApprovePettyCashRequest(role, permissions, isApprover) && (
                                                 <>
                                                     <button onClick={() => handleApprove(req.id)} className="text-emerald-600 hover:text-emerald-900 mr-3">อนุมัติ</button>
                                                     <button onClick={() => handleDirectReject(req.id)} className="text-orange-600 hover:text-orange-900 mr-3">ไม่อนุมัติ</button>
                                                 </>
                                             )}
-                                            {['pending', 'approved'].includes(req.status) && isAccountingOrAdmin && (
+                                            {['pending', 'approved'].includes(req.status) && canDispensePettyCashRequest(role, permissions) && (
                                                 <button onClick={() => { setSelectedRequest(req); setFormData({ ...formData, dispensed_amount: String(req.requested_amount) }); setShowDispenseModal(true); }} className="text-blue-600 hover:text-blue-900 mr-3">จ่ายเงิน</button>
                                             )}
-                                            {req.status === 'dispensed' && (userName === req.requested_by || isAccountingOrAdmin) && (
+                                            {req.status === 'dispensed' && canSubmitPettyCashClearance(role, permissions, {
+                                                currentUserName,
+                                                ownerName: req.requested_by,
+                                                isApprover,
+                                            }) && (
                                                 <button onClick={() => { setSelectedRequest(req); setFormData({ ...formData, actual_spent: String(req.dispensed_amount) }); setShowClearModal(true); }} className="text-indigo-600 hover:text-indigo-900 mr-3">เคลียร์เงิน</button>
                                             )}
-                                            {req.status === 'clearing' && isAccountingOrAdmin && (
+                                            {req.status === 'clearing' && canReconcilePettyCashRequest(role, permissions) && (
                                                 <button onClick={() => { setSelectedRequest(req); setShowReconcileModal(true); }} className="text-green-600 hover:text-green-900 mr-3">ปิดยอด (Reconcile)</button>
                                             )}
-                                            {req.status === 'pending' && userName === req.requested_by && !isAccountingOrAdmin && (
+                                            {canDeletePettyCashEntry(role, permissions, {
+                                                currentUserName,
+                                                ownerName: req.requested_by,
+                                                status: req.status,
+                                                isApprover,
+                                            }) && (
                                                 <button onClick={() => handleDelete(req.id)} className="text-red-600 hover:text-red-900 mr-3">ยกเลิก</button>
                                             )}
-                                            {userRole === 'admin' && (
+                                            {false && (
                                                 <button onClick={() => handleDelete(req.id)} className="text-red-600 hover:text-red-900" title="ลบถาวร"><Trash2 className="w-4 h-4 inline" /></button>
                                             )}
                                         </td>

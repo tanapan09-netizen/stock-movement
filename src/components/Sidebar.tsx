@@ -31,11 +31,12 @@ import {
     ScrollText
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
-import { getPagePermissionKey, PERMISSIONS, RolePermissions } from '@/lib/permissions';
+import { PERMISSIONS, RolePermissions } from '@/lib/permissions';
 import { useSidebar } from '@/contexts/SidebarContext';
 import QrScannerModal from './QrScannerModal';
 import { QrCode } from 'lucide-react';
 import { getRoleDisplayName, isAdminRole, isDepartmentRole, isManagerRole } from '@/lib/roles';
+import { canAccessDashboardPage } from '@/lib/rbac';
 
 
 interface SidebarProps {
@@ -44,7 +45,7 @@ interface SidebarProps {
 export default function Sidebar(props: SidebarProps) {
     const pathname = usePathname();
     const { data: session } = useSession();
-    const user = session?.user;
+    const user = session?.user as { role?: string; name?: string | null; is_approver?: boolean } | undefined;
     const role = user?.role || 'user';
     const normalizedRole = String(role).toLowerCase();
     const isPurchasingTeam = isDepartmentRole(normalizedRole, 'purchasing');
@@ -52,6 +53,7 @@ export default function Sidebar(props: SidebarProps) {
     const isOperationTeam = isDepartmentRole(normalizedRole, 'operation');
     const isAdminTeam = isAdminRole(normalizedRole);
     const isManagerTeam = isManagerRole(normalizedRole);
+    const isApprover = Boolean(user?.is_approver);
 
     // Default to empty permissions if not provided (will be fixed by layout)
     const permissions = props.permissions || {};
@@ -87,10 +89,7 @@ export default function Sidebar(props: SidebarProps) {
     const isActive = (path: string) => pathname === path;
     const can = (key: string) => !!permissions[key];
     const canAccessPage = (route: string) =>
-        Boolean(
-            permissions[getPagePermissionKey(route, 'read')] ||
-            permissions[getPagePermissionKey(route, 'edit')]
-        );
+        canAccessDashboardPage(normalizedRole, permissions, route, { isApprover });
     const canGeneralRequestPage = canAccessPage('/general-request');
     const canMaintenancePage = canAccessPage('/maintenance');
     const canPurchasingApprovalsPage = canAccessPage('/approvals/purchasing');

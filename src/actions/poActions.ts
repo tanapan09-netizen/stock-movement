@@ -1,10 +1,11 @@
 'use server';
 
 import { auth } from '@/auth';
-import { isDepartmentRole } from '@/lib/roles';
 import { prisma } from '@/lib/prisma';
+import { canEditPurchaseOrders, canReceivePurchaseOrders } from '@/lib/rbac';
 import { tbl_purchase_orders_status } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 type POItemInput = {
     p_id: string;
@@ -17,8 +18,6 @@ type SessionUserLike = {
     role?: string;
     name?: string | null;
 };
-
-const isPurchasingRole = (role?: string | null) => isDepartmentRole(role, 'purchasing');
 
 function parseItems(itemsJson: string): POItemInput[] | null {
     try {
@@ -35,8 +34,9 @@ export async function createPO(formData: FormData) {
     }
 
     const user = session.user as SessionUserLike;
-    if (!isPurchasingRole(user.role)) {
-        return { error: 'Only purchasing role can create purchase orders' };
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+    if (!canEditPurchaseOrders(permissionContext.permissions)) {
+        return { error: 'Permission denied' };
     }
 
     const createdByUserId = Number.parseInt(user.id || '', 10);
@@ -116,8 +116,9 @@ export async function receivePO(po_id: number) {
     }
 
     const user = session.user as SessionUserLike;
-    if (!isPurchasingRole(user.role)) {
-        return { error: 'Only purchasing role can receive purchase orders' };
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+    if (!canReceivePurchaseOrders(permissionContext.permissions)) {
+        return { error: 'Permission denied' };
     }
 
     const username = user.name || 'System';
@@ -193,8 +194,9 @@ export async function updatePO(formData: FormData) {
     }
 
     const user = session.user as SessionUserLike;
-    if (!isPurchasingRole(user.role)) {
-        return { error: 'Only purchasing role can edit purchase orders' };
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+    if (!canEditPurchaseOrders(permissionContext.permissions)) {
+        return { error: 'Permission denied' };
     }
 
     const po_id = parseInt(formData.get('po_id') as string, 10);
@@ -281,8 +283,9 @@ export async function deletePO(po_id: number) {
     }
 
     const user = session.user as SessionUserLike;
-    if (!isPurchasingRole(user.role)) {
-        return { error: 'Only purchasing role can delete purchase orders' };
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+    if (!canEditPurchaseOrders(permissionContext.permissions)) {
+        return { error: 'Permission denied' };
     }
 
     try {

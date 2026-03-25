@@ -2,10 +2,18 @@ import { prisma } from '@/lib/prisma';
 import { createWarehouse, deleteWarehouse } from '@/actions/warehouseActions';
 import { Warehouse, Trash2, Plus } from 'lucide-react';
 import { auth } from '@/auth';
+import { canAccessDashboardPage } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 export default async function WarehousePage() {
     const session = await auth();
-    const isAdmin = (session?.user as { role?: string })?.role === 'admin';
+    const permissionContext = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
+    const canEditPage = canAccessDashboardPage(
+        permissionContext.role,
+        permissionContext.permissions,
+        '/warehouses',
+        { isApprover: permissionContext.isApprover, level: 'edit' },
+    );
 
     const warehouses = await prisma.tbl_warehouses.findMany();
 
@@ -18,6 +26,7 @@ export default async function WarehousePage() {
         <div className="mx-auto max-w-4xl py-6">
             <h1 className="mb-6 text-2xl font-bold text-gray-800">จัดการคลังสินค้า (Warehouses)</h1>
 
+            {canEditPage && (
             <div className="mb-8 rounded-lg bg-white p-6 shadow">
                 <h3 className="mb-4 flex items-center font-bold text-gray-700">
                     <Plus className="mr-2 h-5 w-5" /> เพิ่มคลังสินค้าใหม่
@@ -48,6 +57,7 @@ export default async function WarehousePage() {
                     </button>
                 </form>
             </div>
+            )}
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {warehouses.map(w => (
@@ -62,7 +72,7 @@ export default async function WarehousePage() {
                                 <p className="text-sm text-gray-500">{w.location || 'ไม่ระบุสถานที่'}</p>
                             </div>
                         </div>
-                        {isAdmin && (
+                        {canEditPage && (
                             <form action={async () => {
                                 'use server';
                                 await deleteWarehouse(w.warehouse_id);

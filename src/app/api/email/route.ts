@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { emailConfig, emailUtils } from '@/config/email.config';
 import { auth } from '@/auth';
+import { canManageAdminSecurity } from '@/lib/rbac';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
 
 // In-memory store for email queue
 const emailQueue: Array<{
@@ -20,7 +22,8 @@ const emailQueue: Array<{
 export async function POST(request: NextRequest) {
     try {
         const session = await auth();
-        if (!session || (session.user as any).role !== 'admin') {
+        const permissionContext = await getUserPermissionContext(session?.user);
+        if (!session || !canManageAdminSecurity(permissionContext.role, permissionContext.permissions)) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -102,7 +105,8 @@ export async function POST(request: NextRequest) {
 export async function GET() {
     try {
         const session = await auth();
-        if (!session || (session.user as any).role !== 'admin') {
+        const permissionContext = await getUserPermissionContext(session?.user);
+        if (!session || !canManageAdminSecurity(permissionContext.role, permissionContext.permissions)) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 

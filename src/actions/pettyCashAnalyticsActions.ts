@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { canAccessPettyCashDashboard } from '@/lib/rbac';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
 
 export async function getPettyCashAnalytics() {
     try {
@@ -8,8 +10,9 @@ export async function getPettyCashAnalytics() {
             throw new Error('Unauthorized');
         }
 
-        // Only Admin or Accounting can view these analytics
-        if (session.user.role !== 'admin' && session.user.role !== 'accounting' && session.user.role !== 'manager') {
+        const permissionContext = await getUserPermissionContext(session.user);
+
+        if (!canAccessPettyCashDashboard(permissionContext.role, permissionContext.permissions)) {
             throw new Error('Permission denied');
         }
 

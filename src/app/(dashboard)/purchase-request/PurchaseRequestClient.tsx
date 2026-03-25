@@ -6,6 +6,7 @@ import { createApprovalRequest, updatePurchaseRequest } from '@/actions/approval
 import SearchableSelect from '@/components/SearchableSelect';
 import { ApprovalRequest } from '../approvals/types';
 import { ClipboardList, Eye, Loader2, Pencil, Plus, Printer, Send, ShoppingCart, Trash2, X } from 'lucide-react';
+import { getProcurementStatusBadgeClass, getProcurementStatusLabel } from '@/lib/procurement-status';
 
 interface ActiveJobOption {
     request_number?: string;
@@ -264,17 +265,6 @@ ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอ�
             setMessage({ type: 'error', text: error instanceof Error ? error.message : 'เกิดข้อผิดพลาด' });
         } finally {
             setSubmitting(false);
-        }
-    };
-
-    const getStatusStyle = (status: string) => {
-        switch (status) {
-            case 'approved':
-                return 'bg-emerald-100 text-emerald-700';
-            case 'rejected':
-                return 'bg-rose-100 text-rose-700';
-            default:
-                return 'bg-amber-100 text-amber-700';
         }
     };
 
@@ -558,8 +548,8 @@ ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอ�
                                             <div className="font-semibold text-emerald-700 dark:text-emerald-400 text-sm">
                                                 {request.request_number}
                                             </div>
-                                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusStyle(request.status)}`}>
-                                                {request.status}
+                                            <span className={`px-2.5 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wider ${getProcurementStatusBadgeClass(request.status)}`}>
+                                                {getProcurementStatusLabel(request.status)}
                                             </span>
                                         </div>
                                         <div className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap bg-gray-50 dark:bg-slate-800/80 p-3.5 rounded-xl border border-gray-100 dark:border-slate-700 shadow-inner max-h-48 overflow-y-auto font-mono leading-relaxed">

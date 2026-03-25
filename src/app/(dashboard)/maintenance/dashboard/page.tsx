@@ -1,3 +1,6 @@
+import { auth } from '@/auth';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
+import { canReviewMaintenancePartRequests } from '@/lib/rbac';
 import MaintenanceDashboardClient from './MaintenanceDashboardClient';
 
 export const metadata = {
@@ -5,6 +8,17 @@ export const metadata = {
     description: 'ภาพรวมและจัดการงานซ่อม'
 };
 
-export default function MaintenanceDashboardPage() {
-    return <MaintenanceDashboardClient />;
+export default async function MaintenanceDashboardPage() {
+    const session = await auth();
+    const permissionContext = await getUserPermissionContext(session?.user);
+
+    return (
+        <MaintenanceDashboardClient
+            canReviewPartRequests={canReviewMaintenancePartRequests(
+                permissionContext.role,
+                permissionContext.permissions,
+                permissionContext.isApprover,
+            )}
+        />
+    );
 }

@@ -2,8 +2,11 @@
 
 import { auth } from '@/auth';
 import { logSystemAction } from '@/lib/logger';
+import { getFullAccessPermissions } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
-import { isAdminRole, isManagerRole } from '@/lib/roles';
+import { canManageAdminRoles } from '@/lib/rbac';
+import { isLockedPermissionRole, shouldForceApproverByRole } from '@/lib/roles';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { updateUserSchema, validateData } from '@/lib/validation';
 import bcrypt from 'bcryptjs';
 import { revalidatePath } from 'next/cache';
@@ -20,8 +23,22 @@ async function resolveRoleMetadata(role: string, requestedApprover: boolean) {
 
     return {
         role_id: roleRecord.role_id,
-        is_approver: isManagerRole(role) ? true : requestedApprover,
+        is_approver: shouldForceApproverByRole(role) ? true : requestedApprover,
     };
+}
+
+async function getUserManagementAuthContext() {
+    const session = await auth();
+    if (!session?.user) {
+        return null;
+    }
+
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+    if (!canManageAdminRoles(permissionContext.role, permissionContext.permissions)) {
+        return null;
+    }
+
+    return { session };
 }
 
 export async function createUser(formData: FormData) {
@@ -33,13 +50,14 @@ export async function createUser(formData: FormData) {
     const is_approver_form = formData.get('is_approver') === 'true';
 
     if (!username || !password || !role) {
-        return { error: 'กรุณากรอกข้อมูลให้ครบถ้วน' };
+        return { error: 'กรุณากรอกข้อมูลที่จำเป็นให้ครบ' };
     }
 
-    const session = await auth();
-    if (!session || !isAdminRole((session.user as { role?: string })?.role)) {
-        return { error: 'Unauthorized: Admin access required' };
+    const authContext = await getUserManagementAuthContext();
+    if (!authContext) {
+        return { error: 'ไม่มีสิทธิ์ใช้งาน ต้องเป็นผู้ดูแลระบบ' };
     }
+    const { session } = authContext;
 
     const rawData = {
         username: username.trim(),
@@ -69,20 +87,20 @@ export async function createUser(formData: FormData) {
             'CREATE',
             'User',
             validData.username,
-            `Created user: ${validData.username} (Role: ${validData.role})`,
+            `Created user ${validData.username} (role: ${validData.role})`,
             session.user.id ? (parseInt(session.user.id as string, 10) || 0) : 0,
             session.user.name || 'Unknown',
-            'unknown',
+            'user_management',
         );
     } catch (error: unknown) {
         console.error('Create user failed:', error);
         if ((error as { code?: string }).code === 'P2002') {
-            return { error: 'Username นี้มีอยู่ในระบบแล้ว' };
+        return { error: 'Username นี้มีอยู่ในระบบแล้ว' };
         }
         if (error instanceof Error && error.message.includes('Validation Error')) {
             return { error: error.message };
         }
-        return { error: `เพิ่มผู้ใช้งานล้มเหลว: ${error instanceof Error ? error.message : 'Error'}` };
+        return { error: `ไม่สามารถสร้างผู้ใช้ได้: ${error instanceof Error ? error.message : 'Unknown error'}` };
     }
 
     revalidatePath('/roles');
@@ -101,12 +119,27 @@ export async function updateUser(formData: FormData) {
         return { error: 'ข้อมูลไม่ถูกต้อง' };
     }
 
-    const session = await auth();
-    if (!session || !isAdminRole((session.user as { role?: string })?.role)) {
-        return { error: 'Unauthorized: Admin access required' };
+    const authContext = await getUserManagementAuthContext();
+    if (!authContext) {
+        return { error: 'ไม่มีสิทธิ์ใช้งาน ต้องเป็นผู้ดูแลระบบ' };
     }
+    const { session } = authContext;
 
     try {
+        const existingUser = await prisma.tbl_users.findUnique({
+            where: { p_id },
+            select: { role: true },
+        });
+
+        if (!existingUser) {
+            return { error: 'ไม่พบผู้ใช้' };
+        }
+
+        const currentUserId = session.user.id ? (parseInt(session.user.id as string, 10) || 0) : 0;
+        if (currentUserId === p_id && role !== existingUser.role) {
+            return { error: 'ไม่สามารถเปลี่ยน role ของบัญชีตัวเองได้' };
+        }
+
         const { role_id, is_approver } = await resolveRoleMetadata(
             role,
             isApproverVal === 'true' || isApproverVal === 'on',
@@ -133,14 +166,14 @@ export async function updateUser(formData: FormData) {
             'UPDATE',
             'User',
             p_id,
-            `Updated user ID: ${p_id} (Role: ${role})`,
+            `Updated user ID ${p_id} (role: ${role})`,
             session.user.id ? (parseInt(session.user.id as string, 10) || 0) : 0,
             session.user.name || 'Unknown',
-            'unknown',
+            'user_management',
         );
     } catch (error) {
         console.error('Update user failed:', error);
-        return { error: 'อัปเดตข้อมูลล้มเหลว' };
+        return { error: 'ไม่สามารถอัปเดตผู้ใช้ได้' };
     }
 
     revalidatePath('/roles');
@@ -149,10 +182,11 @@ export async function updateUser(formData: FormData) {
 
 export async function deleteUser(p_id: number) {
     try {
-        const session = await auth();
-        if (!session || !isAdminRole((session.user as { role?: string })?.role)) {
-            return { error: 'Unauthorized: Admin access required' };
+        const authContext = await getUserManagementAuthContext();
+        if (!authContext) {
+            return { error: 'ไม่มีสิทธิ์ใช้งาน ต้องเป็นผู้ดูแลระบบ' };
         }
+        const { session } = authContext;
 
         await prisma.tbl_users.delete({
             where: { p_id },
@@ -162,23 +196,25 @@ export async function deleteUser(p_id: number) {
             'DELETE',
             'User',
             p_id,
-            `Deleted user ID: ${p_id}`,
+            `Deleted user ID ${p_id}`,
             session.user.id ? (parseInt(session.user.id as string, 10) || 0) : 0,
             session.user.name || 'Unknown',
-            'unknown',
+            'user_management',
         );
-    } catch {
-        return { error: 'ลบผู้ใช้งานล้มเหลว' };
+    } catch (error) {
+        console.error('Delete user failed:', error);
+        return { error: 'ไม่สามารถลบผู้ใช้ได้' };
     }
     revalidatePath('/roles');
 }
 
 export async function unlockUser(p_id: number) {
     try {
-        const session = await auth();
-        if (!session || !isAdminRole((session.user as { role?: string })?.role)) {
-            return { error: 'Unauthorized: Admin access required' };
+        const authContext = await getUserManagementAuthContext();
+        if (!authContext) {
+            return { error: 'ไม่มีสิทธิ์ใช้งาน ต้องเป็นผู้ดูแลระบบ' };
         }
+        const { session } = authContext;
 
         const user = await prisma.tbl_users.update({
             where: { p_id },
@@ -192,7 +228,7 @@ export async function unlockUser(p_id: number) {
             'UPDATE',
             'User',
             p_id,
-            `Unlocked user ID: ${p_id} (${user.username})`,
+            `Unlocked user ID ${p_id} (${user.username})`,
             session.user.id ? (parseInt(session.user.id as string, 10) || 0) : 0,
             session.user.name || 'Unknown',
             'user_management',
@@ -202,29 +238,42 @@ export async function unlockUser(p_id: number) {
         return { success: true };
     } catch (error) {
         console.error('Unlock user failed:', error);
-        return { error: 'ปลดล็อคผู้ใช้งานล้มเหลว' };
+        return { error: 'ไม่สามารถปลดล็อกผู้ใช้ได้' };
     }
 }
 
 export async function updateUserPermissions(p_id: number, permissions: Record<string, boolean>) {
     try {
-        const session = await auth();
-        if (!session || !isAdminRole((session.user as { role?: string })?.role)) {
-            return { success: false, error: 'Unauthorized: Admin access required' };
+        const authContext = await getUserManagementAuthContext();
+        if (!authContext) {
+            return { success: false, error: 'ไม่มีสิทธิ์ใช้งาน ต้องเป็นผู้ดูแลระบบ' };
         }
+        const { session } = authContext;
+
+        const targetUser = await prisma.tbl_users.findUnique({
+            where: { p_id },
+            select: { role: true },
+        });
+        if (!targetUser) {
+            return { success: false, error: 'ไม่พบผู้ใช้' };
+        }
+
+        const effectivePermissions = isLockedPermissionRole(targetUser.role)
+            ? getFullAccessPermissions()
+            : permissions;
 
         const user = await prisma.tbl_users.update({
             where: { p_id },
             data: {
-                custom_permissions: JSON.stringify(permissions),
+                custom_permissions: JSON.stringify(effectivePermissions),
             },
         });
 
         await logSystemAction(
-            'แก้ไขสิทธิ์',
+            'UPDATE_USER_PERMISSIONS',
             'User',
             p_id,
-            `แก้ไขสิทธิ์รายบุคคลของ User: ${user.username} | แก้ไขโดย: ${session.user.name}`,
+            `อัปเดตสิทธิ์รายบุคคลของผู้ใช้ ${user.username} | แก้ไขโดย ${session.user.name}`,
             session.user.id ? (parseInt(session.user.id as string, 10) || 0) : 0,
             session.user.name || 'Unknown',
             'user_management',
@@ -235,6 +284,6 @@ export async function updateUserPermissions(p_id: number, permissions: Record<st
         return { success: true };
     } catch (error) {
         console.error('Error updating user permissions:', error);
-        return { success: false, error: 'Failed to update user permissions' };
+        return { success: false, error: 'ไม่สามารถอัปเดตสิทธิ์รายบุคคลได้' };
     }
 }

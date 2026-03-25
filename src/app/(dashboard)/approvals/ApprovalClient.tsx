@@ -13,6 +13,12 @@ import ApprovalDetailModal from './components/ApprovalDetailModal';
 import CreateApprovalModal from './components/CreateApprovalModal';
 import RejectApprovalModal from './components/RejectApprovalModal';
 import { ActiveJob, ApprovalFormData, ApprovalRequest } from './types';
+import {
+    APPROVAL_REQUEST_TYPE_FILTER_OPTIONS,
+    getApprovalRequestTypeAccentClass,
+    getApprovalRequestTypeBadgeClass,
+    getApprovalRequestTypeLabel,
+} from '@/lib/approval-options';
 
 interface ApprovalClientProps {
     initialRequests: ApprovalRequest[];
@@ -30,31 +36,10 @@ interface ApprovalClientProps {
 
 const PAGE_SIZE = 12;
 
-const REQUEST_TYPE_OPTIONS = [
-    { value: 'all', label: 'ทุกประเภท', color: 'bg-slate-100 text-slate-600' },
-    { value: 'ot', label: 'OT', color: 'bg-violet-100 text-violet-700' },
-    { value: 'leave', label: 'ลา', color: 'bg-sky-100 text-sky-700' },
-    { value: 'expense', label: 'Expense', color: 'bg-amber-100 text-amber-700' },
-    { value: 'purchase', label: 'Purchase', color: 'bg-orange-100 text-orange-700' },
-    { value: 'other', label: 'อื่นๆ', color: 'bg-slate-100 text-slate-600' },
-];
-
 const STATUS_CONFIG = {
     pending:  { label: 'รอพิจารณา', icon: Clock,         classes: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' },
     approved: { label: 'อนุมัติแล้ว', icon: CheckCircle2, classes: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' },
     rejected: { label: 'ไม่อนุมัติ',  icon: XCircle,      classes: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200' },
-};
-
-const TYPE_BADGE: Record<string, string> = {
-    ot:       'bg-violet-100 text-violet-700',
-    leave:    'bg-sky-100 text-sky-700',
-    expense:  'bg-amber-100 text-amber-700',
-    purchase: 'bg-orange-100 text-orange-700',
-    other:    'bg-slate-100 text-slate-600',
-};
-
-const TYPE_LABEL: Record<string, string> = {
-    ot: 'OT', leave: 'ลา', expense: 'Expense', purchase: 'Purchase', other: 'อื่นๆ',
 };
 
 const defaultFormData = (requestType = 'ot'): ApprovalFormData => ({
@@ -85,8 +70,8 @@ function ApprovalCard({
     const status = STATUS_CONFIG[request.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.pending;
     const StatusIcon = status.icon;
     const canApprove = request.can_approve ?? globalCanApprove;
-    const typeBadge = TYPE_BADGE[request.request_type] ?? 'bg-slate-100 text-slate-600';
-    const typeLabel = TYPE_LABEL[request.request_type] ?? request.request_type;
+    const typeBadge = getApprovalRequestTypeBadgeClass(request.request_type);
+    const typeLabel = getApprovalRequestTypeLabel(request.request_type);
 
     const dateStr = request.created_at
         ? new Date(request.created_at).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })
@@ -105,12 +90,7 @@ function ApprovalCard({
             onClick={onDetail}
         >
             {/* Top accent bar by type */}
-            <div className={`h-1 w-full ${
-                request.request_type === 'ot' ? 'bg-violet-400' :
-                request.request_type === 'leave' ? 'bg-sky-400' :
-                request.request_type === 'expense' ? 'bg-amber-400' :
-                request.request_type === 'purchase' ? 'bg-orange-400' : 'bg-slate-300'
-            }`} />
+            <div className={`h-1 w-full ${getApprovalRequestTypeAccentClass(request.request_type)}`} />
 
             <div className="p-4 flex flex-col gap-3 flex-1">
                 {/* Header row */}
@@ -250,8 +230,8 @@ function DetailModal({ isOpen, request, onClose }: {
                     </div>
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${TYPE_BADGE[request.request_type] ?? 'bg-slate-100 text-slate-600'}`}>
-                                {TYPE_LABEL[request.request_type] ?? request.request_type}
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${getApprovalRequestTypeBadgeClass(request.request_type)}`}>
+                                {getApprovalRequestTypeLabel(request.request_type)}
                             </span>
                             <span className="text-xs font-mono text-slate-400">{request.request_number}</span>
                         </div>
@@ -736,7 +716,7 @@ export default function ApprovalClient({
                                     <input
                                         type="text"
                                         className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-100 text-slate-500"
-                                        value={REQUEST_TYPE_OPTIONS.find((o) => o.value === lockedRequestType)?.label || lockedRequestType}
+                                        value={getApprovalRequestTypeLabel(lockedRequestType || '', 'short') || lockedRequestType}
                                         readOnly
                                     />
                                 ) : (
@@ -745,7 +725,7 @@ export default function ApprovalClient({
                                         value={filterRequestType}
                                         onChange={(e) => { setFilterRequestType(e.target.value); resetToFirstPage(); }}
                                     >
-                                        {REQUEST_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                        {APPROVAL_REQUEST_TYPE_FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                                     </select>
                                 )}
                             </div>

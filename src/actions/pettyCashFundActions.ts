@@ -2,11 +2,30 @@
 
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
+import {
+    canReplenishPettyCashFund,
+    canUpdatePettyCashFundLimit,
+} from '@/lib/rbac';
+
+async function getPettyCashFundAuthContext() {
+    const session = await auth();
+    if (!session?.user) {
+        return null;
+    }
+
+    const permissionContext = await getUserPermissionContext(session.user);
+
+    return {
+        session,
+        ...permissionContext,
+    };
+}
 
 export async function getPettyCashFundStatus() {
     try {
-        const session = await auth();
-        if (!session?.user) {
+        const authContext = await getPettyCashFundAuthContext();
+        if (!authContext?.session?.user) {
             throw new Error('Unauthorized');
         }
 
@@ -45,12 +64,12 @@ export async function getPettyCashFundStatus() {
 
 export async function replenishFund(amount: number) {
     try {
-        const session = await auth();
-        if (!session?.user) {
+        const authContext = await getPettyCashFundAuthContext();
+        if (!authContext?.session?.user) {
             throw new Error('Unauthorized');
         }
 
-        if (session.user.role !== 'admin' && session.user.role !== 'accounting') {
+        if (!canReplenishPettyCashFund(authContext.role, authContext.permissions)) {
             throw new Error('Permission denied');
         }
 
@@ -67,7 +86,7 @@ export async function replenishFund(amount: number) {
             data: {
                 current_balance: Number(fund.current_balance) + amount,
                 last_replenished_at: new Date(),
-                replenished_by: String((session.user as any).username || session.user.name || 'System')
+                replenished_by: String((authContext.session.user as any).username || authContext.session.user.name || 'System')
             }
         });
 
@@ -110,14 +129,13 @@ export async function adjustFundBalance(fundId: number, adjustment: number) {
 
 export async function updateFundLimit(newLimit: number) {
     try {
-        const session = await auth();
-        if (!session?.user) {
+        const authContext = await getPettyCashFundAuthContext();
+        if (!authContext?.session?.user) {
             throw new Error('Unauthorized');
         }
 
-        // Only Admin/Director can change the max limit directly
-        if (session.user.role !== 'admin' && session.user.role !== 'director') {
-            throw new Error('Permission denied: Only Admin or Director can adjust the petty cash fund limit.');
+        if (!canUpdatePettyCashFundLimit(authContext.role, authContext.permissions)) {
+            throw new Error('Permission denied');
         }
 
         if (newLimit <= 0) {

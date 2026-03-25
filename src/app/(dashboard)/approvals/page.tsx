@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import ApprovalClient from './ApprovalClient';
 import { getApprovalRequests } from '@/actions/approvalActions';
 import { getMaintenanceRequests } from '@/actions/maintenanceActions';
+import { canAccessPurchasingApprovals, canManageGeneralApprovals } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 interface MaintenanceRequestStatusLike {
     status?: string | null;
@@ -19,12 +21,22 @@ export default async function ApprovalsPage() {
         redirect('/login');
     }
 
-    const role = session.user.role?.toLowerCase() || '';
-    if (role === 'purchasing') {
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+    const role = permissionContext.role;
+    const canApprove = canManageGeneralApprovals(
+        role,
+        permissionContext.permissions,
+        permissionContext.isApprover,
+    );
+    const canApprovePurchasing = canAccessPurchasingApprovals(
+        role,
+        permissionContext.permissions,
+        permissionContext.isApprover,
+    );
+
+    if (canApprovePurchasing && !canApprove) {
         redirect('/approvals/purchasing');
     }
-    const isApprover = session.user.is_approver || false;
-    const canApprove = role === 'admin' || role === 'manager' || isApprover;
     if (canApprove) {
         redirect('/approvals/manage');
     }

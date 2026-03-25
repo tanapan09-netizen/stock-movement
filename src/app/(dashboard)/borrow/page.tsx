@@ -2,10 +2,18 @@ import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 import { Plus, Search, FileText, CheckCircle, Clock } from 'lucide-react';
 import { auth } from '@/auth';
+import { canAccessDashboardPage } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 export default async function BorrowListPage() {
     const session = await auth();
-    const isAdmin = (session?.user as { role?: string })?.role === 'admin';
+    const permissionContext = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
+    const canEditPage = canAccessDashboardPage(
+        permissionContext.role,
+        permissionContext.permissions,
+        '/borrow',
+        { isApprover: permissionContext.isApprover, level: 'edit' },
+    );
 
     const requests = await prisma.borrow_requests.findMany({
         orderBy: { created_at: 'desc' },
@@ -23,12 +31,14 @@ export default async function BorrowListPage() {
                     <h1 className="text-2xl font-bold text-gray-800">รายการยืม-คืน</h1>
                     <p className="text-sm text-gray-500">จัดการคำขอยืมและคืนสินค้าทั้งหมด</p>
                 </div>
+                {canEditPage && (
                 <Link
                     href="/borrow/new"
                     className="flex items-center rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
                 >
                     <Plus className="mr-2 h-4 w-4" /> สร้างรายการยืม
                 </Link>
+                )}
             </div>
 
             <div className="rounded-lg bg-white shadow overflow-hidden">

@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { getPurchasingDashboardData } from '@/actions/purchasingDashboardActions';
 import PurchasingDashboardClient from './PurchasingDashboardClient';
-import { isDepartmentRole, isManagerRole } from '@/lib/roles';
+import { canAccessPurchasingDashboard } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 export default async function PurchasingDashboardPage() {
     const session = await auth();
@@ -10,8 +11,8 @@ export default async function PurchasingDashboardPage() {
         redirect('/login');
     }
 
-    const role = (session.user.role || '').toLowerCase();
-    if (!isManagerRole(role) && !isDepartmentRole(role, 'purchasing')) {
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+    if (!canAccessPurchasingDashboard(permissionContext.role, permissionContext.permissions)) {
          redirect('/'); // Or show unauthorized page
     }
 
@@ -34,7 +35,7 @@ export default async function PurchasingDashboardPage() {
             summary={data.summary}
             recentPRs={data.recentPRs}
             recentPOs={data.recentPOs}
-            userRole={role}
+            userRole={permissionContext.role}
         />
     );
 }

@@ -3,18 +3,19 @@ import { redirect } from 'next/navigation';
 import { Plus, Lock } from 'lucide-react';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
-import { getRolePermissions } from '@/actions/roleActions';
-import { PERMISSIONS } from '@/lib/permissions';
+import { isDepartmentRole } from '@/lib/roles';
+import { canEditPurchaseOrders, canViewPurchaseOrders } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
+import { getProcurementStatusBadgeClass, getProcurementStatusLabel } from '@/lib/procurement-status';
 
 export default async function POIssuePage() {
     const session = await auth();
-    const role = ((session?.user as { role?: string })?.role || '').toLowerCase();
+    const { role, permissions: rolePermissions } = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
     const userName = (session?.user as { name?: string })?.name || '';
     const userId = Number.parseInt(((session?.user as { id?: string })?.id || ''), 10);
-    const isPurchasing = role === 'purchasing';
-    const rolePermissions = await getRolePermissions(role);
+    const isPurchasing = isDepartmentRole(role, 'purchasing');
 
-    if (!rolePermissions[PERMISSIONS.PO_VIEW]) {
+    if (!canViewPurchaseOrders(rolePermissions)) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
                 <Lock className="w-12 h-12 mb-4 text-gray-400" />
@@ -54,7 +55,7 @@ export default async function POIssuePage() {
                 </div>
                 <div className="flex items-center gap-2">
                     <Link href="/purchase-orders" className="px-3 py-2 rounded-lg border text-sm hover:bg-gray-50">รายการทั้งหมด</Link>
-                    {isPurchasing && (
+                    {isPurchasing && canEditPurchaseOrders(rolePermissions) && (
                         <Link href="/purchase-orders/new" className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2 text-sm">
                             <Plus className="w-4 h-4" /> สร้างใบสั่งซื้อ
                         </Link>
@@ -88,8 +89,8 @@ export default async function POIssuePage() {
                                 <td className="px-4 py-3">{po.order_date ? new Date(po.order_date).toLocaleDateString('th-TH') : '-'}</td>
                                 <td className="px-4 py-3 text-right">{Number(po.total_amount || 0).toLocaleString('th-TH')}</td>
                                 <td className="px-4 py-3 text-center">
-                                    <span className={`px-2 py-1 rounded text-xs font-semibold ${po.status === 'received' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                        {po.status}
+                                    <span className={`px-2 py-1 rounded text-xs font-semibold border ${getProcurementStatusBadgeClass(po.status || 'draft')}`}>
+                                        {getProcurementStatusLabel(po.status || 'draft')}
                                     </span>
                                 </td>
                                 <td className="px-4 py-3 text-right">

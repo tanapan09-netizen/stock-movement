@@ -1,6 +1,8 @@
 import { auth } from '@/auth';
 import MovementsClient from './MovementsClient';
 import { getFilteredMovements } from '@/actions/movementActions';
+import { canAccessDashboardPage } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 export default async function MovementsPage({
     searchParams
@@ -8,7 +10,13 @@ export default async function MovementsPage({
     searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
     const session = await auth();
-    const isAdmin = (session?.user as any)?.role === 'admin';
+    const permissionContext = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
+    const canEditPage = canAccessDashboardPage(
+        permissionContext.role,
+        permissionContext.permissions,
+        '/movements',
+        { isApprover: permissionContext.isApprover, level: 'edit' },
+    );
 
     // Await searchParams (required in Next.js 16+)
     const params = await searchParams;
@@ -35,7 +43,7 @@ export default async function MovementsPage({
                     <h1 className="text-2xl font-bold text-gray-800">ประวัติการเคลื่อนไหวสินค้า</h1>
                     <p className="text-sm text-gray-500">บันทึกการเข้า-ออกของสินค้าทั้งหมด</p>
                 </div>
-                {isAdmin && (
+                {canEditPage && (
                     <div className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm font-medium">
                         Admin Mode: สามารถแก้ไข/ลบได้
                     </div>
@@ -45,7 +53,7 @@ export default async function MovementsPage({
             <MovementsClient
                 initialMovements={movements}
                 total={total}
-                isAdmin={isAdmin}
+                isAdmin={canEditPage}
                 currentPage={page}
                 totalPages={totalPages}
             />

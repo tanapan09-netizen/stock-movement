@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { updateAuditItem } from '@/actions/auditActions';
 import { Check, Loader2 } from 'lucide-react';
+import { INVENTORY_AUDIT_COPY } from '@/lib/inventory-audit';
 
 interface Props {
     item: any;
@@ -35,7 +36,7 @@ export function AuditItemRow({ item, index, productName, unit, readOnly }: Props
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
         } catch (e) {
-            alert('Failed to save');
+            alert(INVENTORY_AUDIT_COPY.saveFailed);
         } finally {
             setSaving(false);
         }
@@ -53,7 +54,7 @@ export function AuditItemRow({ item, index, productName, unit, readOnly }: Props
             </td>
             <td className="px-4 py-3 text-right">
                 {readOnly ? (
-                    <span className="font-bold">{item.counted_qty ?? '-'}</span>
+                    <span className="font-bold">{item.counted_qty ?? INVENTORY_AUDIT_COPY.valuePlaceholder}</span>
                 ) : (
                     <div className="relative">
                         <input
@@ -62,7 +63,7 @@ export function AuditItemRow({ item, index, productName, unit, readOnly }: Props
                             value={counted}
                             onChange={(e) => setCounted(e.target.value)}
                             onBlur={handleBlur}
-                            placeholder="..."
+                            placeholder={INVENTORY_AUDIT_COPY.valuePlaceholder}
                         />
                     </div>
                 )}
@@ -72,7 +73,7 @@ export function AuditItemRow({ item, index, productName, unit, readOnly }: Props
                     <span className={discrepancy === 0 ? 'text-green-600' : 'text-red-600'}>
                         {discrepancy > 0 ? `+${discrepancy}` : discrepancy}
                     </span>
-                ) : '-'}
+                ) : INVENTORY_AUDIT_COPY.valuePlaceholder}
             </td>
             <td className="px-4 py-3 text-center">
                 {saving && <Loader2 className="w-4 h-4 animate-spin text-blue-500 mx-auto" />}

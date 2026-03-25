@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendMulticastMessage } from '@/lib/notifications/lineMessaging';
-import { getLineIdsByRoles } from '@/actions/lineUserActions';
+import { getDailySummaryLineIds } from '@/actions/lineUserActions';
 
 export async function GET(request: Request) {
     try {
@@ -60,8 +60,7 @@ export async function GET(request: Request) {
             text: messageText,
         };
 
-        // Send to Managers and Admins
-        const targetIds = await getLineIdsByRoles(['manager', 'admin']);
+        const targetIds = await getDailySummaryLineIds();
 
         if (targetIds.length > 0) {
             const result = await sendMulticastMessage(targetIds, message);

@@ -3,19 +3,20 @@ import { redirect } from 'next/navigation';
 import { CheckCircle2, Lock } from 'lucide-react';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
-import { getRolePermissions } from '@/actions/roleActions';
-import { PERMISSIONS } from '@/lib/permissions';
 import { receivePO } from '@/actions/poActions';
+import { isDepartmentRole } from '@/lib/roles';
+import { canReceivePurchaseOrders, canViewPurchaseOrders } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
+import { getProcurementStatusBadgeClass, getProcurementStatusLabel } from '@/lib/procurement-status';
 
 export default async function POReceivePage() {
     const session = await auth();
-    const role = ((session?.user as { role?: string })?.role || '').toLowerCase();
+    const { role, permissions: rolePermissions } = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
     const userName = (session?.user as { name?: string })?.name || '';
     const userId = Number.parseInt(((session?.user as { id?: string })?.id || ''), 10);
-    const isPurchasing = role === 'purchasing';
-    const rolePermissions = await getRolePermissions(role);
+    const isPurchasing = isDepartmentRole(role, 'purchasing');
 
-    if (!rolePermissions[PERMISSIONS.PO_VIEW]) {
+    if (!canViewPurchaseOrders(rolePermissions)) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
                 <Lock className="w-12 h-12 mb-4 text-gray-400" />
@@ -85,12 +86,14 @@ export default async function POReceivePage() {
                                 <td className="px-4 py-3">{po.order_date ? new Date(po.order_date).toLocaleDateString('th-TH') : '-'}</td>
                                 <td className="px-4 py-3 text-right">{Number(po.total_amount || 0).toLocaleString('th-TH')}</td>
                                 <td className="px-4 py-3 text-center">
-                                    <span className="px-2 py-1 rounded text-xs font-semibold bg-yellow-100 text-yellow-700">{po.status}</span>
+                                    <span className={`px-2 py-1 rounded text-xs font-semibold border ${getProcurementStatusBadgeClass(po.status || 'draft')}`}>
+                                        {getProcurementStatusLabel(po.status || 'draft')}
+                                    </span>
                                 </td>
                                 <td className="px-4 py-3 text-right">
                                     <div className="inline-flex items-center gap-2">
                                         <Link href={`/purchase-orders/${po.po_id}`} className="text-blue-600 hover:underline text-xs">ดู</Link>
-                                        {isPurchasing && rolePermissions[PERMISSIONS.PO_RECEIVE] && (
+                                        {isPurchasing && canReceivePurchaseOrders(rolePermissions) && (
                                             <form
                                                 action={async () => {
                                                     'use server';

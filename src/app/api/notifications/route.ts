@@ -1,6 +1,19 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
+import { getUserPermissionContext } from '@/lib/server/permission-service';
+import {
+    canViewBorrowNotifications,
+    canViewGeneralMaintenanceNotifications,
+    canViewLowStockNotifications,
+    canViewMaintenanceNotifications,
+    canViewOwnBorrowNotifications,
+    canViewPartRequestNotifications,
+    canViewPettyCashNotifications,
+    canViewPurchaseApprovalNotifications,
+    canViewPurchaseOrderNotifications,
+    isMaintenanceTechnician,
+} from '@/lib/rbac';
 
 type NotificationModule =
     | 'products'
@@ -26,9 +39,10 @@ export async function GET(request: Request) {
     try {
         const requestedModule = new URL(request.url).searchParams.get('module') as NotificationModule | 'all' | null;
         const session = await auth();
-        const sessionUser = session?.user as { role?: string; is_approver?: boolean } | undefined;
-        const role = sessionUser?.role || 'employee';
-        const isApprover = sessionUser?.is_approver || false;
+        const permissionContext = await getUserPermissionContext(session?.user);
+        const role = permissionContext.role || 'employee';
+        const isApprover = permissionContext.isApprover;
+        const permissions = permissionContext.permissions;
         const userName = session?.user?.name || '';
 
         const notifications: NotificationItem[] = [];
@@ -36,12 +50,11 @@ export async function GET(request: Request) {
         // ===================================================
         // Admin / Manager / Owner — see everything
         // ===================================================
-        const isAdminOrManager = role === 'admin' || role === 'manager' || role === 'owner';
 
         // ===================================================
         // LOW STOCK — Admin, Manager, Operation, Purchasing
         // ===================================================
-        if (isAdminOrManager || role === 'operation' || role === 'purchasing') {
+        if (canViewLowStockNotifications(role, permissions)) {
             // Since Prisma doesn't support column comparison in where,
             // we fetch all active products and filter in JS (assuming count is manageable)
             // or fetch a larger batch to improve chances of finding low stock items.
@@ -70,7 +83,7 @@ export async function GET(request: Request) {
         // ===================================================
         // PO UPDATES — Admin, Manager, Purchasing, Accounting
         // ===================================================
-        if (isAdminOrManager || role === 'purchasing' || role === 'accounting') {
+        if (canViewPurchaseOrderNotifications(role, permissions)) {
             const recentPOs = await prisma.tbl_purchase_orders.findMany({
                 where: { status: { in: ['approved', 'ordered', 'received'] } },
                 orderBy: { updated_at: 'desc' },
@@ -101,7 +114,7 @@ export async function GET(request: Request) {
         // ===================================================
         // BORROW RETURNS — Admin, Manager, Operation, Employee (own)
         // ===================================================
-        if (isAdminOrManager || role === 'operation') {
+        if (canViewBorrowNotifications(role)) {
             const pendingReturns = await prisma.tbl_borrow_requests.findMany({
                 where: { status: 'borrowed' },
                 orderBy: { borrow_date: 'desc' },
@@ -123,7 +136,7 @@ export async function GET(request: Request) {
         }
 
         // Employee — show their own borrow status only
-        if (role === 'employee' && userName) {
+        if (canViewOwnBorrowNotifications(role) && userName) {
             const myBorrows = await prisma.tbl_borrow_requests.findMany({
                 where: { status: 'borrowed', borrower_name: userName },
                 orderBy: { borrow_date: 'desc' },
@@ -147,14 +160,14 @@ export async function GET(request: Request) {
         // ===================================================
         // MAINTENANCE / PART REQUESTS — Technician, Head Tech, Approver
         // ===================================================
-        if (isAdminOrManager || role === 'technician' || role === 'head_technician' || role === 'leader_technician' || isApprover) {
+        if (canViewMaintenanceNotifications(role, permissions, isApprover)) {
             const maintenanceWhere: any = {
                 status: 'pending',
                 category: { not: 'general' },
             };
 
             // Technician: show only unassigned or assigned-to-me (avoid mixing other tech jobs)
-            if (!isAdminOrManager && !isApprover && role === 'technician') {
+            if (!isApprover && isMaintenanceTechnician(role)) {
                 maintenanceWhere.OR = userName
                     ? [{ assigned_to: null }, { assigned_to: userName }]
                     : [{ assigned_to: null }];
@@ -207,7 +220,7 @@ export async function GET(request: Request) {
         }
 
         // Part requests — Approvers only
-        if (isAdminOrManager || role === 'general') {
+        if (canViewGeneralMaintenanceNotifications(role)) {
             const generalRequests = await prisma.tbl_maintenance_requests.findMany({
                 where: { category: 'general', status: 'pending' },
                 orderBy: { created_at: 'desc' },
@@ -240,7 +253,7 @@ export async function GET(request: Request) {
             });
         }
 
-        if (isAdminOrManager || role === 'purchasing') {
+        if (canViewPurchaseApprovalNotifications(role, permissions, isApprover)) {
             const pendingPurchaseRequests = await prisma.tbl_approval_requests.count({
                 where: {
                     request_type: 'purchase',
@@ -261,7 +274,7 @@ export async function GET(request: Request) {
             }
         }
 
-        if (isAdminOrManager || isApprover || role === 'head_technician' || role === 'leader_technician' || role === 'purchasing') {
+        if (canViewPartRequestNotifications(role, permissions, isApprover)) {
             const pendingParts = await prisma.tbl_part_requests.count({
                 where: { status: 'pending' },
             });
@@ -282,7 +295,7 @@ export async function GET(request: Request) {
         // ===================================================
         // PETTY CASH — Accounting only
         // ===================================================
-        if (isAdminOrManager || role === 'accounting') {
+        if (canViewPettyCashNotifications(role, permissions)) {
             const pendingPettyCash = await prisma.tbl_petty_cash.count({
                 where: { status: 'pending' },
             }).catch(() => 0);

@@ -2,6 +2,7 @@
 
 import { useSession } from 'next-auth/react';
 import { User, Wrench, ShieldCheck, Bell, Search } from 'lucide-react';
+import { getRoleDisplayName } from '@/lib/roles';
 
 interface RoleHeaderProps {
     activeRole: 'reporter' | 'technician' | 'admin';
@@ -10,8 +11,7 @@ interface RoleHeaderProps {
 
 export default function RoleHeader({ activeRole, onRoleChange }: RoleHeaderProps) {
     const { data: session } = useSession();
-    // In a real app, you might restrict tabs based on session.user.role
-    // For now, we allow switching to demonstrate the UI.
+    const user = session?.user as { name?: string | null; role?: string } | undefined;
 
     return (
         <div className="bg-white border-b sticky top-0 z-10">
@@ -46,12 +46,11 @@ export default function RoleHeader({ activeRole, onRoleChange }: RoleHeaderProps
                     </button>
                     <div className="flex items-center gap-3 pl-4 border-l">
                         <div className="text-right hidden sm:block">
-                            <p className="text-sm font-medium text-gray-900">{session?.user?.name || 'Guest User'}</p>
-                            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                            <p className="text-xs text-gray-500 capitalize">{(session?.user as any)?.role || 'Guest'}</p>
+                            <p className="text-sm font-medium text-gray-900">{user?.name || 'Guest User'}</p>
+                            <p className="text-xs text-gray-500">{getRoleDisplayName(user?.role || 'guest')}</p>
                         </div>
                         <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold border-2 border-white shadow-sm">
-                            {session?.user?.name?.[0]?.toUpperCase() || 'G'}
+                            {user?.name?.[0]?.toUpperCase() || 'G'}
                         </div>
                     </div>
                 </div>
