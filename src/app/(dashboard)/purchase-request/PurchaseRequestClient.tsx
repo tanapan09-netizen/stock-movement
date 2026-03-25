@@ -62,32 +62,31 @@ function getLineValue(lines: string[], prefixes: string[]) {
     return '';
 }
 
+function getValueAfterColon(line: string | undefined) {
+    if (!line) return '';
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex < 0) return '';
+    return line.slice(separatorIndex + 1).trim();
+}
+
 function parseRequestForEdit(request: ApprovalRequest) {
     const raw = request.reason || '';
     const lines = raw.split('\n');
+    const normalizedLines = lines.map((line) => line.trim()).filter(Boolean);
+    const headerLines = normalizedLines.filter((line) => line.includes(':')).slice(0, 3);
     const items: PurchaseItem[] = [];
-    let inItems = false;
 
     for (const line of lines) {
         const trimmed = line.trim();
-
-        if (trimmed === 'รายการสินค้า:' || trimmed === 'เธฃเธฒเธขเธเธฒเธฃเธชเธดเธเธเนเธฒ:') {
-            inItems = true;
-            continue;
-        }
-
-        if (!inItems) continue;
-        if (trimmed.startsWith('รวมเงิน:') || trimmed.startsWith('เธฃเธงเธกเน€เธเธดเธ:')) break;
+        if (!trimmed) continue;
 
         if (/^\d+\./.test(trimmed)) {
             const cleaned = trimmed.replace(/^\d+\.\s*/, '');
-            const linkMatch = cleaned.match(/\n\s*ลิงก์สินค้า:/);
-            const withoutLink = linkMatch ? cleaned.slice(0, linkMatch.index).trim() : cleaned;
-            const match = withoutLink.match(/^(.*) - ([\d.]+)\s+(.+?) @ ฿([\d,]+\.\d{2})/);
+            const match = cleaned.match(/^(.*) - ([\d.]+)\s+(.+?) @ [^\d]*([\d,]+\.\d{2})/);
 
             items.push({
                 id: typeof crypto !== 'undefined' ? crypto.randomUUID() : Math.random().toString(),
-                description: match?.[1]?.trim() || withoutLink,
+                description: match?.[1]?.trim() || cleaned,
                 quantity: Number(match?.[2] || 1),
                 unit: match?.[3]?.trim() || '',
                 pricePerUnit: Number((match?.[4] || '0').replace(/,/g, '')),
@@ -97,21 +96,21 @@ function parseRequestForEdit(request: ApprovalRequest) {
             continue;
         }
 
-        if ((trimmed.startsWith('ลิงก์สินค้า:') || trimmed.startsWith('เธฅเธดเธเธเนเธชเธดเธเธเนเธฒ:')) && items.length > 0) {
-            items[items.length - 1].includeLink = true;
-            items[items.length - 1].productLink = trimmed
-                .replace('ลิงก์สินค้า:', '')
-                .replace('เธฅเธดเธเธเนเธชเธดเธเธเนเธฒ:', '')
-                .trim();
+        if (items.length > 0 && trimmed.includes('http')) {
+            const normalizedLink = trimmed.replace(/^[^:]+:/, '').trim();
+            if (/^https?:\/\//i.test(normalizedLink)) {
+                items[items.length - 1].includeLink = true;
+                items[items.length - 1].productLink = normalizedLink;
+            }
         }
     }
 
     return {
         requestDate: request.created_at ? new Date(request.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
-        subject: getLineValue(lines, ['เรื่อง:', 'เน€เธฃเธทเนเธญเธ:']),
-        priority: Number(getLineValue(lines, ['ระดับความสำคัญ:', 'เธฃเธฐเธ”เธฑเธเธเธงเธฒเธกเธชเธณเธเธฑเธ:']).split('/')[0] || 3),
-        note: getLineValue(lines, ['หมายเหตุ:', 'เธซเธกเธฒเธขเน€เธซเธ•เธธ:']),
-        includeTax: lines.some((line) => line.startsWith('ภาษี 7%:') || line.startsWith('เธ เธฒเธฉเธต 7%:')),
+        subject: getValueAfterColon(headerLines[0]),
+        priority: Number(getValueAfterColon(headerLines[1]).split('/')[0] || 3),
+        note: getValueAfterColon(headerLines[2]),
+        includeTax: normalizedLines.some((line) => line.includes('7%')),
         items: items.length > 0 ? items : [createEmptyPurchaseItem()],
     };
 }

@@ -138,14 +138,32 @@ model tbl_audit_items {
   item_id              Int                  @id @default(autoincrement())
   audit_id             Int
   p_id                 String               @db.VarChar(50)
+  snapshot_qty         Int                  @default(0)
   system_qty           Int                  @default(0)
   counted_qty          Int?
+  first_count_qty      Int?
+  recount_qty          Int?
+  final_count_qty      Int?
   discrepancy          Int?
+  variance_qty         Int?
+  variance_value       Decimal?             @default(0.00) @db.Decimal(12, 2)
   notes                String?              @db.VarChar(255)
+  reason_code          String?              @db.VarChar(50)
+  reason_note          String?              @db.Text
+  movement_delta_qty   Int?                 @default(0)
+  approved_adjustment_qty Int?              @default(0)
+  item_status          String?              @default("pending") @db.VarChar(30)
+  requires_recount     Boolean?             @default(false)
+  counted_by           String?              @db.VarChar(100)
+  recounted_by         String?              @db.VarChar(100)
   counted_at           DateTime?            @db.Timestamp(0)
+  reviewed_at          DateTime?            @db.Timestamp(0)
+  posted_at            DateTime?            @db.Timestamp(0)
   tbl_inventory_audits tbl_inventory_audits @relation(fields: [audit_id], references: [audit_id], onDelete: Cascade, onUpdate: Restrict, map: "tbl_audit_items_ibfk_1")
+  tbl_inventory_audit_events tbl_inventory_audit_events[]
 
   @@index([audit_id], map: "audit_id")
+  @@index([item_status], map: "idx_audit_items_status")
   @@index([p_id], map: "p_id")
 }
 
@@ -193,11 +211,54 @@ model tbl_inventory_audits {
   notes             String?                      @db.Text
   total_items       Int?                         @default(0)
   total_discrepancy Int?                         @default(0)
+  total_variance_qty Int?                        @default(0)
+  total_variance_abs Int?                        @default(0)
+  total_variance_value Decimal?                  @default(0.00) @db.Decimal(12, 2)
+  recounted_items   Int?                         @default(0)
+  reason_pending_items Int?                      @default(0)
   created_by        String?                      @db.VarChar(50)
+  started_by        String?                      @db.VarChar(50)
+  reviewed_by       String?                      @db.VarChar(50)
+  approved_by       String?                      @db.VarChar(50)
+  posted_by         String?                      @db.VarChar(50)
   completed_by      String?                      @db.VarChar(50)
   completed_at      DateTime?                    @db.Timestamp(0)
+  started_at        DateTime?                    @db.Timestamp(0)
+  frozen_at         DateTime?                    @db.Timestamp(0)
+  reviewed_at       DateTime?                    @db.Timestamp(0)
+  approved_at       DateTime?                    @db.Timestamp(0)
+  posted_at         DateTime?                    @db.Timestamp(0)
   created_at        DateTime                     @default(now()) @db.Timestamp(0)
   tbl_audit_items   tbl_audit_items[]
+  tbl_inventory_audit_events tbl_inventory_audit_events[]
+  tbl_warehouses    tbl_warehouses?             @relation(fields: [warehouse_id], references: [warehouse_id], onDelete: SetNull, onUpdate: Restrict, map: "tbl_inventory_audits_ibfk_1")
+
+  @@index([warehouse_id], map: "warehouse_id")
+}
+
+model tbl_inventory_audit_events {
+  event_id              Int                  @id @default(autoincrement())
+  audit_id              Int
+  item_id               Int?
+  event_type            String               @db.VarChar(50)
+  event_label           String?              @db.VarChar(100)
+  from_status           String?              @db.VarChar(50)
+  to_status             String?              @db.VarChar(50)
+  old_value             Int?
+  new_value             Int?
+  note                  String?              @db.Text
+  reason_code           String?              @db.VarChar(50)
+  metadata              String?              @db.Text
+  performed_by          String?              @db.VarChar(100)
+  performed_at          DateTime             @default(now()) @db.Timestamp(0)
+  ip_address            String?              @db.VarChar(45)
+  tbl_audit_items       tbl_audit_items?     @relation(fields: [item_id], references: [item_id], onDelete: SetNull, onUpdate: Restrict, map: "tbl_inventory_audit_events_ibfk_2")
+  tbl_inventory_audits  tbl_inventory_audits @relation(fields: [audit_id], references: [audit_id], onDelete: Cascade, onUpdate: Restrict, map: "tbl_inventory_audit_events_ibfk_1")
+
+  @@index([audit_id], map: "audit_id")
+  @@index([event_type], map: "event_type")
+  @@index([item_id], map: "item_id")
+  @@index([performed_at], map: "performed_at")
 }
 
 model tbl_maintenance_history {
@@ -624,6 +685,7 @@ model tbl_warehouses {
   is_default                                                                Boolean?              @default(false)
   active                                                                    Boolean?              @default(true)
   created_at                                                                DateTime              @default(now()) @db.Timestamp(0)
+  tbl_inventory_audits                                                      tbl_inventory_audits[]
   tbl_stock_transfers_tbl_stock_transfers_from_warehouse_idTotbl_warehouses tbl_stock_transfers[] @relation("tbl_stock_transfers_from_warehouse_idTotbl_warehouses")
   tbl_stock_transfers_tbl_stock_transfers_to_warehouse_idTotbl_warehouses   tbl_stock_transfers[] @relation("tbl_stock_transfers_to_warehouse_idTotbl_warehouses")
   tbl_warehouse_stock                                                       tbl_warehouse_stock[]
@@ -661,8 +723,11 @@ enum borrow_requests_status {
 
 enum tbl_inventory_audits_status {
   draft
-  in_progress
-  completed
+  frozen
+  counting
+  review
+  approved
+  posted
   cancelled
 }
 

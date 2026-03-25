@@ -1,10 +1,12 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Key, Lock, Save, X } from 'lucide-react';
+
 import { updateUserPermissions } from '@/actions/userActions';
 import { DEFAULT_PERMISSIONS, PERMISSION_LIST, RolePermissions } from '@/lib/permissions';
 import { getRoleDisplayName } from '@/lib/roles';
-import { Key, Lock, Save, X } from 'lucide-react';
-import { useState } from 'react';
 
 interface Props {
     user: {
@@ -23,8 +25,10 @@ function formatPermissionLabel(label: string): string {
 
 export default function UserPermissionButton({ user, dbRolePermissions, isLocked = false }: Props) {
     const [isOpen, setIsOpen] = useState(false);
-    let basePerms: RolePermissions = DEFAULT_PERMISSIONS[user.role] || {};
+    const [isSaving, setIsSaving] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
 
+    let basePerms: RolePermissions = DEFAULT_PERMISSIONS[user.role] || {};
     if (dbRolePermissions) {
         try {
             basePerms = JSON.parse(dbRolePermissions);
@@ -43,12 +47,40 @@ export default function UserPermissionButton({ user, dbRolePermissions, isLocked
     }
 
     const [permissions, setPermissions] = useState<RolePermissions>({ ...basePerms, ...userPerms });
-    const [isSaving, setIsSaving] = useState(false);
 
-    const handleOpen = () => {
-        if (isLocked) {
+    const categories = useMemo(
+        () => Array.from(new Set(PERMISSION_LIST.map((permission) => permission.category))),
+        [],
+    );
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen) {
+            document.body.style.removeProperty('overflow');
             return;
         }
+
+        const originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setIsOpen(false);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.body.style.overflow = originalOverflow;
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isOpen]);
+
+    const handleOpen = () => {
+        if (isLocked) return;
         setPermissions({ ...basePerms, ...userPerms });
         setIsOpen(true);
     };
@@ -70,8 +102,6 @@ export default function UserPermissionButton({ user, dbRolePermissions, isLocked
         alert(res.error || 'ไม่สามารถบันทึกสิทธิ์ได้');
     };
 
-    const categories = Array.from(new Set(PERMISSION_LIST.map((permission) => permission.category)));
-
     return (
         <>
             <button
@@ -83,75 +113,129 @@ export default function UserPermissionButton({ user, dbRolePermissions, isLocked
                 {isLocked ? <Lock className="h-5 w-5" /> : <Key className="h-5 w-5" />}
             </button>
 
-            {isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 pb-10 pt-20">
-                    <div className="relative w-full max-w-4xl rounded-lg bg-white p-6 shadow-xl">
-                        <button
-                            onClick={() => setIsOpen(false)}
-                            className="absolute right-4 top-4 text-gray-400 transition hover:text-gray-700"
-                        >
-                            <X className="h-6 w-6" />
-                        </button>
+            {isMounted && isOpen && createPortal(
+                <div className="fixed inset-0 z-[120] bg-slate-950/55 backdrop-blur-sm">
+                    <div className="flex h-full w-full items-center justify-center p-3 sm:p-4 lg:p-6">
+                        <div className="relative flex h-[calc(100vh-1.5rem)] w-full max-w-[1500px] flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.35)] sm:h-[calc(100vh-2rem)]">
+                            <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-4 sm:px-6">
+                                <div className="min-w-0">
+                                    <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">
+                                        กำหนดสิทธิ์รายบุคคล: {user.username}
+                                    </h2>
+                                    <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                                        สิทธิ์พื้นฐานอ้างอิงจาก role{' '}
+                                        <span className="font-semibold text-slate-900">{getRoleDisplayName(user.role)}</span>
+                                        {' '}และค่าที่บันทึกในหน้านี้จะเป็นการ override เฉพาะผู้ใช้งานรายนี้
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setIsOpen(false)}
+                                    className="rounded-full border border-slate-200 bg-white p-2 text-slate-400 transition hover:border-slate-300 hover:text-slate-700"
+                                    title="ปิด"
+                                >
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
 
-                        <h2 className="mb-2 text-xl font-bold text-gray-900">
-                            กำหนดสิทธิ์รายบุคคล: {user.username}
-                        </h2>
-                        <p className="mb-6 text-sm text-gray-500">
-                            สิทธิ์พื้นฐานอ้างอิงจาก role <b>{getRoleDisplayName(user.role)}</b>
-                            <br />
-                            ค่าที่บันทึกในหน้านี้จะเป็นการ override สิทธิ์เฉพาะของผู้ใช้รายนี้
-                        </p>
+                            <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-5 py-3 sm:px-6">
+                                <div className="text-sm text-slate-500">
+                                    {categories.length} หมวดสิทธิ์ • {PERMISSION_LIST.length} รายการ
+                                </div>
+                                <div className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
+                                    การตั้งค่านี้มีผลเฉพาะผู้ใช้งานรายนี้
+                                </div>
+                            </div>
 
-                        <div className="grid max-h-[60vh] grid-cols-1 gap-6 overflow-y-auto px-2 md:grid-cols-2 lg:grid-cols-3">
-                            {categories.map((category) => (
-                                <div key={category} className="space-y-3">
-                                    <h3 className="border-b pb-2 font-semibold text-gray-800">{category}</h3>
-                                    <div className="space-y-2">
-                                        {PERMISSION_LIST.filter((permission) => permission.category === category).map((permission) => (
-                                            <label key={permission.key} className="group flex cursor-pointer items-start space-x-3">
-                                                <div className="flex rounded-md border border-gray-200 bg-gray-100">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={!!permissions[permission.key]}
-                                                        onChange={(e) => handleToggle(permission.key, e.target.checked)}
-                                                        className="my-auto ml-1 h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                    />
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
-                                                        {formatPermissionLabel(permission.label)}
-                                                    </span>
-                                                    <span className="text-xs text-gray-500">{permission.description}</span>
-                                                </div>
-                                            </label>
-                                        ))}
+                            <div className="min-h-0 flex-1 overflow-hidden">
+                                <div className="grid h-full grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
+                                    <aside className="hidden border-r border-slate-200 bg-slate-50/70 lg:block">
+                                        <div className="h-full overflow-y-auto px-4 py-5">
+                                            <div className="space-y-2">
+                                                {categories.map((category) => (
+                                                    <div key={category} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                                                        <p className="text-sm font-semibold text-slate-900">{category}</p>
+                                                        <p className="mt-1 text-xs text-slate-500">
+                                                            {PERMISSION_LIST.filter((permission) => permission.category === category).length} รายการ
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </aside>
+
+                                    <div className="h-full overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+                                        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-3">
+                                            {categories.map((category) => (
+                                                <section
+                                                    key={category}
+                                                    className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60"
+                                                >
+                                                    <div className="border-b border-slate-100 pb-3">
+                                                        <h3 className="text-base font-semibold text-slate-900">{category}</h3>
+                                                        <p className="mt-1 text-xs text-slate-500">
+                                                            {PERMISSION_LIST.filter((permission) => permission.category === category).length} สิทธิ์ในหมวดนี้
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="mt-4 space-y-3">
+                                                        {PERMISSION_LIST.filter((permission) => permission.category === category).map((permission) => (
+                                                            <label
+                                                                key={permission.key}
+                                                                className="group flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 transition hover:border-blue-200 hover:bg-blue-50/40"
+                                                            >
+                                                                <div className="mt-0.5 flex h-5 w-5 items-center justify-center">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={!!permissions[permission.key]}
+                                                                        onChange={(e) => handleToggle(permission.key, e.target.checked)}
+                                                                        className="h-4.5 w-4.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                                    />
+                                                                </div>
+                                                                <div className="min-w-0 flex-1">
+                                                                    <div className="text-sm font-medium text-slate-800 group-hover:text-slate-950">
+                                                                        {formatPermissionLabel(permission.label)}
+                                                                    </div>
+                                                                    <div className="mt-1 text-xs leading-5 text-slate-500">{permission.description}</div>
+                                                                </div>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </section>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
+                            </div>
 
-                        <div className="mt-8 flex justify-end space-x-3 border-t pt-4">
-                            <button
-                                onClick={() => setIsOpen(false)}
-                                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 transition hover:bg-gray-50"
-                            >
-                                ยกเลิก
-                            </button>
-                            <button
-                                onClick={handleSave}
-                                disabled={isSaving}
-                                className="flex items-center rounded-lg bg-blue-600 px-4 py-2 text-white transition hover:bg-blue-700 disabled:opacity-50"
-                            >
-                                {isSaving ? 'กำลังบันทึก...' : (
-                                    <>
-                                        <Save className="mr-2 h-4 w-4" />
-                                        บันทึกสิทธิ์รายบุคคล
-                                    </>
-                                )}
-                            </button>
+                            <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:px-6">
+                                <div className="text-sm text-slate-500">
+                                    กด <span className="font-medium text-slate-700">บันทึกสิทธิ์รายบุคคล</span> เพื่อยืนยันการ override
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => setIsOpen(false)}
+                                        className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                    >
+                                        ยกเลิก
+                                    </button>
+                                    <button
+                                        onClick={handleSave}
+                                        disabled={isSaving}
+                                        className="inline-flex items-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        {isSaving ? 'กำลังบันทึก...' : (
+                                            <>
+                                                <Save className="mr-2 h-4 w-4" />
+                                                บันทึกสิทธิ์รายบุคคล
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body,
             )}
         </>
     );

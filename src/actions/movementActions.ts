@@ -1,9 +1,10 @@
 'use server';
 
-import { prisma } from '@/lib/prisma';
-import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
+
+import { auth } from '@/auth';
 import { COMMON_ACTION_MESSAGES, MOVEMENT_ACTION_MESSAGES } from '@/lib/action-messages';
+import { prisma } from '@/lib/prisma';
 
 type MovementQuery = {
     OR?: Array<
@@ -33,7 +34,7 @@ export async function adjustStock(formData: FormData) {
         return { error: MOVEMENT_ACTION_MESSAGES.invalidInput };
     }
 
-    const movementType = type === 'in' ? 'เธฃเธฑเธเน€เธเนเธฒ' : 'เธญเธญเธ';
+    const movementType = type === 'in' ? 'รับเข้า' : 'ออก';
 
     const transactionDateStr = formData.get('transaction_date') as string;
     let movementTime = new Date();
@@ -116,7 +117,10 @@ export async function deleteMovement(formData: FormData) {
         });
 
         if (product) {
-            const isIn = movement.movement_type === 'เธฃเธฑเธเน€เธเนเธฒ' || movement.movement_type === 'in' || movement.movement_type === 'add';
+            const isIn =
+                movement.movement_type === 'รับเข้า'
+                || movement.movement_type === 'in'
+                || movement.movement_type === 'add';
             const newStock = isIn
                 ? product.p_count - movement.quantity
                 : product.p_count + movement.quantity;
@@ -179,7 +183,10 @@ export async function updateMovement(formData: FormData) {
             });
 
             if (product) {
-                const isIn = movement.movement_type === 'เธฃเธฑเธเน€เธเนเธฒ' || movement.movement_type === 'in' || movement.movement_type === 'add';
+                const isIn =
+                    movement.movement_type === 'รับเข้า'
+                    || movement.movement_type === 'in'
+                    || movement.movement_type === 'add';
                 const diff = newQuantity - movement.quantity;
                 const newStock = isIn
                     ? product.p_count + diff
@@ -267,15 +274,15 @@ export async function getFilteredMovements({
             skip: all ? undefined : (page - 1) * limit,
         });
 
-        const pIds = Array.from(new Set(movements.map(movement => movement.p_id)));
+        const pIds = Array.from(new Set(movements.map((movement) => movement.p_id)));
         const products = await prisma.tbl_products.findMany({
             where: { p_id: { in: pIds } },
             select: { p_id: true, p_name: true, p_image: true },
         });
 
-        const productMap = new Map(products.map(product => [product.p_id, product]));
+        const productMap = new Map(products.map((product) => [product.p_id, product]));
 
-        const enrichedMovements = movements.map(movement => {
+        const enrichedMovements = movements.map((movement) => {
             const product = productMap.get(movement.p_id);
             return {
                 ...movement,

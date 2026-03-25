@@ -1,10 +1,11 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { Lock, Pencil } from 'lucide-react';
+
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { canViewPurchaseRequestDocument } from '@/lib/rbac';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
-import { Lock, Pencil } from 'lucide-react';
-import { notFound } from 'next/navigation';
 import PrintButton from './PrintButton';
 
 type PurchaseLineItem = {
@@ -36,41 +37,42 @@ function getValueByPrefixes(lines: string[], prefixes: string[], fallback: strin
     return fallback;
 }
 
+function getValueAfterColon(line: string | undefined, fallback: string = '-') {
+    if (!line) return fallback;
+    const separatorIndex = line.indexOf(':');
+    if (separatorIndex < 0) return fallback;
+    return line.slice(separatorIndex + 1).trim() || fallback;
+}
+
 function parsePurchaseReason(reason: string | null | undefined) {
     const raw = reason || '';
     const lines = raw.split('\n');
+    const normalizedLines = lines.map((line) => line.trim()).filter(Boolean);
+    const headerLines = normalizedLines.filter((line) => line.includes(':')).slice(0, 3);
 
-    const subject = getValueByPrefixes(lines, ['เรื่อง:', 'เน€เธฃเธทเนเธญเธ:']);
-    const priority = getValueByPrefixes(lines, ['ระดับความสำคัญ:', 'เธฃเธฐเธ”เธฑเธเธเธงเธฒเธกเธชเธณเธเธฑเธ:']);
-    const note = getValueByPrefixes(lines, ['หมายเหตุ:', 'เธซเธกเธฒเธขเน€เธซเธ•เธธ:']);
-    const subtotal = getValueByPrefixes(lines, ['รวมเงิน:', 'เธฃเธงเธกเน€เธเธดเธ:']);
-    const vat = getValueByPrefixes(lines, ['ภาษี 7%:', 'เธ เธฒเธฉเธต 7%:'], '');
-    const netTotal = getValueByPrefixes(lines, ['ยอดรวมสุทธิ:', 'เธขเธญเธ”เธฃเธงเธกเธชเธธเธ—เธเธด:']);
+    const subject = getValueAfterColon(headerLines[0]);
+    const priority = getValueAfterColon(headerLines[1]);
+    const note = getValueAfterColon(headerLines[2]);
+    const subtotal = getValueByPrefixes(normalizedLines, ['รวมเงิน:']);
+    const vat = getValueByPrefixes(normalizedLines, ['ภาษี 7%:'], '');
+    const netTotal = getValueByPrefixes(normalizedLines, ['ยอดรวมสุทธิ:']);
 
     const items: PurchaseLineItem[] = [];
-    let inItems = false;
 
     for (const line of lines) {
         const trimmed = line.trim();
-
-        if (trimmed === 'รายการสินค้า:' || trimmed === 'เธฃเธฒเธขเธเธฒเธฃเธชเธดเธเธเนเธฒ:') {
-            inItems = true;
-            continue;
-        }
-
-        if (!inItems) continue;
-        if (trimmed.startsWith('รวมเงิน:') || trimmed.startsWith('เธฃเธงเธกเน€เธเธดเธ:')) break;
+        if (!trimmed) continue;
 
         if (/^\d+\./.test(trimmed)) {
-            items.push({ line: trimmed });
+            items.push({ line: trimmed.replace(/^\d+\.\s*/, '') });
             continue;
         }
 
-        if ((trimmed.startsWith('ลิงก์สินค้า:') || trimmed.startsWith('เธฅเธดเธเธเนเธชเธดเธเธเนเธฒ:')) && items.length > 0) {
-            items[items.length - 1].link = trimmed
-                .replace('ลิงก์สินค้า:', '')
-                .replace('เธฅเธดเธเธเนเธชเธดเธเธเนเธฒ:', '')
-                .trim();
+        if (items.length > 0 && trimmed.includes('http')) {
+            const normalizedLink = trimmed.replace(/^[^:]+:/, '').trim();
+            if (/^https?:\/\//i.test(normalizedLink)) {
+                items[items.length - 1].link = normalizedLink;
+            }
         }
     }
 
@@ -120,8 +122,8 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
     const session = await auth();
     if (!session?.user?.id) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen text-gray-500">
-                <Lock className="w-12 h-12 mb-4 text-gray-400" />
+            <div className="flex min-h-screen flex-col items-center justify-center text-gray-500">
+                <Lock className="mb-4 h-12 w-12 text-gray-400" />
                 <h3 className="text-lg font-medium">Unauthorized</h3>
             </div>
         );
@@ -186,8 +188,8 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
 
     if (!canView) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen text-gray-500">
-                <Lock className="w-12 h-12 mb-4 text-gray-400" />
+            <div className="flex min-h-screen flex-col items-center justify-center text-gray-500">
+                <Lock className="mb-4 h-12 w-12 text-gray-400" />
                 <h3 className="text-lg font-medium">Access Denied</h3>
             </div>
         );
@@ -229,24 +231,24 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
     });
 
     return (
-        <div className="bg-white min-h-screen p-8 print:p-0 text-black">
-            <div className="max-w-[210mm] mx-auto print:max-w-none">
-                <div className="mb-6 print:hidden flex justify-end gap-3">
+        <div className="min-h-screen bg-white p-8 print:p-0 text-black">
+            <div className="mx-auto max-w-[210mm] print:max-w-none">
+                <div className="mb-6 flex justify-end gap-3 print:hidden">
                     {request.status === 'pending' && (
                         <Link
                             href={`/purchase-request?edit=${request.request_id}`}
                             className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-white px-4 py-2 text-amber-700 hover:bg-amber-50"
                         >
-                            <Pencil className="w-4 h-4" />
+                            <Pencil className="h-4 w-4" />
                             แก้ไขเอกสาร
                         </Link>
                     )}
                     <PrintButton />
                 </div>
 
-                <div className="border-b pb-4 mb-6 flex justify-between items-start">
+                <div className="mb-6 flex items-start justify-between border-b pb-4">
                     <div>
-                        <h1 className="text-3xl font-bold uppercase tracking-wider mb-2">Purchase Request</h1>
+                        <h1 className="mb-2 text-3xl font-bold uppercase tracking-wider">Purchase Request</h1>
                         <div className="text-sm">
                             <p className="font-bold">{companyInfo.company_name || 'Company Name Co., Ltd.'}</p>
                             <p>{companyInfo.company_address || '123 Business Rd, Bangkok 10110'}</p>
@@ -256,45 +258,45 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                     </div>
                     <div className="text-right">
                         <div className="mb-2">
-                            <span className="text-sm text-gray-500 block">Document Number</span>
+                            <span className="block text-sm text-gray-500">Document Number</span>
                             <span className="text-xl font-bold">{request.request_number}</span>
                         </div>
                         <div className="mb-2">
-                            <span className="text-sm text-gray-500 block">Date</span>
+                            <span className="block text-sm text-gray-500">Date</span>
                             <span>{request.request_date ? new Date(request.request_date).toLocaleDateString('th-TH') : '-'}</span>
                         </div>
                         <div>
-                            <span className="text-sm text-gray-500 block">Status</span>
-                            <span className="uppercase font-semibold">{request.status}</span>
+                            <span className="block text-sm text-gray-500">Status</span>
+                            <span className="font-semibold uppercase">{request.status}</span>
                         </div>
                     </div>
                 </div>
 
                 <div className="mb-8 grid grid-cols-2 gap-4">
-                    <div className="p-4 border rounded-sm">
-                        <h3 className="text-xs uppercase font-bold text-gray-500 mb-2">Requester</h3>
-                        <div className="font-bold text-lg">{request.tbl_users?.username || '-'}</div>
+                    <div className="rounded-sm border p-4">
+                        <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">Requester</h3>
+                        <div className="text-lg font-bold">{request.tbl_users?.username || '-'}</div>
                     </div>
-                    <div className="p-4 border rounded-sm">
-                        <h3 className="text-xs uppercase font-bold text-gray-500 mb-2">Reference Job</h3>
-                        <div className="font-bold text-lg">{request.reference_job || '-'}</div>
+                    <div className="rounded-sm border p-4">
+                        <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">Reference Job</h3>
+                        <div className="text-lg font-bold">{request.reference_job || '-'}</div>
                     </div>
-                    <div className="p-4 border rounded-sm">
-                        <h3 className="text-xs uppercase font-bold text-gray-500 mb-2">Subject</h3>
-                        <div className="font-bold text-lg">{parsed.subject}</div>
+                    <div className="rounded-sm border p-4">
+                        <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">Subject</h3>
+                        <div className="text-lg font-bold">{parsed.subject}</div>
                     </div>
-                    <div className="p-4 border rounded-sm">
-                        <h3 className="text-xs uppercase font-bold text-gray-500 mb-2">Priority</h3>
-                        <div className="font-bold text-lg">{parsed.priority}</div>
+                    <div className="rounded-sm border p-4">
+                        <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">Priority</h3>
+                        <div className="text-lg font-bold">{parsed.priority}</div>
                     </div>
                 </div>
 
-                <table className="w-full text-sm mb-8">
+                <table className="mb-8 w-full text-sm">
                     <thead>
                         <tr className="border-b-2 border-black">
-                            <th className="py-2 text-left w-12">#</th>
+                            <th className="w-12 py-2 text-left">#</th>
                             <th className="py-2 text-left">Description</th>
-                            <th className="py-2 text-left w-56">Product Link</th>
+                            <th className="w-56 py-2 text-left">Product Link</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -302,8 +304,8 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                             parsed.items.map((item, index) => (
                                 <tr key={`${request.request_id}-${index}`}>
                                     <td className="py-3 text-gray-500">{index + 1}</td>
-                                    <td className="py-3 whitespace-pre-wrap">{item.line}</td>
-                                    <td className="py-3 break-all">
+                                    <td className="whitespace-pre-wrap py-3">{item.line}</td>
+                                    <td className="break-all py-3">
                                         {item.link ? (
                                             <a href={item.link} target="_blank" rel="noreferrer" className="text-blue-700 underline">
                                                 {item.link}
@@ -316,7 +318,7 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={3} className="py-3 whitespace-pre-wrap">{parsed.raw || '-'}</td>
+                                <td colSpan={3} className="whitespace-pre-wrap py-3">{parsed.raw || '-'}</td>
                             </tr>
                         )}
                     </tbody>
@@ -353,23 +355,23 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                     </tfoot>
                 </table>
 
-                <div className="mb-8 border p-4 bg-gray-50 print:bg-transparent">
-                    <h4 className="font-bold text-sm mb-1">Notes:</h4>
-                    <p className="text-sm whitespace-pre-wrap">{parsed.note || '-'}</p>
+                <div className="mb-8 border bg-gray-50 p-4 print:bg-transparent">
+                    <h4 className="mb-1 text-sm font-bold">Notes:</h4>
+                    <p className="whitespace-pre-wrap text-sm">{parsed.note || '-'}</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-12 mt-20 page-break-inside-avoid">
+                <div className="mt-20 grid grid-cols-2 gap-12 page-break-inside-avoid">
                     <div className="text-center">
-                        <div className="border-b border-black w-3/4 mx-auto mb-2"></div>
+                        <div className="mx-auto mb-2 w-3/4 border-b border-black"></div>
                         <p className="font-bold">{request.tbl_users?.username || '________________'}</p>
                         <p className="text-xs uppercase text-gray-500">Prepared By</p>
-                        <p className="text-xs mt-1">Date: ____/____/____</p>
+                        <p className="mt-1 text-xs">Date: ____/____/____</p>
                     </div>
                     <div className="text-center">
-                        <div className="border-b border-black w-3/4 mx-auto mb-2 opacity-50"></div>
+                        <div className="mx-auto mb-2 w-3/4 border-b border-black opacity-50"></div>
                         <p className="font-bold">{request.tbl_approver?.username || '________________'}</p>
                         <p className="text-xs uppercase text-gray-500">Approved By</p>
-                        <p className="text-xs mt-1">Date: ____/____/____</p>
+                        <p className="mt-1 text-xs">Date: ____/____/____</p>
                     </div>
                 </div>
 

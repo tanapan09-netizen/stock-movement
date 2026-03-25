@@ -80,19 +80,25 @@ export async function saveInventoryAudit(data: SaveInventoryAuditInput) {
             data: {
                 audit_number: auditNumber,
                 audit_date: new Date(data.audit_date),
-                status: 'completed',
+                status: 'posted',
                 notes: data.notes || `${INVENTORY_AUDIT_COPY.auditNotePrefix} ${data.auditor}`,
                 total_items: countedItems.length,
                 total_discrepancy: totalDiscrepancy,
+                total_variance_abs: totalDiscrepancy,
                 created_by: username,
                 completed_by: auditBy,
                 completed_at: new Date(),
                 tbl_audit_items: {
                     create: countedItems.map(item => ({
                         p_id: item.p_id,
+                        snapshot_qty: item.system_qty,
                         system_qty: item.system_qty,
                         counted_qty: item.counted_qty ?? 0,
+                        final_count_qty: item.counted_qty ?? 0,
                         discrepancy: (item.counted_qty ?? 0) - item.system_qty,
+                        variance_qty: (item.counted_qty ?? 0) - item.system_qty,
+                        approved_adjustment_qty: (item.counted_qty ?? 0) - item.system_qty,
+                        item_status: 'posted',
                         counted_at: new Date(),
                     }))
                 }
@@ -157,7 +163,7 @@ export async function getInventoryAuditHistory(limit = 10) {
         const data = audits.map(a => ({
             ...a,
             approved_by: null as string | null,
-            is_locked: a.status === 'completed',
+            is_locked: a.status === 'posted',
         }));
         return { success: true, data };
     } catch (error) {
