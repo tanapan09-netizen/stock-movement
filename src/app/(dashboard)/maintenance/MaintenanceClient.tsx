@@ -1090,13 +1090,24 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             }
         }
 
+        const currentAssignedTo = selectedRequest.assigned_to || '';
+        const currentScheduledDate = selectedRequest.scheduled_date
+            ? new Date(selectedRequest.scheduled_date).toISOString().split('T')[0]
+            : '';
+        const currentActualCost = Number(selectedRequest.actual_cost || 0);
+        const currentNotes = selectedRequest.notes || '';
+        const nextAssignedTo = editData.assigned_to || '';
+        const nextScheduledDate = editData.scheduled_date || '';
+        const nextActualCost = Number(editData.actual_cost || 0);
+        const nextNotes = editData.notes || '';
+
         const submitData = {
             status: editData.status !== selectedRequest.status ? editData.status : undefined,
             priority: editData.priority !== selectedRequest.priority ? editData.priority : undefined,
-            assigned_to: editData.assigned_to,
-            scheduled_date: editData.scheduled_date || undefined,
-            actual_cost: editData.actual_cost || undefined,
-            notes: editData.notes || undefined
+            assigned_to: nextAssignedTo !== currentAssignedTo ? nextAssignedTo : undefined,
+            scheduled_date: nextScheduledDate !== currentScheduledDate ? nextScheduledDate : undefined,
+            actual_cost: nextActualCost !== currentActualCost ? nextActualCost : undefined,
+            notes: nextNotes !== currentNotes ? nextNotes : undefined
         };
 
         if (isMaintenanceTechnician(loggedInRole) && submitData.status === 'completed') {

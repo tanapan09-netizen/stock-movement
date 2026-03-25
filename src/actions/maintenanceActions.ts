@@ -381,6 +381,8 @@ export async function createMaintenanceRequest(formData: FormData) {
             Number.isFinite(sourceImageCount) ? sourceImageCount : 0,
         );
 
+        const initialStatus = target_role ? 'approved' : 'pending';
+
         const request = await prisma.tbl_maintenance_requests.create({
             data: {
                 request_number: generateRequestNumber(),
@@ -389,7 +391,7 @@ export async function createMaintenanceRequest(formData: FormData) {
                 description: validData.description || null,
                 image_url: finalImageUrls.length > 0 ? JSON.stringify(finalImageUrls) : null,
                 priority: validData.priority,
-                status: 'pending',
+                status: initialStatus,
                 reported_by,
                 assigned_to: assigned_to || null,
                 scheduled_date: scheduled_date ? new Date(scheduled_date) : null,
