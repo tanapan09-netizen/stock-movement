@@ -63,8 +63,8 @@ npm install --production
 echo "[INFO] Generating Prisma client..."
 npx prisma generate
 
-echo "[INFO] Pushing database schema..."
-npx prisma db push
+echo "[INFO] Applying database migrations..."
+npx prisma migrate deploy
 
 echo "[INFO] Building application..."
 npm run build

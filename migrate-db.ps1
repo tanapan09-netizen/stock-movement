@@ -4,9 +4,9 @@ $env:DATABASE_URL="mysql://appuser:AppPass2024@127.0.0.1:3306/stock_db"
 Write-Host "--- Starting Database Migration ---" -ForegroundColor Cyan
 Write-Host "Target: Cloud SQL (via Proxy)" -ForegroundColor Yellow
 
-# 1. Push Schema
-Write-Host "1. Running: npx prisma db push" -ForegroundColor Green
-npx prisma db push --accept-data-loss
+# 1. Apply Migrations
+Write-Host "1. Running: npx prisma migrate deploy" -ForegroundColor Green
+npx prisma migrate deploy
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Migration failed!"

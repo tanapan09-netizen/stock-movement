@@ -48,9 +48,11 @@ A comprehensive stock management and maintenance tracking system built with Next
 4.  **Database Setup:**
     Ensure MySQL is running and `DATABASE_URL` is correct.
     ```bash
-    npx prisma db push
-    # Or for migrations
-    # npx prisma migrate dev
+    # Local development
+    npx prisma migrate dev
+
+    # Deployed environment / existing migration history
+    # npx prisma migrate deploy
     ```
 
 5.  **Run Development Server:**

@@ -26,8 +26,8 @@ export async function GET(request: Request) {
         const password = url.password;
         const database = url.pathname.replace('/', '');
 
-        // Create backups directory
-        const backupDir = path.join(process.cwd(), 'backups');
+        // Store scheduled backups in the same directory used by /settings manual backups
+        const backupDir = path.join(process.cwd(), 'public', 'uploads');
         if (!fs.existsSync(backupDir)) {
             fs.mkdirSync(backupDir, { recursive: true });
         }
@@ -67,11 +67,11 @@ export async function GET(request: Request) {
         }
 
         return NextResponse.json({ success: false, error: 'Backup file not created' }, { status: 500 });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Backup failed:', error);
         return NextResponse.json({
             success: false,
-            error: error.message || 'Backup failed'
+            error: error instanceof Error ? error.message : 'Backup failed'
         }, { status: 500 });
     }
 }

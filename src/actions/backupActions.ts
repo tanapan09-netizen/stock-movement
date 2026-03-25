@@ -7,7 +7,7 @@ import * as path from 'path';
 
 const execAsync = promisify(exec);
 
-const BACKUP_DIR = path.join(process.cwd(), 'backups');
+const BACKUP_DIR = path.join(process.cwd(), 'public', 'uploads');
 const RETENTION_DAYS = 14;
 
 // Ensure backup directory exists
@@ -24,6 +24,10 @@ function generateBackupFilename(database: string): string {
     return `backup_${database}_${timestamp}.sql`;
 }
 
+function isBackupFile(filename: string): boolean {
+    return filename.startsWith('backup_') && filename.endsWith('.sql');
+}
+
 // Clean up old backups (older than RETENTION_DAYS)
 function cleanupOldBackups() {
     try {
@@ -32,7 +36,7 @@ function cleanupOldBackups() {
         const maxAge = RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
         for (const file of files) {
-            if (!file.endsWith('.sql')) continue;
+            if (!isBackupFile(file)) continue;
 
             const filePath = path.join(BACKUP_DIR, file);
             const stats = fs.statSync(filePath);
@@ -52,7 +56,7 @@ function cleanupOldBackups() {
 function getLastBackupTime(): Date | null {
     try {
         const files = fs.readdirSync(BACKUP_DIR)
-            .filter(f => f.endsWith('.sql'))
+            .filter(isBackupFile)
             .map(f => ({
                 name: f,
                 time: fs.statSync(path.join(BACKUP_DIR, f)).mtime
@@ -158,7 +162,7 @@ export async function getBackupsList() {
     try {
         ensureBackupDir();
         const files = fs.readdirSync(BACKUP_DIR)
-            .filter(f => f.endsWith('.sql'))
+            .filter(isBackupFile)
             .map(f => {
                 const stats = fs.statSync(path.join(BACKUP_DIR, f));
                 return {
@@ -199,6 +203,10 @@ async function ensureNativePasswordAuth(user: string, password?: string) {
 
 export async function restoreDatabase(filename: string): Promise<{ success: boolean; message: string }> {
     try {
+        if (!isBackupFile(filename) || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+            return { success: false, message: 'Invalid backup filename' };
+        }
+
         const backupPath = path.join(BACKUP_DIR, filename);
 
         if (!fs.existsSync(backupPath)) {
@@ -261,7 +269,7 @@ export async function getBackupStatus(): Promise<{
         ensureBackupDir();
 
         const files = fs.readdirSync(BACKUP_DIR)
-            .filter(f => f.endsWith('.sql'))
+            .filter(isBackupFile)
             .map(f => ({
                 name: f,
                 stats: fs.statSync(path.join(BACKUP_DIR, f))

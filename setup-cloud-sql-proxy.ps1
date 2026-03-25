@@ -35,8 +35,8 @@ Write-Host "DATABASE_URL set to: $env:DATABASE_URL" -ForegroundColor Gray
 
 try {
     # 4. Run Migration
-    Write-Host "Running: npx prisma db push" -ForegroundColor Cyan
-    npx prisma db push --accept-data-loss
+    Write-Host "Running: npx prisma migrate deploy" -ForegroundColor Cyan
+    npx prisma migrate deploy
 
     if ($LASTEXITCODE -eq 0) {
         # 5. Run Seed

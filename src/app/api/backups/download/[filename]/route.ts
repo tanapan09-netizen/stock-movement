@@ -9,12 +9,12 @@ export async function GET(
     try {
         const { filename } = await params;
 
-        // Safety check: only allow .sql files and prevent directory traversal
-        if (!filename.endsWith('.sql') || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+        // Safety check: only allow backup .sql files and prevent directory traversal
+        if (!filename.startsWith('backup_') || !filename.endsWith('.sql') || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
             return NextResponse.json({ error: 'Invalid filename' }, { status: 400 });
         }
 
-        const backupDir = path.join(process.cwd(), 'backups');
+        const backupDir = path.join(process.cwd(), 'public', 'uploads');
         const filepath = path.join(backupDir, filename);
 
         if (!fs.existsSync(filepath)) {
@@ -29,7 +29,7 @@ export async function GET(
                 'Content-Disposition': `attachment; filename="${filename}"`,
             },
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Download failed:', error);
         return NextResponse.json({ error: 'Download failed' }, { status: 500 });
     }
