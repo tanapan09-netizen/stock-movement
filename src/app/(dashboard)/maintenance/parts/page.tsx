@@ -1,5 +1,8 @@
 import { auth } from '@/auth';
-import { canManageMaintenanceParts, canUpdatePartRequestStatus } from '@/lib/rbac';
+import {
+    canDirectManageMaintenanceStock,
+    canManageMaintenanceParts,
+} from '@/lib/rbac';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
 import PartsManagementClient from './PartsManagementClient';
 
@@ -18,10 +21,9 @@ export default async function PartsManagementPage() {
                 permissionContext.role,
                 permissionContext.permissions,
             )}
-            canRespondPartAvailability={canUpdatePartRequestStatus(
+            canDirectStockActions={canDirectManageMaintenanceStock(
                 permissionContext.role,
                 permissionContext.permissions,
-                permissionContext.isApprover,
             )}
         />
     );

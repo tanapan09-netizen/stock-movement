@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Building, Building2, ChevronDown, ChevronRight, Clock, Wrench, CheckCircle, Filter, X, Package, User, Calendar, Hash, Layers } from 'lucide-react';
-import { getMaintenanceReportByRoom, getAllRooms, getProducts } from '@/actions/maintenanceActions';
+import { Building, Building2, ChevronDown, ChevronRight, Clock, Wrench, CheckCircle, Filter, X, Package, User, Calendar, Hash, Layers, ShieldAlert, TriangleAlert, ScanSearch, BadgeDollarSign, Download } from 'lucide-react';
+import { getMaintenanceExceptionReport, getMaintenanceReportByRoom, getAllRooms, getProducts } from '@/actions/maintenanceActions';
 import { getActiveTechnicians } from '@/actions/technicianActions';
 import {
     MAINTENANCE_PART_STATUS_CONFIG,
@@ -47,6 +47,29 @@ interface FilterState {
     endDate: string;
 }
 
+interface ExceptionReportItem {
+    type: 'verification_failed' | 'pending_verification_overdue' | 'manual_actual_cost_override' | 'reservation_cleared';
+    request_id: number;
+    request_number: string;
+    title: string;
+    room_code: string;
+    room_name: string;
+    assigned_to: string | null;
+    actor_name: string;
+    occurred_at: Date;
+    detail: string;
+}
+
+interface ExceptionReportData {
+    summary: {
+        verification_failed: number;
+        pending_verification_overdue: number;
+        manual_actual_cost_override: number;
+        reservation_cleared: number;
+    };
+    items: ExceptionReportItem[];
+}
+
 function StatusBadge({ status }: { status: string }) {
     const cfg = MAINTENANCE_REPORT_STATUS_CONFIG[status] ?? { label: status, color: 'text-gray-600', bg: 'bg-gray-100', dot: 'bg-gray-400' };
     return (
@@ -59,9 +82,19 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function MaintenanceReportClient() {
     const [report, setReport] = useState<RoomReport[]>([]);
+    const [exceptionReport, setExceptionReport] = useState<ExceptionReportData>({
+        summary: {
+            verification_failed: 0,
+            pending_verification_overdue: 0,
+            manual_actual_cost_override: 0,
+            reservation_cleared: 0,
+        },
+        items: [],
+    });
     const [loading, setLoading] = useState(true);
     const [expandedRooms, setExpandedRooms] = useState<Set<number>>(new Set());
     const [expandedMainRooms, setExpandedMainRooms] = useState<Set<string>>(new Set());
+    const [exceptionTypeFilter, setExceptionTypeFilter] = useState<'all' | ExceptionReportItem['type']>('all');
 
     const [filters, setFilters] = useState<FilterState>({
         roomId: '', technician: '', partId: '', startDate: '', endDate: ''
@@ -136,12 +169,19 @@ export default function MaintenanceReportClient() {
         if (currentFilters.startDate) apiFilters.startDate = new Date(currentFilters.startDate);
         if (currentFilters.endDate) apiFilters.endDate = new Date(currentFilters.endDate);
 
-        const result = await getMaintenanceReportByRoom(apiFilters);
+        const [result, exceptionResult] = await Promise.all([
+            getMaintenanceReportByRoom(apiFilters),
+            getMaintenanceExceptionReport(apiFilters),
+        ]);
+
         if (result.success) {
             setReport(result.data as RoomReport[]);
             if (currentFilters.roomId || currentFilters.technician || currentFilters.partId || currentFilters.startDate) {
                 setExpandedRooms(new Set((result.data as RoomReport[]).map(r => r.room_id)));
             }
+        }
+        if (exceptionResult.success) {
+            setExceptionReport(exceptionResult.data as ExceptionReportData);
         }
         setLoading(false);
     }
@@ -207,6 +247,46 @@ export default function MaintenanceReportClient() {
 
     const uniqueMainRoomsCount = new Set(report.map(r => r.room_code.split('-')[0])).size;
 
+    const exceptionTypeConfig: Record<ExceptionReportItem['type'], { label: string; icon: any; chip: string }> = {
+        verification_failed: { label: 'ตรวจนับไม่ตรง', icon: TriangleAlert, chip: 'bg-rose-100 text-rose-700' },
+        pending_verification_overdue: { label: 'รอตรวจนับเกิน 24 ชม.', icon: ScanSearch, chip: 'bg-amber-100 text-amber-700' },
+        manual_actual_cost_override: { label: 'แก้ค่าใช้จ่ายจริง', icon: BadgeDollarSign, chip: 'bg-violet-100 text-violet-700' },
+        reservation_cleared: { label: 'เคลียร์ของค้าง', icon: ShieldAlert, chip: 'bg-slate-200 text-slate-700' },
+    };
+
+    const filteredExceptionItems = exceptionTypeFilter === 'all'
+        ? exceptionReport.items
+        : exceptionReport.items.filter((item) => item.type === exceptionTypeFilter);
+
+    function exportExceptionCsv() {
+        if (filteredExceptionItems.length === 0) return;
+
+        const escapeCsv = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+        const rows = [
+            ['type', 'request_number', 'title', 'room_code', 'room_name', 'assigned_to', 'actor_name', 'occurred_at', 'detail'],
+            ...filteredExceptionItems.map((item) => [
+                exceptionTypeConfig[item.type].label,
+                item.request_number,
+                item.title,
+                item.room_code,
+                item.room_name,
+                item.assigned_to || '',
+                item.actor_name || '',
+                new Date(item.occurred_at).toLocaleString('th-TH'),
+                item.detail,
+            ]),
+        ];
+
+        const csv = rows.map((row) => row.map(escapeCsv).join(',')).join('\n');
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `maintenance-exceptions-${exceptionTypeFilter}-${new Date().toISOString().slice(0, 10)}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+    }
+
     function toggleMainRoom(roomCode: string) {
         setExpandedMainRooms(prev => {
             const next = new Set(prev);
@@ -248,6 +328,113 @@ export default function MaintenanceReportClient() {
             </div>
 
             {/* ── Filters ── */}
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-rose-100 dark:border-slate-700">
+                <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                        <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300">
+                            <ShieldAlert size={18} />
+                            <h2 className="text-sm font-bold uppercase tracking-wide">Exception Monitor</h2>
+                        </div>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            รายการเสี่ยงที่ควรตรวจสอบจากประวัติระบบและสถานะอะไหล่
+                        </p>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-2xl font-bold text-rose-600">{filteredExceptionItems.length}</div>
+                        <div className="text-xs text-gray-400">รายการเสี่ยง</div>
+                    </div>
+                </div>
+
+                <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="exception-type-filter" className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                            ประเภทความเสี่ยง
+                        </label>
+                        <select
+                            id="exception-type-filter"
+                            value={exceptionTypeFilter}
+                            onChange={(e) => setExceptionTypeFilter(e.target.value as 'all' | ExceptionReportItem['type'])}
+                            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
+                        >
+                            <option value="all">ทั้งหมด</option>
+                            {Object.entries(exceptionTypeConfig).map(([key, cfg]) => (
+                                <option key={key} value={key}>{cfg.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={exportExceptionCsv}
+                        disabled={filteredExceptionItems.length === 0}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400 disabled:hover:bg-transparent dark:border-rose-900/60 dark:text-rose-300 dark:hover:bg-rose-950/30"
+                    >
+                        <Download size={16} />
+                        Export CSV
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                    {[
+                        { label: 'ตรวจนับไม่ตรง', value: exceptionReport.summary.verification_failed, color: 'text-rose-600', bg: 'bg-rose-100', Icon: TriangleAlert },
+                        { label: 'รอตรวจนับนาน', value: exceptionReport.summary.pending_verification_overdue, color: 'text-amber-600', bg: 'bg-amber-100', Icon: ScanSearch },
+                        { label: 'แก้ต้นทุนมือ', value: exceptionReport.summary.manual_actual_cost_override, color: 'text-violet-600', bg: 'bg-violet-100', Icon: BadgeDollarSign },
+                        { label: 'เคลียร์ของค้าง', value: exceptionReport.summary.reservation_cleared, color: 'text-slate-700', bg: 'bg-slate-200', Icon: ShieldAlert },
+                    ].map(({ label, value, color, bg, Icon }) => (
+                        <div key={label} className="rounded-xl border border-gray-100 dark:border-slate-700 p-3">
+                            <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-lg ${bg}`}>
+                                    <Icon size={18} className={color} />
+                                </div>
+                                <div>
+                                    <div className={`text-xl font-bold ${color}`}>{value}</div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">{label}</div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="rounded-xl border border-gray-100 dark:border-slate-700 overflow-hidden">
+                    <div className="px-4 py-3 bg-gray-50 dark:bg-slate-900/50 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
+                        <div className="font-semibold text-sm text-gray-700 dark:text-gray-200">รายการล่าสุดที่ควรตรวจสอบ</div>
+                        <div className="text-xs text-gray-400">{filteredExceptionItems.length} รายการ</div>
+                    </div>
+                    {filteredExceptionItems.length === 0 ? (
+                        <div className="px-4 py-8 text-sm text-center text-gray-400">
+                            ไม่พบรายการเสี่ยงตามตัวกรองปัจจุบัน
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                            {filteredExceptionItems.map((item, index) => {
+                                const cfg = exceptionTypeConfig[item.type];
+                                const Icon = cfg.icon;
+                                return (
+                                    <div key={`${item.type}-${item.request_id}-${index}`} className="px-4 py-3 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                                        <div className="space-y-1">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${cfg.chip}`}>
+                                                    <Icon size={12} />
+                                                    {cfg.label}
+                                                </span>
+                                                <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400">{item.request_number}</span>
+                                                <span className="text-xs text-gray-400">{item.room_code} - {item.room_name}</span>
+                                            </div>
+                                            <div className="text-sm font-medium text-gray-800 dark:text-white">{item.title}</div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">{item.detail}</div>
+                                        </div>
+                                        <div className="text-xs text-gray-400 lg:text-right">
+                                            <div>ผู้ดำเนินการ: {item.actor_name || '-'}</div>
+                                            <div>ช่างรับผิดชอบ: {item.assigned_to || '-'}</div>
+                                            <div>{new Date(item.occurred_at).toLocaleString('th-TH')}</div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
+
             <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-slate-700">
                 <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">

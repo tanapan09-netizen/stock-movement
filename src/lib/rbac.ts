@@ -788,6 +788,16 @@ export function canConfirmMaintenancePartUsage(role: string | null | undefined) 
   return !isDepartmentRole(role, 'store');
 }
 
+export function canDirectManageMaintenanceStock(
+  role: string | null | undefined,
+  userPermissions?: PagePermissionMap,
+) {
+  const normalizedRole = normalizeRole(role);
+  void userPermissions;
+
+  return isAdminRole(normalizedRole) || isDepartmentRole(normalizedRole, 'store');
+}
+
 export function canManageMaintenanceParts(
   role: string | null | undefined,
   userPermissions: PagePermissionMap,
@@ -806,13 +816,7 @@ export function canVerifyMaintenanceParts(
   role: string | null | undefined,
   userPermissions: PagePermissionMap,
 ) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isAdminRole(normalizedRole) ||
-    isDepartmentRole(normalizedRole, 'store') ||
-    canAccessDashboardPage(normalizedRole, userPermissions, '/maintenance/parts', { level: 'edit' })
-  );
+  return canDirectManageMaintenanceStock(role, userPermissions);
 }
 
 export function canReopenMaintenanceRequest(

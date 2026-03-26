@@ -71,7 +71,7 @@ type PartRequestItem = {
 
 type Props = {
   canManageParts?: boolean;
-  canRespondPartAvailability?: boolean;
+  canDirectStockActions?: boolean;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -110,15 +110,10 @@ const PART_REQUEST_STATUS_LABELS: Record<string, string> = {
 
 export default function PartsManagementClient({
   canManageParts = false,
-  canRespondPartAvailability = false,
+  canDirectStockActions = false,
 }: Props) {
   const { data: session } = useSession();
-  const loggedInRole = String((session?.user as { role?: string } | undefined)?.role || '')
-    .trim()
-    .toLowerCase();
-  const canDirectWithdraw =
-    ['store', 'leader_store', 'manager', 'admin', 'owner'].includes(loggedInRole) ||
-    canRespondPartAvailability;
+  const canDirectWithdraw = canDirectStockActions;
 
   const [withdrawnParts, setWithdrawnParts] = useState<MaintenancePart[]>([]);
   const [maintenancePartRequests, setMaintenancePartRequests] = useState<PartRequestItem[]>([]);
@@ -248,8 +243,14 @@ export default function PartsManagementClient({
   async function handleClearReserved() {
     if (!confirm('ต้องการเคลียร์อะไหล่ที่ค้างในระบบทั้งหมดและคืนเข้าสู่สต็อกหรือไม่?')) return;
 
+    const reason = window.prompt('กรุณาระบุเหตุผลการเคลียร์รายการค้าง');
+    if (!reason || reason.trim().length < 8) {
+      alert('กรุณาระบุเหตุผลอย่างน้อย 8 ตัวอักษร');
+      return;
+    }
+
     setLoading(true);
-    const result = await clearAllReservedParts(session?.user?.name || 'System');
+    const result = await clearAllReservedParts(session?.user?.name || 'System', reason.trim());
     if (!result.success) {
       setLoading(false);
       return alert(`เกิดข้อผิดพลาด: ${result.error}`);
@@ -349,7 +350,7 @@ export default function PartsManagementClient({
               {canDirectWithdraw ? 'เบิกอะไหล่' : 'ทำเรื่องเบิกอะไหล่'}
             </button>
           ) : null}
-          {canManageParts ? (
+          {canDirectStockActions ? (
             <button
               onClick={handleClearReserved}
               className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700"
@@ -365,9 +366,9 @@ export default function PartsManagementClient({
         <div className="flex items-start gap-3 text-sm text-blue-700 dark:text-blue-300">
           <AlertTriangle className="mt-0.5 text-blue-500" size={20} />
           <div className="space-y-1">
-            <p>ช่างทำเรื่องเบิกอะไหล่ได้จากหน้านี้ และระบบจะแจ้งไปที่ role store ก่อนทุกครั้ง</p>
-            <p>เมื่อคลังยืนยันว่า "พร้อมจ่าย" ระบบจะบันทึกการเบิกจริงและย้ายอะไหล่ไปใช้งานในใบงานนั้น</p>
-            <p>รายการที่ยืนยันแล้วจะแสดงในส่วน "รายการอะไหล่ที่เบิกไปซ่อม" ด้านล่างเพื่อคืนของหรือตัดสต็อกต่อไป</p>
+            <p>ช่างทำเรื่องเบิกอะไหล่ได้จากหน้านี้ และระบบจะแจ้งไปที่ store ก่อนทุกครั้ง</p>
+            <p>สิทธิ์จ่ายจริง คืนจริง และตัดสต็อกจริงถูกล็อกไว้ให้ store/admin เท่านั้น เพื่อลดความเสี่ยงการสมยอมกัน</p>
+            <p>เมื่อคลังยืนยันว่า "พร้อมจ่าย" ระบบจะบันทึกชื่อผู้จ่ายจาก session จริง ไม่ใช้ชื่อที่ส่งมาจากหน้าเว็บ</p>
           </div>
         </div>
       </div>
@@ -469,7 +470,7 @@ export default function PartsManagementClient({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {canRespondPartAvailability ? (
+                      {canDirectStockActions ? (
                         <div className="flex justify-end gap-2">
                           <button
                             onClick={() => handlePartAvailability(request.request_id, 'approved')}
@@ -601,7 +602,7 @@ export default function PartsManagementClient({
                       </p>
                     </div>
                     <div className="flex flex-col items-start gap-2 lg:items-end">
-                      {canManageParts && hasUsedParts && !hasBlockingParts ? (
+                      {canDirectStockActions && hasUsedParts && !hasBlockingParts ? (
                         <button
                           onClick={() => handleCompleteWithParts(group.requestId)}
                           className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
@@ -664,7 +665,7 @@ export default function PartsManagementClient({
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">{part.withdrawn_by}</td>
                             <td className="px-4 py-3 text-right">
-                              {part.status === 'withdrawn' && canManageParts ? (
+                              {part.status === 'withdrawn' && canDirectStockActions ? (
                                 <div className="flex justify-end gap-2">
                                   <button
                                     onClick={() => {

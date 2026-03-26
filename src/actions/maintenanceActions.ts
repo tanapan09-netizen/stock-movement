@@ -18,7 +18,9 @@ import { validateData, createMaintenanceRequestSchema } from '@/lib/validation';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
 import {
     canApproveMaintenanceCompletion,
+    canConfirmMaintenancePartUsage,
     canCreateMaintenanceRequest,
+    canDirectManageMaintenanceStock,
     canManageMaintenanceEdit,
     canManageMaintenanceParts,
     canReassignMaintenanceRequest,
@@ -26,6 +28,7 @@ import {
     canSubmitMaintenanceCompletion,
     canVerifyMaintenanceParts,
 } from '@/lib/rbac';
+import { isManagerRole } from '@/lib/roles';
 
 type MaintenanceNotificationRequest = {
     request_number: string;
@@ -249,6 +252,10 @@ function getErrorMessage(error: unknown, fallback: string): string {
     return error instanceof Error ? error.message : fallback;
 }
 
+function normalizeComparableName(value?: string | null) {
+    return (value || '').trim().toLowerCase();
+}
+
 async function getMaintenanceAuthContext() {
     const session = await auth();
     if (!session?.user) {
@@ -261,6 +268,47 @@ async function getMaintenanceAuthContext() {
         session,
         ...permissionContext,
     };
+}
+
+async function getAuthorizedMaintenanceActorNames(
+    authContext: NonNullable<Awaited<ReturnType<typeof getMaintenanceAuthContext>>>
+) {
+    const actorNames = new Set<string>();
+    const addName = (value?: string | null) => {
+        const normalized = normalizeComparableName(value);
+        if (normalized) actorNames.add(normalized);
+    };
+
+    addName(authContext.session.user.name);
+
+    const linkedUserId = Number(authContext.session.user.id || 0);
+    if (Number.isFinite(linkedUserId) && linkedUserId > 0) {
+        const linkedUser = await prisma.tbl_users.findUnique({
+            where: { p_id: linkedUserId },
+            select: { username: true, line_user_id: true }
+        });
+
+        addName(linkedUser?.username);
+
+        if (linkedUser?.line_user_id) {
+            const [lineUser, technician] = await Promise.all([
+                prisma.tbl_line_users.findUnique({
+                    where: { line_user_id: linkedUser.line_user_id },
+                    select: { display_name: true, full_name: true }
+                }),
+                prisma.tbl_technicians.findFirst({
+                    where: { line_user_id: linkedUser.line_user_id },
+                    select: { name: true }
+                }),
+            ]);
+
+            addName(lineUser?.display_name);
+            addName(lineUser?.full_name);
+            addName(technician?.name);
+        }
+    }
+
+    return actorNames;
 }
 
 export async function getMaintenanceRequests(filters?: {
@@ -340,7 +388,6 @@ export async function createMaintenanceRequest(formData: FormData) {
         if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
         }
-
         if (!canCreateMaintenanceRequest(
             authContext.role,
             authContext.permissions,
@@ -623,6 +670,8 @@ export async function requestMaintenancePartWithdrawal(data: {
             return { success: false, error: 'Permission denied' };
         }
 
+        const requestedBy = authContext.session.user.name || data.requested_by || 'System';
+
         const [maintenanceRequest, product] = await Promise.all([
             prisma.tbl_maintenance_requests.findUnique({
                 where: { request_id: data.request_id },
@@ -663,7 +712,7 @@ export async function requestMaintenancePartWithdrawal(data: {
                 description: data.notes || null,
                 quantity: data.quantity,
                 status: 'pending',
-                requested_by: data.requested_by,
+                requested_by: requestedBy,
                 department: 'store',
                 priority: 'normal',
                 request_type: 'maintenance_withdrawal',
@@ -677,7 +726,7 @@ export async function requestMaintenancePartWithdrawal(data: {
                 request_number: maintenanceRequest.request_number,
                 item_name: product.p_name,
                 quantity: data.quantity,
-                withdrawn_by: data.requested_by,
+                withdrawn_by: requestedBy,
                 notes: data.notes || 'Pending store confirmation before handoff to technician'
             });
         } catch (notificationError) {
@@ -707,8 +756,27 @@ export async function withdrawPartForMaintenance(data: {
             return { success: false, error: 'Unauthorized' };
         }
 
-        if (!canManageMaintenanceParts(authContext.role, authContext.permissions)) {
+        if (!canDirectManageMaintenanceStock(authContext.role, authContext.permissions)) {
             return { success: false, error: 'Permission denied' };
+        }
+
+        const withdrawnBy = authContext.session.user.name || data.withdrawn_by || 'System';
+
+        if (!data.request_id || !data.p_id || !Number.isFinite(data.quantity) || data.quantity <= 0) {
+            return { success: false, error: 'Invalid withdrawal payload' };
+        }
+
+        const maintenanceRequest = await prisma.tbl_maintenance_requests.findUnique({
+            where: { request_id: data.request_id },
+            select: { status: true }
+        });
+
+        if (!maintenanceRequest) {
+            return { success: false, error: 'Maintenance request not found' };
+        }
+
+        if (['completed', 'cancelled'].includes(maintenanceRequest.status || '')) {
+            return { success: false, error: 'Cannot issue parts to a closed maintenance request' };
         }
 
         const wh01 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-01' } });
@@ -762,7 +830,7 @@ export async function withdrawPartForMaintenance(data: {
                     quantity: data.quantity,
                     status: 'withdrawn',
                     withdrawn_at: new Date(),
-                    withdrawn_by: data.withdrawn_by,
+                    withdrawn_by: withdrawnBy,
                     notes: data.notes
                 }
             });
@@ -787,8 +855,23 @@ export async function withdrawPartsForMaintenanceBatch(data: {
             return { success: false, error: 'Unauthorized' };
         }
 
-        if (!canManageMaintenanceParts(authContext.role, authContext.permissions)) {
+        if (!canDirectManageMaintenanceStock(authContext.role, authContext.permissions)) {
             return { success: false, error: 'Permission denied' };
+        }
+
+        const withdrawnBy = authContext.session.user.name || data.withdrawn_by || 'System';
+
+        const maintenanceRequest = await prisma.tbl_maintenance_requests.findUnique({
+            where: { request_id: data.request_id },
+            select: { status: true }
+        });
+
+        if (!maintenanceRequest) {
+            return { success: false, error: 'Maintenance request not found' };
+        }
+
+        if (['completed', 'cancelled'].includes(maintenanceRequest.status || '')) {
+            return { success: false, error: 'Cannot issue parts to a closed maintenance request' };
         }
 
         const normalizedItems = Array.isArray(data.items)
@@ -885,7 +968,7 @@ export async function withdrawPartsForMaintenanceBatch(data: {
                         quantity: item.quantity,
                         status: 'withdrawn',
                         withdrawn_at: new Date(),
-                        withdrawn_by: data.withdrawn_by,
+                        withdrawn_by: withdrawnBy,
                         notes: item.notes
                     }
                 });
@@ -912,13 +995,44 @@ export async function confirmPartsUsed(data: {
     changed_by: string;
 }) {
     try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canConfirmMaintenancePartUsage(authContext.role)) {
+            return { success: false, error: 'Permission denied' };
+        }
+
+        const changedBy = authContext.session.user.name || data.changed_by || 'System';
+
         const part = await prisma.tbl_maintenance_parts.findUnique({ where: { part_id: data.part_id } });
         if (!part) return { success: false, error: 'Part record not found' };
 
+        if (part.status !== 'withdrawn') {
+            return { success: false, error: 'This part is not available for usage confirmation' };
+        }
+
+        const maxUsableQty = Math.max(0, Number(part.quantity) - Number(part.returned_qty || 0));
+        if (!Number.isFinite(data.actual_used) || data.actual_used < 0 || data.actual_used > maxUsableQty) {
+            return { success: false, error: `Actual used must be between 0 and ${maxUsableQty}` };
+        }
+
         const request = await prisma.tbl_maintenance_requests.findUnique({
             where: { request_id: part.request_id },
-            select: { actual_cost: true }
+            select: { actual_cost: true, assigned_to: true }
         });
+
+        const assignedTechnician = normalizeComparableName(request?.assigned_to);
+        const actorNames = await getAuthorizedMaintenanceActorNames(authContext);
+
+        if (!assignedTechnician) {
+            return { success: false, error: 'This maintenance request has no assigned technician' };
+        }
+
+        if (!actorNames.has(assignedTechnician)) {
+            return { success: false, error: 'Only the assigned technician can report actual part usage' };
+        }
 
         const result = await prisma.$transaction(async (tx) => {
             const updatedPart = await tx.tbl_maintenance_parts.update({
@@ -962,7 +1076,7 @@ export async function confirmPartsUsed(data: {
                     request_id: part.request_id,
                     action: 'PART_USED',
                     new_value: `Used ${data.actual_used} units${data.is_defective ? ' (Defective)' : ''}`,
-                    changed_by: data.changed_by
+                    changed_by: changedBy
                 }
             });
 
@@ -974,7 +1088,7 @@ export async function confirmPartsUsed(data: {
                         action: 'actual_cost_change',
                         old_value: String(previousCost),
                         new_value: String(calculatedActualCost),
-                        changed_by: data.changed_by
+                        changed_by: changedBy
                     }
                 });
             }
@@ -999,12 +1113,23 @@ export async function returnPartToStock(data: { part_id: number; returned_qty: n
             return { success: false, error: 'Unauthorized' };
         }
 
-        if (!canManageMaintenanceParts(authContext.role, authContext.permissions)) {
+        if (!canDirectManageMaintenanceStock(authContext.role, authContext.permissions)) {
             return { success: false, error: 'Permission denied' };
         }
 
+        const returnedBy = authContext.session.user.name || data.returned_by || 'System';
+
         const part = await prisma.tbl_maintenance_parts.findUnique({ where: { part_id: data.part_id } });
         if (!part) return { success: false, error: 'Part record not found' };
+
+        if (part.status !== 'withdrawn') {
+            return { success: false, error: 'Only unconsumed withdrawn parts can be returned to stock' };
+        }
+
+        const remainingQty = Math.max(0, Number(part.quantity) - Number(part.returned_qty || 0));
+        if (!Number.isFinite(data.returned_qty) || data.returned_qty <= 0 || data.returned_qty > remainingQty) {
+            return { success: false, error: `Return quantity must be between 1 and ${remainingQty}` };
+        }
 
         const wh01 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-01' } });
         const wh03 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-03' } });
@@ -1030,6 +1155,15 @@ export async function returnPartToStock(data: { part_id: number; returned_qty: n
                     returned_at: new Date()
                 }
             });
+
+            await tx.tbl_maintenance_history.create({
+                data: {
+                    request_id: part.request_id,
+                    action: 'PART_RETURNED',
+                    new_value: String(data.returned_qty),
+                    changed_by: returnedBy
+                }
+            });
         });
 
         revalidatePath('/maintenance');
@@ -1047,13 +1181,31 @@ export async function completeMaintenanceWithParts(request_id: number, changed_b
             return { success: false, error: 'Unauthorized' };
         }
 
-        if (!canManageMaintenanceParts(authContext.role, authContext.permissions)) {
+        if (!canDirectManageMaintenanceStock(authContext.role, authContext.permissions)) {
             return { success: false, error: 'Permission denied' };
         }
 
+        const changedBy = authContext.session.user.name || changed_by || 'System';
+
         const parts = await prisma.tbl_maintenance_parts.findMany({
-            where: { request_id, status: 'used' }
+            where: { request_id }
         });
+
+        if (parts.length === 0) {
+            return { success: false, error: 'No maintenance parts found for this request' };
+        }
+
+        const hasBlockingParts = parts.some((part) =>
+            ['withdrawn', 'pending_verification', 'verification_failed'].includes(part.status)
+        );
+        if (hasBlockingParts) {
+            return { success: false, error: 'All parts must be cleared and verified before stock posting' };
+        }
+
+        const partsToPost = parts.filter((part) => part.status === 'used');
+        if (partsToPost.length === 0) {
+            return { success: false, error: 'No used parts are ready for stock posting' };
+        }
 
         const wh03 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-03' } });
         const wh02 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-02' } });
@@ -1061,7 +1213,7 @@ export async function completeMaintenanceWithParts(request_id: number, changed_b
         if (!wh03 || !wh02) return { success: false, error: 'Warehouses not configured' };
 
         await prisma.$transaction(async (tx) => {
-            for (const part of parts) {
+            for (const part of partsToPost) {
                 const qty = part.actual_used || part.quantity;
                 await tx.tbl_warehouse_stock.update({
                     where: { warehouse_id_p_id: { warehouse_id: wh03.warehouse_id, p_id: part.p_id } },
@@ -1084,8 +1236,8 @@ export async function completeMaintenanceWithParts(request_id: number, changed_b
                 data: {
                     request_id,
                     action: 'PARTS_STOCK_POSTED',
-                    new_value: `Posted ${parts.length} part(s) to stock movement`,
-                    changed_by
+                    new_value: `Posted ${partsToPost.length} part(s) to stock movement`,
+                    changed_by: changedBy
                 }
             });
         });
@@ -1114,7 +1266,7 @@ export async function submitRepairCompletion(formData: FormData) {
             return { success: false, error: 'Permission denied' };
         }
 
-        const changed_by = (formData.get('changed_by') as string) || authContext.session.user.name || 'System';
+        const changed_by = authContext.session.user.name || (formData.get('changed_by') as string) || 'System';
         const completionNotes = (formData.get('completionNotes') as string) || (formData.get('notes') as string) || '';
         const technician_signature = formData.get('technician_signature') as string;
         const customer_signature = formData.get('customer_signature') as string;
@@ -1321,15 +1473,22 @@ export async function getWithdrawnPartsForMaintenance() {
     }
 }
 
-export async function clearAllReservedParts(adminName: string) {
+export async function clearAllReservedParts(adminName: string, reason: string) {
     try {
         const authContext = await getMaintenanceAuthContext();
         if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
         }
 
-        if (!canManageMaintenanceParts(authContext.role, authContext.permissions)) {
+        if (!canDirectManageMaintenanceStock(authContext.role, authContext.permissions)) {
             return { success: false, error: 'Permission denied' };
+        }
+
+        const clearedBy = authContext.session.user.name || adminName || 'System';
+        const clearReason = (reason || '').trim();
+
+        if (clearReason.length < 8) {
+            return { success: false, error: 'Please provide a clear reason for clearing reserved parts' };
         }
 
         const pendingParts = await prisma.tbl_maintenance_parts.findMany({
@@ -1361,6 +1520,15 @@ export async function clearAllReservedParts(adminName: string) {
                 await tx.tbl_maintenance_parts.update({
                     where: { part_id: part.part_id },
                     data: { status: 'returned', returned_qty: part.quantity, returned_at: new Date() }
+                });
+
+                await tx.tbl_maintenance_history.create({
+                    data: {
+                        request_id: part.request_id,
+                        action: 'PART_RESERVATION_CLEARED',
+                        new_value: `${qtyToReturn} | ${clearReason}`,
+                        changed_by: clearedBy
+                    }
                 });
             }
         });
@@ -1395,6 +1563,7 @@ export async function updateMaintenanceRequest(
         scheduled_date?: string;
         estimated_cost?: number;
         actual_cost?: number;
+        actual_cost_reason?: string;
         notes?: string;
         completed_at?: Date;
     },
@@ -1405,6 +1574,7 @@ export async function updateMaintenanceRequest(
         if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
         }
+        const actorName = authContext.session.user.name || changed_by || 'System';
 
         const submittedFields = Object.entries(data)
             .filter(([, value]) => value !== undefined)
@@ -1529,11 +1699,23 @@ export async function updateMaintenanceRequest(
         }
 
         if (data.actual_cost !== undefined) {
+            if (!isManagerRole(authContext.role)) {
+                return { success: false, error: 'Only managers can edit actual cost manually' };
+            }
+            const actualCostReason = (data.actual_cost_reason || '').trim();
+            if (actualCostReason.length < 8) {
+                return { success: false, error: 'Please provide a reason for manual actual cost override' };
+            }
             updateData.actual_cost = new Decimal(data.actual_cost);
             historyActions.push({
                 action: 'actual_cost_change',
                 old_value: current.actual_cost?.toString() || '0',
                 new_value: data.actual_cost.toString()
+            });
+            historyActions.push({
+                action: 'MANUAL_ACTUAL_COST_OVERRIDE',
+                old_value: '',
+                new_value: actualCostReason,
             });
         }
 
@@ -1554,7 +1736,7 @@ export async function updateMaintenanceRequest(
                     action: history.action,
                     old_value: history.old_value,
                     new_value: history.new_value,
-                    changed_by
+                    changed_by: actorName
                 }
             });
         }
@@ -1576,7 +1758,7 @@ export async function updateMaintenanceRequest(
                     await notifyJobAssignment(
                         notificationRequest,
                         request.assigned_to,
-                        changed_by,
+                        actorName,
                     );
                 }
 
@@ -1722,6 +1904,189 @@ export async function getMaintenanceReportByRoom(filters?: {
     } catch (error: unknown) {
         console.error('Error generating maintenance report:', error);
         return { success: false, error: getErrorMessage(error, 'Failed to generate report') };
+    }
+}
+
+export async function getMaintenanceExceptionReport(filters?: {
+    roomId?: number;
+    technician?: string;
+    partId?: string;
+    startDate?: Date;
+    endDate?: Date;
+}) {
+    try {
+        const requestWhere: {
+            room_id?: number;
+            assigned_to?: { contains: string };
+            created_at?: {
+                gte?: Date;
+                lte?: Date;
+            };
+            tbl_maintenance_parts?: {
+                some: { p_id: string };
+            };
+        } = {};
+
+        if (filters?.roomId) {
+            requestWhere.room_id = filters.roomId;
+        }
+        if (filters?.technician) {
+            requestWhere.assigned_to = { contains: filters.technician };
+        }
+        if (filters?.startDate || filters?.endDate) {
+            requestWhere.created_at = {};
+            if (filters.startDate) requestWhere.created_at.gte = filters.startDate;
+            if (filters.endDate) {
+                const end = new Date(filters.endDate);
+                end.setHours(23, 59, 59, 999);
+                requestWhere.created_at.lte = end;
+            }
+        }
+        if (filters?.partId) {
+            requestWhere.tbl_maintenance_parts = {
+                some: { p_id: filters.partId }
+            };
+        }
+
+        const matchingRequests = await prisma.tbl_maintenance_requests.findMany({
+            where: requestWhere,
+            select: {
+                request_id: true,
+                request_number: true,
+                title: true,
+                assigned_to: true,
+                tbl_rooms: {
+                    select: {
+                        room_code: true,
+                        room_name: true,
+                    }
+                }
+            }
+        });
+
+        const requestIds = matchingRequests.map((request) => request.request_id);
+        if (requestIds.length === 0) {
+            return {
+                success: true,
+                data: {
+                    summary: {
+                        verification_failed: 0,
+                        pending_verification_overdue: 0,
+                        manual_actual_cost_override: 0,
+                        reservation_cleared: 0,
+                    },
+                    items: [],
+                }
+            };
+        }
+
+        const requestMap = new Map(matchingRequests.map((request) => [request.request_id, request]));
+        const pendingVerificationThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+        const [failedVerifications, overduePendingVerifications, riskHistory] = await Promise.all([
+            prisma.tbl_maintenance_parts.findMany({
+                where: {
+                    request_id: { in: requestIds },
+                    status: 'verification_failed',
+                },
+                orderBy: { verified_at: 'desc' },
+                include: {
+                    tbl_products: {
+                        select: { p_name: true }
+                    }
+                }
+            }),
+            prisma.tbl_maintenance_parts.findMany({
+                where: {
+                    request_id: { in: requestIds },
+                    status: 'pending_verification',
+                    used_at: { not: null, lte: pendingVerificationThreshold }
+                },
+                orderBy: { used_at: 'asc' },
+                include: {
+                    tbl_products: {
+                        select: { p_name: true }
+                    }
+                }
+            }),
+            prisma.tbl_maintenance_history.findMany({
+                where: {
+                    request_id: { in: requestIds },
+                    action: { in: ['MANUAL_ACTUAL_COST_OVERRIDE', 'PART_RESERVATION_CLEARED'] }
+                },
+                orderBy: { changed_at: 'desc' }
+            }),
+        ]);
+
+        const failedItems = failedVerifications.map((part) => {
+            const request = requestMap.get(part.request_id);
+            return {
+                type: 'verification_failed',
+                request_id: part.request_id,
+                request_number: request?.request_number || `REQ-${part.request_id}`,
+                title: request?.title || '-',
+                room_code: request?.tbl_rooms?.room_code || '-',
+                room_name: request?.tbl_rooms?.room_name || '-',
+                assigned_to: request?.assigned_to || null,
+                actor_name: part.withdrawn_by || '-',
+                occurred_at: part.verified_at || part.used_at || part.withdrawn_at,
+                detail: `${part.tbl_products?.p_name || part.p_id} | เบิก ${part.quantity} | ใช้จริง ${part.actual_used ?? '-'} | ตรวจได้ ${part.verified_quantity ?? '-'}`,
+            };
+        });
+
+        const overdueItems = overduePendingVerifications.map((part) => {
+            const request = requestMap.get(part.request_id);
+            return {
+                type: 'pending_verification_overdue',
+                request_id: part.request_id,
+                request_number: request?.request_number || `REQ-${part.request_id}`,
+                title: request?.title || '-',
+                room_code: request?.tbl_rooms?.room_code || '-',
+                room_name: request?.tbl_rooms?.room_name || '-',
+                assigned_to: request?.assigned_to || null,
+                actor_name: part.withdrawn_by || '-',
+                occurred_at: part.used_at || part.withdrawn_at,
+                detail: `${part.tbl_products?.p_name || part.p_id} | ใช้จริง ${part.actual_used ?? '-'} | ค้างตรวจเกิน 24 ชม.`,
+            };
+        });
+
+        const historyItems = riskHistory.map((history) => {
+            const request = requestMap.get(history.request_id);
+            return {
+                type: history.action === 'MANUAL_ACTUAL_COST_OVERRIDE'
+                    ? 'manual_actual_cost_override'
+                    : 'reservation_cleared',
+                request_id: history.request_id,
+                request_number: request?.request_number || `REQ-${history.request_id}`,
+                title: request?.title || '-',
+                room_code: request?.tbl_rooms?.room_code || '-',
+                room_name: request?.tbl_rooms?.room_name || '-',
+                assigned_to: request?.assigned_to || null,
+                actor_name: history.changed_by,
+                occurred_at: history.changed_at,
+                detail: history.new_value || '-',
+            };
+        });
+
+        const items = [...failedItems, ...overdueItems, ...historyItems]
+            .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())
+            .slice(0, 30);
+
+        return {
+            success: true,
+            data: {
+                summary: {
+                    verification_failed: failedItems.length,
+                    pending_verification_overdue: overdueItems.length,
+                    manual_actual_cost_override: historyItems.filter((item) => item.type === 'manual_actual_cost_override').length,
+                    reservation_cleared: historyItems.filter((item) => item.type === 'reservation_cleared').length,
+                },
+                items,
+            }
+        };
+    } catch (error: unknown) {
+        console.error('Error generating maintenance exception report:', error);
+        return { success: false, error: getErrorMessage(error, 'Failed to generate maintenance exception report') };
     }
 }
 

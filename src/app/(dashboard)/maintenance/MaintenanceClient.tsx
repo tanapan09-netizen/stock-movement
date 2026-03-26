@@ -66,7 +66,7 @@ import {
     canVerifyMaintenanceParts,
     isMaintenanceTechnician,
 } from '@/lib/rbac';
-import { normalizeRole } from '@/lib/roles';
+import { isManagerRole, normalizeRole } from '@/lib/roles';
 import {
     MAINTENANCE_CATEGORY_OPTIONS,
     MAINTENANCE_PRIORITY_OPTIONS,
@@ -214,6 +214,12 @@ const getHistoryActionLabel = (action: string): string => {
             return 'เปลี่ยนวันนัดหมาย';
         case 'actual_cost_change':
             return 'บันทึกค่าใช้จ่ายจริง';
+        case 'MANUAL_ACTUAL_COST_OVERRIDE':
+            return 'เหตุผลการแก้ค่าใช้จ่ายจริง';
+        case 'PART_RETURNED':
+            return 'คืนอะไหล่เข้าสต็อก';
+        case 'PART_RESERVATION_CLEARED':
+            return 'เคลียร์อะไหล่ค้างคืน';
         case 'parts_verification':
             return 'ตรวจนับอะไหล่';
         case 'reopen_request':
@@ -259,6 +265,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const { data: session } = useSession();
     const loggedInRole = normalizeRole(((session?.user as any)?.role || '').toString());
     const isLeaderTechnician = loggedInRole === 'leader_technician';
+    const canEditActualCost = isManagerRole(loggedInRole);
     const derivedDepartment = resolveDepartmentFromRole(loggedInRole);
     const sessionIsApprover = Boolean((session?.user as any)?.is_approver || userPermissions.can_approve);
     const canPrioritizeMaintenance = canAdjustMaintenancePriority(loggedInRole, userPermissions, sessionIsApprover);
@@ -405,6 +412,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         assigned_to: '',
         scheduled_date: '',
         actual_cost: 0,
+        actual_cost_reason: '',
         notes: ''
     });
 
@@ -1009,6 +1017,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             assigned_to: request.assigned_to || '',
             scheduled_date: request.scheduled_date ? new Date(request.scheduled_date).toISOString().split('T')[0] : '',
             actual_cost: request.actual_cost ? Number(request.actual_cost) : 0,
+            actual_cost_reason: '',
             notes: request.notes || ''
         });
 
@@ -1198,7 +1207,9 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         const nextAssignedTo = editData.assigned_to || '';
         const nextScheduledDate = editData.scheduled_date || '';
         const nextActualCost = Number(editData.actual_cost || 0);
+        const nextActualCostReason = editData.actual_cost_reason.trim();
         const nextNotes = editData.notes || '';
+        const isActualCostChanged = canEditActualCost && nextActualCost !== currentActualCost;
         const isAutoAssignmentStatusChange =
             editData.status !== selectedRequest.status
             && nextAssignedTo !== currentAssignedTo
@@ -1212,9 +1223,15 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             priority: editData.priority !== selectedRequest.priority ? editData.priority : undefined,
             assigned_to: nextAssignedTo !== currentAssignedTo ? nextAssignedTo : undefined,
             scheduled_date: nextScheduledDate !== currentScheduledDate ? nextScheduledDate : undefined,
-            actual_cost: nextActualCost !== currentActualCost ? nextActualCost : undefined,
+            actual_cost: isActualCostChanged ? nextActualCost : undefined,
+            actual_cost_reason: isActualCostChanged ? nextActualCostReason : undefined,
             notes: nextNotes !== currentNotes ? nextNotes : undefined
         };
+
+        if (isActualCostChanged && nextActualCostReason.length < 8) {
+            showToast('กรุณาระบุเหตุผลการแก้ค่าใช้จ่ายจริงอย่างน้อย 8 ตัวอักษร', 'warning');
+            return;
+        }
 
         if (isMaintenanceTechnician(loggedInRole) && submitData.status === 'completed') {
             submitData.status = 'confirmed';
@@ -2450,10 +2467,33 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     onChange={(e) =>
                       setEditData({ ...editData, actual_cost: Number(e.target.value) })
                     }
-                    className="h-14 w-full rounded-2xl border border-slate-300 bg-white px-4 text-2xl font-medium text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                    disabled={!canEditActualCost}
+                    className="h-14 w-full rounded-2xl border border-slate-300 bg-white px-4 text-2xl font-medium text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                     placeholder="0"
                     min="0"
                   />
+                  {!canEditActualCost && (
+                    <div className="mt-2 text-xs text-amber-600">
+                      ระบบล็อกการแก้ค่าใช้จ่ายจริงไว้ให้ manager เท่านั้น เพื่อลดความเสี่ยงการปรับตัวเลขหน้างาน
+                    </div>
+                  )}
+                  {canEditActualCost &&
+                    Number(editData.actual_cost || 0) !== Number(selectedRequest.actual_cost || 0) && (
+                      <div className="mt-3">
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-amber-700">
+                          เหตุผลการแก้ค่าใช้จ่ายจริง
+                        </label>
+                        <textarea
+                          value={editData.actual_cost_reason}
+                          onChange={(e) =>
+                            setEditData({ ...editData, actual_cost_reason: e.target.value })
+                          }
+                          className="min-h-[90px] w-full rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-amber-700/60 focus:border-amber-400 focus:ring-4 focus:ring-amber-100"
+                          rows={3}
+                          placeholder="เช่น ปรับตามใบเสร็จจริง / แก้จากยอดคำนวณเดิมที่บันทึกผิด"
+                        />
+                      </div>
+                    )}
                 </div>
 
                 <div>

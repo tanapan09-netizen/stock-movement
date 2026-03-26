@@ -11,6 +11,7 @@ import {
     canApprovePartRequestStage,
     canCreatePartRequest,
     canDeletePartRequest,
+    canDirectManageMaintenanceStock,
     canUpdatePartRequestStatus,
 } from '@/lib/rbac';
 
@@ -223,6 +224,18 @@ export async function updatePartRequestStatus(
         const oldStatus = currentRequest?.status || 'unknown';
 
         if (
+            currentRequest?.request_type === 'maintenance_withdrawal' &&
+            oldStatus !== status &&
+            ['approved', 'rejected'].includes(status) &&
+            !canDirectManageMaintenanceStock(
+                authContext.role,
+                authContext.permissions,
+            )
+        ) {
+            return { success: false, error: 'Only store can confirm maintenance part availability' };
+        }
+
+        if (
             currentRequest
             && oldStatus !== status
             && status === 'approved'
@@ -241,7 +254,7 @@ export async function updatePartRequestStatus(
                 request_id: currentRequest.maintenance_id,
                 p_id: maintenanceProductId,
                 quantity: currentRequest.quantity,
-                withdrawn_by: currentRequest.requested_by,
+                withdrawn_by: authContext.session.user.name || 'System',
                 notes: `Confirmed by store: ${authContext.session.user.name || 'System'}`
             });
 
