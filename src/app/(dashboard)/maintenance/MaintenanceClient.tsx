@@ -277,7 +277,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const searchParams = useSearchParams();
     const reqQueryParam = searchParams.get('req');
     const [hasOpenedFromUrl, setHasOpenedFromUrl] = useState(false);
-    const { showToast } = useToast();
+    const { showToast, showConfirm } = useToast();
     const ensureCanEditPage = () => {
         if (canEditPage) return true;
         showToast('คุณมีสิทธิ์อ่านอย่างเดียวในหน้านี้', 'warning');
@@ -1240,6 +1240,49 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             submitData.status = 'confirmed';
         }
 
+        const changeSummary: string[] = [];
+        if (submitData.status) {
+            changeSummary.push(`สถานะ: ${STATUS_CONFIG[selectedRequest.status as keyof typeof STATUS_CONFIG]?.label || selectedRequest.status} -> ${STATUS_CONFIG[submitData.status as keyof typeof STATUS_CONFIG]?.label || submitData.status}`);
+        }
+        if (submitData.priority) {
+            changeSummary.push(`ความเร่งด่วน: ${PRIORITY_CONFIG[selectedRequest.priority as keyof typeof PRIORITY_CONFIG]?.label || selectedRequest.priority} -> ${PRIORITY_CONFIG[submitData.priority as keyof typeof PRIORITY_CONFIG]?.label || submitData.priority}`);
+        }
+        if (submitData.assigned_to !== undefined) {
+            changeSummary.push(`ช่างรับผิดชอบ: ${currentAssignedTo || '-'} -> ${submitData.assigned_to || '-'}`);
+        }
+        if (submitData.scheduled_date !== undefined) {
+            changeSummary.push(`วันที่นัดหมาย: ${currentScheduledDate || '-'} -> ${submitData.scheduled_date || '-'}`);
+        }
+        if (submitData.actual_cost !== undefined) {
+            changeSummary.push(`ค่าใช้จ่ายจริง: ฿${currentActualCost.toLocaleString()} -> ฿${nextActualCost.toLocaleString()}`);
+        }
+        if (submitData.notes !== undefined) {
+            changeSummary.push(`หมายเหตุ: ${nextNotes || '-'}`);
+        }
+
+        if (changeSummary.length === 0) {
+            showToast('ยังไม่มีข้อมูลที่เปลี่ยนแปลง', 'warning');
+            return;
+        }
+
+        const confirmed = await showConfirm({
+            title: 'ยืนยันบันทึกการเปลี่ยนแปลง',
+            message: [
+                `ใบงาน: ${selectedRequest.request_number}`,
+                `เรื่อง: ${selectedRequest.title}`,
+                '',
+                'รายการที่จะบันทึก:',
+                ...changeSummary.map((item) => `• ${item}`),
+            ].join('\n'),
+            confirmText: 'ยืนยันบันทึก',
+            cancelText: 'กลับไปแก้ไข',
+            type: 'info',
+        });
+
+        if (!confirmed) {
+            return;
+        }
+
         const result = await updateMaintenanceRequest(
             selectedRequest.request_id,
             submitData,
@@ -1251,7 +1294,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             loadData();
             showToast('อัปเดตข้อมูลเรียบร้อยแล้ว', 'success');
         } else {
-            alert('เกิดข้อผิดพลาด: ' + result.error);
+            showToast('เกิดข้อผิดพลาด: ' + result.error, 'error');
         }
     }
 
@@ -1260,6 +1303,25 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         if (!ensureCanEditPage()) return;
         if (!canApproveCompletion) {
             showToast('เฉพาะหัวหน้าช่างเท่านั้นที่ตรวจรับงานได้', 'warning');
+            return;
+        }
+
+        const confirmed = await showConfirm({
+            title: 'ยืนยันตรวจรับงาน',
+            message: [
+                `ใบงาน: ${selectedRequest.request_number}`,
+                `เรื่อง: ${selectedRequest.title}`,
+                `ห้อง: ${selectedRequest.tbl_rooms?.room_code || '-'} - ${selectedRequest.tbl_rooms?.room_name || '-'}`,
+                `ช่างรับผิดชอบ: ${selectedRequest.assigned_to || '-'}`,
+                '',
+                'เมื่อยืนยันแล้ว ระบบจะเปลี่ยนสถานะเป็น "เสร็จสมบูรณ์"',
+            ].join('\n'),
+            confirmText: 'ยืนยันตรวจรับ',
+            cancelText: 'กลับไปตรวจสอบ',
+            type: 'warning',
+        });
+
+        if (!confirmed) {
             return;
         }
 

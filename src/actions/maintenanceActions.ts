@@ -2343,12 +2343,15 @@ export async function resendMaintenanceNotification(request_id: number) {
 
         let sentCount = 0;
         const repeatMessage = [
-            '[แจ้งเตือนซ้ำ]',
-            'รายการนี้เป็นการแจ้งเตือนซ้ำ',
-            `เลขที่: ${request.request_number}`,
-            `ห้อง: ${request.tbl_rooms.room_code} - ${request.tbl_rooms.room_name}`,
-            `เรื่อง: ${request.title}`,
-            `สถานะ: ${request.status}`
+            '🔔 แจ้งเตือนงานซ่อมอีกครั้ง',
+            '',
+            'ข้อมูลงานซ่อม',
+            `• เลขที่: ${request.request_number}`,
+            `• ห้อง: ${request.tbl_rooms.room_code} - ${request.tbl_rooms.room_name}`,
+            `• เรื่อง: ${request.title}`,
+            `• สถานะ: ${request.status}`,
+            '',
+            `เปิดงาน: ${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')}/maintenance?req=${request.request_number}`,
         ].join('\n');
 
         if (request.assigned_to) {

@@ -31,6 +31,15 @@ export interface PartRequestData {
     quotation_file?: string | null;
 }
 
+function formatLineSection(title: string, rows: Array<[string, string | number | null | undefined]>) {
+    const lines = rows
+        .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '')
+        .map(([label, value]) => `• ${label}: ${String(value).trim()}`);
+
+    if (lines.length === 0) return [];
+    return [title, ...lines];
+}
+
 /**
  * Send notifications for a new part request
  */
@@ -190,12 +199,18 @@ export async function notifyMaintenanceWithdrawalRequesterStatusChange(data: {
     const statusLabel = data.status === 'approved' ? 'พร้อมจ่ายแล้ว' : 'ไม่พร้อมจ่าย';
     const lines = [
         '📦 อัปเดตคำขอเบิกอะไหล่',
-        `รายการ: ${data.item_name}`,
-        `จำนวน: ${data.quantity}`,
-        ...(data.maintenance_request_number ? [`ใบงาน: ${data.maintenance_request_number}`] : []),
-        ...(data.room_code || data.room_name ? [`ห้อง: ${data.room_code || '-'}${data.room_name ? ` - ${data.room_name}` : ''}`] : []),
-        `สถานะ: ${statusLabel}`,
-        `อัปเดตโดย: ${data.decided_by || 'System'}`,
+        '',
+        ...formatLineSection('ข้อมูลคำขอ', [
+            ['รายการ', data.item_name],
+            ['จำนวน', data.quantity],
+            ['ใบงาน', data.maintenance_request_number || null],
+            ['ห้อง', data.room_code || data.room_name ? `${data.room_code || '-'}${data.room_name ? ` - ${data.room_name}` : ''}` : null],
+        ]),
+        '',
+        ...formatLineSection('ผลการตรวจสอบจากคลัง', [
+            ['สถานะ', statusLabel],
+            ['อัปเดตโดย', data.decided_by || 'System'],
+        ]),
         '',
         `ดูรายละเอียด: ${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')}/maintenance/parts`,
     ];
@@ -364,7 +379,19 @@ export async function notifyNewMaintenanceRequest(request: {
                         // Fallback simple message if flex template not implemented
                         const fallbackMsg = {
                             type: 'text' as const,
-                            text: `🛠️ แจ้งซ่อมใหม่: ${request.request_number}\n📍 สถานที่: ${request.room_code} - ${request.room_name}\n🔧 เรื่อง: ${request.title}\n👤 ผู้แจ้ง: ${request.reported_by}`
+                            text: [
+                                '🛠️ แจ้งซ่อมใหม่',
+                                '',
+                                ...formatLineSection('ข้อมูลใบงาน', [
+                                    ['เลขที่', request.request_number],
+                                    ['ห้อง', `${request.room_code} - ${request.room_name}`],
+                                    ['เรื่อง', request.title],
+                                    ['ผู้แจ้ง', request.reported_by],
+                                    ['ความเร่งด่วน', request.priority],
+                                ]),
+                                '',
+                                `เปิดงาน: ${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')}/maintenance?req=${request.request_number}`,
+                            ].join('\n')
                         };
                         await sendMulticastMessage(lineIds, fallbackMsg);
                     }
@@ -506,14 +533,22 @@ export async function notifyMaintenanceStatusChange(
 
     const lineMessage = createTextMessage([
         statusMeta.headline,
-        `Request: ${request.request_number}`,
-        `Room: ${request.room_code} - ${request.room_name}`,
-        `Title: ${request.title}`,
-        statusMeta.summary,
-        `Status: ${statusLabelMap[oldStatus] || oldStatus} -> ${statusLabelMap[newStatus] || newStatus}`,
-        request.assigned_to ? `Assigned To: ${request.assigned_to}` : null,
-        notes ? `Notes: ${notes}` : null,
-    ].filter(Boolean).join('\\n'));
+        '',
+        ...formatLineSection('ข้อมูลงานซ่อม', [
+            ['เลขที่', request.request_number],
+            ['ห้อง', `${request.room_code} - ${request.room_name}`],
+            ['เรื่อง', request.title],
+            ['ผู้รับผิดชอบ', request.assigned_to || null],
+        ]),
+        '',
+        ...formatLineSection('อัปเดตสถานะ', [
+            ['สรุป', statusMeta.summary],
+            ['สถานะ', `${statusLabelMap[oldStatus] || oldStatus} -> ${statusLabelMap[newStatus] || newStatus}`],
+            ['หมายเหตุ', notes || null],
+        ]),
+        '',
+        `เปิดงาน: ${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')}/maintenance?req=${request.request_number}`,
+    ].join('\n'));
 
     await Promise.allSettled([
         (async () => {
