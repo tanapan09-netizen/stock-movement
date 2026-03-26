@@ -366,9 +366,8 @@ export default function PartsManagementClient({
         <div className="flex items-start gap-3 text-sm text-blue-700 dark:text-blue-300">
           <AlertTriangle className="mt-0.5 text-blue-500" size={20} />
           <div className="space-y-1">
-            <p>ช่างทำเรื่องเบิกอะไหล่ได้จากหน้านี้ และระบบจะแจ้งไปที่ store ก่อนทุกครั้ง</p>
-            <p>สิทธิ์จ่ายจริง คืนจริง และตัดสต็อกจริงถูกล็อกไว้ให้ store/admin เท่านั้น เพื่อลดความเสี่ยงการสมยอมกัน</p>
-            <p>เมื่อคลังยืนยันว่า "พร้อมจ่าย" ระบบจะบันทึกชื่อผู้จ่ายจาก session จริง ไม่ใช้ชื่อที่ส่งมาจากหน้าเว็บ</p>
+            <p>ช่างทำเรื่องเบิกอะไหล่ได้จากหน้านี้ และระบบจะแจ้งไปที่ store </p>
+            
           </div>
         </div>
       </div>
