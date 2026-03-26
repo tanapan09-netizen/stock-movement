@@ -83,6 +83,8 @@ type ActionDialogState =
       itemName: string;
       requestNumber: string;
       requestedBy: string;
+      quantity: number;
+      confirmedQuantity: string;
     }
   | {
       mode: 'complete';
@@ -308,6 +310,7 @@ export default function PartsManagementClient({
     itemName: string,
     requestNumber: string,
     requestedBy: string,
+    quantity: number,
   ) {
     setActionDialog({
       mode: 'availability',
@@ -316,6 +319,8 @@ export default function PartsManagementClient({
       itemName,
       requestNumber,
       requestedBy,
+      quantity,
+      confirmedQuantity: nextStatus === 'approved' ? '' : String(quantity),
     });
   }
 
@@ -326,6 +331,19 @@ export default function PartsManagementClient({
 
     try {
       if (actionDialog.mode === 'availability') {
+        if (actionDialog.nextStatus === 'approved') {
+          const confirmedQty = Number(actionDialog.confirmedQuantity);
+          if (!Number.isFinite(confirmedQty) || confirmedQty <= 0) {
+            showToast('กรุณายืนยันจำนวนที่จะจ่าย', 'warning');
+            return;
+          }
+
+          if (confirmedQty !== actionDialog.quantity) {
+            showToast(`จำนวนที่ยืนยันต้องตรงกับจำนวนที่ขอ (${actionDialog.quantity})`, 'warning');
+            return;
+          }
+        }
+
         const result = await updatePartRequestStatus(actionDialog.requestId, actionDialog.nextStatus);
         if (!result.success) {
           showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
@@ -657,6 +675,7 @@ export default function PartsManagementClient({
                                 request.item_name,
                                 request.tbl_maintenance_requests?.request_number || request.request_number || `REQ-${request.request_id}`,
                                 request.requested_by,
+                                request.quantity,
                               )
                             }
                             className="rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
@@ -671,6 +690,7 @@ export default function PartsManagementClient({
                                 request.item_name,
                                 request.tbl_maintenance_requests?.request_number || request.request_number || `REQ-${request.request_id}`,
                                 request.requested_by,
+                                request.quantity,
                               )
                             }
                             className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
@@ -1165,7 +1185,7 @@ export default function PartsManagementClient({
             <div className="space-y-4 p-6">
               {actionDialog.mode === 'availability' ? (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <div className="rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-700/50">
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">คำขอ</div>
                       <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{actionDialog.requestNumber}</div>
@@ -1173,6 +1193,10 @@ export default function PartsManagementClient({
                     <div className="rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-700/50">
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">ผู้ขอ</div>
                       <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{actionDialog.requestedBy}</div>
+                    </div>
+                    <div className="rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-700/50">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">จำนวนที่ขอ</div>
+                      <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{actionDialog.quantity}</div>
                     </div>
                   </div>
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-600 dark:bg-slate-700/40">
@@ -1182,6 +1206,30 @@ export default function PartsManagementClient({
                       ระบบจะส่งแจ้งเตือนกลับไปยังผู้เบิกทันทีหลังบันทึกสถานะนี้
                     </p>
                   </div>
+                  {actionDialog.nextStatus === 'approved' ? (
+                    <div>
+                      <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        ยืนยันจำนวนที่จะจ่าย *
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={actionDialog.confirmedQuantity}
+                        onChange={(e) =>
+                          setActionDialog((prev) =>
+                            prev && prev.mode === 'availability'
+                              ? { ...prev, confirmedQuantity: e.target.value }
+                              : prev
+                          )
+                        }
+                        className="w-full rounded-2xl border border-slate-200 px-4 py-3 shadow-sm outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-200 dark:border-slate-600 dark:bg-slate-700"
+                        placeholder={`กรอกจำนวน ${actionDialog.quantity}`}
+                      />
+                      <div className="mt-2 text-xs text-slate-400">
+                        ระบบจะอนุมัติได้เมื่อจำนวนที่ยืนยันตรงกับจำนวนที่ขอไว้เท่านั้น
+                      </div>
+                    </div>
+                  ) : null}
                 </>
               ) : null}
 
@@ -1235,7 +1283,14 @@ export default function PartsManagementClient({
                 <button
                   type="button"
                   onClick={handleActionDialogConfirm}
-                  disabled={dialogSubmitting}
+                  disabled={
+                    dialogSubmitting
+                    || (
+                      actionDialog.mode === 'availability'
+                      && actionDialog.nextStatus === 'approved'
+                      && Number(actionDialog.confirmedQuantity) !== actionDialog.quantity
+                    )
+                  }
                   className={`flex-1 rounded-2xl px-4 py-3 font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     actionDialog.mode === 'availability'
                       ? actionDialog.nextStatus === 'approved'

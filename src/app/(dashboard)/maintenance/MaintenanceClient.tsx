@@ -2541,11 +2541,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     placeholder="0"
                     min="0"
                   />
-                  {!canEditActualCost && (
-                    <div className="mt-2 text-xs text-amber-600">
-                      ระบบล็อกการแก้ค่าใช้จ่ายจริงไว้ให้ manager เท่านั้น เพื่อลดความเสี่ยงการปรับตัวเลขหน้างาน
-                    </div>
-                  )}
+                  
                   {canEditActualCost &&
                     Number(editData.actual_cost || 0) !== Number(selectedRequest.actual_cost || 0) && (
                       <div className="mt-3">
