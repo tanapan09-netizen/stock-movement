@@ -8,6 +8,11 @@ import { auth } from '@/auth';
 import { uploadFile } from '@/lib/gcs';
 import { notifyRoleViaLine, sendLineMessage, sendLineNotify } from '@/lib/lineNotify';
 import { appendCopiedImageMetadataTags, parseMaintenanceImageUrls } from '@/lib/maintenance-images';
+import {
+    notifyJobAssignment,
+    notifyMaintenanceStatusChange,
+    notifyNewMaintenanceRequest,
+} from '@/lib/notifications/notificationManager';
 import { validateData, createMaintenanceRequestSchema } from '@/lib/validation';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
 import {
@@ -19,6 +24,18 @@ import {
     canSubmitMaintenanceCompletion,
     canVerifyMaintenanceParts,
 } from '@/lib/rbac';
+
+type MaintenanceNotificationRequest = {
+    request_number: string;
+    title: string;
+    description?: string | null;
+    priority: string;
+    room_code: string;
+    room_name: string;
+    reported_by: string;
+    created_at: Date;
+    image_url?: string | null;
+};
 
 // ==================== ROOMS ====================
 
@@ -421,6 +438,20 @@ export async function createMaintenanceRequest(formData: FormData) {
                     validData.priority,
                     reported_by
                 );
+
+                const notificationPayload: MaintenanceNotificationRequest = {
+                    request_number: request.request_number,
+                    title: request.title,
+                    description: request.description,
+                    priority: request.priority,
+                    room_code: room.room_code,
+                    room_name: room.room_name,
+                    reported_by: request.reported_by,
+                    created_at: request.created_at,
+                    image_url: request.image_url,
+                };
+
+                await notifyNewMaintenanceRequest(notificationPayload, { disableLine: true });
             } else {
                 console.warn(`[Maintenance] room not found for LINE notification room_id=${validData.room_id}`);
             }
@@ -522,6 +553,20 @@ export async function submitCustomerRepairRequest(formData: FormData) {
                     validData.priority,
                     reported_by
                 );
+
+                const notificationPayload: MaintenanceNotificationRequest = {
+                    request_number: request.request_number,
+                    title: request.title,
+                    description: request.description,
+                    priority: request.priority,
+                    room_code: room.room_code,
+                    room_name: room.room_name,
+                    reported_by: request.reported_by,
+                    created_at: request.created_at,
+                    image_url: request.image_url,
+                };
+
+                await notifyNewMaintenanceRequest(notificationPayload, { disableLine: true });
             }
         } catch (notifyError) {
             console.error('Failed to send customer maintenance LINE notification:', notifyError);
@@ -640,6 +685,135 @@ export async function withdrawPartForMaintenance(data: {
         return { success: true, data: result };
     } catch (error: unknown) {
         return { success: false, error: getErrorMessage(error, 'Failed to withdraw part for maintenance') };
+    }
+}
+
+export async function withdrawPartsForMaintenanceBatch(data: {
+    request_id: number;
+    items: { p_id: string; quantity: number; notes?: string }[];
+    withdrawn_by: string;
+}) {
+    try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canManageMaintenanceParts(authContext.role, authContext.permissions)) {
+            return { success: false, error: 'Permission denied' };
+        }
+
+        const normalizedItems = Array.isArray(data.items)
+            ? data.items
+                .map((item) => ({
+                    p_id: String(item.p_id || '').trim(),
+                    quantity: Number(item.quantity || 0),
+                    notes: item.notes,
+                }))
+                .filter((item) => item.p_id && item.quantity > 0)
+            : [];
+
+        if (normalizedItems.length === 0) {
+            return { success: false, error: 'No parts selected' };
+        }
+
+        const wh01 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-01' } });
+        const wh03 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-03' } });
+
+        if (!wh01 || !wh03) return { success: false, error: 'Warehouses not configured' };
+
+        const productIds = [...new Set(normalizedItems.map((item) => item.p_id))];
+
+        const [stocksWh01, products] = await Promise.all([
+            prisma.tbl_warehouse_stock.findMany({
+                where: {
+                    warehouse_id: wh01.warehouse_id,
+                    p_id: { in: productIds }
+                }
+            }),
+            prisma.tbl_products.findMany({
+                where: { p_id: { in: productIds } },
+                select: { p_id: true, p_count: true }
+            })
+        ]);
+
+        const stockMap = new Map(stocksWh01.map((stock) => [stock.p_id, Number(stock.quantity ?? 0)]));
+        const productStockMap = new Map(products.map((product) => [product.p_id, Number(product.p_count ?? 0)]));
+        const aggregatedQty = new Map<string, number>();
+
+        for (const item of normalizedItems) {
+            aggregatedQty.set(item.p_id, (aggregatedQty.get(item.p_id) ?? 0) + item.quantity);
+        }
+
+        for (const [p_id, requestedQty] of aggregatedQty.entries()) {
+            let availableWh01 = stockMap.get(p_id) ?? 0;
+            const productStock = productStockMap.get(p_id) ?? 0;
+
+            if (availableWh01 < requestedQty && productStock >= requestedQty) {
+                availableWh01 = productStock;
+            }
+
+            if (availableWh01 < requestedQty) {
+                return { success: false, error: `Insufficient stock in WH-01 for ${p_id}` };
+            }
+        }
+
+        const result = await prisma.$transaction(async (tx) => {
+            const workingStockMap = new Map(stockMap);
+            const createdParts: Awaited<ReturnType<typeof tx.tbl_maintenance_parts.create>>[] = [];
+
+            for (const item of normalizedItems) {
+                const currentAvailable = workingStockMap.get(item.p_id) ?? 0;
+                const fallbackAvailable = productStockMap.get(item.p_id) ?? 0;
+                const effectiveAvailable = currentAvailable > 0 ? currentAvailable : fallbackAvailable;
+                const nextAvailable = effectiveAvailable - item.quantity;
+
+                await tx.tbl_warehouse_stock.upsert({
+                    where: { warehouse_id_p_id: { warehouse_id: wh01.warehouse_id, p_id: item.p_id } },
+                    create: {
+                        warehouse_id: wh01.warehouse_id,
+                        p_id: item.p_id,
+                        quantity: nextAvailable,
+                        min_stock: 0
+                    },
+                    update: { quantity: nextAvailable }
+                });
+
+                await tx.tbl_warehouse_stock.upsert({
+                    where: { warehouse_id_p_id: { warehouse_id: wh03.warehouse_id, p_id: item.p_id } },
+                    create: {
+                        warehouse_id: wh03.warehouse_id,
+                        p_id: item.p_id,
+                        quantity: item.quantity,
+                        min_stock: 0
+                    },
+                    update: { quantity: { increment: item.quantity } }
+                });
+
+                const createdPart = await tx.tbl_maintenance_parts.create({
+                    data: {
+                        request_id: data.request_id,
+                        p_id: item.p_id,
+                        quantity: item.quantity,
+                        status: 'withdrawn',
+                        withdrawn_at: new Date(),
+                        withdrawn_by: data.withdrawn_by,
+                        notes: item.notes
+                    }
+                });
+
+                createdParts.push(createdPart);
+                workingStockMap.set(item.p_id, nextAvailable);
+            }
+
+            return createdParts;
+        });
+
+        revalidatePath('/maintenance');
+        revalidatePath('/products');
+        return { success: true, data: result };
+    } catch (error: unknown) {
+        return { success: false, error: getErrorMessage(error, 'Failed to withdraw selected parts for maintenance') };
     }
 }
 
@@ -818,9 +992,13 @@ export async function completeMaintenanceWithParts(request_id: number, changed_b
                 });
             }
 
-            await tx.tbl_maintenance_requests.update({
-                where: { request_id },
-                data: { status: 'completed' }
+            await tx.tbl_maintenance_history.create({
+                data: {
+                    request_id,
+                    action: 'PARTS_STOCK_POSTED',
+                    new_value: `Posted ${parts.length} part(s) to stock movement`,
+                    changed_by
+                }
             });
         });
 
@@ -828,7 +1006,7 @@ export async function completeMaintenanceWithParts(request_id: number, changed_b
         revalidatePath('/products');
         return { success: true };
     } catch (error: unknown) {
-        return { success: false, error: getErrorMessage(error, 'Failed to complete maintenance with parts') };
+        return { success: false, error: getErrorMessage(error, 'Failed to post maintenance parts to stock') };
     }
 }
 
@@ -852,6 +1030,10 @@ export async function submitRepairCompletion(formData: FormData) {
         const completionNotes = (formData.get('completionNotes') as string) || (formData.get('notes') as string) || '';
         const technician_signature = formData.get('technician_signature') as string;
         const customer_signature = formData.get('customer_signature') as string;
+        const currentRequest = await prisma.tbl_maintenance_requests.findUnique({
+            where: { request_id },
+            select: { status: true }
+        });
 
         const request = await prisma.tbl_maintenance_requests.update({
             where: { request_id },
@@ -886,6 +1068,20 @@ export async function submitRepairCompletion(formData: FormData) {
                 request.tbl_rooms.room_name,
                 request.priority,
                 changed_by
+            );
+
+            await notifyMaintenanceStatusChange(
+                {
+                    request_number: request.request_number,
+                    title: request.title,
+                    room_code: request.tbl_rooms.room_code,
+                    room_name: request.tbl_rooms.room_name,
+                    reported_by: request.reported_by,
+                    assigned_to: request.assigned_to,
+                },
+                currentRequest?.status || '',
+                'confirmed',
+                completionNotes || undefined,
             );
         } catch (notifyError) {
             console.error('Failed to notify head technician for approval:', notifyError);
@@ -1267,6 +1463,40 @@ export async function updateMaintenanceRequest(
             });
         }
 
+        try {
+            if (request.tbl_rooms) {
+                const notificationRequest = {
+                    request_number: request.request_number,
+                    title: request.title,
+                    description: request.description,
+                    priority: request.priority,
+                    room_code: request.tbl_rooms.room_code,
+                    room_name: request.tbl_rooms.room_name,
+                    reported_by: request.reported_by,
+                    assigned_to: request.assigned_to,
+                };
+
+                if (current.assigned_to !== request.assigned_to && request.assigned_to) {
+                    await notifyJobAssignment(
+                        notificationRequest,
+                        request.assigned_to,
+                        changed_by,
+                    );
+                }
+
+                if (current.status !== request.status) {
+                    await notifyMaintenanceStatusChange(
+                        notificationRequest,
+                        current.status || '',
+                        request.status || '',
+                        typeof updateData.notes === 'string' ? updateData.notes : request.notes || undefined,
+                    );
+                }
+            }
+        } catch (notificationError) {
+            console.error('Failed to trigger maintenance workflow notifications:', notificationError);
+        }
+
         revalidatePath('/maintenance');
         revalidatePath('/maintenance/dashboard');
         return { success: true, data: request };
@@ -1563,6 +1793,11 @@ export async function reopenMaintenanceRequest(request_id: number, reason: strin
             data: {
                 status: reopenedStatus,
                 completed_at: null
+            },
+            include: {
+                tbl_rooms: {
+                    select: { room_code: true, room_name: true }
+                }
             }
         });
 
@@ -1586,6 +1821,26 @@ export async function reopenMaintenanceRequest(request_id: number, reason: strin
                     changed_by: 'manager_override'
                 }
             });
+        }
+
+        try {
+            if (updated.tbl_rooms) {
+                await notifyMaintenanceStatusChange(
+                    {
+                        request_number: updated.request_number,
+                        title: updated.title,
+                        room_code: updated.tbl_rooms.room_code,
+                        room_name: updated.tbl_rooms.room_name,
+                        reported_by: updated.reported_by,
+                        assigned_to: updated.assigned_to,
+                    },
+                    current.status || '',
+                    reopenedStatus,
+                    reason || 'Reopened by manager override',
+                );
+            }
+        } catch (notificationError) {
+            console.error('Failed to notify reopened maintenance request:', notificationError);
         }
 
         revalidatePath('/maintenance');

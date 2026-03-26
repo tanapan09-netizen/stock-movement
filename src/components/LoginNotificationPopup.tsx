@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { Bell, Package, AlertTriangle, FileText, X, CheckCheck } from 'lucide-react';
-import { useSession } from 'next-auth/react';
 import { getReadNotificationsKey, getStoredReadNotificationIds, storeReadNotificationIds } from '@/lib/notifications/clientReadState';
 
 type Notification = {
@@ -14,17 +13,22 @@ type Notification = {
     read: boolean;
 };
 
-export default function LoginNotificationPopup() {
-    const { data: session } = useSession();
+type LoginNotificationPopupUser = {
+    id?: string | null;
+    name?: string | null;
+} | null;
+
+export default function LoginNotificationPopup({ user }: { user: LoginNotificationPopupUser }) {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isVisible, setIsVisible] = useState(false);
-    const readNotificationsKey = getReadNotificationsKey(session?.user?.id, session?.user?.name);
+    const session = user ? { user } : null;
+    const readNotificationsKey = getReadNotificationsKey(user?.id, user?.name);
 
     useEffect(() => {
-        if (!session?.user) return;
+        if (!user?.id && !user?.name) return;
 
         // Use sessionStorage so popup only shows once per browser session (login)
-        const sessionKey = `notif_popup_shown_${session.user.id || session.user.name}`;
+        const sessionKey = `notif_popup_shown_${user.id || user.name}`;
         const alreadyShown = sessionStorage.getItem(sessionKey);
         if (alreadyShown) return;
 
@@ -49,7 +53,7 @@ export default function LoginNotificationPopup() {
         // Small delay so the page loads first
         const timer = setTimeout(fetchAndShow, 1000);
         return () => clearTimeout(timer);
-    }, [readNotificationsKey, session]);
+    }, [readNotificationsKey, user]);
 
     const handleClose = () => {
         if (notifications.length > 0) {

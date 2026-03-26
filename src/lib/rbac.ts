@@ -797,6 +797,7 @@ export function canManageMaintenanceParts(
   return (
     isManagerRole(normalizedRole) ||
     isDepartmentRole(normalizedRole, 'store') ||
+    canManageMaintenanceEdit(normalizedRole, userPermissions) ||
     canAccessDashboardPage(normalizedRole, userPermissions, '/maintenance/parts', { level: 'edit' })
   );
 }

@@ -6,6 +6,7 @@
 import {
     createPettyCashDecisionFlexMessage,
     sendMulticastMessage,
+    createTextMessage,
     createApprovalDecisionFlexMessage,
     createApprovalPendingFlexMessage,
     createPartRequestFlexMessage,
@@ -280,6 +281,8 @@ export async function notifyMaintenanceStatusChange(
         title: string;
         room_code: string;
         room_name: string;
+        reported_by?: string | null;
+        assigned_to?: string | null;
     },
     oldStatus: string,
     newStatus: string,
@@ -287,18 +290,130 @@ export async function notifyMaintenanceStatusChange(
 ): Promise<void> {
     console.log('[Notification] Sending maintenance status change:', request.request_number, oldStatus, '->', newStatus);
 
-    // Note: Since we don't have requester email in tbl_users consistently,
-    // we might only start by sending to Admin to track changes,
-    // OR if we can find an email in the future.
-    // For now, let's send to Approvers (Admin) so they know the job status updated.
+    const { prisma } = await import('@/lib/prisma');
+    const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
+    const statusLabelMap: Record<string, string> = {
+        pending: 'Pending',
+        approved: 'Forwarded',
+        in_progress: 'In Progress',
+        confirmed: 'Awaiting Approval',
+        completed: 'Completed',
+        cancelled: 'Cancelled',
+    };
+    const statusMetaMap: Record<string, { headline: string; subjectPrefix: string; summary: string }> = {
+        pending: {
+            headline: '[Maintenance Reopened/Unassigned]',
+            subjectPrefix: '[Maintenance] Pending',
+            summary: 'The maintenance request is waiting for the next action.',
+        },
+        approved: {
+            headline: '[Maintenance Forwarded]',
+            subjectPrefix: '[Maintenance] Forwarded',
+            summary: 'The request has been forwarded to the maintenance workflow.',
+        },
+        in_progress: {
+            headline: '[Maintenance In Progress]',
+            subjectPrefix: '[Maintenance] In Progress',
+            summary: 'Work has started on this request.',
+        },
+        confirmed: {
+            headline: '[Maintenance Awaiting Approval]',
+            subjectPrefix: '[Maintenance] Awaiting Approval',
+            summary: 'The technician submitted the job for final approval.',
+        },
+        completed: {
+            headline: '[Maintenance Completed]',
+            subjectPrefix: '[Maintenance] Completed',
+            summary: 'The maintenance job has been completed.',
+        },
+        cancelled: {
+            headline: '[Maintenance Cancelled]',
+            subjectPrefix: '[Maintenance] Cancelled',
+            summary: 'The maintenance request has been cancelled.',
+        },
+    };
+    const statusMeta = statusMetaMap[newStatus] || {
+        headline: '[Maintenance Status Update]',
+        subjectPrefix: '[Maintenance] Status Update',
+        summary: 'The maintenance request status has changed.',
+    };
+
+    const [reporterUser, reporterCustomer, assignedUser, assignedTech] = await Promise.all([
+        request.reported_by
+            ? prisma.tbl_users.findUnique({
+                where: { username: request.reported_by },
+                select: { line_user_id: true, email: true }
+            })
+            : Promise.resolve(null),
+        request.reported_by
+            ? prisma.tbl_line_customers.findFirst({
+                where: { full_name: request.reported_by },
+                select: { line_user_id: true }
+            })
+            : Promise.resolve(null),
+        request.assigned_to
+            ? prisma.tbl_users.findUnique({
+                where: { username: request.assigned_to },
+                select: { line_user_id: true, email: true }
+            })
+            : Promise.resolve(null),
+        request.assigned_to
+            ? prisma.tbl_technicians.findFirst({
+                where: { name: request.assigned_to, status: 'active' },
+                select: { line_user_id: true, email: true }
+            })
+            : Promise.resolve(null),
+    ]);
+
+    const lineRecipientIds = new Set<string>();
+    const emailRecipients = new Set<string>();
+    const shouldNotifyApprovers = ['approved', 'confirmed', 'completed', 'cancelled'].includes(newStatus);
+    const shouldNotifyAssignee = ['approved', 'in_progress', 'pending'].includes(newStatus);
+
+    if (reporterUser?.line_user_id) lineRecipientIds.add(reporterUser.line_user_id);
+    if (reporterCustomer?.line_user_id) lineRecipientIds.add(reporterCustomer.line_user_id);
+    if (reporterUser?.email) emailRecipients.add(reporterUser.email);
+
+    if (shouldNotifyAssignee) {
+        if (assignedUser?.line_user_id) lineRecipientIds.add(assignedUser.line_user_id);
+        if (assignedTech?.line_user_id) lineRecipientIds.add(assignedTech.line_user_id);
+        if (assignedUser?.email) emailRecipients.add(assignedUser.email);
+        if (assignedTech?.email) emailRecipients.add(assignedTech.email);
+    }
+
+    if (shouldNotifyApprovers) {
+        const roleLineIds = await getLineIdsByRoles(['manager', 'head_technician']);
+        roleLineIds.forEach((lineId) => lineRecipientIds.add(lineId));
+        getApproverEmails().forEach((email) => emailRecipients.add(email));
+    }
+
+    const lineMessage = createTextMessage([
+        statusMeta.headline,
+        `Request: ${request.request_number}`,
+        `Room: ${request.room_code} - ${request.room_name}`,
+        `Title: ${request.title}`,
+        statusMeta.summary,
+        `Status: ${statusLabelMap[oldStatus] || oldStatus} -> ${statusLabelMap[newStatus] || newStatus}`,
+        request.assigned_to ? `Assigned To: ${request.assigned_to}` : null,
+        notes ? `Notes: ${notes}` : null,
+    ].filter(Boolean).join('\\n'));
 
     await Promise.allSettled([
         (async () => {
-            const recipients = getApproverEmails(); // Send to Admin for visibility
-            if (recipients.length > 0 && process.env.EMAIL_ENABLED !== 'false') {
+            if (lineRecipientIds.size > 0 && process.env.LINE_MESSAGING_ENABLED !== 'false') {
+                const result = await sendMulticastMessage(Array.from(lineRecipientIds), lineMessage);
+                if (result.success) {
+                    console.log('[Notification] Maintenance status LINE sent to', lineRecipientIds.size, 'recipients');
+                } else {
+                    console.warn('[Notification] Maintenance status LINE failed:', result.error);
+                }
+            }
+        })(),
+        (async () => {
+            if (emailRecipients.size > 0 && process.env.EMAIL_ENABLED !== 'false') {
                 const html = generateMaintenanceStatusChangeEmail(request, oldStatus, newStatus, notes);
-                const subject = `📢 อัปเดตสถานะงานซ่อม: ${request.request_number}`;
-                const result = await sendEmail(recipients, subject, html);
+                const subject = `${statusMeta.subjectPrefix}: ${request.request_number}`;
+                const result = await sendEmail(Array.from(emailRecipients), subject, html);
                 if (result.success) {
                     console.log('[Notification] Maintenance Status Email sent successfully');
                 } else {

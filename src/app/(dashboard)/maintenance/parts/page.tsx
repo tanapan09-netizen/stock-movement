@@ -4,8 +4,8 @@ import { getUserPermissionContext } from '@/lib/server/permission-service';
 import PartsManagementClient from './PartsManagementClient';
 
 export const metadata = {
-    title: 'จัดการอะไหล่ซ่อม | Stock Movement',
-    description: 'เบิก/คืนอะไหล่สำหรับงานซ่อม'
+    title: 'จัดการอะไหล่งานซ่อม | Stock Movement',
+    description: 'เบิกและคืนอะไหล่สำหรับงานซ่อม'
 };
 
 export default async function PartsManagementPage() {

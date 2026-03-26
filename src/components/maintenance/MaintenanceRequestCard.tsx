@@ -1,6 +1,6 @@
 'use client';
 
-import { Wrench, Clock, CheckCircle, XCircle, MapPin, User, Calendar, AlertTriangle, ArrowRight, BellRing, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Wrench, Clock, CheckCircle, XCircle, MapPin, User, Calendar, AlertTriangle, ArrowRight, BellRing, ShieldCheck, AlertCircle, Package } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import { getMaintenanceWorkflowStep, MAINTENANCE_WORKFLOW_LABELS } from '@/lib/maintenance-workflow';
 
@@ -39,6 +39,8 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string
 export default function MaintenanceRequestCard({ request, onClick, onResend, ageBadge }: MaintenanceRequestCardProps) {
     const status = STATUS_CONFIG[request.status] || STATUS_CONFIG.pending;
     const priority = PRIORITY_CONFIG[request.priority] || PRIORITY_CONFIG.normal;
+    const hasPartsStockPosted = Array.isArray(request.tbl_maintenance_history)
+        && request.tbl_maintenance_history.some((item: { action?: string }) => item.action === 'PARTS_STOCK_POSTED');
 
     return (
         <div
@@ -152,9 +154,17 @@ export default function MaintenanceRequestCard({ request, onClick, onResend, age
             {/* Bottom Section: Stepper & Status */}
             <div className="mt-auto space-y-4">
                 <div className="flex items-center justify-between">
-                    <div className={`flex items-center gap-2.5 text-sm font-black ${status.color}`}>
-                        <div className={`w-2.5 h-2.5 rounded-full bg-current ${status.bg} shadow-[0_0_12px_current]`} />
-                        {status.label}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className={`flex items-center gap-2.5 text-sm font-black ${status.color}`}>
+                            <div className={`w-2.5 h-2.5 rounded-full bg-current ${status.bg} shadow-[0_0_12px_current]`} />
+                            {status.label}
+                        </div>
+                        {hasPartsStockPosted && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                                <Package size={11} />
+                                ตัดสต็อกแล้ว
+                            </span>
+                        )}
                     </div>
                     {request.status === 'pending' && onResend && (
                         <button

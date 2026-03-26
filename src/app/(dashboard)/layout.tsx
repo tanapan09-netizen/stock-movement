@@ -58,7 +58,12 @@ export default async function DashboardLayout({
                     <AutoBackup />
 
                     {/* Login Notification Popup (shown once per session) */}
-                    <LoginNotificationPopup />
+                    <LoginNotificationPopup
+                        user={{
+                            id: session.user?.id ?? null,
+                            name: session.user?.name ?? null,
+                        }}
+                    />
 
                     {/* Sidebar with mobile wrapper */}
                     <MobileSidebarWrapper>

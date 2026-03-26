@@ -633,17 +633,67 @@ export function generateMaintenanceStatusChangeEmail(request: {
     room_name: string;
 }, oldStatus: string, newStatus: string, notes?: string): string {
     const statusLabels: Record<string, string> = {
-        pending: 'รอดำเนินการ',
-        in_progress: 'กำลังซ่อม',
-        completed: 'ซ่อมเสร็จสิ้น',
-        cancelled: 'ยกเลิก',
+        pending: 'Pending',
+        approved: 'Forwarded',
+        in_progress: 'In Progress',
+        confirmed: 'Awaiting Approval',
+        completed: 'Completed',
+        cancelled: 'Cancelled',
     };
 
-    const statusColors: Record<string, string> = {
-        pending: '#f59e0b',
-        in_progress: '#3b82f6',
-        completed: '#10b981',
-        cancelled: '#ef4444',
+    const statusTheme: Record<string, { color: string; gradient: string; heading: string; summary: string; badgeBg: string }> = {
+        pending: {
+            color: '#d97706',
+            gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+            heading: 'Request Pending',
+            summary: 'The maintenance request is waiting for the next action.',
+            badgeBg: '#fef3c7',
+        },
+        approved: {
+            color: '#ea580c',
+            gradient: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+            heading: 'Request Forwarded',
+            summary: 'The job has been forwarded into the maintenance workflow.',
+            badgeBg: '#ffedd5',
+        },
+        in_progress: {
+            color: '#2563eb',
+            gradient: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+            heading: 'Work In Progress',
+            summary: 'A technician has started working on this request.',
+            badgeBg: '#dbeafe',
+        },
+        confirmed: {
+            color: '#7c3aed',
+            gradient: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+            heading: 'Awaiting Final Approval',
+            summary: 'The technician submitted the job for approval.',
+            badgeBg: '#ede9fe',
+        },
+        completed: {
+            color: '#059669',
+            gradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            heading: 'Job Completed',
+            summary: 'The maintenance work has been completed successfully.',
+            badgeBg: '#d1fae5',
+        },
+        cancelled: {
+            color: '#dc2626',
+            gradient: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            heading: 'Request Cancelled',
+            summary: 'This maintenance request has been cancelled.',
+            badgeBg: '#fee2e2',
+        },
+    };
+
+    const oldLabel = statusLabels[oldStatus] || oldStatus;
+    const newLabel = statusLabels[newStatus] || newStatus;
+    const theme = statusTheme[newStatus] || {
+        color: '#475569',
+        gradient: 'linear-gradient(135deg, #64748b 0%, #475569 100%)',
+        heading: 'Status Updated',
+        summary: 'The maintenance request status has changed.',
+        badgeBg: '#e2e8f0',
     };
 
     return `
@@ -652,73 +702,66 @@ export function generateMaintenanceStatusChangeEmail(request: {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>อัปเดตสถานะงานซ่อม</title>
+    <title>Maintenance Status Update</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background-color: #f3f4f6;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 20px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 24px;">
         <tr>
             <td align="center">
-                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <table width="640" cellpadding="0" cellspacing="0" style="max-width: 640px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.10);">
                     <tr>
-                        <td style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 30px; border-radius: 8px 8px 0 0;">
-                            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
-                                📢 อัปเดตสถานะงานซ่อม
+                        <td style="background: ${theme.gradient}; padding: 32px 32px 24px 32px;">
+                            <div style="display: inline-block; padding: 6px 12px; border-radius: 999px; background-color: rgba(255,255,255,0.18); color: #ffffff; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;">
+                                Maintenance Workflow
+                            </div>
+                            <h1 style="margin: 16px 0 8px 0; color: #ffffff; font-size: 28px; line-height: 1.2; font-weight: 700;">
+                                ${theme.heading}
                             </h1>
-                            <p style="margin: 5px 0 0 0; color: #ddd6fe; font-size: 14px;">
-                                ${request.request_number}
+                            <p style="margin: 0; color: rgba(255,255,255,0.90); font-size: 15px; line-height: 1.6;">
+                                ${theme.summary}
+                            </p>
+                            <p style="margin: 18px 0 0 0; color: rgba(255,255,255,0.82); font-size: 13px;">
+                                Request No. ${request.request_number}
                             </p>
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding: 30px;">
-                            <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">
-                                สถานะงานซ่อมของคุณมีการเปลี่ยนแปลง
-                            </p>
-                            
-                             <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; margin-bottom: 20px;">
-                                <tr style="background-color: #f9fafb;">
-                                    <td style="padding: 12px 16px; font-weight: 600; color: #6b7280; font-size: 14px; width: 30%;">
-                                        สถานที่
-                                    </td>
-                                    <td style="padding: 12px 16px; color: #111827; font-size: 14px;">
-                                        ${request.room_code} - ${request.room_name}
-                                    </td>
+                        <td style="padding: 32px;">
+                            <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; margin-bottom: 24px;">
+                                <tr style="background-color: #f8fafc;">
+                                    <td style="padding: 14px 18px; font-weight: 600; color: #64748b; font-size: 14px; width: 28%;">Room</td>
+                                    <td style="padding: 14px 18px; color: #0f172a; font-size: 14px;">${request.room_code} - ${request.room_name}</td>
                                 </tr>
                                 <tr>
-                                    <td style="padding: 12px 16px; font-weight: 600; color: #6b7280; font-size: 14px; border-top: 1px solid #e5e7eb;">
-                                        หัวข้อ
-                                    </td>
-                                    <td style="padding: 12px 16px; color: #111827; font-size: 14px; border-top: 1px solid #e5e7eb;">
-                                        ${request.title}
-                                    </td>
+                                    <td style="padding: 14px 18px; font-weight: 600; color: #64748b; font-size: 14px; border-top: 1px solid #e5e7eb;">Title</td>
+                                    <td style="padding: 14px 18px; color: #0f172a; font-size: 14px; border-top: 1px solid #e5e7eb;">${request.title}</td>
                                 </tr>
                             </table>
 
-                            <div style="text-align: center; padding: 20px; background-color: #f9fafb; border-radius: 6px;">
-                                <div style="margin-bottom: 10px;">
-                                    <span style="display: inline-block; padding: 8px 16px; border-radius: 12px; background-color: ${statusColors[oldStatus] || '#6b7280'}; color: #ffffff; font-size: 14px; font-weight: 600;">
-                                        ${statusLabels[oldStatus] || oldStatus}
-                                    </span>
+                            <div style="padding: 22px; border-radius: 14px; background-color: #f8fafc; text-align: center;">
+                                <div style="font-size: 13px; font-weight: 600; color: #64748b; letter-spacing: 0.02em; text-transform: uppercase; margin-bottom: 16px;">
+                                    Status Transition
                                 </div>
-                                <div style="margin: 10px 0; color: #6b7280; font-size: 20px;">↓</div>
-                                <div style="margin-top: 10px;">
-                                    <span style="display: inline-block; padding: 8px 16px; border-radius: 12px; background-color: ${statusColors[newStatus] || '#6b7280'}; color: #ffffff; font-size: 14px; font-weight: 600;">
-                                        ${statusLabels[newStatus] || newStatus}
-                                    </span>
+                                <div style="display: inline-block; padding: 9px 16px; border-radius: 999px; background-color: #e5e7eb; color: #334155; font-size: 14px; font-weight: 700;">
+                                    ${oldLabel}
+                                </div>
+                                <div style="margin: 14px 0; font-size: 22px; color: ${theme.color}; font-weight: 700;">&#8594;</div>
+                                <div style="display: inline-block; padding: 10px 18px; border-radius: 999px; background-color: ${theme.badgeBg}; color: ${theme.color}; font-size: 14px; font-weight: 700; border: 1px solid rgba(15, 23, 42, 0.06);">
+                                    ${newLabel}
                                 </div>
                             </div>
-                            
+
                             ${notes ? `
-                            <div style="margin-top: 20px; padding: 16px; background-color: #fffbeb; border-radius: 6px; border: 1px solid #fcd34d;">
-                                <p style="margin: 0 0 5px 0; font-weight: 600; color: #92400e; font-size: 14px;">หมายเหตุเพิ่มเติม:</p>
-                                <p style="margin: 0; color: #b45309; font-size: 14px;">${notes}</p>
+                            <div style="margin-top: 22px; padding: 18px; background-color: #fff7ed; border-radius: 12px; border: 1px solid #fdba74;">
+                                <div style="margin: 0 0 8px 0; font-weight: 700; color: #9a3412; font-size: 14px;">Additional Notes</div>
+                                <div style="margin: 0; color: #7c2d12; font-size: 14px; line-height: 1.6;">${notes}</div>
                             </div>
                             ` : ''}
 
-                            <div style="margin-top: 30px; text-align: center;">
-                                <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/maintenance" 
-                                   style="display: inline-block; padding: 12px 32px; background-color: #8b5cf6; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
-                                    ตรวจสอบสถานะ
+                            <div style="margin-top: 28px; text-align: center;">
+                                <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/maintenance"
+                                   style="display: inline-block; padding: 13px 30px; background: ${theme.gradient}; color: #ffffff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+                                    Open Maintenance Dashboard
                                 </a>
                             </div>
                         </td>
@@ -730,5 +773,4 @@ export function generateMaintenanceStatusChangeEmail(request: {
 </body>
 </html>
     `.trim();
-
 }

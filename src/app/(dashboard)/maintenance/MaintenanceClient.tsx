@@ -1,4 +1,4 @@
-'use client';
+﻿﻿'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -43,6 +43,7 @@ import {
     getMaintenanceParts,
     confirmPartsUsed,
     storeVerifyParts,
+    withdrawPartsForMaintenanceBatch,
     reopenMaintenanceRequest,
     resendMaintenanceNotification,
     getProducts,
@@ -223,6 +224,13 @@ const getHistoryActionLabel = (action: string): string => {
     }
 };
 
+const hasPartsStockPostedHistory = (historyItems?: HistoryItem[] | null): boolean =>
+    Array.isArray(historyItems) && historyItems.some((item) => item.action === 'PARTS_STOCK_POSTED');
+
+const hasCompletedStockPosting = (partsList?: MaintenancePart[] | null, historyItems?: HistoryItem[] | null): boolean =>
+    (Array.isArray(partsList) && partsList.some((part) => part.status === 'completed'))
+    || hasPartsStockPostedHistory(historyItems);
+
 const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
     low: { label: 'ต่ำ', color: 'text-gray-600', bg: 'bg-gray-100' },
     normal: { label: 'ปกติ', color: 'text-blue-600', bg: 'bg-blue-100' },
@@ -401,6 +409,15 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const [currentTime, setCurrentTime] = useState(new Date());
     const [newPartsUsed, setNewPartsUsed] = useState<{ p_id: string; quantity: number }[]>([]);
     const [modalPartSearch, setModalPartSearch] = useState('');
+    const [isWithdrawingParts, setIsWithdrawingParts] = useState(false);
+    const filteredModalProducts = modalPartSearch.trim()
+        ? products
+            .filter((product) =>
+                product.p_name.toLowerCase().includes(modalPartSearch.toLowerCase())
+                || product.p_id.toLowerCase().includes(modalPartSearch.toLowerCase()))
+            .filter((product) => !newPartsUsed.some((selectedPart) => selectedPart.p_id === product.p_id))
+            .slice(0, 10)
+        : [];
 
     // Auto-update time every minute for real-time elapsed time display
     useEffect(() => {
@@ -1074,6 +1091,86 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         }
     }
 
+    async function handleWithdrawSelectedParts() {
+        if (!selectedRequest || !session?.user?.name) return;
+        if (!ensureCanEditPage()) return;
+
+        if (newPartsUsed.length === 0) {
+            showToast('กรุณาเลือกอะไหล่อย่างน้อย 1 รายการ', 'warning');
+            return;
+        }
+
+        const invalidPart = newPartsUsed.find((item) => {
+            const product = products.find((productItem) => productItem.p_id === item.p_id);
+            const availableStock = Number(product?.p_count ?? 0);
+            return !product || item.quantity < 1 || item.quantity > availableStock;
+        });
+
+        if (invalidPart) {
+            showToast('มีจำนวนอะไหล่บางรายการเกินสต็อกคงเหลือ กรุณาตรวจสอบอีกครั้ง', 'warning');
+            return;
+        }
+
+        const totalQuantity = newPartsUsed.reduce((sum, item) => sum + item.quantity, 0);
+        const confirmResult = await Swal.fire({
+            title: 'ยืนยันเบิกอะไหล่',
+            text: `ยืนยันเบิก ${newPartsUsed.length} รายการ รวม ${totalQuantity} ชิ้น สำหรับใบงาน ${selectedRequest.request_number || ''} ใช่หรือไม่`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'ยืนยันเบิกอะไหล่',
+            cancelButtonText: 'ยกเลิก',
+            confirmButtonColor: '#2563eb',
+            cancelButtonColor: '#94a3b8',
+        });
+
+        if (!confirmResult.isConfirmed) return;
+
+        setIsWithdrawingParts(true);
+
+        try {
+            const result = await withdrawPartsForMaintenanceBatch({
+                request_id: selectedRequest.request_id,
+                items: newPartsUsed.map((item) => ({
+                    p_id: item.p_id,
+                    quantity: item.quantity,
+                    notes: 'เบิกจากหน้า /maintenance'
+                })),
+                withdrawn_by: session.user.name
+            });
+
+            if (!result.success) {
+                showToast(result.error || 'ไม่สามารถเบิกอะไหล่ได้', 'error');
+                return;
+            }
+
+            const [partsResult, productResult] = await Promise.all([
+                getMaintenanceParts(selectedRequest.request_id),
+                getProducts()
+            ]);
+
+            if (partsResult.success) {
+                setParts(Array.isArray(partsResult.data) ? partsResult.data as MaintenancePart[] : []);
+            } else {
+                setParts([]);
+            }
+
+            if (productResult.success) {
+                setProducts(Array.isArray(productResult.data) ? productResult.data as any[] : []);
+            } else {
+                setProducts([]);
+            }
+
+            setNewPartsUsed([]);
+            setModalPartSearch('');
+            showToast(`เบิกอะไหล่เรียบร้อย ${newPartsUsed.length} รายการ`, 'success');
+        } catch (error) {
+            console.error(error);
+            showToast('ไม่สามารถยืนยันการเบิกอะไหล่ได้', 'error');
+        } finally {
+            setIsWithdrawingParts(false);
+        }
+    }
+
     async function handleUpdateRequest() {
         if (!selectedRequest) return;
         if (!ensureCanEditPage()) return;
@@ -1081,11 +1178,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         // Validation for technician role and in_progress status
         const isTechnician = isMaintenanceTechnician(loggedInRole);
         if (isTechnician && editData.status === 'completed') {
-            const hasParts = parts.length > 0;
-            const allVerified = parts.every(p => p.status === 'verified');
+            const blockingPartStatuses = new Set(['withdrawn', 'used', 'pending_verification']);
+            const hasUncheckedParts = parts.some((part) => blockingPartStatuses.has(part.status));
 
-            if (hasParts && !allVerified) {
-                alert('ต้องตรวจนับอะไหล่ทุกชิ้นให้ครบถ้วนก่อนปิดงาน');
+            if (hasUncheckedParts) {
+                alert('ยังมีอะไหล่ที่รอรายงานการใช้หรือรอตรวจนับอยู่ กรุณาดำเนินการให้ครบก่อนปิดงาน');
                 return;
             }
         }
@@ -1100,9 +1197,16 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         const nextScheduledDate = editData.scheduled_date || '';
         const nextActualCost = Number(editData.actual_cost || 0);
         const nextNotes = editData.notes || '';
+        const isAutoAssignmentStatusChange =
+            editData.status !== selectedRequest.status
+            && nextAssignedTo !== currentAssignedTo
+            && (
+                (selectedRequest.status === 'pending' && nextAssignedTo !== '' && editData.status === 'approved')
+                || (selectedRequest.status === 'approved' && nextAssignedTo === '' && editData.status === 'pending')
+            );
 
         const submitData = {
-            status: editData.status !== selectedRequest.status ? editData.status : undefined,
+            status: !isAutoAssignmentStatusChange && editData.status !== selectedRequest.status ? editData.status : undefined,
             priority: editData.priority !== selectedRequest.priority ? editData.priority : undefined,
             assigned_to: nextAssignedTo !== currentAssignedTo ? nextAssignedTo : undefined,
             scheduled_date: nextScheduledDate !== currentScheduledDate ? nextScheduledDate : undefined,
@@ -1452,6 +1556,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                                             );
                                                         })()}
                                                     </span>
+                                                    {hasPartsStockPostedHistory(request.tbl_maintenance_history) && (
+                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 w-fit">
+                                                            <Package size={12} />
+                                                            ตัดสต็อกแล้ว
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
@@ -1698,7 +1808,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                                         <div className="text-xs text-gray-500">S/N: {asset.serial_number}</div>
                                                     )}
                                                     <div className="text-xs text-gray-400 mt-1">
-                                                        {asset.category} โ€ข {asset.location || 'No location'}
+                                                        {asset.category} / {asset.location || 'No location'}
                                                     </div>
                                                 </button>
                                             ))}
@@ -2055,588 +2165,929 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             )
             }
 
-            {/* Detail Modal */}
-            {
-                showDetailModal && selectedRequest && (
-                    <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 overflow-y-auto py-8 px-4">
-                        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 w-full max-w-3xl mx-auto shadow-2xl">
+                      {/* Detail Modal - Light Theme */}
+{showDetailModal && selectedRequest && (
+  <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 px-4 py-6 backdrop-blur-sm">
+    <div className="w-full max-w-6xl overflow-hidden rounded-[28px] border border-slate-200 bg-white text-slate-900 shadow-2xl">
+      {/* Header */}
+      <div className="border-b border-slate-200 bg-gradient-to-r from-blue-600 to-blue-500 px-5 py-5 text-white sm:px-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 text-white shadow-inner ring-1 ring-white/15">
+              <Wrench size={28} />
+            </div>
 
-                            <div className="flex justify-between items-center mb-4">
-                                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                                    รายละเอียดการแจ้งซ่อม #{selectedRequest.request_number}
-                                </h2>
-                                <div className="flex gap-2">
-                                    <Link
-                                        href={`/maintenance/job-sheet/${selectedRequest.request_id}`}
-                                        target="_blank"
-                                        className="text-gray-500 hover:text-blue-600 mr-2"
-                                        title="พิมพ์ใบงาน"
-                                    >
-                                        <Printer size={24} />
-                                    </Link>
-                                    <button onClick={() => setShowDetailModal(false)} className="text-gray-500 hover:text-gray-700">
-                                        <X size={24} />
-                                    </button>
-                                </div>
-                            </div>
+            <div>
+              <h2 className="text-2xl font-extrabold leading-tight">
+                รายละเอียดใบงาน
+              </h2>
+              <p className="mt-1 text-lg font-semibold text-white/90">
+                #{selectedRequest.request_number}
+              </p>
+            </div>
+          </div>
 
-                            <div className="px-6 py-8 border-b border-gray-100 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-900/10 mb-6 -mx-6 -mt-6 rounded-t-xl">
-                                <WorkflowStepper 
-                                    currentStep={getMaintenanceWorkflowStep(selectedRequest.status)}
-                                    totalSteps={5}
-                                    status={selectedRequest.status as WorkflowStatus}
-                                    labels={[...MAINTENANCE_WORKFLOW_LABELS]}
-                                    size="md"
-                                />
-                            </div>
+          <div className="flex items-center gap-3 self-end sm:self-start">
+            <Link
+              href={`/maintenance/job-sheet/${selectedRequest.request_id}`}
+              target="_blank"
+              className="inline-flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/20"
+              title="พิมพ์ใบงาน"
+            >
+              <Printer size={18} />
+              พิมพ์ใบงาน
+            </Link>
 
-                            <div className="grid grid-cols-2 gap-6">
-                                {/* Left Column - Info */}
-                                <div className="space-y-4">
-                                    <div>
-                                        <div className="text-sm text-gray-500">ห้อง</div>
-                                        <div className="font-medium">
-                                            {[selectedRequest.tbl_rooms?.building, selectedRequest.tbl_rooms?.floor].filter(Boolean).join(' ')} {selectedRequest.tbl_rooms?.room_name} ({selectedRequest.tbl_rooms?.room_code})
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="text-sm text-gray-500">หัวข้อ</div>
-                                        <div className="font-medium">{selectedRequest.title}</div>
-                                    </div>
-                                    {selectedRequest.description && (
-                                        <div>
-                                            <div className="text-sm text-gray-500">รายละเอียด</div>
-                                            <div>{selectedRequest.description}</div>
-                                        </div>
-                                    )}
-                                    {false && selectedRequest.image_url && (
-                                        <div>
-                                            <div className="text-sm text-gray-500 mb-1">รูปภาพ</div>
-                                            <img src={selectedRequest.image_url} alt="รูปภาพปัญหา" className="rounded-lg max-h-40 object-cover" />
-                                        </div>
-                                    )}
-                                    {selectedRequestImageUrls.length > 0 && (
-                                        <div>
-                                            <div className="text-sm text-gray-500 mb-1">รูปภาพ</div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                {selectedRequestImageUrls.map((imageUrl, index) => (
-                                                    <a key={`${selectedRequest.request_id}-${index}`} href={imageUrl} target="_blank" rel="noopener noreferrer" className="relative block">
-                                                        {index < selectedRequestCopiedImageMeta.copiedImageCount && (
-                                                            <span className="absolute left-2 top-2 z-10 rounded-full bg-blue-600 px-2.5 py-1 text-[11px] font-medium text-white shadow">
-                                                                {selectedRequestCopiedImageMeta.sourceRequestId
-                                                                    ? `คัดลอกจากเคสด่วน #${selectedRequestCopiedImageMeta.sourceRequestId}`
-                                                                    : 'คัดลอกจากเคสด่วนออนไลน์'}
-                                                            </span>
-                                                        )}
-                                                        <img
-                                                            src={imageUrl}
-                                                            alt={`รูปภาพปัญหา ${index + 1}`}
-                                                            className="rounded-lg w-full max-h-40 object-cover border hover:opacity-90 transition"
-                                                        />
-                                                    </a>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div>
-                                        <div className="text-sm text-gray-500">ผู้แจ้ง</div>
-                                        <div>{selectedRequest.reported_by}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-sm text-gray-500">วันที่แจ้ง</div>
-                                        <div>{new Date(selectedRequest.created_at).toLocaleString('th-TH')}</div>
-                                    </div>
-                                </div>
+            <button
+              onClick={() => setShowDetailModal(false)}
+              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-white transition hover:bg-white/20"
+              title="ปิด"
+            >
+              <X size={22} />
+            </button>
+          </div>
+        </div>
+      </div>
 
-                                {/* Right Column - Edit */}
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">สถานะ</label>
-                                        <select
-                                            value={editData.status}
-                                            onChange={(e) => {
-                                                setEditData({ ...editData, status: e.target.value });
-                                                if (e.target.value !== 'completed') {
-                                                    setNewPartsUsed([]);
-                                                }
-                                            }}
-                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                        >
-                                            {MAINTENANCE_STATUS_OPTIONS.filter((option) => {
-                                                if (option.value === 'pending') {
-                                                    return sessionIsApprover || editData.status === 'pending';
-                                                }
-                                                if (option.value === 'cancelled') {
-                                                    return sessionIsApprover;
-                                                }
-                                                return true;
-                                            }).map((option) => (
-                                                <option key={option.value} value={option.value}>
-                                                    {option.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">ความเร่งด่วน</label>
-                                        <select
-                                            value={editData.priority}
-                                            onChange={(e) => setEditData({ ...editData, priority: e.target.value })}
-                                            className={`w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 ${!canPrioritizeMaintenance ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                                            disabled={!canPrioritizeMaintenance}
-                                        >
-                                            {MAINTENANCE_PRIORITY_OPTIONS.map((option) => (
-                                                <option key={option.value} value={option.value}>
-                                                    {option.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">ผู้รับผิดชอบ/ช่าง</label>
-                                        <select
-                                            value={editData.assigned_to || ''}
-                                            onChange={(e) => setEditData({ ...editData, assigned_to: e.target.value })}
-                                            className={`w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 ${selectedRequest.status === 'in_progress' && !canAssignMaintenance ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                                            disabled={selectedRequest.status === 'in_progress' && !canAssignMaintenance}
-                                        >
-                                            <option value="">-- ไม่ระบุ --</option>
-                                            {Array.from(new Set([
-                                                ...technicians.map(t => t.name),
-                                                ...lineTechnicians.map(u => u.display_name)
-                                            ])).filter(Boolean).sort().map(name => (
-                                                <option key={name} value={name}>{name}</option>
-                                            ))}
-                                            {editData.assigned_to && !Array.from(new Set([...technicians.map(t => t.name), ...lineTechnicians.map(u => u.display_name)])).includes(editData.assigned_to) && (
-                                                <option value={editData.assigned_to}>{editData.assigned_to}</option>
-                                            )}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">วันที่นัดซ่อม</label>
-                                        <input
-                                            type="date"
-                                            value={editData.scheduled_date}
-                                            onChange={(e) => setEditData({ ...editData, scheduled_date: e.target.value })}
-                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">ค่าใช้จ่ายจริง (บาท)</label>
-                                        <input
-                                            type="number"
-                                            value={editData.actual_cost || ''}
-                                            onChange={(e) => setEditData({ ...editData, actual_cost: Number(e.target.value) })}
-                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                            placeholder="0"
-                                            min="0"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">หมายเหตุ</label>
-                                        <textarea
-                                            value={editData.notes}
-                                            onChange={(e) => setEditData({ ...editData, notes: e.target.value })}
-                                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600"
-                                            rows={2}
-                                        />
-                                    </div>
+      {/* Workflow */}
+      <div className="border-b border-slate-200 bg-slate-50 px-5 py-5 sm:px-6">
+        <WorkflowStepper
+          currentStep={getMaintenanceWorkflowStep(selectedRequest.status)}
+          totalSteps={5}
+          status={selectedRequest.status as WorkflowStatus}
+          labels={[...MAINTENANCE_WORKFLOW_LABELS]}
+          size="md"
+        />
+      </div>
 
-                                    {/* Parts Selection UI - Only shown when status is 'completed' and not already completed */}
-                                    {editData.status === 'completed' && selectedRequest.status !== 'completed' && (
-                                        <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-3 space-y-3">
-                                            <h4 className="font-medium text-blue-800 dark:text-blue-300 flex items-center gap-2 text-sm">
-                                                <ShoppingCart size={14} />
-                                                เพิ่มอะไหล่ที่ใช้ (ถ้ามี)
-                                            </h4>
-                                            
-                                            {newPartsUsed.map((part, index) => {
-                                            const product = products.find(p => p.p_id === part.p_id);
-                                            const avail = product ? product.p_count : 0;
+      {/* Body */}
+      <div className="max-h-[calc(100vh-180px)] overflow-y-auto">
+        <div className="grid grid-cols-1 gap-5 px-5 py-5 lg:grid-cols-[minmax(0,1fr)_minmax(340px,0.95fr)] sm:px-6">
+          {/* Left Column */}
+          <div className="space-y-5">
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-sm font-medium text-slate-500">หัวข้อปัญหา</div>
+              <div className="mt-2 text-3xl font-bold leading-snug text-slate-900">
+                {selectedRequest.title}
+              </div>
+            </div>
 
-                                            return (
-                                                <div
-                                                key={index}
-                                                className="flex flex-col gap-1.5 px-3 py-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600"
-                                                >
-                                                {/* Row 1: Part name */}
-                                                <span className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">
-                                                    {product?.p_name || part.p_id}
-                                                </span>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="text-sm font-medium text-slate-500">สถานที่</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">
+                  {selectedRequest.tbl_rooms?.room_code || '-'}
+                </div>
+                <div className="mt-1 text-base text-slate-500">
+                  {[selectedRequest.tbl_rooms?.building, selectedRequest.tbl_rooms?.floor]
+                    .filter(Boolean)
+                    .join(' ')}{' '}
+                  {selectedRequest.tbl_rooms?.room_name}
+                </div>
+              </div>
 
-                                                {/* Row 2: Quantity + stock + remove */}
-                                                <div className="flex items-center gap-2">
-                                                    <input
-                                                    type="number"
-                                                    min="1"
-                                                    max={avail}
-                                                    value={part.quantity}
-                                                    onChange={(e) => {
-                                                        const updated = [...newPartsUsed];
-                                                        let val = parseInt(e.target.value) || 1;
-                                                        if (val > avail) val = avail;
-                                                        updated[index].quantity = val;
-                                                        setNewPartsUsed(updated);
-                                                    }}
-                                                    className="w-16 px-2 py-0.5 text-sm text-center rounded-md border border-slate-300 dark:border-slate-500 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                                                    />
-                                                    <span className="text-xs text-slate-400">
-                                                    คงเหลือใน WH-01 {avail} ชิ้น
-                                                    </span>
-                                                    <button
-                                                    type="button"
-                                                    onClick={() => setNewPartsUsed(newPartsUsed.filter((_, i) => i !== index))}
-                                                    className="ml-auto text-xs text-red-400 hover:text-red-600 hover:underline transition-colors"
-                                                    aria-label="Remove part"
-                                                    >
-                                                    ลบ
-                                                    </button>
-                                                </div>
-                                                </div>
-                                            );
-                                            })}
-                                            
-                                            <div className="space-y-2">
-                                                <div className="relative">
-                                                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                                                    <input
-                                                        type="text"
-                                                        placeholder="ค้นหาอะไหล่..."
-                                                        value={modalPartSearch}
-                                                        onChange={(e) => setModalPartSearch(e.target.value)}
-                                                        className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-lg dark:bg-slate-700 dark:border-slate-600 bg-white"
-                                                    />
-                                                </div>
-                                                
-                                                {modalPartSearch && (
-                                                    <div className="max-h-32 overflow-y-auto border rounded bg-white dark:bg-slate-800 shadow-sm">
-                                                        {products
-                                                            .filter(p => p.p_name.toLowerCase().includes(modalPartSearch.toLowerCase()) || p.p_id.toLowerCase().includes(modalPartSearch.toLowerCase()))
-                                                            .filter(p => !newPartsUsed.some(u => u.p_id === p.p_id))
-                                                            .slice(0, 10)
-                                                            .map(p => (
-                                                                <button
-                                                                    key={p.p_id}
-                                                                    onClick={() => {
-                                                                        setNewPartsUsed([...newPartsUsed, { p_id: p.p_id, quantity: 1 }]);
-                                                                        setModalPartSearch('');
-                                                                    }}
-                                                                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-slate-700 flex justify-between items-center"
-                                                                    disabled={p.p_count <= 0}
-                                                                >
-                                                                    <span className={p.p_count <= 0 ? 'text-gray-400' : ''}>{p.p_name}</span>
-                                                                    <span className={`text-[10px] ${p.p_count <= 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                                                                        สต็อก: {p.p_count}
-                                                                    </span>
-                                                                </button>
-                                                            ))}
-                                                        {products.filter(p => p.p_name.toLowerCase().includes(modalPartSearch.toLowerCase())).length === 0 && (
-                                                            <div className="px-3 py-2 text-[10px] text-gray-500 text-center">ไม่พบอะไหล่</div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="text-sm font-medium text-slate-500">ผู้แจ้ง</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">
+                  {selectedRequest.reported_by}
+                </div>
+                <div className="mt-1 text-base text-slate-500">
+                  {new Date(selectedRequest.created_at).toLocaleDateString('th-TH')}
+                </div>
+              </div>
+            </div>
 
+            {selectedRequestImageUrls.length > 0 && (
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-3 text-sm font-medium text-slate-500">รูปภาพ</div>
 
-                            {/* Parts Usage Section */}
-                            {parts.length > 0 && (
-                                <div className="mt-6 pt-4 border-t">
-                                    <h3 className="font-medium mb-3 flex items-center gap-2">
-                                        <Package size={18} /> รายการอะไหล่ที่เบิก
-                                    </h3>
-                                    <div className="space-y-3">
-                                        {parts.map(part => (
-                                            <div key={part.part_id} className="bg-gray-50 dark:bg-slate-700/50 p-3 rounded-lg border border-gray-100 dark:border-slate-700">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <div>
-                                                        <div className="font-medium">{part.product?.p_name || part.p_id}</div>
-                                                        <div className="text-sm text-gray-500">
-                                                            เบิก: {part.quantity} {part.unit || 'ชิ้น'} • โดย {part.withdrawn_by}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex flex-col items-end">
-                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium 
-                                                        ${part.status === 'withdrawn' ? 'bg-blue-100 text-blue-700' :
-                                                                part.status === 'pending_verification' ? 'bg-yellow-100 text-yellow-700' :
-                                                                    part.status === 'verified' ? 'bg-green-100 text-green-700' :
-                                                                        part.status === 'verification_failed' ? 'bg-red-100 text-red-700' :
-                                                                            part.status === 'defective' ? 'bg-red-100 text-red-700' :
-                                                                                part.status === 'returned' ? 'bg-gray-100 text-gray-700' :
-                                                                                    'bg-gray-100 text-gray-600'}`}>
-                                                            {part.status === 'withdrawn' ? 'เบิกแล้ว (รอใช้งาน)' :
-                                                                part.status === 'pending_verification' ? 'รอตรวจนับ' :
-                                                                    part.status === 'verified' ? 'ตรวจนับแล้ว' :
-                                                                        part.status === 'verification_failed' ? 'ตรวจนับไม่ตรง' :
-                                                                            part.status === 'defective' ? 'ของเสีย' :
-                                                                                part.status === 'returned' ? 'คืนสต็อก' : part.status}
-                                                        </span>
-                                                        {part.actual_used !== null && part.actual_used !== undefined && (
-                                                            <span className="text-xs text-gray-500 mt-1">ใช้จริง: {part.actual_used}</span>
-                                                        )}
-                                                    </div>
-                                                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {selectedRequestImageUrls.map((imageUrl, index) => (
+                    <a
+                      key={`${selectedRequest.request_id}-${index}`}
+                      href={imageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group relative block overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50"
+                    >
+                      {index < selectedRequestCopiedImageMeta.copiedImageCount && (
+                        <span className="absolute left-3 top-3 z-10 rounded-full bg-blue-600 px-2.5 py-1 text-[11px] font-medium text-white shadow">
+                          {selectedRequestCopiedImageMeta.sourceRequestId
+                            ? `คัดลอกจากเคสด่วน #${selectedRequestCopiedImageMeta.sourceRequestId}`
+                            : 'คัดลอกจากเคสด่วนออนไลน์'}
+                        </span>
+                      )}
 
-                                                {/* Technician Action: Confirm Usage */}
-                                                {part.status === 'withdrawn' && canConfirmMaintenancePartUsage(loggedInRole) && (
-                                                    <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
-                                                        {confirmingPartId === part.part_id ? (
-                                                            <div className="flex flex-col gap-2">
-                                                                <div className="flex items-center gap-2">
-                                                                    <input
-                                                                        type="number"
-                                                                        min="0"
-                                                                        max={part.quantity}
-                                                                        value={confirmQty}
-                                                                        onChange={(e) => setConfirmQty(Number(e.target.value))}
-                                                                        className="w-20 px-2 py-1 border rounded text-sm"
-                                                                        placeholder="จำนวน"
-                                                                    />
-                                                                    <span className="text-sm text-gray-600">ที่ใช้จริง</span>
-                                                                    <label className="flex items-center gap-1 text-sm text-red-600 ml-2">
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={isDefective}
-                                                                            onChange={(e) => setIsDefective(e.target.checked)}
-                                                                            className="w-4 h-4"
-                                                                        />
-                                                                        เป็นของเสีย
-                                                                    </label>
-                                                                </div>
-                                                                <div className="flex gap-2">
-                                                                    <button
-                                                                        onClick={() => handleConfirmUsage(part.part_id)}
-                                                                        className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
-                                                                    >
-                                                                        ยืนยัน
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setConfirmingPartId(null);
-                                                                            setIsDefective(false);
-                                                                        }}
-                                                                        className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300"
-                                                                    >
-                                                                        ยกเลิก
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <button
-                                                                onClick={() => {
-                                                                    setConfirmingPartId(part.part_id);
-                                                                    setConfirmQty(part.quantity); // Default to full amount
-                                                                    setIsDefective(false);
-                                                                }}
-                                                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                                                            >
-                                                                <Wrench size={12} /> รายงานการใช้
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                )}
+                      <img
+                        src={imageUrl}
+                        alt={`รูปภาพปัญหา ${index + 1}`}
+                        className="h-48 w-full object-cover transition duration-200 group-hover:scale-[1.02] group-hover:opacity-95"
+                      />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
 
-                                                {/* Store Action: Verify */}
-                                                {part.status === 'pending_verification' && canVerifyParts && (
-                                                    <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600 bg-yellow-50/50 dark:bg-yellow-900/10 -mx-3 px-3 pb-2 rounded-b-lg">
-                                                        {verifyingPartId === part.part_id ? (
-                                                            <div className="flex flex-col gap-2">
-                                                                <div className="flex items-center gap-2">
-                                                                    <input
-                                                                        type="number"
-                                                                        min="0"
-                                                                        value={verifyQty}
-                                                                        onChange={(e) => setVerifyQty(Number(e.target.value))}
-                                                                        className="w-20 px-2 py-1 border rounded text-sm"
-                                                                        placeholder="จำนวน"
-                                                                    />
-                                                                    <span className="text-sm text-gray-600">นับได้จริง</span>
-                                                                </div>
-                                                                <div className="flex gap-2">
-                                                                    <button
-                                                                        onClick={() => handleVerifyPart(part.part_id)}
-                                                                        className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
-                                                                    >
-                                                                        ยืนยันถูกต้อง
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => setVerifyingPartId(null)}
-                                                                        className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300"
-                                                                    >
-                                                                        ยกเลิก
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <button
-                                                                onClick={() => {
-                                                                    setVerifyingPartId(part.part_id);
-                                                                    setVerifyQty(part.actual_used || 0); // Default to reported amount
-                                                                }}
-                                                                className="text-xs text-yellow-700 hover:text-yellow-900 flex items-center gap-1 font-medium"
-                                                            >
-                                                                <CheckCircle2 size={12} /> ตรวจนับสินค้า
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-3 text-sm font-medium text-slate-500">
+                ความเร่งด่วน & หมวดหมู่
+              </div>
 
-                            {/* Completion Details */}
-                            {['confirmed', 'completed'].includes(selectedRequest.status) && (
-                                <div className="mt-6 pt-4 border-t">
-                                    {selectedRequest.status === 'confirmed' && (
-                                        <div className="mb-3 rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-sm font-medium text-purple-800">
-                                            งานนี้ถูกส่งให้หัวหน้าช่างตรวจรับแล้ว และยังไม่ปิดใบงาน
-                                        </div>
-                                    )}
-                                    <h3 className="font-medium mb-3 flex items-center gap-2">
-                                        <CheckCircle2 size={18} className="text-green-600" /> ข้อมูลการซ่อมเสร็จสิ้น
-                                    </h3>
-                                    <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm mb-6">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                                                <Activity className="w-4 h-4 text-blue-500" />
-                                                สถานะขั้นตอนการทำงาน
-                                            </h3>
-                                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${STATUS_CONFIG[selectedRequest.status as keyof typeof STATUS_CONFIG]?.color || 'bg-slate-100'}`}>
-                                                {selectedRequest.status === 'confirmed'
-                                                    ? 'รอหัวหน้าช่างตรวจรับ'
-                                                    : (STATUS_CONFIG[selectedRequest.status as keyof typeof STATUS_CONFIG]?.label || selectedRequest.status)}
-                                            </span>
-                                        </div>
-                                        <div className="p-4 bg-green-50/50 dark:bg-green-900/10 rounded-xl border border-green-100 dark:border-green-900/20">
-                                            <h4 className="flex items-center gap-2 text-sm font-bold text-green-700 dark:text-green-400 mb-3">
-                                                <CheckCircle2 size={16} />
-                                                ดำเนินการเสร็จสิ้น
-                                            </h4>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="space-y-1">
-                                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">ช่างผู้ร้บผิดชอบ</p>
-                                                    <p className="text-sm font-semibold">{selectedRequest.assigned_to || '-'}</p>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">วันที่ดำเนินการเสร็จ</p>
-                                                    <p className="text-sm font-semibold">
-                                                        {selectedRequest.completed_at ? new Date(selectedRequest.completed_at).toLocaleString('th-TH') : '-'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 ring-1 ring-amber-200">
+                  {PRIORITY_CONFIG[selectedRequest.priority]?.label || selectedRequest.priority}
+                </span>
+                <span className="rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 ring-1 ring-blue-200">
+                  {MAINTENANCE_CATEGORY_OPTIONS.find((c) => c.value === selectedRequest.category)?.label ||
+                    selectedRequest.category ||
+                    'ทั่วไป'}
+                </span>
+              </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                        {selectedRequest.completion_image_url && (
-                                            <div>
-                                                <div className="text-sm text-gray-500 mb-2">รูปถ่ายหลังซ่อมเสร็จ</div>
-                                                <a href={selectedRequest.completion_image_url} target="_blank" rel="noopener noreferrer">
-                                                    <img src={selectedRequest.completion_image_url} alt="Completion" className="rounded-lg w-full max-h-48 object-cover border hover:opacity-90 transition" />
-                                                </a>
-                                            </div>
-                                        )}
-                                        <div className="space-y-4">
-                                            {selectedRequest.technician_signature && (
-                                                <div>
-                                                    <div className="text-sm text-gray-500 mb-2">ลายเซ็นช่างผู้ซ่อม</div>
-                                                    <div className="bg-white border rounded-lg p-2 flex items-center justify-center min-h-[100px]">
-                                                        <img src={selectedRequest.technician_signature} alt="Technician Signature" className="max-h-24 object-contain" />
-                                                    </div>
-                                                </div>
-                                            )}
-                                            {selectedRequest.customer_signature && (
-                                                <div>
-                                                    <div className="text-sm text-gray-500 mb-2">ลายเซ็นลูกค้ารับงาน</div>
-                                                    <div className="bg-white border rounded-lg p-2 flex items-center justify-center min-h-[100px]">
-                                                        <img src={selectedRequest.customer_signature} alt="Customer Signature" className="max-h-24 object-contain" />
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+              {selectedRequest.description && (
+                <div className="mt-5 border-t border-slate-200 pt-4">
+                  <div className="mb-2 text-sm font-medium text-slate-500">รายละเอียด</div>
+                  <div className="whitespace-pre-line text-base leading-7 text-slate-700">
+                    {selectedRequest.description}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
 
-                            {/* History */}
-                            {historyItems.length > 0 && (
-                                <div className="mt-6 pt-4 border-t">
-                                    <h3 className="font-medium mb-3 flex items-center gap-2">
-                                        <HistoryIcon size={18} /> ประวัติการเปลี่ยนแปลง
-                                    </h3>
-                                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                                        {historyItems.map(h => (
-                                            <div key={h.history_id} className="text-sm flex justify-between bg-gray-50 dark:bg-slate-700/50 px-3 py-2 rounded">
-                                                <div>
-                                                    <span className="font-medium">{getHistoryActionLabel(h.action)}</span>
-                                                    {h.old_value && h.new_value && (
-                                                        <span className="text-gray-500"> ({h.old_value} → {h.new_value})</span>
-                                                    )}
-                                                </div>
-                                                <div className="text-gray-500">
-                                                   โดย {h.changed_by} เมื่อ {new Date(h.changed_at).toLocaleString('th-TH')}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+          {/* Right Column */}
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-600">
+                    สถานะ
+                  </label>
+                  <select
+                    value={editData.status}
+                    onChange={(e) => {
+                      setEditData({ ...editData, status: e.target.value });
+                      if (e.target.value !== 'completed') {
+                        setNewPartsUsed([]);
+                      }
+                    }}
+                    className="h-14 w-full rounded-2xl border border-slate-300 bg-white px-4 text-xl font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                  >
+                    {MAINTENANCE_STATUS_OPTIONS.filter((option) => {
+                      if (option.value === 'pending') {
+                        return sessionIsApprover || editData.status === 'pending';
+                      }
+                      if (option.value === 'cancelled') {
+                        return sessionIsApprover;
+                      }
+                      return true;
+                    }).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
 
-                            <div className="flex gap-2 pt-6">
-                                <button
-                                    onClick={() => setShowDetailModal(false)}
-                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700"
-                                >
-                                    ปิด
-                                </button>
-
-                                {canReopenClosedRequest && ['completed', 'cancelled'].includes(selectedRequest.status) && (
-                                    <button
-                                        onClick={() => {
-                                            setReopenRequest(selectedRequest);
-                                            setShowReopenModal(true);
-                                        }}
-                                        disabled={!canEditPage}
-                                        className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        title="Manager Override"
-                                    >
-                                        <AlertTriangle size={18} />
-                                        เปิดงานใหม่ (Manager)
-                                    </button>
-                                )}
-
-                                {canApproveCompletion && selectedRequest.status === 'confirmed' && (
-                                    <button
-                                        onClick={handleHeadTechnicianApproval}
-                                        disabled={!canEditPage}
-                                        className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                        <CheckCircle2 size={18} />
-                                        ตรวจรับงาน
-                                    </button>
-                                )}
-
-                                {!['completed', 'cancelled'].includes(selectedRequest.status)
-                                    && !(loggedInRole === 'head_technician' && selectedRequest.status === 'confirmed') && (
-                                    <button
-                                        onClick={handleUpdateRequest}
-                                        disabled={!canEditPage}
-                                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                        บันทึกการเปลี่ยนแปลง
-                                    </button>
-                                )}
-                            </div>
-                        </div>
+                  {hasCompletedStockPosting(parts, historyItems) && (
+                    <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                      <Package size={12} />
+                      ตัดสต็อกแล้ว
                     </div>
-                )
-            }
+                  )}
+                </div>
 
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-600">
+                    ผู้รับผิดชอบ/ช่าง
+                  </label>
+                  <select
+                    value={editData.assigned_to || ''}
+                    onChange={(e) => {
+                      const nextAssignedTo = e.target.value;
+                      const nextEditData = { ...editData, assigned_to: nextAssignedTo };
+
+                      if (
+                        selectedRequest.status === 'pending' &&
+                        editData.status === 'pending' &&
+                        nextAssignedTo
+                      ) {
+                        nextEditData.status = 'approved';
+                      }
+
+                      if (
+                        selectedRequest.status === 'approved' &&
+                        editData.status === 'approved' &&
+                        !nextAssignedTo
+                      ) {
+                        nextEditData.status = 'pending';
+                      }
+
+                      setEditData(nextEditData);
+                    }}
+                    className={`h-14 w-full rounded-2xl border border-slate-300 bg-white px-4 text-xl font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100 ${
+                      selectedRequest.status === 'in_progress' && !canAssignMaintenance
+                        ? 'cursor-not-allowed bg-slate-100 opacity-70'
+                        : ''
+                    }`}
+                    disabled={selectedRequest.status === 'in_progress' && !canAssignMaintenance}
+                  >
+                    <option value="">-- ไม่ระบุ --</option>
+                    {Array.from(
+                      new Set([
+                        ...technicians.map((t) => t.name),
+                        ...lineTechnicians.map((u) => u.display_name),
+                      ]),
+                    )
+                      .filter(Boolean)
+                      .sort()
+                      .map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    {editData.assigned_to &&
+                      !Array.from(
+                        new Set([
+                          ...technicians.map((t) => t.name),
+                          ...lineTechnicians.map((u) => u.display_name),
+                        ]),
+                      ).includes(editData.assigned_to) && (
+                        <option value={editData.assigned_to}>
+                          {editData.assigned_to}
+                        </option>
+                      )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-600">
+                    วันที่นัดซ่อม
+                  </label>
+                  <input
+                    type="date"
+                    value={editData.scheduled_date}
+                    onChange={(e) =>
+                      setEditData({ ...editData, scheduled_date: e.target.value })
+                    }
+                    className="h-14 w-full rounded-2xl border border-slate-300 bg-white px-4 text-xl font-medium text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-600">
+                    ค่าใช้จ่ายจริง (บาท)
+                  </label>
+                  <input
+                    type="number"
+                    value={editData.actual_cost || ''}
+                    onChange={(e) =>
+                      setEditData({ ...editData, actual_cost: Number(e.target.value) })
+                    }
+                    className="h-14 w-full rounded-2xl border border-slate-300 bg-white px-4 text-2xl font-medium text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                    placeholder="0"
+                    min="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-600">
+                    หมายเหตุ
+                  </label>
+                  <textarea
+                    value={editData.notes}
+                    onChange={(e) => setEditData({ ...editData, notes: e.target.value })}
+                    className="min-h-[130px] w-full rounded-2xl border border-slate-300 bg-white px-4 py-4 text-lg text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                    rows={4}
+                    placeholder="เพิ่มหมายเหตุ..."
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Parts Add Section */}
+        {editData.status === 'completed' && selectedRequest.status !== 'completed' && (
+          <div className="border-t border-slate-200 px-5 py-5 sm:px-6">
+            <details open className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <summary className="flex cursor-pointer items-center gap-3 px-5 py-4 text-lg font-semibold text-slate-900">
+                <Package size={18} />
+                เพิ่มอะไหล่ที่ใช้
+                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
+                  {newPartsUsed.length} รายการ
+                </span>
+              </summary>
+
+              <div className="border-t border-slate-200 px-5 py-5">
+                <p className="mb-5 text-sm text-slate-500">
+                  เลือกอะไหล่ที่ใช้กับใบงานนี้ แล้วกดยืนยันเบิกอะไหล่เพื่อเพิ่มเข้ารายการทันที
+                </p>
+
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+                  <div className="space-y-3 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">
+                          ค้นหาอะไหล่จากคลัง WH-01
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          ค้นหาด้วยชื่อหรือรหัสสินค้า แล้วกดเลือกเพื่อเพิ่มเข้ารายการ
+                        </div>
+                      </div>
+
+                      <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-[11px] font-medium text-blue-600">
+                        <Search size={12} />
+                        ค้นหาได้ทั้งชื่อและรหัส
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <Search
+                        size={15}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                      />
+                      <input
+                        type="text"
+                        placeholder="เช่น ลูกลอย, ปั๊มน้ำ, P-0001"
+                        value={modalPartSearch}
+                        onChange={(e) => setModalPartSearch(e.target.value)}
+                        className="w-full rounded-2xl border border-slate-300 bg-white py-3 pl-10 pr-24 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                      />
+                      {modalPartSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setModalPartSearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50"
+                        >
+                          ล้างคำค้น
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-3">
+                      {!modalPartSearch && (
+                        <div className="flex min-h-[180px] items-center justify-center text-center">
+                          <div className="max-w-sm space-y-2">
+                            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-500 shadow-sm">
+                              <Search size={18} />
+                            </div>
+                            <div className="text-sm font-medium text-slate-900">
+                              เริ่มค้นหาอะไหล่ที่ต้องการเบิก
+                            </div>
+                            <div className="text-xs leading-5 text-slate-500">
+                              ระบบจะแสดงรายการที่ยังไม่ถูกเลือก พร้อมจำนวนคงเหลือในคลังให้ตรวจสอบก่อนกดเพิ่ม
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {modalPartSearch && (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-medium text-slate-500">ผลการค้นหา</span>
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow-sm">
+                              {filteredModalProducts.length} รายการ
+                            </span>
+                          </div>
+
+                          {filteredModalProducts.length > 0 ? (
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {filteredModalProducts.map((p) => (
+                                <button
+                                  key={p.p_id}
+                                  type="button"
+                                  onClick={() => {
+                                    setNewPartsUsed([
+                                      ...newPartsUsed,
+                                      { p_id: p.p_id, quantity: 1 },
+                                    ]);
+                                    setModalPartSearch('');
+                                  }}
+                                  className="group rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-400 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  disabled={p.p_count <= 0}
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div
+                                        className={`truncate text-sm font-semibold ${
+                                          p.p_count <= 0 ? 'text-slate-400' : 'text-slate-900'
+                                        }`}
+                                      >
+                                        {p.p_name}
+                                      </div>
+                                      <div className="mt-1 text-[11px] text-slate-400">
+                                        รหัส {p.p_id}
+                                      </div>
+                                    </div>
+                                    <div
+                                      className={`flex h-8 w-8 items-center justify-center rounded-xl ${
+                                        p.p_count <= 0
+                                          ? 'bg-slate-100 text-slate-300'
+                                          : 'bg-blue-100 text-blue-600'
+                                      }`}
+                                    >
+                                      <Plus size={14} />
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-3 flex items-center justify-between">
+                                    <span
+                                      className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                                        p.p_count <= 0
+                                          ? 'bg-red-50 text-red-600 ring-1 ring-red-200'
+                                          : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                                      }`}
+                                    >
+                                      คงเหลือ {p.p_count} {p.p_unit || 'ชิ้น'}
+                                    </span>
+                                    <span className="text-[11px] text-slate-400 group-hover:text-blue-600">
+                                      เลือกอะไหล่
+                                    </span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex min-h-[120px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-center text-xs text-slate-500">
+                              ไม่พบอะไหล่ที่ค้นหา หรือรายการนั้นถูกเลือกไปแล้ว
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="mb-3">
+                      <div className="text-sm font-semibold text-slate-900">รายการรอยืนยันเบิก</div>
+                      <div className="text-xs text-slate-500">
+                        ตรวจสอบจำนวนก่อนเพิ่มเข้ารายการอะไหล่ที่เบิก
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {newPartsUsed.length === 0 && (
+                        <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-5 text-center text-xs text-slate-500">
+                          ยังไม่ได้เลือกอะไหล่
+                        </div>
+                      )}
+
+                      {newPartsUsed.map((part, index) => {
+                        const product = products.find((p) => p.p_id === part.p_id);
+                        const avail = Number(product?.p_count ?? 0);
+
+                        return (
+                          <div
+                            key={index}
+                            className="rounded-2xl border border-slate-200 bg-white p-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-medium text-slate-900">
+                                  {product?.p_name || part.p_id}
+                                </div>
+                                <div className="text-[11px] text-slate-500">
+                                  รหัส {part.p_id} • คงเหลือใน WH-01 {avail} ชิ้น
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setNewPartsUsed(newPartsUsed.filter((_, i) => i !== index))
+                                }
+                                className="text-xs font-medium text-red-500 transition-colors hover:text-red-600"
+                                aria-label="Remove part"
+                              >
+                                ลบ
+                              </button>
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between gap-3">
+                              <span className="text-xs text-slate-500">จำนวนที่เบิก</span>
+                              <input
+                                type="number"
+                                min="1"
+                                max={avail}
+                                value={part.quantity}
+                                onChange={(e) => {
+                                  const updated = [...newPartsUsed];
+                                  let val = parseInt(e.target.value) || 1;
+                                  if (val > avail) val = avail;
+                                  updated[index].quantity = val;
+                                  setNewPartsUsed(updated);
+                                }}
+                                className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-right text-sm text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-4 flex flex-col gap-3 rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500">พร้อมเบิกเข้าหน้างาน</span>
+                        <span className="font-semibold text-slate-900">
+                          {newPartsUsed.reduce((sum, part) => sum + part.quantity, 0)} ชิ้น
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleWithdrawSelectedParts}
+                        disabled={newPartsUsed.length === 0 || isWithdrawingParts}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <ShoppingCart size={15} className={isWithdrawingParts ? 'animate-pulse' : ''} />
+                        {isWithdrawingParts ? 'กำลังยืนยันการเบิก...' : 'ยืนยันเบิกอะไหล่'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
+        )}
+
+        {/* Parts Usage Section */}
+        {parts.length > 0 && (
+          <div className="border-t border-slate-200 px-5 py-5 sm:px-6">
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-900">
+              <Package size={18} /> รายการอะไหล่ที่เบิก
+            </h3>
+
+            <div className="space-y-3">
+              {parts.map((part) => (
+                <div
+                  key={part.part_id}
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="mb-2 flex justify-between gap-3">
+                    <div>
+                      <div className="font-medium text-slate-900">
+                        {part.product?.p_name || part.p_id}
+                      </div>
+                      <div className="text-sm text-slate-500">
+                        เบิก: {part.quantity} {part.unit || 'ชิ้น'} • โดย {part.withdrawn_by}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                          part.status === 'withdrawn'
+                            ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
+                            : part.status === 'pending_verification'
+                              ? 'bg-yellow-50 text-yellow-700 ring-1 ring-yellow-200'
+                              : part.status === 'verified'
+                                ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                                : part.status === 'verification_failed'
+                                  ? 'bg-red-50 text-red-700 ring-1 ring-red-200'
+                                  : part.status === 'defective'
+                                    ? 'bg-red-50 text-red-700 ring-1 ring-red-200'
+                                    : part.status === 'returned'
+                                      ? 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
+                                      : 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
+                        }`}
+                      >
+                        {part.status === 'withdrawn'
+                          ? 'เบิกแล้ว (รอใช้งาน)'
+                          : part.status === 'pending_verification'
+                            ? 'รอตรวจนับ'
+                            : part.status === 'verified'
+                              ? 'ตรวจนับแล้ว'
+                              : part.status === 'verification_failed'
+                                ? 'ตรวจนับไม่ตรง'
+                                : part.status === 'defective'
+                                  ? 'ของเสีย'
+                                  : part.status === 'returned'
+                                    ? 'คืนสต็อก'
+                                    : part.status}
+                      </span>
+
+                      {part.actual_used !== null && part.actual_used !== undefined && (
+                        <span className="mt-1 text-xs text-slate-500">
+                          ใช้จริง: {part.actual_used}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {part.status === 'withdrawn' &&
+                    canConfirmMaintenancePartUsage(loggedInRole) && (
+                      <div className="mt-3 border-t border-slate-200 pt-3">
+                        {confirmingPartId === part.part_id ? (
+                          <div className="flex flex-col gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <input
+                                type="number"
+                                min="0"
+                                max={part.quantity}
+                                value={confirmQty}
+                                onChange={(e) => setConfirmQty(Number(e.target.value))}
+                                className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                placeholder="จำนวน"
+                              />
+                              <span className="text-sm text-slate-500">ที่ใช้จริง</span>
+                              <label className="ml-2 flex items-center gap-1 text-sm text-red-600">
+                                <input
+                                  type="checkbox"
+                                  checked={isDefective}
+                                  onChange={(e) => setIsDefective(e.target.checked)}
+                                  className="h-4 w-4"
+                                />
+                                เป็นของเสีย
+                              </label>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleConfirmUsage(part.part_id)}
+                                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700"
+                              >
+                                ยืนยัน
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setConfirmingPartId(null);
+                                  setIsDefective(false);
+                                }}
+                                className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                              >
+                                ยกเลิก
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setConfirmingPartId(part.part_id);
+                              setConfirmQty(part.quantity);
+                              setIsDefective(false);
+                            }}
+                            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                          >
+                            <Wrench size={12} /> รายงานการใช้
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                  {part.status === 'pending_verification' && canVerifyParts && (
+                    <div className="mt-3 rounded-xl bg-yellow-50 px-3 pb-2 pt-3 ring-1 ring-yellow-200">
+                      {verifyingPartId === part.part_id ? (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              value={verifyQty}
+                              onChange={(e) => setVerifyQty(Number(e.target.value))}
+                              className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                              placeholder="จำนวน"
+                            />
+                            <span className="text-sm text-slate-500">นับได้จริง</span>
+                          </div>
+
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleVerifyPart(part.part_id)}
+                              className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700"
+                            >
+                              ยืนยันถูกต้อง
+                            </button>
+                            <button
+                              onClick={() => setVerifyingPartId(null)}
+                              className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                            >
+                              ยกเลิก
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setVerifyingPartId(part.part_id);
+                            setVerifyQty(part.actual_used || 0);
+                          }}
+                          className="flex items-center gap-1 text-xs font-medium text-yellow-700 hover:text-yellow-800"
+                        >
+                          <CheckCircle2 size={12} /> ตรวจนับสินค้า
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Completion Details */}
+        {['confirmed', 'completed'].includes(selectedRequest.status) && (
+          <div className="border-t border-slate-200 px-5 py-5 sm:px-6">
+            {selectedRequest.status === 'confirmed' && (
+              <div className="mb-4 rounded-2xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm font-medium text-purple-700">
+                งานนี้ถูกส่งให้หัวหน้าช่างตรวจรับแล้ว และยังไม่ปิดใบงาน
+              </div>
+            )}
+
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-900">
+              <CheckCircle2 size={18} className="text-emerald-500" />
+              ข้อมูลการซ่อมเสร็จสิ้น
+            </h3>
+
+            <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <Activity className="h-4 w-4 text-blue-500" />
+                  สถานะขั้นตอนการทำงาน
+                </h3>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium border ${
+                      STATUS_CONFIG[selectedRequest.status as keyof typeof STATUS_CONFIG]?.color ||
+                      'bg-slate-100'
+                    }`}
+                  >
+                    {selectedRequest.status === 'confirmed'
+                      ? 'รอหัวหน้าช่างตรวจรับ'
+                      : STATUS_CONFIG[selectedRequest.status as keyof typeof STATUS_CONFIG]?.label ||
+                        selectedRequest.status}
+                  </span>
+
+                  {hasCompletedStockPosting(parts, historyItems) && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+                      <Package size={12} />
+                      ตัดสต็อกแล้ว
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <h4 className="mb-3 flex items-center gap-2 text-sm font-bold text-emerald-700">
+                  <CheckCircle2 size={16} />
+                  ดำเนินการเสร็จสิ้น
+                </h4>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      ช่างผู้รับผิดชอบ
+                    </p>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {selectedRequest.assigned_to || '-'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      วันที่ดำเนินการเสร็จ
+                    </p>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {selectedRequest.completed_at
+                        ? new Date(selectedRequest.completed_at).toLocaleString('th-TH')
+                        : '-'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+              {selectedRequest.completion_image_url && (
+                <div>
+                  <div className="mb-2 text-sm text-slate-500">รูปถ่ายหลังซ่อมเสร็จ</div>
+                  <a
+                    href={selectedRequest.completion_image_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <img
+                      src={selectedRequest.completion_image_url}
+                      alt="Completion"
+                      className="max-h-48 w-full rounded-2xl border border-slate-200 object-cover transition hover:opacity-90"
+                    />
+                  </a>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {selectedRequest.technician_signature && (
+                  <div>
+                    <div className="mb-2 text-sm text-slate-500">ลายเซ็นช่างผู้ซ่อม</div>
+                    <div className="flex min-h-[100px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                      <img
+                        src={selectedRequest.technician_signature}
+                        alt="Technician Signature"
+                        className="max-h-24 object-contain"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {selectedRequest.customer_signature && (
+                  <div>
+                    <div className="mb-2 text-sm text-slate-500">ลายเซ็นลูกค้ารับงาน</div>
+                    <div className="flex min-h-[100px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                      <img
+                        src={selectedRequest.customer_signature}
+                        alt="Customer Signature"
+                        className="max-h-24 object-contain"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* History */}
+        {historyItems.length > 0 && (
+          <div className="border-t border-slate-200 px-5 py-5 sm:px-6">
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-900">
+              <HistoryIcon size={18} /> ประวัติการเปลี่ยนแปลง
+            </h3>
+
+            <div className="max-h-48 space-y-2 overflow-y-auto">
+              {historyItems.map((h) => (
+                <div
+                  key={h.history_id}
+                  className="flex flex-col justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm sm:flex-row sm:items-center"
+                >
+                  <div className="text-slate-700">
+                    <span className="font-medium text-slate-900">
+                      {getHistoryActionLabel(h.action)}
+                    </span>
+                    {h.old_value && h.new_value && (
+                      <span className="text-slate-400"> ({h.old_value} → {h.new_value})</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    โดย {h.changed_by} เมื่อ {new Date(h.changed_at).toLocaleString('th-TH')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="border-t border-slate-200 px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              onClick={() => setShowDetailModal(false)}
+              className="inline-flex min-w-[180px] items-center justify-center rounded-2xl border border-slate-300 px-5 py-4 text-lg font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              ปิด
+            </button>
+
+            <div className="flex-1" />
+
+            {canReopenClosedRequest &&
+              ['completed', 'cancelled'].includes(selectedRequest.status) && (
+                <button
+                  onClick={() => {
+                    setReopenRequest(selectedRequest);
+                    setShowReopenModal(true);
+                  }}
+                  disabled={!canEditPage}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-5 py-4 text-lg font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Manager Override"
+                >
+                  <AlertTriangle size={18} />
+                  เปิดงานใหม่ (Manager)
+                </button>
+              )}
+
+            {canApproveCompletion && selectedRequest.status === 'confirmed' && (
+              <button
+                onClick={handleHeadTechnicianApproval}
+                disabled={!canEditPage}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-4 text-lg font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <CheckCircle2 size={18} />
+                ตรวจรับงาน
+              </button>
+            )}
+
+            {!['completed', 'cancelled'].includes(selectedRequest.status) &&
+              !(loggedInRole === 'head_technician' && selectedRequest.status === 'confirmed') && (
+                <button
+                  onClick={handleUpdateRequest}
+                  disabled={!canEditPage}
+                  className="inline-flex min-w-[280px] items-center justify-center rounded-2xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  บันทึกการเปลี่ยนแปลง
+                </button>
+              )}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
 
             {/* Status Change Confirmation Modal */}
@@ -2775,7 +3226,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                                 </h4>
                                                 <ul className="text-sm text-blue-700 dark:text-blue-400 space-y-1">
                                                     {partRequestsForSummary.map((part, idx) => (
-                                                        <li key={idx}>โ€ข {part.item_name} x{part.quantity}</li>
+                                                        <li key={idx}>• {part.item_name} x{part.quantity}</li>
                                                     ))}
                                                 </ul>
                                             </div>
