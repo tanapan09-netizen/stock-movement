@@ -1023,18 +1023,36 @@ export async function confirmPartsUsed(data: {
             select: { actual_cost: true, assigned_to: true }
         });
 
+        const actorDisplayName = (authContext.session.user.name || '').trim();
         const assignedTechnician = normalizeComparableName(request?.assigned_to);
         const actorNames = await getAuthorizedMaintenanceActorNames(authContext);
 
-        if (!assignedTechnician) {
-            return { success: false, error: 'This maintenance request has no assigned technician' };
-        }
-
-        if (!actorNames.has(assignedTechnician)) {
+        if (assignedTechnician && !actorNames.has(assignedTechnician)) {
             return { success: false, error: 'Only the assigned technician can report actual part usage' };
         }
 
         const result = await prisma.$transaction(async (tx) => {
+            if (!assignedTechnician) {
+                if (!actorDisplayName) {
+                    throw new Error('Unable to identify technician for this maintenance request');
+                }
+
+                await tx.tbl_maintenance_requests.update({
+                    where: { request_id: part.request_id },
+                    data: { assigned_to: actorDisplayName }
+                });
+
+                await tx.tbl_maintenance_history.create({
+                    data: {
+                        request_id: part.request_id,
+                        action: 'assignment_change',
+                        old_value: '',
+                        new_value: actorDisplayName,
+                        changed_by: actorDisplayName,
+                    }
+                });
+            }
+
             const updatedPart = await tx.tbl_maintenance_parts.update({
                 where: { part_id: data.part_id },
                 data: {

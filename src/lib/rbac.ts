@@ -785,7 +785,8 @@ export function canReassignMaintenanceRequest(
 }
 
 export function canConfirmMaintenancePartUsage(role: string | null | undefined) {
-  return !isDepartmentRole(role, 'store');
+  const normalizedRole = normalizeRole(role);
+  return normalizedRole === 'technician' || normalizedRole === 'leader_technician';
 }
 
 export function canDirectManageMaintenanceStock(
