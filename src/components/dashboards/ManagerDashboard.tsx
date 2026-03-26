@@ -36,7 +36,13 @@ export default async function ManagerDashboard() {
         recentMaintenanceRows,
     ] = await Promise.all([
         prisma.tbl_approval_requests.count({ where: { status: 'pending', request_type: { not: 'purchase' } } }),
-        prisma.tbl_approval_requests.count({ where: { status: 'pending', request_type: 'purchase' } }),
+        prisma.tbl_approval_requests.count({
+            where: {
+                status: 'pending',
+                request_type: 'purchase',
+                current_step: 2,
+            },
+        }),
         prisma.tbl_petty_cash.count({ where: { status: 'pending' } }),
         prisma.tbl_part_requests.count({ where: { status: 'pending' } }),
         prisma.tbl_maintenance_requests.count({ where: { status: { notIn: ['completed', 'cancelled'] } } }),
@@ -53,7 +59,11 @@ export default async function ManagerDashboard() {
             take: 6,
         }),
         prisma.tbl_approval_requests.findMany({
-            where: { status: 'pending', request_type: 'purchase' },
+            where: {
+                status: 'pending',
+                request_type: 'purchase',
+                current_step: 2,
+            },
             include: { tbl_users: { select: { username: true } }, tbl_approver: { select: { username: true } } },
             orderBy: { created_at: 'desc' },
             take: 6,
@@ -96,7 +106,7 @@ export default async function ManagerDashboard() {
             owner: item.tbl_approver?.username || 'Purchasing',
             status: item.status,
             amount: item.amount ? Number(item.amount) : null,
-            href: '/approvals/purchasing',
+            href: '/purchase-request/manage',
             createdAt: item.created_at,
         })),
         ...recentPettyCashRows.map((item) => ({
@@ -136,7 +146,7 @@ export default async function ManagerDashboard() {
             status: item.status,
             approval: 'ต้องอนุมัติ/ไม่อนุมัติ',
             updatedAt: item.updated_at,
-            href: '/approvals/purchasing',
+            href: '/purchase-request/manage',
         })),
     ].sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0)).slice(0, 10);
 
