@@ -1,10 +1,11 @@
 ﻿'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle, Package, Plus, Search, Undo2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Package, Plus, Search, ShieldCheck, Undo2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import SearchableSelect from '@/components/SearchableSelect';
+import { useToast } from '@/components/ToastProvider';
 import { getPartRequests, updatePartRequestStatus } from '@/actions/partRequestActions';
 import {
   clearAllReservedParts,
@@ -74,6 +75,26 @@ type Props = {
   canDirectStockActions?: boolean;
 };
 
+type ActionDialogState =
+  | {
+      mode: 'availability';
+      requestId: number;
+      nextStatus: 'approved' | 'rejected';
+      itemName: string;
+      requestNumber: string;
+      requestedBy: string;
+    }
+  | {
+      mode: 'complete';
+      requestId: number;
+      requestNumber: string;
+      title: string;
+    }
+  | {
+      mode: 'clearReserved';
+      reason: string;
+    };
+
 const STATUS_COLORS: Record<string, string> = {
   withdrawn: 'bg-yellow-100 text-yellow-700',
   used: 'bg-blue-100 text-blue-700',
@@ -113,6 +134,7 @@ export default function PartsManagementClient({
   canDirectStockActions = false,
 }: Props) {
   const { data: session } = useSession();
+  const { showToast } = useToast();
   const canDirectWithdraw = canDirectStockActions;
 
   const [withdrawnParts, setWithdrawnParts] = useState<MaintenancePart[]>([]);
@@ -121,11 +143,13 @@ export default function PartsManagementClient({
   const [products, setProducts] = useState<Product[]>([]);
   const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dialogSubmitting, setDialogSubmitting] = useState(false);
   const [showWithdrawForm, setShowWithdrawForm] = useState(false);
   const [selectedPart, setSelectedPart] = useState<MaintenancePart | null>(null);
   const [returnQty, setReturnQty] = useState(0);
   const [searchText, setSearchText] = useState('');
   const [partStatusFilter, setPartStatusFilter] = useState('all');
+  const [actionDialog, setActionDialog] = useState<ActionDialogState | null>(null);
   const [withdrawForm, setWithdrawForm] = useState({
     request_id: 0,
     p_id: '',
@@ -194,15 +218,18 @@ export default function PartsManagementClient({
     e.preventDefault();
 
     if (!withdrawForm.request_id || !withdrawForm.p_id || !withdrawForm.quantity) {
-      return alert('กรุณากรอกข้อมูลการเบิกอะไหล่ให้ครบถ้วน');
+      showToast('กรุณากรอกข้อมูลการเบิกอะไหล่ให้ครบถ้วน', 'warning');
+      return;
     }
 
     if (availableStock <= 0) {
-      return alert('อะไหล่นี้ไม่มีคงเหลือใน WH-01');
+      showToast('อะไหล่นี้ไม่มีคงเหลือใน WH-01', 'warning');
+      return;
     }
 
     if (withdrawForm.quantity > availableStock) {
-      return alert(`จำนวนเกินสต็อกคงเหลือใน WH-01 (${availableStock} ${selectedProduct?.p_unit || 'ชิ้น'})`);
+      showToast(`จำนวนเกินสต็อกคงเหลือใน WH-01 (${availableStock} ${selectedProduct?.p_unit || 'ชิ้น'})`, 'warning');
+      return;
     }
 
     const result = canDirectWithdraw
@@ -218,21 +245,29 @@ export default function PartsManagementClient({
         });
 
     if (!result.success) {
-      return alert(`เกิดข้อผิดพลาด: ${result.error}`);
+      showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
+      return;
     }
 
     setShowWithdrawForm(false);
     setWithdrawForm({ request_id: 0, p_id: '', quantity: 1, withdrawn_by: '' });
     await loadData();
-    alert(
+    showToast(
       canDirectWithdraw
         ? 'เบิกอะไหล่เรียบร้อยแล้ว'
         : 'ส่งคำขอเบิกไปที่คลังแล้ว รอคลังยืนยันและพร้อมส่งมอบให้ช่าง',
+      'success',
     );
   }
 
   async function handleReturn() {
     if (!selectedPart || !returnQty) return;
+
+    const maxReturnableQty = selectedPart.quantity - selectedPart.returned_qty;
+    if (returnQty < 1 || returnQty > maxReturnableQty) {
+      showToast(`จำนวนคืนต้องอยู่ระหว่าง 1 ถึง ${maxReturnableQty}`, 'warning');
+      return;
+    }
 
     const result = await returnPartToStock({
       part_id: selectedPart.part_id,
@@ -241,56 +276,108 @@ export default function PartsManagementClient({
     });
 
     if (!result.success) {
-      return alert(`เกิดข้อผิดพลาด: ${result.error}`);
+      showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
+      return;
     }
 
     setSelectedPart(null);
     setReturnQty(0);
-    loadData();
+    await loadData();
+    showToast('คืนอะไหล่เข้าสต็อกเรียบร้อยแล้ว', 'success');
   }
 
-  async function handleCompleteWithParts(requestId: number) {
-    if (!confirm('ยืนยันตัดสต็อกอะไหล่ของใบงานนี้?')) return;
-
-    const result = await completeMaintenanceWithParts(requestId, session?.user?.name || 'System');
-    if (!result.success) {
-      return alert(`เกิดข้อผิดพลาด: ${result.error}`);
-    }
-
-    loadData();
-    alert('ตัดสต็อกเรียบร้อย โดยยังไม่ปิดงาน');
+  function handleCompleteWithParts(requestId: number, requestNumber: string, title: string) {
+    setActionDialog({
+      mode: 'complete',
+      requestId,
+      requestNumber,
+      title,
+    });
   }
 
-  async function handleClearReserved() {
-    if (!confirm('ต้องการเคลียร์อะไหล่ที่ค้างในระบบทั้งหมดและคืนเข้าสู่สต็อกหรือไม่?')) return;
-
-    const reason = window.prompt('กรุณาระบุเหตุผลการเคลียร์รายการค้าง');
-    if (!reason || reason.trim().length < 8) {
-      alert('กรุณาระบุเหตุผลอย่างน้อย 8 ตัวอักษร');
-      return;
-    }
-
-    setLoading(true);
-    const result = await clearAllReservedParts(session?.user?.name || 'System', reason.trim());
-    if (!result.success) {
-      setLoading(false);
-      return alert(`เกิดข้อผิดพลาด: ${result.error}`);
-    }
-
-    loadData();
-    alert(`เคลียร์ข้อมูลเรียบร้อย (${result.count || 0} รายการ)`);
+  function handleClearReserved() {
+    setActionDialog({
+      mode: 'clearReserved',
+      reason: '',
+    });
   }
 
-  async function handlePartAvailability(requestId: number, nextStatus: 'approved' | 'rejected') {
-    const actionLabel = nextStatus === 'approved' ? 'พร้อมจ่าย' : 'ไม่พร้อมจ่าย';
-    if (!confirm(`ยืนยันการอัปเดตสถานะเป็น "${actionLabel}" ?`)) return;
+  function handlePartAvailability(
+    requestId: number,
+    nextStatus: 'approved' | 'rejected',
+    itemName: string,
+    requestNumber: string,
+    requestedBy: string,
+  ) {
+    setActionDialog({
+      mode: 'availability',
+      requestId,
+      nextStatus,
+      itemName,
+      requestNumber,
+      requestedBy,
+    });
+  }
 
-    const result = await updatePartRequestStatus(requestId, nextStatus);
-    if (!result.success) {
-      return alert(`เกิดข้อผิดพลาด: ${result.error}`);
+  async function handleActionDialogConfirm() {
+    if (!actionDialog) return;
+
+    setDialogSubmitting(true);
+
+    try {
+      if (actionDialog.mode === 'availability') {
+        const result = await updatePartRequestStatus(actionDialog.requestId, actionDialog.nextStatus);
+        if (!result.success) {
+          showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
+          return;
+        }
+
+        await loadData();
+        showToast(
+          actionDialog.nextStatus === 'approved'
+            ? 'อัปเดตเป็นพร้อมจ่ายแล้ว'
+            : 'อัปเดตเป็นไม่พร้อมจ่ายแล้ว',
+          'success',
+        );
+      }
+
+      if (actionDialog.mode === 'complete') {
+        const result = await completeMaintenanceWithParts(
+          actionDialog.requestId,
+          session?.user?.name || 'System',
+        );
+        if (!result.success) {
+          showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
+          return;
+        }
+
+        await loadData();
+        showToast('ตัดสต็อกเรียบร้อย โดยยังไม่ปิดงาน', 'success');
+      }
+
+      if (actionDialog.mode === 'clearReserved') {
+        const reason = actionDialog.reason.trim();
+        if (reason.length < 8) {
+          showToast('กรุณาระบุเหตุผลอย่างน้อย 8 ตัวอักษร', 'warning');
+          return;
+        }
+
+        setLoading(true);
+        const result = await clearAllReservedParts(session?.user?.name || 'System', reason);
+        if (!result.success) {
+          setLoading(false);
+          showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
+          return;
+        }
+
+        await loadData();
+        showToast(`เคลียร์ข้อมูลเรียบร้อย (${result.count || 0} รายการ)`, 'success');
+      }
+
+      setActionDialog(null);
+    } finally {
+      setDialogSubmitting(false);
     }
-
-    loadData();
   }
 
   const filteredParts = withdrawnParts.filter((part) => {
@@ -563,13 +650,29 @@ export default function PartsManagementClient({
                       {canDirectStockActions ? (
                         <div className="flex justify-end gap-2">
                           <button
-                            onClick={() => handlePartAvailability(request.request_id, 'approved')}
+                            onClick={() =>
+                              handlePartAvailability(
+                                request.request_id,
+                                'approved',
+                                request.item_name,
+                                request.tbl_maintenance_requests?.request_number || request.request_number || `REQ-${request.request_id}`,
+                                request.requested_by,
+                              )
+                            }
                             className="rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
                           >
                             พร้อมจ่าย
                           </button>
                           <button
-                            onClick={() => handlePartAvailability(request.request_id, 'rejected')}
+                            onClick={() =>
+                              handlePartAvailability(
+                                request.request_id,
+                                'rejected',
+                                request.item_name,
+                                request.tbl_maintenance_requests?.request_number || request.request_number || `REQ-${request.request_id}`,
+                                request.requested_by,
+                              )
+                            }
                             className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
                           >
                             ไม่พร้อมจ่าย
@@ -694,7 +797,7 @@ export default function PartsManagementClient({
                     <div className="flex flex-col items-start gap-2 lg:items-end">
                       {canDirectStockActions && hasUsedParts && !hasBlockingParts ? (
                         <button
-                          onClick={() => handleCompleteWithParts(group.requestId)}
+                          onClick={() => handleCompleteWithParts(group.requestId, group.requestNumber, group.title)}
                           className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
                         >
                           ยืนยันตัดสต็อก
@@ -783,24 +886,51 @@ export default function PartsManagementClient({
       </div>
 
       {showWithdrawForm ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 w-full max-w-md rounded-xl bg-white p-6 dark:bg-slate-800">
-            <div className="mb-4 space-y-1">
-              <h2 className="flex items-center gap-2 text-xl font-bold">
-                <Package className="text-orange-500" />
-                {withdrawDialogTitle}
-              </h2>
-              <p className="text-sm text-gray-500">{withdrawDialogDescription}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-lg overflow-hidden rounded-[28px] border border-white/60 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] dark:border-slate-700 dark:bg-slate-800">
+            <div className="relative overflow-hidden bg-gradient-to-br from-orange-500 via-amber-500 to-yellow-400 px-6 py-5 text-white">
+              <button
+                type="button"
+                onClick={() => setShowWithdrawForm(false)}
+                className="absolute right-4 top-4 rounded-full bg-white/20 p-2 transition hover:bg-white/30"
+                title="ปิด"
+              >
+                <X size={16} />
+              </button>
+              <div className="space-y-2">
+                <span className="inline-flex rounded-full border border-white/30 bg-white/15 px-3 py-1 text-xs font-semibold tracking-wide">
+                  Maintenance Parts
+                </span>
+                <h2 className="flex items-center gap-2 text-2xl font-bold">
+                  <Package className="text-white" />
+                  {withdrawDialogTitle}
+                </h2>
+                <p className="max-w-md text-sm text-white/85">{withdrawDialogDescription}</p>
+              </div>
             </div>
             <form onSubmit={handleWithdraw} className="space-y-4">
+              <div className="space-y-4 p-6">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-orange-50 px-4 py-3 text-sm text-orange-900">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-orange-600">ผู้ดำเนินการ</div>
+                  <div className="mt-1 font-semibold">{session?.user?.name || '-'}</div>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-900 dark:bg-slate-700/60 dark:text-slate-100">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">คงเหลือ WH-01</div>
+                  <div className="mt-1 font-semibold">
+                    {selectedProduct ? `${availableStock} ${selectedProduct.p_unit || 'ชิ้น'}` : '-'}
+                  </div>
+                </div>
+              </div>
+
               <div>
-                <label className="mb-1 block text-sm font-medium">งานซ่อม *</label>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">งานซ่อม *</label>
                 <select
                   value={withdrawForm.request_id}
                   onChange={(e) =>
                     setWithdrawForm({ ...withdrawForm, request_id: Number(e.target.value) })
                   }
-                  className="w-full rounded-lg border px-3 py-2 dark:border-slate-600 dark:bg-slate-700"
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 shadow-sm outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-200 dark:border-slate-600 dark:bg-slate-700"
                   required
                 >
                   <option value={0}>เลือกงานซ่อม</option>
@@ -813,7 +943,7 @@ export default function PartsManagementClient({
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium">สินค้า/อะไหล่ *</label>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">สินค้า/อะไหล่ *</label>
                 <SearchableSelect
                   options={products.map((product) => {
                     const stock = product.available_stock ?? product.p_count;
@@ -834,12 +964,14 @@ export default function PartsManagementClient({
                   required
                 />
                 {selectedProduct && availableStock < 5 ? (
-                  <div className="mt-1 text-xs text-orange-600">สต็อกใกล้หมด</div>
+                  <div className="mt-2 inline-flex rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">
+                    สต็อกใกล้หมด
+                  </div>
                 ) : null}
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium">จำนวน *</label>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">จำนวน *</label>
                 <input
                   type="number"
                   value={withdrawForm.quantity}
@@ -851,7 +983,7 @@ export default function PartsManagementClient({
                     );
                     setWithdrawForm({ ...withdrawForm, quantity: safeQty });
                   }}
-                  className="w-full rounded-lg border px-3 py-2 dark:border-slate-600 dark:bg-slate-700"
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 shadow-sm outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-200 dark:border-slate-600 dark:bg-slate-700"
                   min="1"
                   max={availableStock}
                   required
@@ -863,39 +995,40 @@ export default function PartsManagementClient({
                 ) : null}
               </div>
 
-              <div>
-                <label className="mb-1 block text-sm font-medium">
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-600 dark:bg-slate-700/40">
+                <label className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                   {canDirectWithdraw ? 'ผู้เบิก *' : 'ผู้ขอเบิก *'}
                 </label>
                 <input
                   type="text"
                   value={session?.user?.name || ''}
                   readOnly
-                  className="w-full cursor-not-allowed rounded-lg border bg-gray-100 px-3 py-2 text-gray-500 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-400"
+                  className="w-full cursor-not-allowed rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
                   placeholder={canDirectWithdraw ? 'ชื่อผู้เบิก' : 'ชื่อผู้ขอเบิก'}
                 />
                 {!canDirectWithdraw ? (
-                  <p className="mt-1 text-xs text-blue-600">
+                  <p className="mt-2 text-xs text-blue-600 dark:text-blue-300">
                     ระบบจะแจ้ง role store ก่อนยืนยันการจ่ายอะไหล่
                   </p>
                 ) : null}
               </div>
 
-              <div className="flex gap-2 pt-4">
+              <div className="flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowWithdrawForm(false)}
-                  className="flex-1 rounded-lg border px-4 py-2 hover:bg-gray-50 dark:hover:bg-slate-700"
+                  className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
                   disabled={availableStock <= 0}
-                  className="flex-1 rounded-lg bg-orange-600 px-4 py-2 text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex-1 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-3 font-semibold text-white shadow-lg shadow-orange-200 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 dark:shadow-none"
                 >
                   {withdrawSubmitLabel}
                 </button>
+              </div>
               </div>
             </form>
           </div>
@@ -903,46 +1036,225 @@ export default function PartsManagementClient({
       ) : null}
 
       {selectedPart ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 w-full max-w-sm rounded-xl bg-white p-6 dark:bg-slate-800">
-            <h2 className="mb-4 flex items-center gap-2 text-xl font-bold">
-              <Undo2 className="text-gray-500" />
-              คืนอะไหล่
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <div className="text-sm text-gray-500">สินค้า</div>
-                <div className="font-medium">{selectedPart.product?.p_name}</div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md overflow-hidden rounded-[28px] border border-white/60 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] dark:border-slate-700 dark:bg-slate-800">
+            <div className="relative bg-gradient-to-br from-slate-800 via-slate-700 to-slate-600 px-6 py-5 text-white">
+              <button
+                type="button"
+                onClick={() => setSelectedPart(null)}
+                className="absolute right-4 top-4 rounded-full bg-white/15 p-2 transition hover:bg-white/25"
+                title="ปิด"
+              >
+                <X size={16} />
+              </button>
+              <div className="space-y-2">
+                <span className="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide">
+                  Return to Stock
+                </span>
+                <h2 className="flex items-center gap-2 text-2xl font-bold">
+                  <Undo2 className="text-white" />
+                  คืนอะไหล่
+                </h2>
+                <p className="text-sm text-white/80">คืนของที่ไม่ได้ใช้กลับเข้าสู่สต็อกพร้อมบันทึกประวัติการคืน</p>
               </div>
-              <div>
-                <div className="text-sm text-gray-500">เบิกไป</div>
-                <div className="font-medium">
-                  {selectedPart.quantity} {selectedPart.unit || 'ชิ้น'}
+            </div>
+            <div className="space-y-4 p-6">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-700/50">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">เบิกไป</div>
+                  <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">
+                    {selectedPart.quantity} {selectedPart.unit || 'ชิ้น'}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-emerald-50 px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-emerald-600">คืนได้สูงสุด</div>
+                  <div className="mt-1 font-semibold text-emerald-900">
+                    {selectedPart.quantity - selectedPart.returned_qty} {selectedPart.unit || 'ชิ้น'}
+                  </div>
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium">จำนวนที่จะคืน</label>
+                <div className="text-sm text-gray-500">สินค้า</div>
+                <div className="font-medium text-slate-900 dark:text-slate-100">{selectedPart.product?.p_name}</div>
+                <div className="mt-1 text-xs text-slate-400">{selectedPart.p_id}</div>
+              </div>
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-600 dark:bg-slate-700/40">
+                <div className="text-sm text-gray-500">ผู้เบิก</div>
+                <div className="font-medium text-slate-900 dark:text-slate-100">{selectedPart.withdrawn_by}</div>
+                <div className="mt-1 text-xs text-slate-400">
+                  {new Date(selectedPart.withdrawn_at).toLocaleString('th-TH')}
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">จำนวนที่จะคืน</label>
                 <input
                   type="number"
                   value={returnQty}
                   onChange={(e) => setReturnQty(Number(e.target.value))}
-                  className="w-full rounded-lg border px-3 py-2 dark:border-slate-600 dark:bg-slate-700"
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-600 dark:bg-slate-700"
                   min="1"
                   max={selectedPart.quantity - selectedPart.returned_qty}
                 />
               </div>
-              <div className="flex gap-2 pt-4">
+              <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => setSelectedPart(null)}
-                  className="flex-1 rounded-lg border px-4 py-2 hover:bg-gray-50 dark:hover:bg-slate-700"
+                  className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                   ยกเลิก
                 </button>
                 <button
                   onClick={handleReturn}
-                  className="flex-1 rounded-lg bg-gray-600 px-4 py-2 text-white hover:bg-gray-700"
+                  className="flex-1 rounded-2xl bg-gradient-to-r from-slate-700 to-slate-600 px-4 py-3 font-semibold text-white shadow-lg shadow-slate-200 transition hover:brightness-110 dark:shadow-none"
                 >
                   คืน
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {actionDialog ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg overflow-hidden rounded-[28px] border border-white/60 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] dark:border-slate-700 dark:bg-slate-800">
+            <div className={`relative px-6 py-5 text-white ${
+              actionDialog.mode === 'availability'
+                ? actionDialog.nextStatus === 'approved'
+                  ? 'bg-gradient-to-br from-emerald-500 via-green-500 to-lime-400'
+                  : 'bg-gradient-to-br from-rose-500 via-red-500 to-orange-400'
+                : actionDialog.mode === 'complete'
+                  ? 'bg-gradient-to-br from-blue-600 via-cyan-500 to-sky-400'
+                  : 'bg-gradient-to-br from-slate-800 via-slate-700 to-slate-500'
+            }`}>
+              <button
+                type="button"
+                onClick={() => !dialogSubmitting && setActionDialog(null)}
+                className="absolute right-4 top-4 rounded-full bg-white/15 p-2 transition hover:bg-white/25"
+                title="ปิด"
+              >
+                <X size={16} />
+              </button>
+              <div className="space-y-2">
+                <span className="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide">
+                  {actionDialog.mode === 'availability'
+                    ? 'Store Decision'
+                    : actionDialog.mode === 'complete'
+                      ? 'Stock Posting'
+                      : 'Maintenance Cleanup'}
+                </span>
+                <h2 className="flex items-center gap-2 text-2xl font-bold">
+                  {actionDialog.mode === 'availability' ? (
+                    <CheckCircle className="text-white" />
+                  ) : actionDialog.mode === 'complete' ? (
+                    <ShieldCheck className="text-white" />
+                  ) : (
+                    <Undo2 className="text-white" />
+                  )}
+                  {actionDialog.mode === 'availability'
+                    ? actionDialog.nextStatus === 'approved'
+                      ? 'ยืนยันพร้อมจ่าย'
+                      : 'ยืนยันไม่พร้อมจ่าย'
+                    : actionDialog.mode === 'complete'
+                      ? 'ยืนยันตัดสต็อก'
+                      : 'เคลียร์รายการค้าง'}
+                </h2>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-6">
+              {actionDialog.mode === 'availability' ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-700/50">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">คำขอ</div>
+                      <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{actionDialog.requestNumber}</div>
+                    </div>
+                    <div className="rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-700/50">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">ผู้ขอ</div>
+                      <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{actionDialog.requestedBy}</div>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-600 dark:bg-slate-700/40">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">รายการอะไหล่</div>
+                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">{actionDialog.itemName}</div>
+                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">
+                      ระบบจะส่งแจ้งเตือนกลับไปยังผู้เบิกทันทีหลังบันทึกสถานะนี้
+                    </p>
+                  </div>
+                </>
+              ) : null}
+
+              {actionDialog.mode === 'complete' ? (
+                <div className="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-600 dark:bg-slate-700/40">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">ใบงาน</div>
+                  <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">{actionDialog.requestNumber}</div>
+                  <div className="text-sm text-slate-500 dark:text-slate-300">{actionDialog.title}</div>
+                  <p className="text-sm text-slate-500 dark:text-slate-300">
+                    ใช้เมื่ออะไหล่ของใบงานนี้ถูกใช้จริงและตรวจครบแล้ว แต่ยังไม่ปิดงานซ่อม
+                  </p>
+                </div>
+              ) : null}
+
+              {actionDialog.mode === 'clearReserved' ? (
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+                    การดำเนินการนี้จะคืนรายการอะไหล่ที่ค้างอยู่กลับเข้าสู่สต็อก และบันทึกเหตุผลลงประวัติระบบ
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">เหตุผลในการเคลียร์ *</label>
+                    <textarea
+                      value={actionDialog.reason}
+                      onChange={(e) =>
+                        setActionDialog((prev) =>
+                          prev && prev.mode === 'clearReserved'
+                            ? { ...prev, reason: e.target.value }
+                            : prev
+                        )
+                      }
+                      rows={4}
+                      className="w-full rounded-2xl border border-slate-200 px-4 py-3 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-600 dark:bg-slate-700"
+                      placeholder="ระบุสาเหตุ เช่น เคสปิดไปแล้วแต่มีรายการค้างในระบบ..."
+                    />
+                    <div className="mt-2 text-xs text-slate-400">
+                      อย่างน้อย 8 ตัวอักษร
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActionDialog(null)}
+                  disabled={dialogSubmitting}
+                  className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={handleActionDialogConfirm}
+                  disabled={dialogSubmitting}
+                  className={`flex-1 rounded-2xl px-4 py-3 font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    actionDialog.mode === 'availability'
+                      ? actionDialog.nextStatus === 'approved'
+                        ? 'bg-gradient-to-r from-emerald-500 to-green-500'
+                        : 'bg-gradient-to-r from-rose-500 to-red-500'
+                      : actionDialog.mode === 'complete'
+                        ? 'bg-gradient-to-r from-blue-600 to-cyan-500'
+                        : 'bg-gradient-to-r from-slate-800 to-slate-600'
+                  }`}
+                >
+                  {dialogSubmitting
+                    ? 'กำลังบันทึก...'
+                    : actionDialog.mode === 'availability'
+                      ? actionDialog.nextStatus === 'approved'
+                        ? 'ยืนยันพร้อมจ่าย'
+                        : 'ยืนยันไม่พร้อมจ่าย'
+                      : actionDialog.mode === 'complete'
+                        ? 'ยืนยันตัดสต็อก'
+                        : 'ยืนยันเคลียร์รายการ'}
                 </button>
               </div>
             </div>
