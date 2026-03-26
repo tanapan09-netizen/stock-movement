@@ -802,7 +802,7 @@ export async function notifyApprovalEventFlex(
             return;
         }
 
-        const { getApprovalRecipientLineIds } = await import('@/actions/lineUserActions');
+        const { getApprovalRecipientLineIds, getLineIdsByRoles } = await import('@/actions/lineUserActions');
 
         const requestTypeLabel =
             data.request_type === 'ot' ? 'OT'
@@ -812,7 +812,9 @@ export async function notifyApprovalEventFlex(
                             : 'อื่นๆ';
 
         if (data.eventType === 'pending') {
-            const lineIds = await getApprovalRecipientLineIds(data.request_type);
+            const lineIds = data.request_type === 'purchase'
+                ? await getLineIdsByRoles(['purchasing', 'leader_purchasing'])
+                : await getApprovalRecipientLineIds(data.request_type);
             if (lineIds.length === 0) {
                 return;
             }
@@ -830,7 +832,7 @@ export async function notifyApprovalEventFlex(
                 amount: data.amount ?? null,
                 referenceJob: data.reference_job ?? null,
                 timeRange,
-                href: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/approvals/manage`,
+                href: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}${data.request_type === 'purchase' ? '/approvals/purchasing' : '/approvals/manage'}`,
             }));
             return;
         }

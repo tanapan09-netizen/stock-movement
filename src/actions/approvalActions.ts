@@ -77,6 +77,18 @@ interface WorkflowStepNotificationInput {
     approver_id?: number | null;
 }
 
+type ApprovalRequestWorkflowLike = {
+    request_type?: string | null;
+    total_steps?: number | null;
+    workflow?: {
+        steps?: Array<{
+            step_order: number;
+            approver_role?: string | null;
+            approver_id?: number | null;
+        }>;
+    } | null;
+};
+
 function getErrorMessage(error: unknown): string {
     if (error instanceof Error && error.message) return error.message;
     return COMMON_ACTION_MESSAGES.unexpectedError;
@@ -117,6 +129,63 @@ function getAppBaseUrl(): string {
 }
 
 const APPROVAL_USER_LINK_ERROR = 'บัญชีผู้ใช้นี้ยังไม่ได้ผูกกับข้อมูลพนักงานในระบบ กรุณาติดต่อผู้ดูแลระบบ';
+const DEFAULT_PURCHASE_APPROVAL_STEPS = [
+    { step_order: 1, approver_role: 'purchasing', approver_id: null },
+    { step_order: 2, approver_role: 'manager', approver_id: null },
+];
+
+function getEffectiveWorkflowSteps(request: ApprovalRequestWorkflowLike) {
+    const workflowSteps = request.workflow?.steps || [];
+    if (workflowSteps.length > 0) {
+        return workflowSteps;
+    }
+
+    if (request.request_type === 'purchase') {
+        return DEFAULT_PURCHASE_APPROVAL_STEPS;
+    }
+
+    return [];
+}
+
+function getEffectiveWorkflowStep(request: ApprovalRequestWorkflowLike, stepOrder: number) {
+    return getEffectiveWorkflowSteps(request).find((step) => step.step_order === stepOrder) || null;
+}
+
+function getEffectiveTotalSteps(request: ApprovalRequestWorkflowLike) {
+    return Math.max(
+        Number(request.total_steps || 0),
+        getEffectiveWorkflowSteps(request).length,
+        request.request_type === 'purchase' ? 2 : 1,
+    );
+}
+
+async function notifyPurchasingDecision(
+    request: ApprovalNotificationRequest,
+    status: 'approved' | 'rejected',
+) {
+    try {
+        if (process.env.LINE_MESSAGING_ENABLED === 'false') return;
+
+        const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
+        const recipientIds = await getLineIdsByRoles(['purchasing', 'leader_purchasing']);
+        if (recipientIds.length === 0) return;
+
+        const requesterName = request.tbl_users?.username || COMMON_ACTION_MESSAGES.unknownUser;
+        await sendMulticastMessage(
+            [...new Set(recipientIds)],
+            createApprovalDecisionFlexMessage({
+                requestNumber: request.request_number,
+                requestType: getApprovalTypeLabel(request.request_type),
+                requesterName,
+                status,
+                rejectionReason: request.rejection_reason,
+                href: `${getAppBaseUrl()}/purchase-request/manage`,
+            })
+        );
+    } catch (error) {
+        console.error('Failed to notify purchasing team of approval result', error);
+    }
+}
 
 async function sendApprovalRecipientsNotification(
     request: ApprovalNotificationRequest,
@@ -155,7 +224,7 @@ async function sendNextApprovalStepNotification(
     try {
         if (process.env.LINE_MESSAGING_ENABLED === 'false') return;
 
-        const { getApprovalStepLineIds } = await import('@/actions/lineUserActions');
+        const { getApprovalStepLineIds, getLineIdsByRoles } = await import('@/actions/lineUserActions');
 
         let recipientIds: string[] = [];
 
@@ -170,7 +239,14 @@ async function sendNextApprovalStepNotification(
         }
 
         if (recipientIds.length === 0 && nextStep.approver_role) {
-            recipientIds = await getApprovalStepLineIds(nextStep.approver_role);
+            const normalizedRole = nextStep.approver_role.trim().toLowerCase();
+            if (request.request_type === 'purchase' && (normalizedRole === 'manager' || normalizedRole === 'any_manager')) {
+                recipientIds = await getLineIdsByRoles(['manager']);
+            } else if (request.request_type === 'purchase' && normalizedRole === 'purchasing') {
+                recipientIds = await getLineIdsByRoles(['purchasing', 'leader_purchasing']);
+            } else {
+                recipientIds = await getApprovalStepLineIds(nextStep.approver_role);
+            }
         }
 
         recipientIds = [...new Set(recipientIds)];
@@ -257,6 +333,12 @@ export async function createApprovalRequest(data: CreateApprovalRequestInput) {
             }
         }
 
+        const effectiveTotalSteps = getEffectiveTotalSteps({
+            request_type: validData.request_type,
+            total_steps: matchedWorkflow?.total_steps ?? null,
+            workflow: matchedWorkflow ? { steps: matchedWorkflow.steps } : null,
+        });
+
         const newRequest = await prisma.tbl_approval_requests.create({
             data: {
                 request_number,
@@ -269,7 +351,7 @@ export async function createApprovalRequest(data: CreateApprovalRequestInput) {
                 reason: validData.reason,
                 reference_job: validData.reference_job || null,
                 current_step: 1,
-                total_steps: matchedWorkflow ? matchedWorkflow.total_steps : 1,
+                total_steps: effectiveTotalSteps,
                 workflow_id: matchedWorkflow ? matchedWorkflow.id : null
             },
             include: {
@@ -348,7 +430,7 @@ export async function getApprovalRequests() {
         });
 
         const dataWithPermissions = requests.map(req => {
-            const currentStep = req.workflow?.steps.find((step) => step.step_order === req.current_step) || null;
+            const currentStep = getEffectiveWorkflowStep(req, req.current_step);
             const canApprove = canApproveApprovalRequest(
                 permissionContext.role,
                 permissionContext.permissions,
@@ -477,9 +559,7 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
             return { success: false, error: 'Request not found' };
         }
 
-        const currentStep = currentRequest.workflow?.steps.find(
-            (step) => step.step_order === currentRequest.current_step
-        ) || null;
+        const currentStep = getEffectiveWorkflowStep(currentRequest, currentRequest.current_step);
         const canApprove = canApproveApprovalRequest(
             permissionContext.role,
             permissionContext.permissions,
@@ -498,13 +578,14 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
         let newStatus = currentRequest.status;
         let nextStep = currentRequest.current_step;
         let finalAction = false; // Whether this action completes the request
+        const effectiveTotalSteps = getEffectiveTotalSteps(currentRequest);
 
         // Process step logic
         if (status === 'rejected') {
             newStatus = 'rejected';
             finalAction = true;
         } else if (status === 'approved') {
-            if (currentRequest.current_step < currentRequest.total_steps) {
+            if (currentRequest.current_step < effectiveTotalSteps) {
                 // Advance step
                 nextStep += 1;
                 newStatus = 'pending'; // Still pending overall
@@ -519,6 +600,7 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
         const updateData: Prisma.tbl_approval_requestsUncheckedUpdateInput = {
             status: newStatus,
             current_step: nextStep,
+            total_steps: effectiveTotalSteps,
             rejection_reason: rejectionReason || currentRequest.rejection_reason
         };
 
@@ -553,11 +635,13 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
         if (finalAction) {
             // Notify requester of completion
             await sendLineNotification(updated, status);
-            await sendApprovalRecipientsNotification(updated, status);
+            if (currentRequest.request_type === 'purchase' && currentStep?.approver_role?.trim().toLowerCase() === 'manager') {
+                await notifyPurchasingDecision(updated, status);
+            } else {
+                await sendApprovalRecipientsNotification(updated, status);
+            }
         } else if (status === 'approved') {
-            const nextWorkflowStep = currentRequest.workflow?.steps.find(
-                (step: { step_order: number }) => step.step_order === nextStep
-            );
+            const nextWorkflowStep = getEffectiveWorkflowStep(currentRequest, nextStep);
             if (nextWorkflowStep) {
                 await sendNextApprovalStepNotification(currentRequest, nextWorkflowStep, nextStep);
             }
@@ -565,6 +649,7 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
 
         revalidatePath('/approvals');
         revalidatePath('/approvals/purchasing');
+        revalidatePath('/purchase-request/manage');
         return { success: true, data: updated };
     } catch (error: unknown) {
         console.error('Error updating approval status:', error);
