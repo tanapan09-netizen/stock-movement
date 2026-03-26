@@ -1,8 +1,10 @@
 import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
-import { canManagePurchaseRequests } from '@/lib/rbac';
+import { canApproveApprovalRequest, canManagePurchaseRequests } from '@/lib/rbac';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
+import { resolveAuthenticatedUserId } from '@/lib/server/auth-user';
+import { getCurrentApprovalWorkflowStep } from '@/lib/purchase-request-workflow';
 import PurchaseRequestManagementClient from './PurchaseRequestManagementClient';
 
 export const metadata = {
@@ -20,6 +22,7 @@ export default async function PurchaseRequestManagementPage() {
     if (!canManagePurchaseRequests(permissionContext.role, permissionContext.permissions)) {
         redirect('/');
     }
+    const currentUserId = await resolveAuthenticatedUserId(session.user);
 
     const requests = await prisma.tbl_approval_requests.findMany({
         where: {
@@ -37,6 +40,11 @@ export default async function PurchaseRequestManagementPage() {
                     username: true,
                 },
             },
+            workflow: {
+                include: {
+                    steps: true,
+                },
+            },
         },
         orderBy: {
             created_at: 'desc',
@@ -48,7 +56,22 @@ export default async function PurchaseRequestManagementPage() {
             initialRequests={requests.map((request) => ({
                 ...request,
                 amount: request.amount ? Number(request.amount) : null,
+                can_approve: canApproveApprovalRequest(
+                    permissionContext.role,
+                    permissionContext.permissions,
+                    {
+                        currentUserId: currentUserId ?? -1,
+                        requestType: request.request_type,
+                        workflowStep: getCurrentApprovalWorkflowStep(
+                            request.request_type,
+                            request.current_step,
+                            request.workflow?.steps || [],
+                        ),
+                        isApprover: permissionContext.isApprover,
+                    },
+                ),
             }))}
+            currentRole={permissionContext.role || null}
         />
     );
 }

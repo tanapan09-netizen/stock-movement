@@ -20,6 +20,10 @@ import { COMMON_ACTION_MESSAGES } from '@/lib/action-messages';
 import { validateData, createApprovalRequestSchema } from '@/lib/validation';
 import { resolveAuthenticatedUserId } from '@/lib/server/auth-user';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
+import {
+    getCurrentApprovalWorkflowStep,
+    getEffectiveApprovalTotalSteps,
+} from '@/lib/purchase-request-workflow';
 
 type ApprovalAction = 'pending' | 'approved' | 'rejected';
 
@@ -129,33 +133,11 @@ function getAppBaseUrl(): string {
 }
 
 const APPROVAL_USER_LINK_ERROR = 'บัญชีผู้ใช้นี้ยังไม่ได้ผูกกับข้อมูลพนักงานในระบบ กรุณาติดต่อผู้ดูแลระบบ';
-const DEFAULT_PURCHASE_APPROVAL_STEPS = [
-    { step_order: 1, approver_role: 'purchasing', approver_id: null },
-    { step_order: 2, approver_role: 'manager', approver_id: null },
-];
-
-function getEffectiveWorkflowSteps(request: ApprovalRequestWorkflowLike) {
-    const workflowSteps = request.workflow?.steps || [];
-    if (workflowSteps.length > 0) {
-        return workflowSteps;
-    }
-
-    if (request.request_type === 'purchase') {
-        return DEFAULT_PURCHASE_APPROVAL_STEPS;
-    }
-
-    return [];
-}
-
-function getEffectiveWorkflowStep(request: ApprovalRequestWorkflowLike, stepOrder: number) {
-    return getEffectiveWorkflowSteps(request).find((step) => step.step_order === stepOrder) || null;
-}
-
 function getEffectiveTotalSteps(request: ApprovalRequestWorkflowLike) {
-    return Math.max(
-        Number(request.total_steps || 0),
-        getEffectiveWorkflowSteps(request).length,
-        request.request_type === 'purchase' ? 2 : 1,
+    return getEffectiveApprovalTotalSteps(
+        request.request_type,
+        request.total_steps,
+        request.workflow?.steps || [],
     );
 }
 
@@ -244,6 +226,8 @@ async function sendNextApprovalStepNotification(
                 recipientIds = await getLineIdsByRoles(['manager']);
             } else if (request.request_type === 'purchase' && normalizedRole === 'purchasing') {
                 recipientIds = await getLineIdsByRoles(['purchasing', 'leader_purchasing']);
+            } else if (request.request_type === 'purchase' && normalizedRole === 'store') {
+                recipientIds = await getLineIdsByRoles(['store', 'leader_store']);
             } else {
                 recipientIds = await getApprovalStepLineIds(nextStep.approver_role);
             }
@@ -263,7 +247,7 @@ async function sendNextApprovalStepNotification(
                 totalSteps: Number(request.total_steps || stepNumber),
                 detail: request.reason || null,
                 amount: request.amount === null || request.amount === undefined ? null : Number(request.amount),
-                href: `${getAppBaseUrl()}/approvals/manage`,
+                href: `${getAppBaseUrl()}${request.request_type === 'purchase' ? '/purchase-request/manage' : '/approvals/manage'}`,
             })
         );
     } catch (error) {
@@ -430,7 +414,11 @@ export async function getApprovalRequests() {
         });
 
         const dataWithPermissions = requests.map(req => {
-            const currentStep = getEffectiveWorkflowStep(req, req.current_step);
+            const currentStep = getCurrentApprovalWorkflowStep(
+                req.request_type,
+                req.current_step,
+                req.workflow?.steps || [],
+            );
             const canApprove = canApproveApprovalRequest(
                 permissionContext.role,
                 permissionContext.permissions,
@@ -559,7 +547,11 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
             return { success: false, error: 'Request not found' };
         }
 
-        const currentStep = getEffectiveWorkflowStep(currentRequest, currentRequest.current_step);
+        const currentStep = getCurrentApprovalWorkflowStep(
+            currentRequest.request_type,
+            currentRequest.current_step,
+            currentRequest.workflow?.steps || [],
+        );
         const canApprove = canApproveApprovalRequest(
             permissionContext.role,
             permissionContext.permissions,
@@ -641,9 +633,17 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
                 await sendApprovalRecipientsNotification(updated, status);
             }
         } else if (status === 'approved') {
-            const nextWorkflowStep = getEffectiveWorkflowStep(currentRequest, nextStep);
+            const nextWorkflowStep = getCurrentApprovalWorkflowStep(
+                currentRequest.request_type,
+                nextStep,
+                currentRequest.workflow?.steps || [],
+            );
             if (nextWorkflowStep) {
-                await sendNextApprovalStepNotification(currentRequest, nextWorkflowStep, nextStep);
+                await sendNextApprovalStepNotification(
+                    { ...currentRequest, total_steps: effectiveTotalSteps },
+                    nextWorkflowStep,
+                    nextStep,
+                );
             }
         }
 

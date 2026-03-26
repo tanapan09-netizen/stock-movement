@@ -4,49 +4,53 @@ import Link from 'next/link';
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import {
-    CheckCircle2,
-    CircleSlash,
-    ClipboardList,
-    ExternalLink,
-    FilePenLine,
-    FileCheck2,
-    Filter,
-    Loader2,
-    Printer,
-    Search,
-    ShoppingCart,
-} from 'lucide-react';
+import { CheckCircle2, CircleSlash, ClipboardList, ExternalLink, FileCheck2, FilePenLine, Filter, Loader2, Printer, Search, ShoppingCart } from 'lucide-react';
 
-import { updateApprovalStatus } from '@/actions/approvalActions';
+import { updateApprovalStatus, updatePurchaseRequest } from '@/actions/approvalActions';
+import { isDepartmentRole } from '@/lib/roles';
+import { PURCHASE_REQUEST_WORKFLOW_LABELS, getPurchaseRequestDisplayStep, getPurchaseRequestStageLabel, isPurchaseRequestPurchasingStep } from '@/lib/purchase-request-workflow';
+import { getProcurementStatusBadgeClass, getProcurementStatusLabel, getProcurementStatusOrder, PURCHASE_REQUEST_STATUS_FILTER_OPTIONS } from '@/lib/procurement-status';
 import { ApprovalRequest } from '../../approvals/types';
-import { updatePurchaseRequest } from '@/actions/approvalActions';
-import {
-    getProcurementStatusBadgeClass,
-    getProcurementStatusLabel,
-    getProcurementStatusOrder,
-    PURCHASE_REQUEST_STATUS_FILTER_OPTIONS,
-} from '@/lib/procurement-status';
 
 interface Props {
     initialRequests: ApprovalRequest[];
+    currentRole: string | null;
 }
 
 type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
 
 function formatCurrency(value: unknown) {
-    const amount = Number(value || 0);
-    return amount.toLocaleString('th-TH', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    });
+    return Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function getSummaryLine(reason?: string | null) {
     return reason?.split('\n').find((line) => line.trim()) || '-';
 }
 
-export default function PurchaseRequestManagementClient({ initialRequests }: Props) {
+function getApproveActionLabel(request: ApprovalRequest) {
+    switch (request.current_step) {
+        case 1: return 'ส่งผู้จัดการ';
+        case 2: return 'ส่งจัดซื้อ';
+        case 3: return 'ส่ง Store';
+        case 4: return 'รับเข้าคลัง';
+        default: return 'อนุมัติ';
+    }
+}
+
+function getCurrentStageDescription(request: ApprovalRequest) {
+    if (request.status === 'approved') return 'Workflow เสร็จสมบูรณ์';
+    if (request.status === 'rejected') return `สิ้นสุดที่ขั้น ${getPurchaseRequestStageLabel(request.status, request.current_step)}`;
+
+    switch (request.current_step) {
+        case 1: return 'รอจัดซื้อทบทวนและตรวจสอบรายการ';
+        case 2: return 'รอผู้จัดการอนุมัติ';
+        case 3: return 'รอจัดซื้อดำเนินการหลังผู้จัดการอนุมัติ';
+        case 4: return 'รอ Store รับเข้าคลัง';
+        default: return '-';
+    }
+}
+
+export default function PurchaseRequestManagementClient({ initialRequests, currentRole }: Props) {
     const router = useRouter();
     const [requests, setRequests] = useState<ApprovalRequest[]>(initialRequests);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -59,62 +63,40 @@ export default function PurchaseRequestManagementClient({ initialRequests }: Pro
     const [editReason, setEditReason] = useState('');
     const [isSavingEdit, setIsSavingEdit] = useState(false);
     const [isPending, startTransition] = useTransition();
+    const canEditManagedRequests = isDepartmentRole(currentRole, 'purchasing');
 
     const summary = useMemo(() => {
         const pending = requests.filter((request) => request.status === 'pending').length;
+        const actionable = requests.filter((request) => request.status === 'pending' && request.can_approve).length;
         const approved = requests.filter((request) => request.status === 'approved').length;
         const rejected = requests.filter((request) => request.status === 'rejected').length;
-        const totalAmount = requests.reduce((sum, request) => sum + Number(request.amount || 0), 0);
-
-        return { pending, approved, rejected, totalAmount };
+        return { pending, actionable, approved, rejected };
     }, [requests]);
 
     const filteredRequests = useMemo(() => {
         const keyword = search.trim().toLowerCase();
-
         return [...requests]
             .filter((request) => {
-                if (statusFilter !== 'all' && request.status !== statusFilter) {
-                    return false;
-                }
-
-                if (!keyword) {
-                    return true;
-                }
-
-                const haystack = [
-                    request.request_number,
-                    request.tbl_users?.username,
-                    request.reference_job,
-                    request.reason,
-                ]
-                    .filter(Boolean)
-                    .join(' ')
-                    .toLowerCase();
-
+                if (statusFilter !== 'all' && request.status !== statusFilter) return false;
+                if (!keyword) return true;
+                const haystack = [request.request_number, request.tbl_users?.username, request.reference_job, request.reason].filter(Boolean).join(' ').toLowerCase();
                 return haystack.includes(keyword);
             })
             .sort((a, b) => {
                 const statusCompare = getProcurementStatusOrder(a.status) - getProcurementStatusOrder(b.status);
-                if (statusCompare !== 0) {
-                    return statusCompare;
-                }
-
+                if (statusCompare !== 0) return statusCompare;
+                const workflowCompare = getPurchaseRequestDisplayStep(a.status, a.current_step) - getPurchaseRequestDisplayStep(b.status, b.current_step);
+                if (workflowCompare !== 0) return workflowCompare;
                 return new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime();
             });
     }, [requests, search, statusFilter]);
 
     const applyUpdatedRequest = (updated: ApprovalRequest) => {
-        setRequests((prev) => prev.map((request) => (
-            request.request_id === updated.request_id ? { ...request, ...updated } : request
-        )));
+        setRequests((prev) => prev.map((request) => (request.request_id === updated.request_id ? { ...request, ...updated } : request)));
     };
 
     const openEditDialog = (request: ApprovalRequest) => {
-        const parsedDate = request.request_date
-            ? new Date(request.request_date).toISOString().slice(0, 10)
-            : (request.created_at ? new Date(request.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
-
+        const parsedDate = request.request_date ? new Date(request.request_date).toISOString().slice(0, 10) : (request.created_at ? new Date(request.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
         setEditingRequest(request);
         setEditRequestDate(parsedDate);
         setEditAmount(String(Number(request.amount || 0)));
@@ -171,14 +153,14 @@ export default function PurchaseRequestManagementClient({ initialRequests }: Pro
         }
     };
 
-    const handleApprove = (requestId: number) => {
-        setPendingRequestId(requestId);
+    const handleApprove = (request: ApprovalRequest) => {
+        setPendingRequestId(request.request_id);
         startTransition(async () => {
-            const result = await updateApprovalStatus(requestId, 'approved');
+            const result = await updateApprovalStatus(request.request_id, 'approved');
 
             if (result.success && result.data) {
-                applyUpdatedRequest(result.data as ApprovalRequest);
-                toast.success('อนุมัติคำขอซื้อแล้ว');
+                applyUpdatedRequest({ ...(result.data as ApprovalRequest), can_approve: false });
+                toast.success(request.current_step === 4 ? 'ยืนยันรับเข้าคลังแล้ว' : 'อัปเดต workflow คำขอซื้อแล้ว');
                 router.refresh();
             } else {
                 toast.error(result.error || 'ไม่สามารถอนุมัติคำขอซื้อได้');
@@ -188,18 +170,16 @@ export default function PurchaseRequestManagementClient({ initialRequests }: Pro
         });
     };
 
-    const handleReject = (requestId: number) => {
+    const handleReject = (request: ApprovalRequest) => {
         const promptValue = window.prompt('ระบุเหตุผลที่ไม่อนุมัติ', '');
-        if (promptValue === null) {
-            return;
-        }
+        if (promptValue === null) return;
 
-        setPendingRequestId(requestId);
+        setPendingRequestId(request.request_id);
         startTransition(async () => {
-            const result = await updateApprovalStatus(requestId, 'rejected', promptValue.trim() || undefined);
+            const result = await updateApprovalStatus(request.request_id, 'rejected', promptValue.trim() || undefined);
 
             if (result.success && result.data) {
-                applyUpdatedRequest(result.data as ApprovalRequest);
+                applyUpdatedRequest({ ...(result.data as ApprovalRequest), can_approve: false });
                 toast.success('อัปเดตคำขอซื้อเป็นไม่อนุมัติแล้ว');
                 router.refresh();
             } else {
@@ -221,8 +201,15 @@ export default function PurchaseRequestManagementClient({ initialRequests }: Pro
                         <div>
                             <h1 className="text-2xl font-bold text-slate-900">จัดการระบบคำขอซื้อ</h1>
                             <p className="mt-1 text-sm text-slate-600">
-                                สำหรับฝ่ายจัดซื้อ ใช้ตรวจสอบคำขอซื้อทั้งหมด ติดตามสถานะ และอนุมัติหรือไม่อนุมัติจากหน้าเดียว
+                                ติดตามคำขอซื้อให้เดินตาม workflow ช่าง &gt; จัดซื้อ &gt; ผู้จัดการ &gt; จัดซื้อ &gt; Store
                             </p>
+                            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+                                {PURCHASE_REQUEST_WORKFLOW_LABELS.map((label, index) => (
+                                    <span key={`${label}-${index}`} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">
+                                        {label}
+                                    </span>
+                                ))}
+                            </div>
                         </div>
                     </div>
 
@@ -250,6 +237,10 @@ export default function PurchaseRequestManagementClient({ initialRequests }: Pro
                     <div className="text-sm font-medium text-slate-500">รอดำเนินการ</div>
                     <div className="mt-2 text-3xl font-bold text-amber-600">{summary.pending}</div>
                 </div>
+                <div className="rounded-2xl border border-cyan-200 bg-white p-5 shadow-sm">
+                    <div className="text-sm font-medium text-slate-500">รอฉันดำเนินการ</div>
+                    <div className="mt-2 text-3xl font-bold text-cyan-700">{summary.actionable}</div>
+                </div>
                 <div className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm">
                     <div className="text-sm font-medium text-slate-500">อนุมัติแล้ว</div>
                     <div className="mt-2 text-3xl font-bold text-emerald-600">{summary.approved}</div>
@@ -257,10 +248,6 @@ export default function PurchaseRequestManagementClient({ initialRequests }: Pro
                 <div className="rounded-2xl border border-rose-200 bg-white p-5 shadow-sm">
                     <div className="text-sm font-medium text-slate-500">ไม่อนุมัติ</div>
                     <div className="mt-2 text-3xl font-bold text-rose-600">{summary.rejected}</div>
-                </div>
-                <div className="rounded-2xl border border-sky-200 bg-white p-5 shadow-sm">
-                    <div className="text-sm font-medium text-slate-500">มูลค่ารวมทั้งหมด</div>
-                    <div className="mt-2 text-3xl font-bold text-sky-700">฿{formatCurrency(summary.totalAmount)}</div>
                 </div>
             </div>
 
@@ -312,6 +299,7 @@ export default function PurchaseRequestManagementClient({ initialRequests }: Pro
                                 <th className="px-5 py-3">งานอ้างอิง</th>
                                 <th className="px-5 py-3 text-right">ยอดรวม</th>
                                 <th className="px-5 py-3">สถานะ</th>
+                                <th className="px-5 py-3">Workflow</th>
                                 <th className="px-5 py-3">วันที่สร้าง</th>
                                 <th className="px-5 py-3 text-right">จัดการ</th>
                             </tr>
@@ -319,33 +307,59 @@ export default function PurchaseRequestManagementClient({ initialRequests }: Pro
                         <tbody className="divide-y divide-slate-100 bg-white">
                             {filteredRequests.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="px-5 py-14 text-center text-sm text-slate-500">
+                                    <td colSpan={8} className="px-5 py-14 text-center text-sm text-slate-500">
                                         ไม่พบคำขอซื้อที่ตรงกับเงื่อนไข
                                     </td>
                                 </tr>
                             ) : (
                                 filteredRequests.map((request) => {
                                     const isMutating = isPending && pendingRequestId === request.request_id;
+                                    const currentDisplayStep = getPurchaseRequestDisplayStep(request.status, request.current_step);
+                                    const canEditRequest = request.status === 'pending' && canEditManagedRequests && isPurchaseRequestPurchasingStep(request.current_step);
+                                    const canApproveRequest = request.status === 'pending' && Boolean(request.can_approve);
 
                                     return (
                                         <tr key={request.request_id} className="align-top hover:bg-slate-50/70">
                                             <td className="px-5 py-4">
                                                 <div className="space-y-1">
                                                     <div className="font-semibold text-slate-900">{request.request_number}</div>
-                                                    <div className="max-w-[420px] text-xs leading-6 text-slate-500">
-                                                        {getSummaryLine(request.reason)}
-                                                    </div>
+                                                    <div className="max-w-[420px] text-xs leading-6 text-slate-500">{getSummaryLine(request.reason)}</div>
                                                 </div>
                                             </td>
                                             <td className="px-5 py-4 text-slate-700">{request.tbl_users?.username || '-'}</td>
                                             <td className="px-5 py-4 text-slate-600">{request.reference_job || '-'}</td>
-                                            <td className="px-5 py-4 text-right font-semibold text-emerald-700">
-                                                ฿{formatCurrency(request.amount)}
+                                            <td className="px-5 py-4 text-right font-semibold text-emerald-700">฿{formatCurrency(request.amount)}</td>
+                                            <td className="px-5 py-4">
+                                                <div className="space-y-2">
+                                                    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getProcurementStatusBadgeClass(request.status)}`}>
+                                                        {getProcurementStatusLabel(request.status)}
+                                                    </span>
+                                                    <div className="text-xs text-slate-500">{getCurrentStageDescription(request)}</div>
+                                                </div>
                                             </td>
                                             <td className="px-5 py-4">
-                                                <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getProcurementStatusBadgeClass(request.status)}`}>
-                                                    {getProcurementStatusLabel(request.status)}
-                                                </span>
+                                                <div className="space-y-2">
+                                                    <div className="text-sm font-semibold text-slate-800">{getPurchaseRequestStageLabel(request.status, request.current_step)}</div>
+                                                    <div className="text-xs text-slate-500">ขั้นตอน {currentDisplayStep}/{PURCHASE_REQUEST_WORKFLOW_LABELS.length}</div>
+                                                    <div className="flex max-w-[320px] flex-wrap gap-1">
+                                                        {PURCHASE_REQUEST_WORKFLOW_LABELS.map((label, index) => {
+                                                            const stepNumber = index + 1;
+                                                            const isCompleted = request.status === 'approved' || stepNumber < currentDisplayStep;
+                                                            const isCurrent = request.status !== 'approved' && stepNumber === currentDisplayStep;
+
+                                                            return (
+                                                                <span
+                                                                    key={`${request.request_id}-${label}-${stepNumber}`}
+                                                                    className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+                                                                        isCompleted ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : isCurrent ? 'border-cyan-200 bg-cyan-50 text-cyan-700' : 'border-slate-200 bg-white text-slate-400'
+                                                                    }`}
+                                                                >
+                                                                    {label}
+                                                                </span>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
                                             </td>
                                             <td className="px-5 py-4 text-slate-500">
                                                 {request.created_at ? new Date(request.created_at).toLocaleDateString('th-TH') : '-'}
@@ -361,29 +375,32 @@ export default function PurchaseRequestManagementClient({ initialRequests }: Pro
                                                         พิมพ์
                                                     </Link>
 
-                                                    {request.status === 'pending' && (
+                                                    {canEditRequest && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openEditDialog(request)}
+                                                            disabled={isMutating}
+                                                            className="inline-flex items-center gap-2 rounded-lg border border-amber-200 px-3 py-2 text-xs font-medium text-amber-700 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                                        >
+                                                            <FilePenLine className="h-4 w-4" />
+                                                            แก้ไข
+                                                        </button>
+                                                    )}
+
+                                                    {canApproveRequest && (
                                                         <>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => openEditDialog(request)}
-                                                                disabled={isMutating}
-                                                                className="inline-flex items-center gap-2 rounded-lg border border-amber-200 px-3 py-2 text-xs font-medium text-amber-700 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                                            >
-                                                                <FilePenLine className="h-4 w-4" />
-                                                                แก้ไข
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleApprove(request.request_id)}
+                                                                onClick={() => handleApprove(request)}
                                                                 disabled={isMutating}
                                                                 className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                                                             >
                                                                 {isMutating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                                                                อนุมัติ
+                                                                {getApproveActionLabel(request)}
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => handleReject(request.request_id)}
+                                                                onClick={() => handleReject(request)}
                                                                 disabled={isMutating}
                                                                 className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                                                             >
@@ -415,64 +432,30 @@ export default function PurchaseRequestManagementClient({ initialRequests }: Pro
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div>
                                     <label className="mb-1 block text-sm font-medium text-slate-700">วันที่ขอ</label>
-                                    <input
-                                        type="date"
-                                        value={editRequestDate}
-                                        onChange={(event) => setEditRequestDate(event.target.value)}
-                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-400"
-                                    />
+                                    <input type="date" value={editRequestDate} onChange={(event) => setEditRequestDate(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-400" />
                                 </div>
                                 <div>
                                     <label className="mb-1 block text-sm font-medium text-slate-700">จำนวนเงินรวม</label>
-                                    <input
-                                        type="number"
-                                        min="0.01"
-                                        step="0.01"
-                                        value={editAmount}
-                                        onChange={(event) => setEditAmount(event.target.value)}
-                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-400"
-                                        placeholder="0.00"
-                                    />
+                                    <input type="number" min="0.01" step="0.01" value={editAmount} onChange={(event) => setEditAmount(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-400" placeholder="0.00" />
                                 </div>
                             </div>
 
                             <div>
                                 <label className="mb-1 block text-sm font-medium text-slate-700">อ้างอิงงาน</label>
-                                <input
-                                    type="text"
-                                    value={editReferenceJob}
-                                    onChange={(event) => setEditReferenceJob(event.target.value)}
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-400"
-                                    placeholder="เลขที่งานอ้างอิง (ถ้ามี)"
-                                />
+                                <input type="text" value={editReferenceJob} onChange={(event) => setEditReferenceJob(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-400" placeholder="เลขที่งานอ้างอิง (ถ้ามี)" />
                             </div>
 
                             <div>
                                 <label className="mb-1 block text-sm font-medium text-slate-700">รายละเอียดคำขอซื้อ</label>
-                                <textarea
-                                    value={editReason}
-                                    onChange={(event) => setEditReason(event.target.value)}
-                                    rows={10}
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-400"
-                                />
+                                <textarea value={editReason} onChange={(event) => setEditReason(event.target.value)} rows={10} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-400" />
                             </div>
                         </div>
 
                         <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
-                            <button
-                                type="button"
-                                onClick={closeEditDialog}
-                                disabled={isSavingEdit}
-                                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
+                            <button type="button" onClick={closeEditDialog} disabled={isSavingEdit} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
                                 ยกเลิก
                             </button>
-                            <button
-                                type="button"
-                                onClick={handleSaveEdit}
-                                disabled={isSavingEdit}
-                                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
+                            <button type="button" onClick={handleSaveEdit} disabled={isSavingEdit} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">
                                 {isSavingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                                 บันทึกการแก้ไข
                             </button>

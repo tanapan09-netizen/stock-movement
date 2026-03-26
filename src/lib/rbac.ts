@@ -241,7 +241,10 @@ const SPECIAL_ROUTE_BASELINE_ACCESS: Record<string, BaselineAccessResolver> = {
     return { canReadPage: allowed, canEditPage: allowed };
   },
   '/purchase-request/manage': ({ role }) => {
-    const allowed = isManagerRole(role) || isDepartmentRole(role, 'purchasing');
+    const allowed =
+      isManagerRole(role) ||
+      isDepartmentRole(role, 'purchasing') ||
+      isDepartmentRole(role, 'store');
     return { canReadPage: allowed, canEditPage: allowed };
   },
   '/store-dashboard': ({ role }) => {
@@ -1015,7 +1018,7 @@ export function canViewApprovalRequest(
 
 export function canEditPurchaseRequestRecord(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  _userPermissions: PagePermissionMap,
   options: {
     currentUserId: number;
     requestedBy?: number | null;
@@ -1023,7 +1026,8 @@ export function canEditPurchaseRequestRecord(
 ) {
   return (
     options.requestedBy === options.currentUserId ||
-    canManagePurchaseRequests(role, userPermissions)
+    isManagerRole(role) ||
+    isDepartmentRole(role, 'purchasing')
   );
 }
 

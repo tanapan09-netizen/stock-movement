@@ -4,6 +4,7 @@ import { Lock, Pencil } from 'lucide-react';
 
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { getEffectiveApprovalWorkflowSteps } from '@/lib/purchase-request-workflow';
 import { canViewPurchaseRequestDocument } from '@/lib/rbac';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import PrintButton from './PrintButton';
@@ -102,6 +103,8 @@ function formatRoleLabel(role: string) {
         leader_technician: 'Leader Technician',
         operation: 'Operation',
         leader_operation: 'Leader Operation',
+        store: 'Store',
+        leader_store: 'Leader Store',
         approver: 'Approver',
     };
 
@@ -203,20 +206,16 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
     const parsed = parsePurchaseReason(request.reason);
     const displaySubtotal = parsed.subtotal !== '-' ? parsed.subtotal : `฿${formatCurrency(Number(request.amount || 0))}`;
     const displayNetTotal = parsed.netTotal !== '-' ? parsed.netTotal : `฿${formatCurrency(Number(request.amount || 0))}`;
-    const workflowSteps = (request.workflow?.steps || []).map((step) => ({
+    const effectiveWorkflowSource = request.status === 'pending'
+        ? getEffectiveApprovalWorkflowSteps(request.request_type, request.workflow?.steps || [])
+        : (request.workflow?.steps || []);
+
+    const workflowSteps = effectiveWorkflowSource.map((step) => ({
         stepOrder: step.step_order,
-        approverRole: step.approver_role,
+        approverRole: step.approver_role || 'approver',
     }));
 
-    const fallbackSteps = request.total_steps > 0
-        ? Array.from({ length: request.total_steps }, (_, index) => ({
-            stepOrder: index + 1,
-            approverRole: index === request.total_steps - 1 ? 'approver' : `step_${index + 1}`,
-        }))
-        : [];
-
-    const approvalSteps = workflowSteps.length > 0 ? workflowSteps : fallbackSteps;
-    const roleStamps: RoleStamp[] = approvalSteps.map((step) => {
+    const roleStamps: RoleStamp[] = workflowSteps.map((step) => {
         const matchedLog = [...request.step_logs]
             .reverse()
             .find((log) => log.step_order === step.stepOrder);
