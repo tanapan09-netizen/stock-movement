@@ -3,6 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import LineProvider from "next-auth/providers/line";
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import { resolveAuthenticatedUserId } from '@/lib/server/auth-user';
 
 // Define custom error classes to override the 'code' property
 class UserNotFound extends CredentialsSignin {
@@ -168,8 +169,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 // Map database role and approver status into the user object
                 user.role = lineUser.role;
                 user.is_approver = lineUser.is_approver;
-                user.id = lineUser.user_id ? lineUser.user_id.toString() : `line_${lineUser.id}`;
-                (user as any).is_linked = !!lineUser.user_id;
+                user.name = lineUser.full_name || lineUser.display_name || user.name;
+
+                const resolvedUserId = await resolveAuthenticatedUserId({
+                    id: lineUser.user_id ? lineUser.user_id.toString() : `line_${lineUser.id}`,
+                    name: lineUser.full_name || lineUser.display_name || user.name,
+                    role: lineUser.role,
+                    is_approver: lineUser.is_approver,
+                });
+
+                user.id = resolvedUserId ? resolvedUserId.toString() : `line_${lineUser.id}`;
+                (user as any).is_linked = !!resolvedUserId;
 
                 // Continue sign-in
                 return true;

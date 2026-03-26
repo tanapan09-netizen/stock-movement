@@ -20,6 +20,7 @@ import {
 import { DEFAULT_PERMISSIONS, type RolePermissions } from '@/lib/permissions';
 import { normalizeRole } from '@/lib/roles';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
+import { provisionLineUserLinkByRowId } from '@/lib/server/auth-user';
 
 async function getLineUserAdminContext() {
     const session = await auth();
@@ -71,10 +72,94 @@ export async function getLineUsers() {
             ],
         });
 
-        return { success: true, data: users };
+        const linkedUsers = await prisma.tbl_users.findMany({
+            where: {
+                OR: [
+                    { p_id: { in: users.map((user) => user.user_id).filter((value): value is number => typeof value === 'number') } },
+                    { line_user_id: { in: users.map((user) => user.line_user_id).filter(Boolean) } },
+                ],
+            },
+            select: {
+                p_id: true,
+                username: true,
+                role: true,
+                line_user_id: true,
+            },
+        });
+
+        const linkedById = new Map(linkedUsers.map((user) => [user.p_id, user]));
+        const linkedByLineId = new Map(linkedUsers.map((user) => [user.line_user_id, user]));
+        const data = users.map((user) => ({
+            ...user,
+            linked_user: (typeof user.user_id === 'number' ? linkedById.get(user.user_id) : undefined)
+                || linkedByLineId.get(user.line_user_id)
+                || null,
+        }));
+
+        return { success: true, data };
     } catch (error) {
         console.error('Error fetching LINE users:', error);
         return { success: false, error: 'Failed to fetch LINE users' };
+    }
+}
+
+export async function provisionLineUserAccount(id: number) {
+    try {
+        const authContext = await getLineUserAdminContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        const lineUser = await prisma.tbl_line_users.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                role: true,
+                display_name: true,
+                full_name: true,
+                user_id: true,
+            },
+        });
+
+        if (!lineUser) {
+            return { success: false, error: 'LINE user not found' };
+        }
+
+        if (normalizeRole(lineUser.role) === 'pending') {
+            return { success: false, error: 'กรุณากำหนด role ให้ LINE user ก่อน provision' };
+        }
+
+        const linkedUserId = await provisionLineUserLinkByRowId(id);
+        if (!linkedUserId) {
+            return { success: false, error: 'ไม่สามารถสร้างหรือผูก user ระบบให้ LINE account นี้ได้' };
+        }
+
+        const linkedUser = await prisma.tbl_users.findUnique({
+            where: { p_id: linkedUserId },
+            select: {
+                p_id: true,
+                username: true,
+                role: true,
+                line_user_id: true,
+            },
+        });
+
+        revalidatePath('/settings/line-users');
+
+        await logSystemAction(
+            'UPDATE',
+            'LineUser',
+            id,
+            `Provisioned LINE user ${lineUser.full_name || lineUser.display_name || id} to system user ${linkedUser?.username || linkedUserId}`,
+            (parseInt(authContext.session.user.id as string) || 0),
+            authContext.session.user.name,
+            'unknown'
+        );
+
+        return { success: true, data: linkedUser };
+    } catch (error) {
+        console.error('Error provisioning LINE user account:', error);
+        return { success: false, error: 'Failed to provision LINE user account' };
     }
 }
 

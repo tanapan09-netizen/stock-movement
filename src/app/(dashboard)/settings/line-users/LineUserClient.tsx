@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Trash2, UserCheck, UserX, Plus } from 'lucide-react';
+import { Trash2, UserCheck, UserX, Plus, Link2 } from 'lucide-react';
 import { LINE_USER_ROLE_OPTIONS, partitionLineUsersByAssignment } from '@/lib/line-users';
 import {
     getLineUsers,
@@ -11,6 +11,7 @@ import {
     updateLineUserRole,
     updateLineUserFullName,
     refreshLineUserProfiles,
+    provisionLineUserAccount,
 } from '@/actions/lineUserActions';
 
 interface LineUser {
@@ -24,12 +25,19 @@ interface LineUser {
     is_active: boolean;
     last_interaction: Date | null;
     created_at: Date;
+    linked_user: {
+        p_id: number;
+        username: string;
+        role: string;
+        line_user_id: string | null;
+    } | null;
 }
 
 const TABLE_HEADERS = (
     <tr>
         <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">User</th>
         <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">Department Role</th>
+        <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">System Link</th>
         <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">Approve Limit</th>
         <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">Status</th>
         <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">Last Active</th>
@@ -137,6 +145,20 @@ export default function LineUserClient() {
         }
     };
 
+    const handleProvisionAccount = async (id: number) => {
+        const result = await provisionLineUserAccount(id);
+        if (result.success && result.data) {
+            setUsers((prev) => prev.map((user) => (
+                user.id === id
+                    ? { ...user, linked_user: result.data as LineUser['linked_user'] }
+                    : user
+            )));
+            alert('Provision ระบบให้ LINE account เรียบร้อยแล้ว');
+        } else {
+            alert(result.error || 'Failed to provision account');
+        }
+    };
+
     const { pending: pendingUsers, assigned: assignedUsers } = partitionLineUsersByAssignment(users);
 
     const renderRows = (list: LineUser[]) => (
@@ -188,6 +210,37 @@ export default function LineUserClient() {
                             </option>
                         ))}
                     </select>
+                </td>
+                <td className="p-4">
+                    {user.linked_user ? (
+                        <div className="space-y-1">
+                            <div className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                                <Link2 size={12} />
+                                Linked
+                            </div>
+                            <div className="text-sm font-medium text-gray-800 dark:text-gray-100">{user.linked_user.username}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                User #{user.linked_user.p_id} • {user.linked_user.role}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            <div className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">
+                                Unlinked
+                            </div>
+                            {user.role !== 'pending' ? (
+                                <button
+                                    onClick={() => handleProvisionAccount(user.id)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100"
+                                >
+                                    <Link2 size={13} />
+                                    Provision
+                                </button>
+                            ) : (
+                                <div className="text-xs text-amber-700 dark:text-amber-300">Assign role first</div>
+                            )}
+                        </div>
+                    )}
                 </td>
                 <td className="p-4">
                     <button
@@ -334,7 +387,7 @@ export default function LineUserClient() {
                                         renderRows(assignedUsers)
                                     ) : (
                                         <tr>
-                                            <td colSpan={6} className="p-8 text-center text-gray-500">
+                                            <td colSpan={7} className="p-8 text-center text-gray-500">
                                                 No assigned users yet.
                                             </td>
                                         </tr>
