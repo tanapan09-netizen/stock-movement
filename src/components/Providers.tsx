@@ -8,7 +8,7 @@ import AutoLogout from './auth/AutoLogout';
 export default function Providers({ children }: { children: React.ReactNode }) {
     return (
         <SessionProvider>
-            {/* <AutoLogout /> */}
+            <AutoLogout />
             <ThemeProvider>
                 <ToastProvider>
                     {children}

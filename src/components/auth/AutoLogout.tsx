@@ -1,26 +1,41 @@
 'use client';
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { signOut, useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
 
 export default function AutoLogout() {
     const { data: session } = useSession();
-    const router = useRouter();
-    const timeoutId = useRef<NodeJS.Timeout>(null);
+    const timeoutId = useRef<ReturnType<typeof setTimeout> | null>(null);
     const userRole = (session?.user as { role?: string } | undefined)?.role;
     const shouldAutoLogout = Boolean(session) && userRole !== 'employee';
+    const timeoutRedirectUrl = '/login?reason=timeout';
 
     // 10 minutes in milliseconds
     const TIMEOUT_MS = 10 * 60 * 1000;
 
     const handleLogout = useCallback(async () => {
-        if (shouldAutoLogout && session) {
-            console.log('Use inactive for 10 mins, logging out...');
-            await signOut({ redirect: false });
-            router.push('/login?reason=timeout');
+        if (!shouldAutoLogout || !session) {
+            return;
         }
-    }, [shouldAutoLogout, session, router]);
+
+        if (timeoutId.current) {
+            clearTimeout(timeoutId.current);
+            timeoutId.current = null;
+        }
+
+        console.log('User inactive for 10 mins, logging out...');
+
+        try {
+            const result = await signOut({
+                redirect: false,
+                callbackUrl: timeoutRedirectUrl,
+            });
+
+            window.location.replace(result?.url || timeoutRedirectUrl);
+        } catch {
+            window.location.replace(timeoutRedirectUrl);
+        }
+    }, [shouldAutoLogout, session, timeoutRedirectUrl]);
 
     const resetTimer = useCallback(() => {
         if (timeoutId.current) {
@@ -30,7 +45,7 @@ export default function AutoLogout() {
         if (shouldAutoLogout && session) {
             timeoutId.current = setTimeout(handleLogout, TIMEOUT_MS);
         }
-    }, [shouldAutoLogout, session, handleLogout, TIMEOUT_MS]);
+    }, [TIMEOUT_MS, handleLogout, session, shouldAutoLogout]);
 
     useEffect(() => {
         if (!session) return;
