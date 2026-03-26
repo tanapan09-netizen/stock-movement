@@ -35,6 +35,7 @@ export async function getPartRequests(filters?: {
     status?: string;
     maintenance_id?: number;
     request_type?: string;
+    exclude_request_types?: string[];
 }) {
     try {
         const where: Record<string, unknown> = {};
@@ -46,6 +47,11 @@ export async function getPartRequests(filters?: {
         }
         if (filters?.request_type) {
             where.request_type = filters.request_type;
+        }
+        if (filters?.exclude_request_types?.length) {
+            where.request_type = {
+                notIn: filters.exclude_request_types,
+            };
         }
 
         const requests = await prisma.tbl_part_requests.findMany({

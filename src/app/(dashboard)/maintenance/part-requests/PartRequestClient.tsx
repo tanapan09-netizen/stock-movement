@@ -61,6 +61,13 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
     rejected: { label: 'ไม่อนุมัติ', color: 'bg-red-100 text-red-800', icon: XCircle },
 };
 
+const REQUEST_TYPE_LABELS: Record<string, string> = {
+    standard: 'สั่งซื้อทั่วไป',
+    urgent: 'เร่งด่วน',
+    petty_cash: 'เงินสดย่อย',
+    maintenance_withdrawal: 'เบิกอะไหล่จากสต็อก',
+};
+
 export default function PartRequestClient({
     role,
     permissions,
@@ -93,7 +100,10 @@ export default function PartRequestClient({
     async function loadData() {
         setLoading(true);
         const [reqResult, maintResult] = await Promise.all([
-            getPartRequests({ status: filterStatus }),
+            getPartRequests({
+                status: filterStatus,
+                exclude_request_types: ['maintenance_withdrawal'],
+            }),
             getMaintenanceRequests({ status: ['pending', 'in_progress'] })
 
         ]);
@@ -232,7 +242,7 @@ export default function PartRequestClient({
                         </thead>
                         <tbody className="divide-y dark:divide-slate-700">
                             {requests.length === 0 ? (
-                                <tr><td colSpan={6} className="text-center py-8 text-gray-500">ไม่มีรายการ</td></tr>
+                                <tr><td colSpan={8} className="text-center py-8 text-gray-500">ไม่มีรายการ</td></tr>
                             ) : (
                                 requests.map(req => {
                                     const status = STATUS_CONFIG[req.status] || STATUS_CONFIG.pending;
@@ -264,7 +274,7 @@ export default function PartRequestClient({
                                                     )}
                                                 </div>
                                                 <div className="text-xs text-gray-500">{req.description}</div>
-                                                <div className="text-[10px] text-gray-400">{req.request_type === 'petty_cash' ? 'เงินสดย่อย' : 'สั่งซื้อทั่วไป'}</div>
+                                                <div className="text-[10px] text-gray-400">{REQUEST_TYPE_LABELS[req.request_type || 'standard'] || 'สั่งซื้อทั่วไป'}</div>
                                             </td>
                                             <td className="px-4 py-3 text-sm font-mono text-blue-600">{req.request_number || '-'}</td>
                                             <td className="px-4 py-3">{req.quantity}</td>
