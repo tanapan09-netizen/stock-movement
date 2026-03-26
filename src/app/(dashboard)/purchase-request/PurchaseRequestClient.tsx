@@ -343,7 +343,7 @@ ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอ�
 
                         <div className="border border-gray-200 dark:border-slate-600 rounded-xl overflow-hidden">
                             <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left">
+                                <table className="w-full table-auto text-sm text-left [&_th.w-12]:w-auto [&_th.w-12]:whitespace-nowrap [&_th.w-28]:min-w-[6rem] [&_th.w-28]:w-auto [&_th.w-28]:whitespace-nowrap [&_th.w-36]:min-w-[8rem] [&_th.w-36]:w-auto [&_th.w-36]:whitespace-nowrap">
                                     <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-slate-700 dark:text-gray-300 border-b border-gray-200 dark:border-slate-600">
                                         <tr>
                                             <th className="px-3 py-3 w-12 text-center">ลำดับ</th>
@@ -387,39 +387,39 @@ ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอ�
                                                         />
                                                     )}
                                                 </td>
-                                                <td className="px-3 py-3">
+                                                <td className="px-3 py-3 w-[1%] align-top">
                                                     <input
                                                         type="number"
                                                         min="1"
                                                         value={item.quantity || ''}
                                                         onChange={(e) => updateItem(item.id, 'quantity', Number(e.target.value))}
-                                                        className="w-full bg-transparent border-0 border-b border-gray-300 dark:border-slate-600 focus:ring-0 px-1 py-1 text-sm text-right outline-none"
+                                                        className="min-w-[6.5rem] w-full bg-transparent border-0 border-b border-gray-300 dark:border-slate-600 focus:ring-0 px-1 py-1 text-sm text-right outline-none"
                                                         required
                                                     />
                                                 </td>
-                                                <td className="px-3 py-3">
+                                                <td className="px-3 py-3 w-[1%] align-top">
                                                     <input
                                                         type="text"
                                                         value={item.unit}
                                                         onChange={(e) => updateItem(item.id, 'unit', e.target.value)}
-                                                        className="w-full bg-transparent border-0 border-b border-gray-300 dark:border-slate-600 focus:ring-0 px-1 py-1 text-sm text-center outline-none"
+                                                        className="min-w-[6rem] w-full bg-transparent border-0 border-b border-gray-300 dark:border-slate-600 focus:ring-0 px-1 py-1 text-sm text-center outline-none"
                                                         placeholder="ชิ้น"
                                                         required
                                                     />
                                                 </td>
-                                                <td className="px-3 py-3">
+                                                <td className="px-3 py-3 w-[1%] align-top">
                                                     <input
                                                         type="number"
                                                         min="0"
                                                         step="0.01"
                                                         value={item.pricePerUnit === 0 ? '' : item.pricePerUnit}
                                                         onChange={(e) => updateItem(item.id, 'pricePerUnit', Number(e.target.value))}
-                                                        className="w-full bg-transparent border-0 border-b border-gray-300 dark:border-slate-600 focus:ring-0 px-1 py-1 text-sm text-right outline-none"
+                                                        className="min-w-[8rem] w-full bg-transparent border-0 border-b border-gray-300 dark:border-slate-600 focus:ring-0 px-1 py-1 text-sm text-right outline-none"
                                                         placeholder="0.00"
                                                         required
                                                     />
                                                 </td>
-                                                <td className="px-3 py-3 text-right font-medium text-emerald-700 dark:text-emerald-400">
+                                                <td className="px-3 py-3 w-[1%] whitespace-nowrap text-right font-medium text-emerald-700 dark:text-emerald-400">
                                                     {formatCurrency((item.quantity || 0) * (item.pricePerUnit || 0))}
                                                 </td>
                                                 <td className="px-3 py-3 text-center">
@@ -638,7 +638,7 @@ ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอ�
 
                             <div className="mb-6">
                                 <h3 className="mb-3 text-sm font-bold uppercase text-gray-500">รายการสินค้า</h3>
-                                <table className="w-full text-sm">
+                                <table className="w-full table-auto text-sm [&_th.w-12]:w-auto [&_th.w-12]:whitespace-nowrap [&_th.w-24]:min-w-[6rem] [&_th.w-24]:w-auto [&_th.w-24]:whitespace-nowrap [&_th.w-32]:min-w-[8rem] [&_th.w-32]:w-auto [&_th.w-32]:whitespace-nowrap">
                                     <thead>
                                         <tr className="border-b-2 border-black">
                                             <th className="py-2 text-left w-12">#</th>
@@ -659,10 +659,10 @@ ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอ�
                                                         <div className="mt-1 break-all text-xs text-blue-700">{item.productLink.trim()}</div>
                                                     )}
                                                 </td>
-                                                <td className="py-3 text-right">{item.quantity || 0}</td>
-                                                <td className="py-3">{item.unit || '-'}</td>
-                                                <td className="py-3 text-right">{formatCurrency(item.pricePerUnit || 0)}</td>
-                                                <td className="py-3 text-right font-medium">{formatCurrency((item.quantity || 0) * (item.pricePerUnit || 0))}</td>
+                                                <td className="py-3 whitespace-nowrap text-right">{item.quantity || 0}</td>
+                                                <td className="py-3 whitespace-nowrap">{item.unit || '-'}</td>
+                                                <td className="py-3 whitespace-nowrap text-right">{formatCurrency(item.pricePerUnit || 0)}</td>
+                                                <td className="py-3 whitespace-nowrap text-right font-medium">{formatCurrency((item.quantity || 0) * (item.pricePerUnit || 0))}</td>
                                             </tr>
                                         ))}
                                     </tbody>

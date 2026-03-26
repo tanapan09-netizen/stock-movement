@@ -18,6 +18,7 @@ import {
 } from '@/lib/notifications/lineMessaging';
 import { COMMON_ACTION_MESSAGES } from '@/lib/action-messages';
 import { validateData, createApprovalRequestSchema } from '@/lib/validation';
+import { resolveAuthenticatedUserId } from '@/lib/server/auth-user';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 type ApprovalAction = 'pending' | 'approved' | 'rejected';
@@ -115,6 +116,8 @@ function getAppBaseUrl(): string {
     return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 }
 
+const APPROVAL_USER_LINK_ERROR = 'บัญชีผู้ใช้นี้ยังไม่ได้ผูกกับข้อมูลพนักงานในระบบ กรุณาติดต่อผู้ดูแลระบบ';
+
 async function sendApprovalRecipientsNotification(
     request: ApprovalNotificationRequest,
     status: 'approved' | 'rejected'
@@ -199,7 +202,10 @@ export async function createApprovalRequest(data: CreateApprovalRequestInput) {
             return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
         }
 
-        const userId = parseInt(session.user.id as string) || 0;
+        const userId = await resolveAuthenticatedUserId(session.user);
+        if (!userId) {
+            return { success: false, error: APPROVAL_USER_LINK_ERROR };
+        }
 
         // Ensure request number is unique
         const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -292,7 +298,7 @@ export async function getApprovalRequests() {
             return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
         }
 
-        const userId = parseInt(session.user.id as string) || 0;
+        const userId = await resolveAuthenticatedUserId(session.user);
         const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
 
         let whereClause: Prisma.tbl_approval_requestsWhereInput = {};
@@ -302,6 +308,9 @@ export async function getApprovalRequests() {
             permissionContext.permissions,
             permissionContext.isApprover,
         )) {
+            if (!userId) {
+                return { success: false, error: APPROVAL_USER_LINK_ERROR };
+            }
             whereClause = { requested_by: userId };
         } else if (!canAccessDashboardPage(
             permissionContext.role,
@@ -309,6 +318,9 @@ export async function getApprovalRequests() {
             '/approvals/manage',
             { isApprover: permissionContext.isApprover },
         )) {
+            if (!userId) {
+                return { success: false, error: APPROVAL_USER_LINK_ERROR };
+            }
             whereClause = {
                 OR: [
                     { requested_by: userId },
@@ -341,7 +353,7 @@ export async function getApprovalRequests() {
                 permissionContext.role,
                 permissionContext.permissions,
                 {
-                    currentUserId: userId,
+                    currentUserId: userId ?? -1,
                     requestType: req.request_type,
                     workflowStep: currentStep,
                     isApprover: permissionContext.isApprover,
@@ -368,7 +380,10 @@ export async function updatePurchaseRequest(data: UpdatePurchaseRequestInput) {
             return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
         }
 
-        const userId = parseInt(session.user.id as string) || 0;
+        const userId = await resolveAuthenticatedUserId(session.user);
+        if (!userId) {
+            return { success: false, error: APPROVAL_USER_LINK_ERROR };
+        }
         const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
 
         const existing = await prisma.tbl_approval_requests.findUnique({
@@ -442,7 +457,10 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
             return { success: false, error: COMMON_ACTION_MESSAGES.unauthorized };
         }
 
-        const userId = parseInt(session.user.id as string) || 0;
+        const userId = await resolveAuthenticatedUserId(session.user);
+        if (!userId) {
+            return { success: false, error: APPROVAL_USER_LINK_ERROR };
+        }
         const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
 
         const currentRequest = await prisma.tbl_approval_requests.findUnique({

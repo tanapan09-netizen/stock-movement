@@ -2,6 +2,7 @@ import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
 import { getApprovalRequests } from '@/actions/approvalActions';
 import { getMaintenanceRequests } from '@/actions/maintenanceActions';
+import { resolveAuthenticatedUserId } from '@/lib/server/auth-user';
 import PurchaseRequestClient from './PurchaseRequestClient';
 
 interface MaintenanceRequestStatusLike {
@@ -26,14 +27,14 @@ export default async function PurchaseRequestPage(props: { searchParams?: Promis
 
     const approvalsRes = await getApprovalRequests();
     const maintenanceRes = await getMaintenanceRequests();
-    const currentUserId = parseInt(session.user.id as string) || 0;
+    const currentUserId = await resolveAuthenticatedUserId(session.user);
     const searchParams = await props.searchParams;
     const initialEditRequestId = searchParams?.edit ? Number(searchParams.edit) : null;
 
     const purchaseRequests = (approvalsRes.success && approvalsRes.data)
         ? approvalsRes.data.filter((item: { request_type?: string | null; requested_by?: number | null; tbl_users?: { p_id?: number | null } | null }) => {
             const ownerId = item.requested_by || item.tbl_users?.p_id || 0;
-            return item.request_type === 'purchase' && ownerId === currentUserId;
+            return item.request_type === 'purchase' && ownerId === (currentUserId ?? 0);
         })
         : [];
 
