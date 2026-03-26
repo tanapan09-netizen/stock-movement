@@ -224,6 +224,17 @@ export async function updatePartRequestStatus(
                 maintenance_id: true,
                 request_type: true,
                 quotation_link: true,
+                tbl_maintenance_requests: {
+                    select: {
+                        request_number: true,
+                        tbl_rooms: {
+                            select: {
+                                room_code: true,
+                                room_name: true,
+                            },
+                        },
+                    },
+                },
             },
         });
 
@@ -277,7 +288,10 @@ export async function updatePartRequestStatus(
         //Send status change notification (non-blocking)
         if (currentRequest && oldStatus !== status) {
             try {
-                const { notifyStatusChange } = await import('@/lib/notifications/notificationManager');
+                const {
+                    notifyMaintenanceWithdrawalRequesterStatusChange,
+                    notifyStatusChange,
+                } = await import('@/lib/notifications/notificationManager');
                 await notifyStatusChange(
                     {
                         item_name: currentRequest.item_name,
@@ -286,6 +300,22 @@ export async function updatePartRequestStatus(
                     oldStatus,
                     status
                 );
+
+                if (
+                    currentRequest.request_type === 'maintenance_withdrawal' &&
+                    (status === 'approved' || status === 'rejected')
+                ) {
+                    await notifyMaintenanceWithdrawalRequesterStatusChange({
+                        item_name: currentRequest.item_name,
+                        quantity: currentRequest.quantity,
+                        requested_by: currentRequest.requested_by,
+                        status,
+                        decided_by: authContext.session.user.name || 'System',
+                        maintenance_request_number: currentRequest.tbl_maintenance_requests?.request_number || null,
+                        room_code: currentRequest.tbl_maintenance_requests?.tbl_rooms?.room_code || null,
+                        room_name: currentRequest.tbl_maintenance_requests?.tbl_rooms?.room_name || null,
+                    });
+                }
             } catch (notificationError) {
                 console.error('[Part Request] Status change notification failed:', notificationError);
             }

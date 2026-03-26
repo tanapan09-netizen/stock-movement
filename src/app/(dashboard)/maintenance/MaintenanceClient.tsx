@@ -256,6 +256,7 @@ const ALLOWED_NEW_MAINTENANCE_ROLES = new Set([
     'manager',
     'employee',
 ]);
+const normalizePersonName = (value?: string | null) => (value || '').trim().toLowerCase();
 const FALLBACK_TECHNICIAN_TARGET_ROLE_OPTION = {
     value: 'technician',
     label: 'Technician (ช่างซ่อมบำรุง)',
@@ -308,6 +309,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const [filterStartDate, setFilterStartDate] = useState('');
     const [filterEndDate, setFilterEndDate] = useState('');
     const [showCompleted, setShowCompleted] = useState(false);
+    const [assignedToMeOnly, setAssignedToMeOnly] = useState(false);
+    const [urgentOnly, setUrgentOnly] = useState(false);
     const [locationMode, setLocationMode] = useState<'location' | 'vehicle'>('location');
 
     const [assetSearchQuery, setAssetSearchQuery] = useState('');
@@ -1278,6 +1281,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         }
     }
 
+    const currentUserName = session?.user?.name || '';
+    const normalizedCurrentUserName = normalizePersonName(currentUserName);
     const filteredRequests = requests.filter(req => {
         // Handle search
         if (searchTerm) {
@@ -1285,7 +1290,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             const matchesSearch = 
                 req.title.toLowerCase().includes(search) ||
                 req.request_number.toLowerCase().includes(search) ||
-                req.tbl_rooms.room_name.toLowerCase().includes(search);
+                req.tbl_rooms.room_name.toLowerCase().includes(search) ||
+                req.tbl_rooms.room_code.toLowerCase().includes(search) ||
+                (req.reported_by || '').toLowerCase().includes(search) ||
+                (req.assigned_to || '').toLowerCase().includes(search);
             if (!matchesSearch) return false;
         }
 
@@ -1300,8 +1308,51 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             }
         }
 
+        if (assignedToMeOnly && normalizedCurrentUserName) {
+            const normalizedAssignedTo = normalizePersonName(req.assigned_to);
+            if (normalizedAssignedTo !== normalizedCurrentUserName) {
+                return false;
+            }
+        }
+
+        if (urgentOnly && req.priority !== 'urgent') {
+            return false;
+        }
+
         return true;
     });
+
+    const hasActiveRequestFilters = (
+        filterStatus !== 'all'
+        || filterRoom !== null
+        || Boolean(filterStartDate)
+        || Boolean(filterEndDate)
+        || Boolean(searchTerm.trim())
+        || showCompleted
+        || assignedToMeOnly
+        || urgentOnly
+    );
+
+    const clearAllRequestFilters = () => {
+        setFilterStatus('all');
+        setFilterRoom(null);
+        setFilterStartDate('');
+        setFilterEndDate('');
+        setShowCompleted(false);
+        setAssignedToMeOnly(false);
+        setUrgentOnly(false);
+        setSearchTerm('');
+    };
+
+    const summaryCards = [
+        { key: 'all', label: 'ทั้งหมด', value: summary.total, className: 'bg-white dark:bg-slate-800 text-gray-900 dark:text-white', accent: 'text-gray-900 dark:text-white', helper: 'ทุกใบงาน', status: 'all' },
+        { key: 'pending', label: 'รอเรื่อง', value: summary.pending, className: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700', accent: 'text-yellow-600', helper: 'ยังไม่เริ่มดำเนินการ', status: 'pending' },
+        { key: 'approved', label: 'แจ้งเรื่องต่อ', value: summary.approved, className: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700', accent: 'text-orange-600', helper: 'รอเริ่มงาน', status: 'approved' },
+        { key: 'in_progress', label: 'ดำเนินการ', value: summary.in_progress, className: 'bg-blue-50 dark:bg-blue-900/20 text-blue-700', accent: 'text-blue-600', helper: 'กำลังซ่อม', status: 'in_progress' },
+        { key: 'completed', label: 'เสร็จสมบูรณ์', value: summary.completed, className: 'bg-green-50 dark:bg-green-900/20 text-green-700', accent: 'text-green-600', helper: 'ปิดงานแล้ว', status: 'completed' },
+        { key: 'confirmed', label: 'รอตรวจสอบ', value: summary.pending_verification || 0, className: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700', accent: 'text-orange-600', helper: 'WH-03 / รอปิดงาน', status: 'confirmed' },
+        { key: 'cost', label: 'ค่าใช้จ่ายรวม', value: `฿${summary.total_cost.toLocaleString()}`, className: 'bg-purple-50 dark:bg-purple-900/20 text-purple-700', accent: 'text-purple-600', helper: 'รวมทุกใบงาน', status: null },
+    ] as const;
 
     const handleViewRequest = (request: MaintenanceRequestItem) => {
         openDetailModal(request);
@@ -1379,39 +1430,68 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-                <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
-                    <div className="text-2xl font-bold text-gray-900 dark:text-white">{summary.total}</div>
-                    <div className="text-gray-600 dark:text-gray-400 text-sm">ทั้งหมด</div>
-                </div>
-                <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-4">
-                    <div className="text-2xl font-bold text-yellow-600">{summary.pending}</div>
-                    <div className="text-yellow-600 text-sm">รอเรื่อง</div>
-                </div>
-                <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-4">
-                    <div className="text-2xl font-bold text-orange-600">{summary.approved}</div>
-                    <div className="text-orange-600 text-sm">แจ้งเรื่องต่อ</div>
-                </div>
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4">
-                    <div className="text-2xl font-bold text-blue-600">{summary.in_progress}</div>
-                    <div className="text-blue-600 text-sm">ดำเนินการ</div>
-                </div>
-                <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4">
-                    <div className="text-2xl font-bold text-green-600">{summary.completed}</div>
-                    <div className="text-green-600 text-sm">เสร็จสมบูรณ์</div>
-                </div>
-                <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-4">
-                    <div className="text-2xl font-bold text-orange-600">{summary.pending_verification || 0}</div>
-                    <div className="text-orange-600 text-sm">รอตรวจสอบ (WH-03)</div>
-                </div>
-                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-4">
-                    <div className="text-2xl font-bold text-purple-600">฿{summary.total_cost.toLocaleString()}</div>
-                    <div className="text-purple-600 text-sm">ค่าใช้จ่ายรวม</div>
-                </div>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-7">
+                {summaryCards.map((card) => {
+                    const isSelected = card.status !== null && filterStatus === card.status;
+                    const isInteractive = card.status !== null;
+
+                    return (
+                        <button
+                            key={card.key}
+                            type="button"
+                            onClick={() => {
+                                if (!card.status) return;
+                                setFilterStatus((prev) => (prev === card.status ? 'all' : card.status));
+                            }}
+                            className={`${card.className} rounded-xl p-4 shadow-sm text-left transition ${isInteractive ? 'hover:-translate-y-0.5 hover:shadow-md' : 'cursor-default'} ${isSelected ? 'ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-slate-900' : ''}`}
+                        >
+                            <div className={`text-2xl font-bold ${card.accent}`}>{card.value}</div>
+                            <div className="text-sm font-medium">{card.label}</div>
+                            <div className="mt-1 text-xs opacity-80">{card.helper}</div>
+                        </button>
+                    );
+                })}
             </div>
 
             {/* Filters */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm flex flex-wrap gap-4 items-center">
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setAssignedToMeOnly((prev) => !prev)}
+                        className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${assignedToMeOnly ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200'}`}
+                    >
+                        งานของฉัน
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setUrgentOnly((prev) => !prev)}
+                        className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${urgentOnly ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-200'}`}
+                    >
+                        เฉพาะงานด่วน
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setShowCompleted((prev) => !prev)}
+                        className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${showCompleted ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-200'}`}
+                    >
+                        แสดงงานที่เสร็จแล้ว
+                    </button>
+                    {hasActiveRequestFilters ? (
+                        <button
+                            type="button"
+                            onClick={clearAllRequestFilters}
+                            className="rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                        >
+                            ล้างตัวกรองทั้งหมด
+                        </button>
+                    ) : null}
+                    <span className="ml-auto text-sm text-gray-500 dark:text-gray-400">
+                        แสดง {filteredRequests.length} จาก {requests.length} ใบงาน
+                    </span>
+                </div>
+
+                <div className="flex flex-wrap gap-4 items-center">
                 <div className="flex items-center gap-2">
                     <Filter size={18} className="text-gray-500" />
                     <select
@@ -1444,18 +1524,6 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     ))}
                 </select>
 
-                <div className="flex items-center gap-2 pl-4 border-l border-gray-200 dark:border-slate-700">
-                    <label className="inline-flex items-center cursor-pointer group">
-                        <input 
-                            type="checkbox" 
-                            className="sr-only peer"
-                            checked={showCompleted}
-                            onChange={(e) => setShowCompleted(e.target.checked)}
-                        />
-                        <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 shadow-inner"></div>
-                        <span className="ms-3 text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-blue-600 transition-colors">แสดงงานที่เสร็จแล้ว</span>
-                    </label>
-                </div>
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-gray-600 dark:text-gray-300">ตั้งแต่:</span>
                     <input
@@ -1500,6 +1568,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                         className="w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600"
                         aria-label="ค้นหา"
                     />
+                </div>
                 </div>
             </div>
 

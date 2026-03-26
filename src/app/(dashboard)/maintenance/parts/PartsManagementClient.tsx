@@ -125,6 +125,7 @@ export default function PartsManagementClient({
   const [selectedPart, setSelectedPart] = useState<MaintenancePart | null>(null);
   const [returnQty, setReturnQty] = useState(0);
   const [searchText, setSearchText] = useState('');
+  const [partStatusFilter, setPartStatusFilter] = useState('all');
   const [withdrawForm, setWithdrawForm] = useState({
     request_id: 0,
     p_id: '',
@@ -167,7 +168,27 @@ export default function PartsManagementClient({
     ? 'เบิกอะไหล่จาก WH-01 เพื่อจ่ายให้ใบงานซ่อมโดยตรง'
     : 'ส่งคำขอไปที่ role store ก่อน เพื่อยืนยันการเบิกและพร้อมส่งมอบให้ช่าง';
   const withdrawSubmitLabel = canDirectWithdraw ? 'ยืนยันเบิก' : 'ส่งคำขอ';
-  const recentPartRequests = maintenancePartRequests.slice(0, 8);
+  const normalizedSearchText = searchText.trim().toLowerCase();
+
+  const matchesPartRequestSearch = (request: PartRequestItem) => {
+    if (!normalizedSearchText) return true;
+
+    return [
+      request.item_name,
+      request.request_number,
+      request.requested_by,
+      request.description,
+      request.tbl_maintenance_requests?.request_number,
+      request.tbl_maintenance_requests?.title,
+      request.tbl_maintenance_requests?.tbl_rooms?.room_code,
+      request.tbl_maintenance_requests?.tbl_rooms?.room_name,
+    ].some((value) => (value || '').toLowerCase().includes(normalizedSearchText));
+  };
+
+  const filteredPendingPartRequests = pendingPartRequests.filter(matchesPartRequestSearch);
+  const filteredRecentPartRequests = maintenancePartRequests
+    .filter(matchesPartRequestSearch)
+    .slice(0, 8);
 
   async function handleWithdraw(e: React.FormEvent) {
     e.preventDefault();
@@ -273,14 +294,40 @@ export default function PartsManagementClient({
   }
 
   const filteredParts = withdrawnParts.filter((part) => {
-    if (!searchText) return true;
-    const search = searchText.toLowerCase();
-    return (
-      part.product?.p_name?.toLowerCase().includes(search) ||
-      part.request?.request_number?.toLowerCase().includes(search) ||
-      part.request?.title?.toLowerCase().includes(search)
-    );
+    const matchesSearch = !normalizedSearchText || [
+      part.product?.p_name,
+      part.p_id,
+      part.withdrawn_by,
+      part.request?.request_number,
+      part.request?.title,
+      part.request?.tbl_rooms?.room_code,
+      part.request?.tbl_rooms?.room_name,
+    ].some((value) => (value || '').toLowerCase().includes(normalizedSearchText));
+
+    const matchesStatus = partStatusFilter === 'all' || part.status === partStatusFilter;
+
+    return matchesSearch && matchesStatus;
   });
+
+  const statusCounts = withdrawnParts.reduce<Record<string, number>>((acc, part) => {
+    acc[part.status] = (acc[part.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  const partRequestSummary = {
+    pending: pendingPartRequests.length,
+    approved: maintenancePartRequests.filter((item) => item.status === 'approved').length,
+    rejected: maintenancePartRequests.filter((item) => item.status === 'rejected').length,
+    pendingVerification: statusCounts.pending_verification || 0,
+    withdrawn: statusCounts.withdrawn || 0,
+  };
+
+  const hasActivePartsFilters = Boolean(normalizedSearchText) || partStatusFilter !== 'all';
+
+  const clearPartsFilters = () => {
+    setSearchText('');
+    setPartStatusFilter('all');
+  };
 
   const filteredPartGroups = Object.values(
     filteredParts.reduce<
@@ -372,17 +419,61 @@ export default function PartsManagementClient({
         </div>
       </div>
 
-      <div className="rounded-xl bg-white p-4 shadow-sm dark:bg-slate-800">
-        <div className="relative">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="ค้นหาอะไหล่, เลขที่แจ้งซ่อม, ชื่อใบงาน..."
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            className="w-full rounded-lg border py-2 pl-10 pr-4 dark:border-slate-600 dark:bg-slate-700"
-            aria-label="ค้นหา"
-          />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {[
+          { label: 'รอคลังยืนยัน', value: partRequestSummary.pending, className: 'bg-amber-50 text-amber-700' },
+          { label: 'พร้อมจ่ายแล้ว', value: partRequestSummary.approved, className: 'bg-emerald-50 text-emerald-700' },
+          { label: 'ไม่พร้อมจ่าย', value: partRequestSummary.rejected, className: 'bg-rose-50 text-rose-700' },
+          { label: 'รอตรวจนับ', value: partRequestSummary.pendingVerification, className: 'bg-blue-50 text-blue-700' },
+          { label: 'ค้างคืน/รอใช้จริง', value: partRequestSummary.withdrawn, className: 'bg-slate-100 text-slate-700' },
+        ].map((item) => (
+          <div key={item.label} className={`rounded-xl p-4 shadow-sm ${item.className}`}>
+            <div className="text-2xl font-bold">{item.value}</div>
+            <div className="text-sm">{item.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-xl bg-white p-4 shadow-sm dark:bg-slate-800 space-y-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative flex-1">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="ค้นหาอะไหล่, เลขที่แจ้งซ่อม, ชื่อใบงาน, ผู้เบิก..."
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className="w-full rounded-lg border py-2 pl-10 pr-4 dark:border-slate-600 dark:bg-slate-700"
+              aria-label="ค้นหา"
+            />
+          </div>
+          <select
+            value={partStatusFilter}
+            onChange={(e) => setPartStatusFilter(e.target.value)}
+            className="rounded-lg border px-3 py-2 dark:border-slate-600 dark:bg-slate-700"
+            aria-label="กรองสถานะอะไหล่"
+          >
+            <option value="all">ทุกสถานะอะไหล่</option>
+            <option value="withdrawn">เบิกแล้ว</option>
+            <option value="used">ใช้งานแล้ว</option>
+            <option value="pending_verification">รอตรวจนับ</option>
+            <option value="verified">ตรวจแล้ว</option>
+            <option value="verification_failed">ตรวจนับไม่ตรง</option>
+            <option value="completed">ตัดสต็อกแล้ว</option>
+            <option value="returned">คืนแล้ว</option>
+          </select>
+          {hasActivePartsFilters ? (
+            <button
+              type="button"
+              onClick={clearPartsFilters}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              ล้างตัวกรอง
+            </button>
+          ) : null}
+        </div>
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          คิวรอคลัง {filteredPendingPartRequests.length} รายการ • ประวัติล่าสุด {filteredRecentPartRequests.length} รายการ • อะไหล่ในใบงาน {filteredParts.length} รายการ
         </div>
       </div>
 
@@ -397,11 +488,11 @@ export default function PartsManagementClient({
               ให้คลังตรวจสอบสต็อกและตอบกลับว่า "พร้อมจ่าย" หรือ "ไม่พร้อมจ่าย" ก่อนส่งมอบให้ช่าง
             </p>
           </div>
-          <span className="text-sm text-gray-500">{pendingPartRequests.length} รายการ</span>
+          <span className="text-sm text-gray-500">{filteredPendingPartRequests.length} รายการ</span>
         </div>
         {loading ? (
           <div className="p-8 text-center text-gray-500">กำลังโหลด...</div>
-        ) : pendingPartRequests.length === 0 ? (
+        ) : filteredPendingPartRequests.length === 0 ? (
           <div className="p-8 text-center text-gray-500">ไม่มีคำขอเบิกอะไหล่ที่รอคลังยืนยัน</div>
         ) : (
           <div className="overflow-x-auto">
@@ -429,7 +520,7 @@ export default function PartsManagementClient({
                 </tr>
               </thead>
               <tbody className="divide-y dark:divide-slate-700">
-                {pendingPartRequests.map((request) => (
+                {filteredPendingPartRequests.map((request) => (
                   <tr key={request.request_id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
                     <td className="px-4 py-3">
                       <div className="font-medium">{request.item_name}</div>
@@ -504,15 +595,15 @@ export default function PartsManagementClient({
               ดูย้อนหลังได้ว่าแต่ละคำขอถูกยืนยันจ่ายแล้วหรือถูกปฏิเสธ
             </p>
           </div>
-          <span className="text-sm text-gray-500">{recentPartRequests.length} รายการล่าสุด</span>
+          <span className="text-sm text-gray-500">{filteredRecentPartRequests.length} รายการล่าสุด</span>
         </div>
         {loading ? (
           <div className="p-8 text-center text-gray-500">กำลังโหลด...</div>
-        ) : recentPartRequests.length === 0 ? (
+        ) : filteredRecentPartRequests.length === 0 ? (
           <div className="p-8 text-center text-gray-500">ยังไม่มีประวัติคำขอเบิกอะไหล่</div>
         ) : (
           <div className="divide-y dark:divide-slate-700">
-            {recentPartRequests.map((request) => (
+            {filteredRecentPartRequests.map((request) => (
               <div
                 key={`history-${request.request_id}`}
                 className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"

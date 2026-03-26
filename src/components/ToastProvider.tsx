@@ -84,10 +84,47 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
     const getStyles = (type: ToastType) => {
         switch (type) {
-            case 'success': return 'bg-gradient-to-r from-green-500 to-emerald-600 text-white';
-            case 'error': return 'bg-gradient-to-r from-red-500 to-rose-600 text-white';
-            case 'warning': return 'bg-gradient-to-r from-amber-500 to-orange-500 text-white';
-            default: return 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white';
+            case 'success':
+                return {
+                    frame: 'border-emerald-200 bg-white/95 text-emerald-950',
+                    iconWrap: 'bg-emerald-100 text-emerald-700',
+                    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                    progress: 'from-emerald-500 to-green-500',
+                };
+            case 'error':
+                return {
+                    frame: 'border-rose-200 bg-white/95 text-rose-950',
+                    iconWrap: 'bg-rose-100 text-rose-700',
+                    badge: 'bg-rose-50 text-rose-700 border-rose-200',
+                    progress: 'from-rose-500 to-red-500',
+                };
+            case 'warning':
+                return {
+                    frame: 'border-amber-200 bg-white/95 text-amber-950',
+                    iconWrap: 'bg-amber-100 text-amber-700',
+                    badge: 'bg-amber-50 text-amber-700 border-amber-200',
+                    progress: 'from-amber-500 to-orange-500',
+                };
+            default:
+                return {
+                    frame: 'border-blue-200 bg-white/95 text-blue-950',
+                    iconWrap: 'bg-blue-100 text-blue-700',
+                    badge: 'bg-blue-50 text-blue-700 border-blue-200',
+                    progress: 'from-blue-500 to-indigo-500',
+                };
+        }
+    };
+
+    const getLabel = (type: ToastType) => {
+        switch (type) {
+            case 'success':
+                return 'สำเร็จ';
+            case 'error':
+                return 'ข้อผิดพลาด';
+            case 'warning':
+                return 'แจ้งเตือน';
+            default:
+                return 'ข้อมูล';
         }
     };
 
@@ -105,35 +142,49 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
             {/* Toast Container - Fixed at top right */}
             <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 pointer-events-none">
-                {toasts.map(toast => (
-                    <div
-                        key={toast.id}
-                        className={`
-                            ${getStyles(toast.type)} 
-                            pointer-events-auto
-                            px-4 py-3.5 rounded-2xl shadow-2xl 
-                            flex items-center gap-3 
-                            min-w-[320px] max-w-md 
-                            animate-toast-in
-                            backdrop-blur-sm
-                        `}
-                        style={{
-                            boxShadow: '0 10px 40px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.1) inset',
-                        }}
-                    >
-                        <div className="flex-shrink-0">
-                            {getIcon(toast.type)}
-                        </div>
-                        <span className="flex-1 text-sm font-semibold drop-shadow-sm">{toast.message}</span>
-                        <button
-                            onClick={() => removeToast(toast.id)}
-                            className="flex-shrink-0 p-1.5 hover:bg-white/20 rounded-full transition-all duration-200"
-                            title="ปิด"
+                {toasts.map(toast => {
+                    const styles = getStyles(toast.type);
+                    return (
+                        <div
+                            key={toast.id}
+                            className={`
+                                pointer-events-auto relative overflow-hidden
+                                min-w-[320px] max-w-md rounded-2xl border shadow-2xl
+                                backdrop-blur-md animate-toast-in
+                                ${styles.frame}
+                            `}
+                            style={{
+                                boxShadow: '0 18px 50px rgba(15,23,42,0.18)',
+                            }}
                         >
-                            <X className="w-4 h-4" />
-                        </button>
-                    </div>
-                ))}
+                            <div className="flex items-start gap-3 px-4 py-3.5">
+                                <div className={`mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${styles.iconWrap}`}>
+                                    {getIcon(toast.type)}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="mb-1 flex items-center gap-2">
+                                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold tracking-wide ${styles.badge}`}>
+                                            {getLabel(toast.type)}
+                                        </span>
+                                    </div>
+                                    <p className="text-sm font-semibold leading-5 text-slate-900">{toast.message}</p>
+                                </div>
+                                <button
+                                    onClick={() => removeToast(toast.id)}
+                                    className="flex-shrink-0 rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                                    title="ปิด"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                            <div className="px-4 pb-3">
+                                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                    <div className={`h-full animate-toast-progress rounded-full bg-gradient-to-r ${styles.progress}`} />
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
 
             {/* Confirm Modal */}
@@ -207,6 +258,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 }
                 .animate-toast-in {
                     animation: toast-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                }
+                @keyframes toast-progress {
+                    from {
+                        width: 100%;
+                    }
+                    to {
+                        width: 0%;
+                    }
+                }
+                .animate-toast-progress {
+                    animation: toast-progress 4s linear forwards;
                 }
             `}</style>
         </ToastContext.Provider>

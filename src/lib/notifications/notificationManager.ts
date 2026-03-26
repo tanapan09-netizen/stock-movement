@@ -139,6 +139,123 @@ export async function notifyStatusChange(
     });
 }
 
+export async function notifyMaintenanceWithdrawalRequesterStatusChange(data: {
+    item_name: string;
+    quantity: number;
+    requested_by: string;
+    status: 'approved' | 'rejected';
+    decided_by: string;
+    maintenance_request_number?: string | null;
+    room_code?: string | null;
+    room_name?: string | null;
+}): Promise<void> {
+    const { prisma } = await import('@/lib/prisma');
+
+    const [requesterUser, requesterTech, requesterLineUser] = await Promise.all([
+        data.requested_by
+            ? prisma.tbl_users.findUnique({
+                where: { username: data.requested_by },
+                select: { line_user_id: true, email: true }
+            })
+            : Promise.resolve(null),
+        data.requested_by
+            ? prisma.tbl_technicians.findFirst({
+                where: { name: data.requested_by, status: 'active' },
+                select: { line_user_id: true, email: true }
+            })
+            : Promise.resolve(null),
+        data.requested_by
+            ? prisma.tbl_line_users.findFirst({
+                where: {
+                    OR: [
+                        { display_name: data.requested_by },
+                        { full_name: data.requested_by },
+                    ],
+                },
+                select: { line_user_id: true }
+            })
+            : Promise.resolve(null),
+    ]);
+
+    const lineRecipientIds = new Set<string>();
+    const emailRecipients = new Set<string>();
+
+    if (requesterUser?.line_user_id) lineRecipientIds.add(requesterUser.line_user_id);
+    if (requesterTech?.line_user_id) lineRecipientIds.add(requesterTech.line_user_id);
+    if (requesterLineUser?.line_user_id) lineRecipientIds.add(requesterLineUser.line_user_id);
+
+    if (requesterUser?.email) emailRecipients.add(requesterUser.email);
+    if (requesterTech?.email) emailRecipients.add(requesterTech.email);
+
+    const statusLabel = data.status === 'approved' ? 'พร้อมจ่ายแล้ว' : 'ไม่พร้อมจ่าย';
+    const lines = [
+        '📦 อัปเดตคำขอเบิกอะไหล่',
+        `รายการ: ${data.item_name}`,
+        `จำนวน: ${data.quantity}`,
+        ...(data.maintenance_request_number ? [`ใบงาน: ${data.maintenance_request_number}`] : []),
+        ...(data.room_code || data.room_name ? [`ห้อง: ${data.room_code || '-'}${data.room_name ? ` - ${data.room_name}` : ''}`] : []),
+        `สถานะ: ${statusLabel}`,
+        `อัปเดตโดย: ${data.decided_by || 'System'}`,
+        '',
+        `ดูรายละเอียด: ${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')}/maintenance/parts`,
+    ];
+
+    const results = await Promise.allSettled([
+        (async () => {
+            if (process.env.LINE_MESSAGING_ENABLED === 'false' || lineRecipientIds.size === 0) {
+                return;
+            }
+
+            const result = await sendMulticastMessage(
+                [...lineRecipientIds],
+                createTextMessage(lines.join('\n')),
+            );
+
+            if (!result.success) {
+                console.warn('[Notification] Failed to send maintenance withdrawal requester LINE:', result.error);
+            }
+        })(),
+        (async () => {
+            if (process.env.EMAIL_ENABLED === 'false' || emailRecipients.size === 0) {
+                return;
+            }
+
+            const statusColor = data.status === 'approved' ? '#059669' : '#dc2626';
+            const html = `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+                    <h2 style="margin-bottom: 12px;">อัปเดตคำขอเบิกอะไหล่</h2>
+                    <p>คำขอเบิกอะไหล่ของคุณมีการอัปเดตจากคลังแล้ว</p>
+                    <table style="border-collapse: collapse; width: 100%; max-width: 520px; margin: 16px 0;">
+                        <tr><td style="padding: 8px; border: 1px solid #e5e7eb;">รายการ</td><td style="padding: 8px; border: 1px solid #e5e7eb;">${data.item_name}</td></tr>
+                        <tr><td style="padding: 8px; border: 1px solid #e5e7eb;">จำนวน</td><td style="padding: 8px; border: 1px solid #e5e7eb;">${data.quantity}</td></tr>
+                        ${data.maintenance_request_number ? `<tr><td style="padding: 8px; border: 1px solid #e5e7eb;">ใบงาน</td><td style="padding: 8px; border: 1px solid #e5e7eb;">${data.maintenance_request_number}</td></tr>` : ''}
+                        ${(data.room_code || data.room_name) ? `<tr><td style="padding: 8px; border: 1px solid #e5e7eb;">ห้อง</td><td style="padding: 8px; border: 1px solid #e5e7eb;">${data.room_code || '-'}${data.room_name ? ` - ${data.room_name}` : ''}</td></tr>` : ''}
+                        <tr><td style="padding: 8px; border: 1px solid #e5e7eb;">สถานะ</td><td style="padding: 8px; border: 1px solid #e5e7eb; color: ${statusColor}; font-weight: 700;">${statusLabel}</td></tr>
+                        <tr><td style="padding: 8px; border: 1px solid #e5e7eb;">อัปเดตโดย</td><td style="padding: 8px; border: 1px solid #e5e7eb;">${data.decided_by || 'System'}</td></tr>
+                    </table>
+                    <p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/maintenance/parts">เปิดหน้าอะไหล่งานซ่อม</a></p>
+                </div>
+            `;
+
+            const result = await sendEmail(
+                [...emailRecipients],
+                `📦 ${statusLabel}: ${data.item_name}`,
+                html,
+            );
+
+            if (!result.success) {
+                console.warn('[Notification] Failed to send maintenance withdrawal requester email:', result.error);
+            }
+        })(),
+    ]);
+
+    results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+            console.error(`[Notification] Maintenance withdrawal requester channel ${index} failed:`, result.reason);
+        }
+    });
+}
+
 /**
  * Send notification for Job Assignment
  */
