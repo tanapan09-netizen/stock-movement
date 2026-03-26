@@ -382,7 +382,7 @@ export async function notifyMaintenanceStatusChange(
     }
 
     if (shouldNotifyApprovers) {
-        const roleLineIds = await getLineIdsByRoles(['manager', 'head_technician']);
+        const roleLineIds = await getLineIdsByRoles(['manager', 'leader_technician']);
         roleLineIds.forEach((lineId) => lineRecipientIds.add(lineId));
         getApproverEmails().forEach((email) => emailRecipients.add(email));
     }

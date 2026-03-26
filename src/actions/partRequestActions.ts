@@ -33,6 +33,7 @@ async function getPartRequestAuthContext() {
 export async function getPartRequests(filters?: {
     status?: string;
     maintenance_id?: number;
+    request_type?: string;
 }) {
     try {
         const where: Record<string, unknown> = {};
@@ -41,6 +42,9 @@ export async function getPartRequests(filters?: {
         }
         if (filters?.maintenance_id) {
             where.maintenance_id = filters.maintenance_id;
+        }
+        if (filters?.request_type) {
+            where.request_type = filters.request_type;
         }
 
         const requests = await prisma.tbl_part_requests.findMany({
@@ -164,6 +168,7 @@ export async function createPartRequest(formData: FormData) {
         }
 
         revalidatePath('/maintenance');
+        revalidatePath('/maintenance/parts');
         revalidatePath('/maintenance/part-requests');
 
         await logSystemAction(
@@ -208,10 +213,42 @@ export async function updatePartRequestStatus(
                 status: true,
                 item_name: true,
                 requested_by: true,
+                quantity: true,
+                maintenance_id: true,
+                request_type: true,
+                quotation_link: true,
             },
         });
 
         const oldStatus = currentRequest?.status || 'unknown';
+
+        if (
+            currentRequest
+            && oldStatus !== status
+            && status === 'approved'
+            && currentRequest.request_type === 'maintenance_withdrawal'
+        ) {
+            const maintenanceProductId = (currentRequest.quotation_link || '').startsWith('maintenance-withdraw://')
+                ? decodeURIComponent((currentRequest.quotation_link || '').replace('maintenance-withdraw://', ''))
+                : '';
+
+            if (!currentRequest.maintenance_id || !maintenanceProductId) {
+                return { success: false, error: 'Maintenance withdrawal request metadata is incomplete' };
+            }
+
+            const { withdrawPartForMaintenance } = await import('@/actions/maintenanceActions');
+            const withdrawResult = await withdrawPartForMaintenance({
+                request_id: currentRequest.maintenance_id,
+                p_id: maintenanceProductId,
+                quantity: currentRequest.quantity,
+                withdrawn_by: currentRequest.requested_by,
+                notes: `Confirmed by store: ${authContext.session.user.name || 'System'}`
+            });
+
+            if (!withdrawResult.success) {
+                return { success: false, error: withdrawResult.error || 'Failed to confirm maintenance part withdrawal' };
+            }
+        }
 
         const request = await prisma.tbl_part_requests.update({
             where: { request_id },

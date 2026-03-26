@@ -66,6 +66,7 @@ import {
     canVerifyMaintenanceParts,
     isMaintenanceTechnician,
 } from '@/lib/rbac';
+import { normalizeRole } from '@/lib/roles';
 import {
     MAINTENANCE_CATEGORY_OPTIONS,
     MAINTENANCE_PRIORITY_OPTIONS,
@@ -256,7 +257,8 @@ const FALLBACK_TECHNICIAN_TARGET_ROLE_OPTION = {
 
 export default function MaintenanceClient({ userPermissions = {}, canEditPage = false }: MaintenanceClientProps) {
     const { data: session } = useSession();
-    const loggedInRole = ((session?.user as any)?.role || '').toString().trim().toLowerCase();
+    const loggedInRole = normalizeRole(((session?.user as any)?.role || '').toString());
+    const isLeaderTechnician = loggedInRole === 'leader_technician';
     const derivedDepartment = resolveDepartmentFromRole(loggedInRole);
     const sessionIsApprover = Boolean((session?.user as any)?.is_approver || userPermissions.can_approve);
     const canPrioritizeMaintenance = canAdjustMaintenancePriority(loggedInRole, userPermissions, sessionIsApprover);
@@ -1236,6 +1238,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     async function handleHeadTechnicianApproval() {
         if (!selectedRequest || !session?.user?.name) return;
         if (!ensureCanEditPage()) return;
+        if (!canApproveCompletion) {
+            showToast('เฉพาะหัวหน้าช่างเท่านั้นที่ตรวจรับงานได้', 'warning');
+            return;
+        }
 
         const result = await updateMaintenanceRequest(
             selectedRequest.request_id,
@@ -3073,7 +3079,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             )}
 
             {!['completed', 'cancelled'].includes(selectedRequest.status) &&
-              !(loggedInRole === 'head_technician' && selectedRequest.status === 'confirmed') && (
+              !(isLeaderTechnician && selectedRequest.status === 'confirmed') && (
                 <button
                   onClick={handleUpdateRequest}
                   disabled={!canEditPage}

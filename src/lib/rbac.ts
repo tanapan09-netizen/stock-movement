@@ -390,7 +390,7 @@ export function canReviewMaintenancePartRequests(
 
   return (
     isApprover ||
-    normalizedRole === 'head_technician' ||
+    normalizedRole === 'leader_technician' ||
     isManagerRole(normalizedRole) ||
     canAccessDashboardPage(normalizedRole, userPermissions, '/maintenance/part-requests', {
       isApprover,
@@ -445,7 +445,7 @@ export function canViewMaintenanceNotifications(
   return (
     isManagerRole(normalizedRole) ||
     isDepartmentRole(normalizedRole, 'technician') ||
-    normalizedRole === 'head_technician' ||
+    normalizedRole === 'leader_technician' ||
     isApprover ||
     canAccessDashboardPage(normalizedRole, userPermissions, '/maintenance/dashboard', { isApprover })
   );
@@ -745,7 +745,7 @@ export function canManageMaintenanceEdit(
 
   return (
     canAccessDashboardPage(normalizedRole, userPermissions, '/maintenance', { isApprover, level: 'edit' }) ||
-    normalizedRole === 'head_technician' ||
+    normalizedRole === 'leader_technician' ||
     isApprover
   );
 }
@@ -779,7 +779,7 @@ export function canReassignMaintenanceRequest(
     isManagerRole(normalizedRole) ||
     isApprover ||
     normalizedRole === 'employee' ||
-    normalizedRole === 'head_technician' ||
+    normalizedRole === 'leader_technician' ||
     canManageMaintenanceEdit(normalizedRole, userPermissions, isApprover)
   );
 }
@@ -829,13 +829,10 @@ export function canApproveMaintenanceCompletion(
   isApprover = false,
 ) {
   const normalizedRole = normalizeRole(role);
+  void userPermissions;
+  void isApprover;
 
-  return (
-    normalizedRole === 'head_technician' ||
-    isManagerRole(normalizedRole) ||
-    isApprover ||
-    canManageMaintenanceEdit(normalizedRole, userPermissions, isApprover)
-  );
+  return normalizedRole === 'leader_technician';
 }
 
 export function canSubmitMaintenanceCompletion(
@@ -946,7 +943,7 @@ export function resolveDashboardHomeView(
     return 'purchasing';
   }
 
-  if (normalizedRole === 'head_technician' || isDepartmentRole(normalizedRole, 'technician')) {
+  if (normalizedRole === 'leader_technician' || isDepartmentRole(normalizedRole, 'technician')) {
     return 'technician';
   }
 

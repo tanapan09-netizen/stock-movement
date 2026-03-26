@@ -39,7 +39,10 @@ export const ROLE_OPTIONS = [
     { value: 'general', label: 'General (ทั่วไป)' },
 ] as const;
 
-export const normalizeRole = (role?: string | null) => (role || '').toLowerCase();
+export const normalizeRole = (role?: string | null) => {
+    const normalized = (role || '').trim().toLowerCase();
+    return normalized === 'head_technician' ? 'leader_technician' : normalized;
+};
 
 export const isOwnerRole = (role?: string | null) => normalizeRole(role) === 'owner';
 export const isAdminRole = (role?: string | null) => ['owner', 'admin'].includes(normalizeRole(role));

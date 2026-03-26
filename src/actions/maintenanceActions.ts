@@ -12,10 +12,12 @@ import {
     notifyJobAssignment,
     notifyMaintenanceStatusChange,
     notifyNewMaintenanceRequest,
+    notifyStorePartsEvent,
 } from '@/lib/notifications/notificationManager';
 import { validateData, createMaintenanceRequestSchema } from '@/lib/validation';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
 import {
+    canApproveMaintenanceCompletion,
     canCreateMaintenanceRequest,
     canManageMaintenanceEdit,
     canManageMaintenanceParts,
@@ -604,6 +606,92 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
     }
 }
 
+export async function requestMaintenancePartWithdrawal(data: {
+    request_id: number;
+    p_id: string;
+    quantity: number;
+    requested_by: string;
+    notes?: string;
+}) {
+    try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canManageMaintenanceEdit(authContext.role, authContext.permissions, authContext.isApprover)) {
+            return { success: false, error: 'Permission denied' };
+        }
+
+        const [maintenanceRequest, product] = await Promise.all([
+            prisma.tbl_maintenance_requests.findUnique({
+                where: { request_id: data.request_id },
+                select: { request_id: true, request_number: true }
+            }),
+            prisma.tbl_products.findUnique({
+                where: { p_id: data.p_id },
+                select: { p_id: true, p_name: true }
+            })
+        ]);
+
+        if (!maintenanceRequest) {
+            return { success: false, error: 'Maintenance request not found' };
+        }
+
+        if (!product) {
+            return { success: false, error: 'Product not found' };
+        }
+
+        const pendingRequest = await prisma.tbl_part_requests.findFirst({
+            where: {
+                maintenance_id: data.request_id,
+                request_type: 'maintenance_withdrawal',
+                status: 'pending',
+                quotation_link: `maintenance-withdraw://${encodeURIComponent(data.p_id)}`
+            },
+            select: { request_id: true }
+        });
+
+        if (pendingRequest) {
+            return { success: false, error: 'A pending store confirmation already exists for this part' };
+        }
+
+        const request = await prisma.tbl_part_requests.create({
+            data: {
+                maintenance_id: data.request_id,
+                item_name: product.p_name,
+                description: data.notes || null,
+                quantity: data.quantity,
+                status: 'pending',
+                requested_by: data.requested_by,
+                department: 'store',
+                priority: 'normal',
+                request_type: 'maintenance_withdrawal',
+                quotation_link: `maintenance-withdraw://${encodeURIComponent(data.p_id)}`
+            }
+        });
+
+        try {
+            await notifyStorePartsEvent({
+                eventType: 'withdraw',
+                request_number: maintenanceRequest.request_number,
+                item_name: product.p_name,
+                quantity: data.quantity,
+                withdrawn_by: data.requested_by,
+                notes: data.notes || 'Pending store confirmation before handoff to technician'
+            });
+        } catch (notificationError) {
+            console.error('Failed to notify store for maintenance part withdrawal request:', notificationError);
+        }
+
+        revalidatePath('/maintenance');
+        revalidatePath('/maintenance/parts');
+        return { success: true, data: request };
+    } catch (error: unknown) {
+        return { success: false, error: getErrorMessage(error, 'Failed to request maintenance part withdrawal') };
+    }
+}
+
 // ==================== INVENTORY & PARTS ACTIONS (NEW) ====================
 
 export async function withdrawPartForMaintenance(data: {
@@ -1062,7 +1150,7 @@ export async function submitRepairCompletion(formData: FormData) {
 
         try {
             await notifyRoleViaLine(
-                'head_technician',
+                'leader_technician',
                 request.title,
                 request.tbl_rooms.room_code,
                 request.tbl_rooms.room_name,
@@ -1347,12 +1435,20 @@ export async function updateMaintenanceRequest(
             return { success: false, error: 'Maintenance request not found' };
         }
 
+        const isHeadTechApproval = current.status === 'confirmed' && data.status === 'completed';
+        if (isHeadTechApproval && !canApproveMaintenanceCompletion(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        )) {
+            return { success: false, error: 'เฉพาะหัวหน้าช่างเท่านั้นที่ตรวจรับงานได้' };
+        }
+
         const updateData: Record<string, unknown> = {};
         const historyActions: Array<{ action: string; old_value: string; new_value: string }> = [];
 
         if (data.status && data.status !== current.status) {
             updateData.status = data.status;
-            const isHeadTechApproval = current.status === 'confirmed' && data.status === 'completed';
             historyActions.push({
                 action: isHeadTechApproval ? 'HEAD_TECH_APPROVED' : 'status_change',
                 old_value: current.status || '',
