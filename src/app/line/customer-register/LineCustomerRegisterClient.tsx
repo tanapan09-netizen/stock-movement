@@ -73,6 +73,29 @@ async function loadLiffSdk(): Promise<void> {
     return liffSdkPromise;
 }
 
+function buildSafeLiffRedirectUri() {
+    if (typeof window === 'undefined') return undefined;
+
+    const url = new URL(window.location.href);
+    const blockedParams = [
+        'access_token',
+        'code',
+        'error',
+        'error_description',
+        'friendship_status_changed',
+        'id_token',
+        'liffClientId',
+        'liffRedirectUri',
+        'liff.state',
+        'state',
+    ];
+
+    blockedParams.forEach((key) => url.searchParams.delete(key));
+    url.hash = '';
+
+    return url.toString();
+}
+
 type AlertKind = 'success' | 'error' | 'info';
 
 function Alert({
@@ -196,7 +219,7 @@ export default function LineCustomerRegisterClient() {
                 await window.liff.init({ liffId });
 
                 if (!window.liff.isLoggedIn()) {
-                    window.liff.login({ redirectUri: window.location.href });
+                    window.liff.login({ redirectUri: buildSafeLiffRedirectUri() });
                     return;
                 }
 

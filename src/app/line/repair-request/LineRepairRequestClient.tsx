@@ -427,6 +427,29 @@ async function loadLiffSdk(): Promise<void> {
     return liffSdkPromise;
 }
 
+function buildSafeLiffRedirectUri() {
+    if (typeof window === 'undefined') return undefined;
+
+    const url = new URL(window.location.href);
+    const blockedParams = [
+        'access_token',
+        'code',
+        'error',
+        'error_description',
+        'friendship_status_changed',
+        'id_token',
+        'liffClientId',
+        'liffRedirectUri',
+        'liff.state',
+        'state',
+    ];
+
+    blockedParams.forEach((key) => url.searchParams.delete(key));
+    url.hash = '';
+
+    return url.toString();
+}
+
 // ─── i18n ─────────────────────────────────────────────────────────────────────
 type Lang = 'th' | 'en' | 'jp';
 const LANG_LABELS: Record<Lang, string> = { th: 'ไทย', en: 'EN', jp: '日本語' };
@@ -821,7 +844,10 @@ export default function LineRepairRequestClient() {
                 await loadLiffSdk();
                 if (!window.liff) throw new Error('LIFF unavailable');
                 await window.liff.init({ liffId });
-                if (!window.liff.isLoggedIn()) { window.liff.login({ redirectUri:window.location.href }); return; }
+                if (!window.liff.isLoggedIn()) {
+                    window.liff.login({ redirectUri: buildSafeLiffRedirectUri() });
+                    return;
+                }
                 const p = await window.liff.getProfile();
                 if (!cancelled && p?.userId) setLineUserId(p.userId);
             } catch (e) { console.error(e); if (!cancelled) setAlert({ kind:'error', text:t('errLineId') }); }
