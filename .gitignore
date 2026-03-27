@@ -29,6 +29,17 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+build_output*.txt
+build_print*.txt
+build_debug*.log
+ts_errors.txt
+dev_restart.txt
+tmp_*
+*.bak
+*.bak_*
+*.orig
+*.tmp
+.mpstock*.txt
 
 # env files (can opt-in for committing if needed)
 .env*

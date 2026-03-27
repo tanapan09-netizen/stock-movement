@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import POForm from '@/components/POForm';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ClipboardList, FileCheck2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default async function NewPOPage(props: {
@@ -34,7 +34,42 @@ export default async function NewPOPage(props: {
 
     return (
         <div className="max-w-6xl mx-auto py-6">
-            <Link href="/purchase-orders" className="flex items-center text-sm text-gray-500 mb-4 hover:text-gray-700">
+            {initialRequestContext && (
+                <div className="mb-6 rounded-2xl border border-cyan-200 bg-cyan-50 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-semibold text-cyan-700">
+                                <FileCheck2 className="h-3.5 w-3.5" />
+                                Workflow จัดซื้อ ขั้นออก PO
+                            </div>
+                            <p className="mt-3 text-sm text-slate-600">
+                                หน้านี้ใช้สำหรับขั้นจัดซื้อออก PO หลังบันทึกเอกสารแล้วให้กลับไปที่ queue หลักเพื่อส่งต่อ Store รับเข้า
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <Link
+                                href="/purchase-request/manage"
+                                className="inline-flex items-center gap-2 rounded-lg border border-cyan-200 bg-white px-3 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50"
+                            >
+                                <ArrowLeft className="h-4 w-4" />
+                                กลับคิวจัดซื้อ
+                            </Link>
+                            {initialRequestContext.requestId ? (
+                                <Link
+                                    href={`/print/purchase-request/${initialRequestContext.requestId}`}
+                                    target="_blank"
+                                    className="inline-flex items-center gap-2 rounded-lg border border-cyan-200 bg-white px-3 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50"
+                                >
+                                    <ClipboardList className="h-4 w-4" />
+                                    เปิด PR
+                                </Link>
+                            ) : null}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <Link href={initialRequestContext ? "/purchase-request/manage" : "/purchase-orders"} className="flex items-center text-sm text-gray-500 mb-4 hover:text-gray-700">
                 <ArrowLeft className="w-4 h-4 mr-1" /> กลับ
             </Link>
             <h1 className="text-2xl font-bold text-gray-800 mb-6">สร้างใบสั่งซื้อ (PO)</h1>

@@ -8,6 +8,7 @@ import { canEditPurchaseOrders, canPrintPurchaseOrders, canReceivePurchaseOrders
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { getProcurementStatusBadgeClass, getProcurementStatusLabel } from '@/lib/procurement-status';
 import { parsePurchaseOrderRequestReference } from '@/lib/purchase-order-reference';
+import { isNonStockPurchaseOrderItem, parsePurchaseOrderItemNote } from '@/lib/purchase-order-item';
 
 
 const PO_STEPS = [
@@ -267,7 +268,12 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
                             {poWithItems.tbl_po_items.map(item => (
                                 <tr key={item.item_id}>
                                     <td className="px-6 py-4">
-                                        <div className="font-medium">{productMap.get(item.p_id)}</div>
+                                        <div className="font-medium">{parsePurchaseOrderItemNote(item.notes, item.p_id).displayName || productMap.get(item.p_id) || item.p_id}</div>
+                                        {isNonStockPurchaseOrderItem(item.notes, item.p_id) && (
+                                            <div className="mt-1 inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-700">
+                                                Non-stock
+                                            </div>
+                                        )}
                                         <div className="text-xs text-gray-400">{item.p_id}</div>
                                     </td>
                                     <td className="px-6 py-4 text-right">{item.quantity}</td>

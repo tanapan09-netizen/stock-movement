@@ -3,14 +3,17 @@
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { canEditPurchaseOrders, canReceivePurchaseOrders } from '@/lib/rbac';
+import { buildPurchaseOrderItemNote, isNonStockPurchaseOrderItem, type PurchaseOrderItemKind } from '@/lib/purchase-order-item';
 import { tbl_purchase_orders_status } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 type POItemInput = {
     p_id: string;
+    p_name?: string;
     quantity: number;
     unit_price: number;
+    item_type?: PurchaseOrderItemKind;
 };
 
 type SessionUserLike = {
@@ -44,6 +47,8 @@ export async function createPO(formData: FormData) {
     const po_number = formData.get('po_number') as string;
     const order_date = formData.get('order_date') as string;
     const notes = formData.get('notes') as string;
+    const expected_date = formData.get('expected_date') as string;
+    const status = (formData.get('status') as tbl_purchase_orders_status) || 'draft';
     const items = parseItems((formData.get('items') as string) || '');
 
     if (!supplier_id || !po_number || !items?.length) {
@@ -68,7 +73,8 @@ export async function createPO(formData: FormData) {
                     supplier_id,
                     created_by_user_id: Number.isNaN(createdByUserId) ? null : createdByUserId,
                     order_date: new Date(order_date),
-                    status: 'draft',
+                    expected_date: expected_date ? new Date(expected_date) : null,
+                    status,
                     subtotal,
                     tax_amount,
                     total_amount,
@@ -81,7 +87,7 @@ export async function createPO(formData: FormData) {
             await tx.tbl_po_approval_logs.create({
                 data: {
                     po_id: po.po_id,
-                    step_key: 'draft',
+                    step_key: status,
                     action: 'created',
                     actor_name: user.name || null,
                     actor_role: user.role || null,
@@ -98,6 +104,7 @@ export async function createPO(formData: FormData) {
                         unit_price: item.unit_price,
                         line_total: item.quantity * item.unit_price,
                         received_qty: 0,
+                        notes: buildPurchaseOrderItemNote(item),
                     },
                 });
             }
@@ -145,6 +152,10 @@ export async function receivePO(po_id: number) {
                     where: { item_id: item.item_id },
                     data: { received_qty: item.quantity },
                 });
+
+                if (isNonStockPurchaseOrderItem(item.notes, item.p_id)) {
+                    continue;
+                }
 
                 await tx.tbl_products.update({
                     where: { p_id: item.p_id },
@@ -266,6 +277,7 @@ export async function updatePO(formData: FormData) {
                         unit_price: item.unit_price,
                         line_total: item.quantity * item.unit_price,
                         received_qty: 0,
+                        notes: buildPurchaseOrderItemNote(item),
                     },
                 });
             }

@@ -77,7 +77,8 @@ export default async function EditPOPage(props: { params: Promise<{ id: string }
             quantity: item.quantity,
             unit_price: Number(item.unit_price),
             line_total: Number(item.line_total),
-            received_qty: item.received_qty
+            received_qty: item.received_qty,
+            notes: item.notes,
         }))
     };
 

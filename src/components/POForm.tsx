@@ -5,10 +5,11 @@ import { createPO, updatePO } from '@/actions/poActions';
 import { Search, Trash2, Save, Calculator } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useToast } from './ToastProvider';
+import { parsePurchaseOrderItemNote, type PurchaseOrderItemKind } from '@/lib/purchase-order-item';
 
 type Product = { p_id: string; p_name: string; price_unit: number | null };
 type Supplier = { id: number; name: string };
-type POItem = { p_id: string; p_name: string; quantity: number; unit_price: number };
+type POItem = { p_id: string; p_name: string; quantity: number; unit_price: number; item_type: PurchaseOrderItemKind };
 
 type POData = {
     po_id: number;
@@ -44,6 +45,7 @@ export default function POForm({
     const router = useRouter();
     const { showConfirm, showToast } = useToast();
     const isEditMode = !!initialData;
+    const isWorkflowPurchaseOrder = Boolean(initialRequestContext) && !isEditMode;
     const requestContextNote = initialRequestContext
         ? [
             `อ้างอิงคำขอซื้อ: ${initialRequestContext.requestNumber}`,
@@ -59,24 +61,26 @@ export default function POForm({
     const [poNumber, setPoNumber] = useState(initialData?.po_number || `PO-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`);
     const [orderDate, setOrderDate] = useState(initialData?.order_date ? new Date(initialData.order_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
     const [expectedDate, setExpectedDate] = useState(initialData?.expected_date ? new Date(initialData.expected_date).toISOString().split('T')[0] : '');
-    const [status, setStatus] = useState(initialData?.status || 'draft');
+    const [status, setStatus] = useState(initialData?.status || (isWorkflowPurchaseOrder ? 'ordered' : 'draft'));
     const [notes, setNotes] = useState(initialData?.notes || requestContextNote);
     const [taxRate, setTaxRate] = useState(7); // 7% VAT
     const [includeTax, setIncludeTax] = useState(true);
+    const [manualItemName, setManualItemName] = useState('');
+    const [manualItemCode, setManualItemCode] = useState('');
 
     // Cart & UI state
     // Initialize cart from initialData if available
     const [cart, setCart] = useState<POItem[]>(() => {
         if (initialData?.tbl_po_items) {
             return initialData.tbl_po_items.map(item => {
-                // Find product name from products list if not directly available (Prisma include might not be passed or structure differs)
-                // Assuming item has p_id
                 const product = products.find(p => p.p_id === item.p_id);
+                const itemMeta = parsePurchaseOrderItemNote(item.notes, item.p_id);
                 return {
                     p_id: item.p_id,
-                    p_name: product?.p_name || item.p_id, // Fallback
+                    p_name: itemMeta.displayName || product?.p_name || item.p_id,
                     quantity: item.quantity,
-                    unit_price: Number(item.unit_price)
+                    unit_price: Number(item.unit_price),
+                    item_type: itemMeta.kind,
                 };
             });
         }
@@ -86,6 +90,12 @@ export default function POForm({
     const [searchTerm, setSearchTerm] = useState('');
     const [isPending, setIsPending] = useState(false);
     const [error, setError] = useState('');
+
+    useEffect(() => {
+        if (isWorkflowPurchaseOrder) {
+            setStatus('ordered');
+        }
+    }, [isWorkflowPurchaseOrder]);
 
     const filteredProducts = searchTerm
         ? products.filter(p => p.p_name.toLowerCase().includes(searchTerm.toLowerCase()) || p.p_id.includes(searchTerm)).slice(0, 8)
@@ -100,12 +110,44 @@ export default function POForm({
             p_id: product.p_id,
             p_name: product.p_name,
             quantity: 1,
-            unit_price: product.price_unit || 0
+            unit_price: product.price_unit || 0,
+            item_type: 'stock',
         }]);
         setSearchTerm('');
     };
 
-    const updateItem = (p_id: string, field: 'quantity' | 'unit_price', value: number) => {
+    const addManualItem = () => {
+        const trimmedName = manualItemName.trim();
+        if (!trimmedName) {
+            showToast('กรุณาระบุชื่อสินค้านอก stock', 'warning');
+            return;
+        }
+
+        const normalizedCode = manualItemCode.trim().replace(/[^a-zA-Z0-9-_]/g, '').toUpperCase();
+        const generatedId = normalizedCode
+            ? `NON-STOCK-${normalizedCode}`
+            : `NON-STOCK-${Date.now()}`;
+
+        if (cart.find((item) => item.p_id === generatedId)) {
+            showToast('รหัสสินค้านอก stock นี้ถูกใช้แล้ว', 'warning');
+            return;
+        }
+
+        setCart([
+            ...cart,
+            {
+                p_id: generatedId,
+                p_name: trimmedName,
+                quantity: 1,
+                unit_price: 0,
+                item_type: 'non_stock',
+            },
+        ]);
+        setManualItemName('');
+        setManualItemCode('');
+    };
+
+    const updateItem = (p_id: string, field: 'quantity' | 'unit_price' | 'p_name', value: number | string) => {
         setCart(cart.map(i => i.p_id === p_id ? { ...i, [field]: value } : i));
     };
 
@@ -118,6 +160,11 @@ export default function POForm({
 
         if (!supplierId || cart.length === 0) {
             setError('กรุณาเลือก Supplier และเพิ่มสินค้าอย่างน้อย 1 รายการ');
+            return;
+        }
+
+        if (cart.some((item) => item.item_type === 'non_stock' && !item.p_name.trim())) {
+            setError('กรุณาระบุชื่อสินค้านอก stock ให้ครบทุกบรรทัด');
             return;
         }
 
@@ -162,7 +209,10 @@ export default function POForm({
         } else {
             showToast(isEditMode ? 'แก้ไขใบสั่งซื้อสำเร็จ' : 'สร้างใบสั่งซื้อสำเร็จ', 'success');
             const nextPOId = !isEditMode && 'poId' in res ? res.poId : null;
-            router.push(nextPOId ? `/purchase-orders/${nextPOId}` : '/purchase-orders');
+            const nextRoute = isWorkflowPurchaseOrder
+                ? '/purchase-request/manage'
+                : nextPOId ? `/purchase-orders/${nextPOId}` : '/purchase-orders';
+            router.push(nextRoute);
             router.refresh(); // Refresh to show updated data
         }
     };
@@ -218,6 +268,11 @@ export default function POForm({
                             <option value="">-- เลือกผู้ขาย --</option>
                             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
+                        {isWorkflowPurchaseOrder && (
+                            <p className="mt-2 text-xs text-cyan-700">
+                                PO ที่สร้างจาก workflow จะถูกตั้งสถานะเป็น Ordered อัตโนมัติ เพื่อรอจัดซื้อส่งต่อให้ Store รับเข้า
+                            </p>
+                        )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -251,7 +306,7 @@ export default function POForm({
                             value={status}
                             onChange={e => setStatus(e.target.value)}
                             className="w-full border rounded-lg p-2.5 mt-1"
-                            disabled={initialData?.status === 'received'} // Disable status change if received via this form
+                            disabled={isWorkflowPurchaseOrder || initialData?.status === 'received'} // Disable status change if received via this form
                         >
                             <option value="draft">ร่าง (Draft)</option>
                             <option value="pending">รออนุมัติ (Pending)</option>
@@ -325,6 +380,12 @@ export default function POForm({
                     </div>
                 </div>
 
+                {isWorkflowPurchaseOrder && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                        เมื่อสร้าง PO สำเร็จ ระบบจะพากลับไปหน้า <span className="font-semibold">purchase workflow</span> เพื่อให้จัดซื้อส่งต่อ Store รับเข้า
+                    </div>
+                )}
+
                 <button
                     type="submit"
                     disabled={isPending || cart.length === 0}
@@ -372,6 +433,41 @@ export default function POForm({
                     )}
                 </div>
 
+                <div className="bg-white rounded-lg shadow p-4">
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <h3 className="font-bold text-gray-800">เพิ่มสินค้านอก stock</h3>
+                            <p className="mt-1 text-sm text-gray-500">ใช้สำหรับรายการที่ยังไม่มีใน product master และไม่ต้องรับเข้าสต็อก</p>
+                        </div>
+                        <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
+                            Non-stock
+                        </span>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_auto]">
+                        <input
+                            type="text"
+                            value={manualItemName}
+                            onChange={(e) => setManualItemName(e.target.value)}
+                            placeholder="ชื่อสินค้านอก stock"
+                            className="w-full rounded-lg border p-2.5"
+                        />
+                        <input
+                            type="text"
+                            value={manualItemCode}
+                            onChange={(e) => setManualItemCode(e.target.value)}
+                            placeholder="รหัสอ้างอิง (ถ้ามี)"
+                            className="w-full rounded-lg border p-2.5"
+                        />
+                        <button
+                            type="button"
+                            onClick={addManualItem}
+                            className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-2.5 text-sm font-medium text-orange-700 transition hover:bg-orange-100"
+                        >
+                            เพิ่มรายการ
+                        </button>
+                    </div>
+                </div>
+
                 {/* Cart Items */}
                 <div className="bg-white rounded-lg shadow">
                     <div className="p-4 border-b bg-gray-50 rounded-t-lg">
@@ -399,7 +495,22 @@ export default function POForm({
                             {cart.map(item => (
                                 <div key={item.p_id} className="grid grid-cols-12 gap-2 p-3 items-center hover:bg-gray-50">
                                     <div className="col-span-5">
-                                        <div className="font-medium text-gray-800">{item.p_name}</div>
+                                        {item.item_type === 'non_stock' ? (
+                                            <input
+                                                type="text"
+                                                value={item.p_name}
+                                                onChange={e => updateItem(item.p_id, 'p_name', e.target.value)}
+                                                className="w-full rounded border p-1.5 text-sm font-medium text-gray-800"
+                                                placeholder="ชื่อสินค้านอก stock"
+                                            />
+                                        ) : (
+                                            <div className="font-medium text-gray-800">{item.p_name}</div>
+                                        )}
+                                        {item.item_type === 'non_stock' && (
+                                            <div className="mt-1 inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-700">
+                                                Non-stock item
+                                            </div>
+                                        )}
                                         <div className="text-xs text-gray-500">{item.p_id}</div>
                                     </div>
                                     <div className="col-span-2">

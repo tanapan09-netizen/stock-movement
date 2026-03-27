@@ -68,6 +68,17 @@ A comprehensive stock management and maintenance tracking system built with Next
 -   **Admin**: `admin` / (See system administrator for password or check `auth.ts` logic)
 -   **Demo Users**: You may seed default users via `npx prisma db seed`.
 
+## Documentation
+
+-   Project and deployment guides are now under [`docs/`](docs)
+-   Key files:
+    -   [`docs/INSTALL_GUIDE.md`](docs/INSTALL_GUIDE.md)
+    -   [`docs/DEPLOY.md`](docs/DEPLOY.md)
+    -   [`docs/MIGRATION_GUIDE.md`](docs/MIGRATION_GUIDE.md)
+    -   [`docs/USER_MANUAL.md`](docs/USER_MANUAL.md)
+-   Utility scripts are grouped under [`scripts/`](scripts)
+-   Manual SQL helpers are grouped under [`sql/manual/`](sql/manual)
+
 ## Tech Stack
 
 -   **Framework**: Next.js 14 (App Router)

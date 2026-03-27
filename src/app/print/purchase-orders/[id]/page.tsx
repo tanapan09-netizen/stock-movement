@@ -5,6 +5,7 @@ import { canPrintPurchaseOrders, canViewPurchaseOrders } from '@/lib/rbac';
 import { Lock } from 'lucide-react';
 import PrintButton from './PrintButton';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
+import { isNonStockPurchaseOrderItem, parsePurchaseOrderItemNote } from '@/lib/purchase-order-item';
 
 type PoStamp = {
     stepKey: string;
@@ -241,7 +242,10 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
                             <tr key={item.item_id}>
                                 <td className="py-3 text-gray-500">{index + 1}</td>
                                 <td className="py-3">
-                                    <div className="font-bold">{productMap.get(item.p_id)}</div>
+                                    <div className="font-bold">{parsePurchaseOrderItemNote(item.notes, item.p_id).displayName || productMap.get(item.p_id) || item.p_id}</div>
+                                    {isNonStockPurchaseOrderItem(item.notes, item.p_id) && (
+                                        <div className="text-[10px] font-semibold uppercase text-orange-600">Non-stock</div>
+                                    )}
                                     <div className="text-xs text-gray-500">{item.p_id}</div>
                                 </td>
                                 <td className="py-3 text-right">{item.quantity}</td>
