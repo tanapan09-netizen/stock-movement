@@ -85,7 +85,7 @@ const hasCustomerTag = (tags?: string | null) =>
     (tags || '')
         .split(',')
         .map((tag) => tag.trim().toLowerCase())
-        .includes('เธฅเธนเธเธเนเธฒ');
+        .includes('ลูกค้า');
 
 export default function GeneralRequestClient({ userPermissions }: Props) {
     const { data: session } = useSession();
@@ -174,7 +174,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             }
         } catch (err) {
             console.error('Failed to load data', err);
-            showToast('เนเธซเธฅเธ”เธเนเธญเธกเธนเธฅเนเธกเนเธชเธณเน€เธฃเนเธ', 'error');
+            showToast('โหลดข้อมูลไม่สำเร็จ', 'error');
         } finally {
             setLoading(false);
         }
@@ -258,17 +258,17 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         e.preventDefault();
 
         if (!canCreateGeneralRequest) {
-            showToast('เธเธธเธ“เนเธกเนเธกเธตเธชเธดเธ—เธเธดเนเธชเธฃเนเธฒเธเธฃเธฒเธขเธเธฒเธฃเนเธเนเธเธเนเธญเธก', 'warning');
+            showToast('คุณไม่มีสิทธิ์สร้างรายการแจ้งซ่อม', 'warning');
             return;
         }
 
         if (!formData.title.trim()) {
-            showToast('เธเธฃเธธเธ“เธฒเธฃเธฐเธเธธเธเธทเนเธญเน€เธฃเธทเนเธญเธ', 'warning');
+            showToast('กรุณาระบุชื่อเรื่อง', 'warning');
             return;
         }
 
         if (!formData.reported_by.trim()) {
-            showToast('เธเธฃเธธเธ“เธฒเธฃเธฐเธเธธเธเธทเนเธญเธเธนเนเนเธเนเธ', 'warning');
+            showToast('กรุณาระบุชื่อผู้แจ้ง', 'warning');
             return;
         }
 
@@ -286,16 +286,16 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
         if (locationMode === 'location') {
             if (!formData.room_id || formData.room_id === 0) {
-                showToast('เธเธฃเธธเธ“เธฒเน€เธฅเธทเธญเธเธชเธ–เธฒเธเธ—เธตเนเธเธฒเธเธฃเธฒเธขเธเธฒเธฃ', 'warning');
+                showToast('กรุณาเลือกสถานที่จากรายการ', 'warning');
                 return;
             }
         } else {
             if (!formData.vehicle_id || formData.vehicle_id === 0) {
-                showToast('เธเธฃเธธเธ“เธฒเน€เธฅเธทเธญเธเธ—เธฐเน€เธเธตเธขเธเธฃเธ–เธเธฒเธเธฃเธฒเธขเธเธฒเธฃ', 'warning');
+                showToast('กรุณาเลือกทะเบียนรถจากรายการ', 'warning');
                 return;
             }
             if (!derivedRoomIdFromVehicle) {
-                showToast('เธ—เธฐเน€เธเธตเธขเธเธฃเธ–เธเธตเนเธขเธฑเธเนเธกเนเนเธ”เนเธเธนเธเธเธฑเธเน€เธฅเธเธซเนเธญเธ (owner_room) เธเธฃเธธเธ“เธฒเนเธเนเนเธเธ—เธตเนเธซเธเนเธฒ /admin/rooms เธซเธฃเธทเธญเน€เธฅเธทเธญเธเธชเธ–เธฒเธเธ—เธตเนเนเธ—เธ', 'warning');
+                showToast('ทะเบียนรถนี้ยังไม่ได้ผูกกับเลขห้อง (owner_room) กรุณาแก้ไขที่หน้า /admin/rooms หรือเลือกสถานที่แทน', 'warning');
                 return;
             }
         }
@@ -315,7 +315,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             data.append('department', formData.department);
 
             const vehiclePlate = selectedVehicle?.license_plate?.trim() || '';
-            const vehicleTag = vehiclePlate ? `เธฃเธ–:${vehiclePlate}` : '';
+            const vehicleTag = vehiclePlate ? `รถ:${vehiclePlate}` : '';
 
             const tagsToSend = (() => {
                 const current = formData.tags
@@ -362,12 +362,12 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 });
                 setSelectedFile(null);
                 void loadData();
-                showToast('เธเธฑเธเธ—เธถเธเน€เธฃเธตเธขเธเธฃเนเธญเธข เธฃเธฐเธเธเธเธฐเนเธเนเธเน€เธ•เธทเธญเธเธเนเธฒเธขเธเธธเธฃเธเธฒเธฃ', 'success');
+                showToast('บันทึกเรียบร้อย ระบบจะแจ้งเตือนฝ่ายธุรการ', 'success');
             } else {
-                showToast('เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”: ' + result.error, 'error');
+                showToast('เกิดข้อผิดพลาด: ' + result.error, 'error');
             }
         } catch {
-            showToast('เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”เนเธเธเธฒเธฃเธเธฑเธเธ—เธถเธ', 'error');
+            showToast('เกิดข้อผิดพลาดในการบันทึก', 'error');
         } finally {
             setSubmitting(false);
         }
@@ -387,9 +387,9 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
                 <div className="bg-white border border-gray-200 rounded-2xl p-8 max-w-md w-full text-center shadow-sm">
                     <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-                    <h2 className="text-lg font-bold text-gray-900">เนเธกเนเธกเธตเธชเธดเธ—เธเธดเนเน€เธเนเธฒเธ–เธถเธเธซเธเนเธฒเธเธตเน</h2>
+                    <h2 className="text-lg font-bold text-gray-900">ไม่มีสิทธิ์เข้าถึงหน้านี้</h2>
                     <p className="text-sm text-gray-500 mt-2">
-                        เธเธธเธ“เนเธกเนเธกเธตเธชเธดเธ—เธเธดเนเธ”เธนเธเนเธญเธกเธนเธฅเธเธฒเธฃเนเธเนเธเธเนเธญเธกเนเธเธซเธเนเธฒเธเธตเน
+                        คุณไม่มีสิทธิ์ดูข้อมูลการแจ้งซ่อมในหน้านี้
                     </p>
                 </div>
             </div>
@@ -404,10 +404,10 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         <div>
                             <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                 <ClipboardList className="w-6 h-6 text-blue-600" />
-                                เธฃเธฑเธเนเธเนเธเธเนเธญเธก (เธเธธเธฃเธเธฒเธฃ)
+                                รับแจ้งซ่อม (ธุรการ)
                             </h1>
                             <p className="text-sm text-gray-500 mt-0.5">
-                                เธชเนเธเธเธณเธเธญเธเนเธญเธก โ€” เธฃเธฐเธเธเธเธฐเนเธเนเธเน€เธ•เธทเธญเธเธเนเธฒเธขเธเธธเธฃเธเธฒเธฃเนเธ”เธขเธ•เธฃเธ
+                                ส่งคำขอซ่อม - ระบบจะแจ้งเตือนฝ่ายธุรการโดยตรง
                             </p>
                         </div>
 
@@ -443,7 +443,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                     className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium border-0"
                                 >
                                     <Plus className="w-4 h-4" />
-                                    <span className="hidden sm:inline">Create</span>
+                                    <span className="hidden sm:inline">สร้างรายการ</span>
                                 </button>
                             )}
                         </div>
@@ -454,10 +454,10 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {[
-                        { label: 'เธ—เธฑเนเธเธซเธกเธ”', value: requests.length, color: 'bg-blue-50 border-blue-200 text-blue-700' },
-                        { label: 'เธฃเธญเธฃเธฑเธเน€เธฃเธทเนเธญเธ', value: requests.filter(r => r.status === 'pending').length, color: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
-                        { label: 'เธเธณเธฅเธฑเธเธ”เธณเน€เธเธดเธเธเธฒเธฃ', value: requests.filter(r => r.status === 'in_progress').length, color: 'bg-blue-50 border-blue-200 text-blue-700' },
-                        { label: 'เน€เธชเธฃเนเธเธชเธดเนเธ', value: requests.filter(r => r.status === 'completed' || r.status === 'verified').length, color: 'bg-green-50 border-green-200 text-green-700' },
+                        { label: 'ทั้งหมด', value: requests.length, color: 'bg-blue-50 border-blue-200 text-blue-700' },
+                        { label: 'รอรับเรื่อง', value: requests.filter(r => r.status === 'pending').length, color: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
+                        { label: 'กำลังดำเนินการ', value: requests.filter(r => r.status === 'in_progress').length, color: 'bg-blue-50 border-blue-200 text-blue-700' },
+                        { label: 'งานเสร็จสิ้น', value: requests.filter(r => r.status === 'completed' || r.status === 'verified').length, color: 'bg-green-50 border-green-200 text-green-700' },
                     ].map(stat => (
                         <div key={stat.label} className={`${stat.color} border rounded-xl p-3 text-center`}>
                             <p className="text-2xl font-bold">{stat.value}</p>
@@ -475,7 +475,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                             type="text"
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
-                            placeholder="เธเนเธเธซเธฒ..."
+                            placeholder="ค้นหา..."
                             className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                         />
                     </div>
@@ -484,9 +484,9 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         value={statusFilter}
                         onChange={e => setStatusFilter(e.target.value)}
                         className="border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                        aria-label="เธเธฃเธญเธเธ•เธฒเธกเธชเธ–เธฒเธเธฐ"
+                        aria-label="กรองตามสถานะ"
                     >
-                        <option value="all">เธ—เธธเธเธชเธ–เธฒเธเธฐ</option>
+                        <option value="all">ทุกสถานะ</option>
                         <option value="finished">งานเสร็จสิ้น</option>
                         {Object.entries(GENERAL_REQUEST_STATUS_CONFIG).map(([key, cfg]) => (
                             <option key={key} value={key}>{cfg.label}</option>
@@ -503,8 +503,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 ) : filteredRequests.length === 0 ? (
                     <div className="text-center py-20 text-gray-500 border-2 border-dashed border-gray-200 rounded-2xl">
                         <ClipboardList className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                        <p className="font-medium">เธขเธฑเธเนเธกเนเธกเธตเธฃเธฒเธขเธเธฒเธฃเนเธเนเธเธเนเธญเธก</p>
-                        <p className="text-sm mt-1">เธเธ”เธเธธเนเธก "Create" เน€เธเธทเนเธญเธชเธฃเนเธฒเธเธฃเธฒเธขเธเธฒเธฃเนเธซเธกเน</p>
+                        <p className="font-medium">ยังไม่มีรายการแจ้งซ่อม</p>
+                        <p className="text-sm mt-1">กดปุ่ม "สร้างรายการ" เพื่อสร้างรายการใหม่</p>
                     </div>
                 ) : viewMode === 'table' ? (
                     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -512,11 +512,11 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                             <table className="w-full text-left">
                                 <thead className="bg-gray-50 border-b border-gray-100">
                                     <tr>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">เนเธเธเธฒเธ</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">เธชเธ–เธฒเธเธ—เธตเน</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">เธเธงเธฒเธกเน€เธฃเนเธเธ”เนเธงเธ</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">เธชเธ–เธฒเธเธฐ</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">เธเธฒเธฃเธเธฑเธ”เธเธฒเธฃ</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">งาน</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">สถานที่</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">ความเร่งด่วน</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">สถานะ</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">การจัดการ</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -550,8 +550,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                                 {[
                                                                     req.tbl_rooms?.zone,
                                                                     req.tbl_rooms?.building,
-                                                                    req.tbl_rooms?.floor ? `เธเธฑเนเธ ${req.tbl_rooms.floor}` : null
-                                                                ].filter(Boolean).join(' โ€ข ')}
+                                                                    req.tbl_rooms?.floor ? `ชั้น ${req.tbl_rooms.floor}` : null
+                                                                ].filter(Boolean).join(' / ')}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -566,9 +566,9 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border ${statusCfg.color}`}>
                                                             {statusCfg.label}
                                                         </span>
-                                                        {req.tags?.includes('เธฅเธนเธเธเนเธฒ') && (
+                                                        {req.tags?.includes('ลูกค้า') && (
                                                             <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold bg-pink-100 text-pink-700 border border-pink-200">
-                                                                เนเธเนเธเนเธ”เธขเธฅเธนเธเธเนเธฒ
+                                                                แจ้งโดยลูกค้า
                                                             </span>
                                                         )}
                                                     </div>
@@ -619,9 +619,9 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${priorityCfg.color}`}>
                                                     {priorityCfg.label}
                                                 </span>
-                                                {req.tags?.includes('เธฅเธนเธเธเนเธฒ') && (
+                                                {req.tags?.includes('ลูกค้า') && (
                                                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 text-pink-700 border border-pink-200">
-                                                        เนเธเนเธเนเธ”เธขเธฅเธนเธเธเนเธฒ
+                                                        แจ้งโดยลูกค้า
                                                     </span>
                                                 )}
                                             </div>
@@ -638,8 +638,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                             {[
                                                                 req.tbl_rooms?.zone,
                                                                 req.tbl_rooms?.building,
-                                                                req.tbl_rooms?.floor ? `เธเธฑเนเธ ${req.tbl_rooms.floor}` : null
-                                                            ].filter(Boolean).join(' โ€ข ')}
+                                                                req.tbl_rooms?.floor ? `ชั้น ${req.tbl_rooms.floor}` : null
+                                                            ].filter(Boolean).join(' / ')}
                                                         </span>
                                                     </span>
                                                 </div>
@@ -672,7 +672,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
                         <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-lg font-bold text-gray-900">เธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”เธเธณเธเธญ</h2>
+                            <h2 className="text-lg font-bold text-gray-900">รายละเอียดคำขอ</h2>
                             <button onClick={() => setShowDetail(false)} className="p-2 hover:bg-gray-100 rounded-lg">
                                 <X className="w-5 h-5" />
                             </button>
@@ -687,9 +687,9 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 <span className={`px-2.5 py-1 rounded-full text-sm font-medium ${GENERAL_REQUEST_PRIORITY_CONFIG[selectedRequest.priority]?.color}`}>
                                     {GENERAL_REQUEST_PRIORITY_CONFIG[selectedRequest.priority]?.label}
                                 </span>
-                                {selectedRequest.tags?.includes('เธฅเธนเธเธเนเธฒ') && (
+                                {selectedRequest.tags?.includes('ลูกค้า') && (
                                     <span className="px-2.5 py-1 rounded-full text-sm font-medium bg-pink-100 text-pink-700 border border-pink-200">
-                                        เนเธเนเธเนเธ”เธขเธฅเธนเธเธเนเธฒ
+                                        แจ้งโดยลูกค้า
                                     </span>
                                 )}
                             </div>
@@ -702,22 +702,22 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
                             <div className="grid grid-cols-2 gap-3 pt-2">
                                 <div className="bg-gray-50 rounded-lg p-3">
-                                    <p className="text-xs text-gray-500 mb-1">เธชเธ–เธฒเธเธ—เธตเน</p>
+                                    <p className="text-xs text-gray-500 mb-1">สถานที่</p>
                                     <p className="text-sm font-medium text-gray-900">
-                                        {selectedRequest.tbl_rooms?.room_code} โ€” {selectedRequest.tbl_rooms?.room_name}
+                                        {selectedRequest.tbl_rooms?.room_code} - {selectedRequest.tbl_rooms?.room_name}
                                     </p>
                                 </div>
                                 <div className="bg-gray-50 rounded-lg p-3">
-                                    <p className="text-xs text-gray-500 mb-1">เธเธนเนเนเธเนเธ</p>
+                                    <p className="text-xs text-gray-500 mb-1">ผู้แจ้ง</p>
                                     <p className="text-sm font-medium text-gray-900">{selectedRequest.reported_by}</p>
                                 </div>
                                 <div className="bg-gray-50 rounded-lg p-3">
-                                    <p className="text-xs text-gray-500 mb-1">เธงเธฑเธเธ—เธตเนเนเธเนเธ</p>
+                                    <p className="text-xs text-gray-500 mb-1">วันที่แจ้ง</p>
                                     <p className="text-sm font-medium text-gray-900">{formatDate(selectedRequest.created_at)}</p>
                                 </div>
                                 {selectedRequest.assigned_to && (
                                     <div className="bg-gray-50 rounded-lg p-3">
-                                        <p className="text-xs text-gray-500 mb-1">เธเธนเนเธฃเธฑเธเธเธดเธ”เธเธญเธ</p>
+                                        <p className="text-xs text-gray-500 mb-1">ผู้รับผิดชอบ</p>
                                         <p className="text-sm font-medium text-gray-900">{selectedRequest.assigned_to}</p>
                                     </div>
                                 )}
@@ -729,7 +729,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 onClick={() => setShowDetail(false)}
                                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
                             >
-                                เธเธดเธ”
+                                ปิด
                             </button>
                         </div>
                     </div>
@@ -741,8 +741,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                     <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[95vh] overflow-y-auto">
                         <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
                             <div>
-                                <h2 className="text-lg font-bold text-gray-900">เนเธเนเธเธเนเธญเธก (เธชเนเธเธ–เธถเธเธเธธเธฃเธเธฒเธฃ)</h2>
-                                <p className="text-xs text-gray-500 mt-0.5">เธฃเธฐเธเธเธเธฐเนเธเนเธเน€เธ•เธทเธญเธเนเธเธขเธฑเธเธเนเธฒเธขเธเธธเธฃเธเธฒเธฃเนเธ”เธขเธญเธฑเธ•เนเธเธกเธฑเธ•เธด</p>
+                                <h2 className="text-lg font-bold text-gray-900">แจ้งซ่อม (ส่งถึงธุรการ)</h2>
+                                <p className="text-xs text-gray-500 mt-0.5">ระบบจะแจ้งเตือนไปยังฝ่ายธุรการโดยอัตโนมัติ</p>
                             </div>
                             <button onClick={() => setShowForm(false)} className="p-2 hover:bg-gray-100 rounded-lg">
                                 <X className="w-5 h-5" />
@@ -751,7 +751,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
                         <form onSubmit={handleSubmit} className="p-6 space-y-5">
                             <div>
-                                <label className="block text-sm font-medium mb-2 text-gray-700">เน€เธฅเธทเธญเธเธญเธขเนเธฒเธเนเธ”เธญเธขเนเธฒเธเธซเธเธถเนเธ</label>
+                                <label className="block text-sm font-medium mb-2 text-gray-700">เลือกอย่างใดอย่างหนึ่ง</label>
                                 <div className="grid grid-cols-2 gap-2">
                                     <button
                                         type="button"
@@ -759,13 +759,13 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                             setLocationMode('location');
                                             setFormData(prev => {
                                                 const currentTags = prev.tags ? prev.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
-                                                const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('เธฃเธ–:'));
+                                                const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('รถ:'));
                                                 return { ...prev, vehicle_id: 0, tags: nextTags.join(',') };
                                             });
                                         }}
                                         className={`px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${locationMode === 'location' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
                                     >
-                                        เธชเธ–เธฒเธเธ—เธตเน
+                                        สถานที่
                                     </button>
                                     <button
                                         type="button"
@@ -773,13 +773,13 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                             setLocationMode('vehicle');
                                             setFormData(prev => {
                                                 const currentTags = prev.tags ? prev.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
-                                                const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('เธฃเธ–:'));
+                                                const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('รถ:'));
                                                 return { ...prev, room_id: 0, vehicle_id: 0, tags: nextTags.join(',') };
                                             });
                                         }}
                                         className={`px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${locationMode === 'vehicle' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
                                     >
-                                        เธ—เธฐเน€เธเธตเธขเธเธฃเธ–
+                                        ทะเบียนรถ
                                     </button>
                                 </div>
                             </div>
@@ -787,7 +787,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                             {locationMode === 'location' ? (
                                 <div>
                                     <label className="block text-sm font-medium mb-1.5 text-gray-700">
-                                        เธชเธ–เธฒเธเธ—เธตเน <span className="text-red-500">*</span>
+                                        สถานที่ <span className="text-red-500">*</span>
                                     </label>
                                     <HierarchicalRoomSelector
                                         rooms={rooms}
@@ -799,7 +799,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                             ) : (
                                 <div>
                                     <label className="block text-sm font-medium mb-1.5 text-gray-700">
-                                        เธ—เธฐเน€เธเธตเธขเธเธฃเธ– <span className="text-red-500">*</span>
+                                        ทะเบียนรถ <span className="text-red-500">*</span>
                                     </label>
                                     <VehicleLicensePlateSelector
                                         vehicles={vehicles}
@@ -807,10 +807,10 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                         onChange={(vehicleId) => {
                                             const selected = vehicleId ? vehicles.find(v => v.vehicle_id === vehicleId) : null;
                                             const plate = selected?.license_plate?.trim() || '';
-                                            const vehicleTag = plate ? `เธฃเธ–:${plate}` : '';
+                                            const vehicleTag = plate ? `รถ:${plate}` : '';
                                             setFormData(prev => {
                                                 const currentTags = prev.tags ? prev.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
-                                                const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('เธฃเธ–:'));
+                                                const nextTags = currentTags.filter(t => !t.toLowerCase().startsWith('รถ:'));
                                                 if (vehicleTag) nextTags.push(vehicleTag);
                                                 return { ...prev, vehicle_id: vehicleId, tags: nextTags.join(',') };
                                             });
@@ -822,37 +822,37 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                         if (!v) return null;
                                         const ownerRoom = v.owner_room?.trim();
                                         if (!ownerRoom) {
-                                            return <p className="text-xs text-amber-600 mt-2">เธ—เธฐเน€เธเธตเธขเธเธฃเธ–เธเธตเนเธขเธฑเธเนเธกเนเธฃเธฐเธเธธเน€เธฅเธเธซเนเธญเธ (owner_room) เนเธเธฃเธฐเธเธ</p>;
+                                            return <p className="text-xs text-amber-600 mt-2">ทะเบียนรถนี้ยังไม่ได้ระบุเลขห้อง (owner_room) ในระบบ</p>;
                                         }
                                         const matchedRoom = rooms.find(r => r.room_code.trim().toLowerCase() === ownerRoom.toLowerCase());
                                         if (!matchedRoom) {
-                                            return <p className="text-xs text-amber-600 mt-2">เนเธกเนเธเธเธซเนเธญเธเธฃเธซเธฑเธช "{ownerRoom}" เธ—เธตเนเธเธนเธเธเธฑเธเธ—เธฐเน€เธเธตเธขเธเธฃเธ–เธเธตเน (เนเธเนเนเธเนเธ”เนเธ—เธตเนเธซเธเนเธฒ /admin/rooms)</p>;
+                                            return <p className="text-xs text-amber-600 mt-2">ไม่พบห้องรหัส "{ownerRoom}" ที่ผูกกับทะเบียนรถนี้ (แก้ไขได้ที่หน้า /admin/rooms)</p>;
                                         }
-                                        return <p className="text-xs text-gray-500 mt-2">เธฃเธฐเธเธเธเธฐเนเธเนเธชเธ–เธฒเธเธ—เธตเนเธญเธฑเธ•เนเธเธกเธฑเธ•เธด: {matchedRoom.room_code} โ€” {matchedRoom.room_name}</p>;
+                                        return <p className="text-xs text-gray-500 mt-2">ระบบจะใช้สถานที่อัตโนมัติ: {matchedRoom.room_code} - {matchedRoom.room_name}</p>;
                                     })()}
                                 </div>
                             )}
 
                             <div>
                                 <label className="block text-sm font-medium mb-1.5 text-gray-700">
-                                    เธซเธฑเธงเน€เธฃเธทเนเธญเธ <span className="text-red-500">*</span>
+                                    หัวเรื่อง <span className="text-red-500">*</span>
                                 </label>
                                 <input
                                     type="text"
                                     value={formData.title}
                                     onChange={e => setFormData({ ...formData, title: e.target.value })}
-                                    placeholder="เธฃเธฐเธเธธเธเธฑเธเธซเธฒเนเธ”เธขเธขเนเธญ..."
+                                    placeholder="ระบุปัญหาโดยย่อ..."
                                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
                                     required
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium mb-1.5 text-gray-700">เธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”</label>
+                                <label className="block text-sm font-medium mb-1.5 text-gray-700">รายละเอียด</label>
                                 <textarea
                                     value={formData.description}
                                     onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                    placeholder="เธญเธเธดเธเธฒเธขเธเธฑเธเธซเธฒเน€เธเธดเนเธกเน€เธ•เธดเธก..."
+                                    placeholder="อธิบายปัญหาเพิ่มเติม..."
                                     rows={3}
                                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
                                 />
@@ -860,12 +860,12 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-1.5 text-gray-700">เธเธฃเธฐเน€เธ เธ—</label>
+                                    <label className="block text-sm font-medium mb-1.5 text-gray-700">ประเภท</label>
                                     <select
                                         value={formData.category}
                                         onChange={e => setFormData({ ...formData, category: e.target.value })}
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                                        aria-label="เน€เธฅเธทเธญเธเธเธฃเธฐเน€เธ เธ—เธเธฒเธ"
+                                        aria-label="เลือกประเภทงาน"
                                     >
                                         {GENERAL_REQUEST_CATEGORY_OPTIONS.map(opt => (
                                             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -873,12 +873,12 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1.5 text-gray-700">เธเธงเธฒเธกเน€เธฃเนเธเธ”เนเธงเธ</label>
+                                    <label className="block text-sm font-medium mb-1.5 text-gray-700">ความเร่งด่วน</label>
                                     <select
                                         value={formData.priority}
                                         onChange={e => setFormData({ ...formData, priority: e.target.value })}
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                                        aria-label="เน€เธฅเธทเธญเธเธเธงเธฒเธกเน€เธฃเนเธเธ”เนเธงเธ"
+                                        aria-label="เลือกความเร่งด่วน"
                                     >
                                         {GENERAL_REQUEST_PRIORITY_OPTIONS.map((option) => (
                                             <option key={option.value} value={option.value}>
@@ -892,53 +892,53 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium mb-1.5 text-gray-700">
-                                        เธเธทเนเธญเธเธนเนเนเธเนเธ <span className="text-red-500">*</span>
+                                        ชื่อผู้แจ้ง <span className="text-red-500">*</span>
                                     </label>
                                     <input
                                         type="text"
                                         value={formData.reported_by}
                                         onChange={e => setFormData({ ...formData, reported_by: e.target.value })}
-                                        placeholder="เธเธทเนเธญ-เธเธฒเธกเธชเธเธธเธฅ"
+                                        placeholder="ชื่อ-นามสกุล"
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
                                         required
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1.5 text-gray-700">เน€เธเธญเธฃเนเธ•เธดเธ”เธ•เนเธญ</label>
+                                    <label className="block text-sm font-medium mb-1.5 text-gray-700">เบอร์ติดต่อ</label>
                                     <input
                                         type="text"
                                         value={formData.contact_info}
                                         onChange={e => setFormData({ ...formData, contact_info: e.target.value })}
-                                        placeholder="เน€เธเธญเธฃเนเนเธ—เธฃ / เนเธฅเธเน"
+                                        placeholder="เบอร์โทร / ไลน์"
                                         className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
                                     />
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium mb-1.5 text-gray-700">เนเธเธเธ / เธเนเธฒเธข</label>
+                                <label className="block text-sm font-medium mb-1.5 text-gray-700">แผนก / ฝ่าย</label>
                                 <input
                                     type="text"
                                     value={formData.department}
                                     onChange={e => setFormData({ ...formData, department: e.target.value })}
-                                    placeholder="เธฃเธฐเธเธธเนเธเธเธ (เธ–เนเธฒเธกเธต)"
+                                    placeholder="ระบุแผนก (ถ้ามี)"
                                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium mb-1.5 text-gray-700">เนเธ—เนเธ</label>
+                                <label className="block text-sm font-medium mb-1.5 text-gray-700">แท็ก</label>
                                 <div className="flex gap-2 mb-2">
                                     <input
                                         type="text"
                                         value={formData.tagInput}
                                         onChange={e => setFormData({ ...formData, tagInput: e.target.value })}
                                         onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
-                                        placeholder="เน€เธเธดเนเธกเนเธ—เนเธ..."
+                                        placeholder="เพิ่มแท็ก..."
                                         className="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
                                     />
                                     <button type="button" onClick={handleAddTag} className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
-                                        เน€เธเธดเนเธก
+                                        เพิ่ม
                                     </button>
                                 </div>
 
@@ -957,7 +957,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium mb-1.5 text-gray-700">เนเธเธเธฃเธนเธเธ เธฒเธ (เธ–เนเธฒเธกเธต)</label>
+                                <label className="block text-sm font-medium mb-1.5 text-gray-700">แนบรูปภาพ (ถ้ามี)</label>
                                 <div className="relative border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
                                     <div className="pointer-events-none">
                                         {selectedFile ? (
@@ -967,7 +967,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                             </p>
                                         ) : (
                                             <p className="text-sm text-gray-500">
-                                                <span className="text-blue-600 font-medium">เธเธฅเธดเธเน€เธเธทเนเธญเน€เธฅเธทเธญเธเธฃเธนเธเธ เธฒเธ</span> เธซเธฃเธทเธญเธฅเธฒเธเธกเธฒเธงเธฒเธเธ—เธตเนเธเธตเน
+                                                <span className="text-blue-600 font-medium">คลิกเพื่อเลือกรูปภาพ</span> หรือลากมาวางที่นี่
                                             </p>
                                         )}
                                     </div>
@@ -977,7 +977,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                         onChange={e => setSelectedFile(e.target.files?.[0] || null)}
                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                         accept="image/*,.pdf"
-                                        title="เน€เธฅเธทเธญเธเนเธเธฅเนเนเธเธ"
+                                        title="เลือกไฟล์แนบ"
                                     />
                                 </div>
                             </div>
@@ -985,8 +985,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                             <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
                                 <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                                 <div className="text-sm text-blue-800">
-                                    <p className="font-medium">เธฃเธฐเธเธเธเธฐเนเธเนเธเน€เธ•เธทเธญเธเธเนเธฒเธขเธเธธเธฃเธเธฒเธฃเธเนเธฒเธเธซเธเนเธฒเน€เธงเนเธเนเธ—เธ LINE</p>
-                                    <p className="text-blue-600 mt-0.5">เน€เธกเธทเนเธญเธเธฑเธเธ—เธถเธเธชเธณเน€เธฃเนเธ เธเธนเนเนเธเน role general เธเธฐเนเธ”เนเธฃเธฑเธเธเธฒเธฃเนเธเนเธเน€เธ•เธทเธญเธเธเธฃเนเธญเธกเน€เธชเธตเธขเธเธเธเน€เธงเนเธ</p>
+                                    <p className="font-medium">ระบบจะแจ้งเตือนฝ่ายธุรการผ่านหน้าเว็บแทน LINE</p>
+                                    <p className="text-blue-600 mt-0.5">เมื่อบันทึกสำเร็จ ผู้ใช้ role general จะได้รับการแจ้งเตือนพร้อมเสียงบนเว็บ</p>
                                 </div>
                             </div>
 
@@ -996,7 +996,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                     onClick={() => setShowForm(false)}
                                     className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
                                 >
-                                    เธขเธเน€เธฅเธดเธ
+                                    ยกเลิก
                                 </button>
                                 <button
                                     type="submit"
@@ -1004,7 +1004,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                     className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center justify-center gap-2 disabled:opacity-60"
                                 >
                                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
-                                    {submitting ? 'เธเธณเธฅเธฑเธเธเธฑเธเธ—เธถเธ...' : 'เธชเนเธเธเธณเธเธญ'}
+                                    {submitting ? 'กำลังบันทึก...' : 'ส่งคำขอ'}
                                 </button>
                             </div>
                         </form>
