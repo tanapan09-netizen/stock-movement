@@ -472,7 +472,7 @@ const T: Record<Lang, Record<string, string>> = {
         errNoRoom:'กรุณาระบุสถานที่',
         errNoCustomer:'ไม่พบข้อมูลลูกค้า กรุณาติดต่อผู้ดูแลระบบ',
         errLineId:'ไม่สามารถดึง LINE User ID ได้ กรุณาเปิดจากใน LINE',
-        errNoLiffId:'ยังไม่ได้ตั้งค่า NEXT_PUBLIC_LINE_LIFF_ID',
+        errNoLiffId:'ยังไม่ได้ตั้งค่า NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID หรือ NEXT_PUBLIC_LINE_LIFF_ID',
         errSubmit:'เกิดข้อผิดพลาดระหว่างส่งข้อมูล', errGeneric:'แจ้งซ่อมไม่สำเร็จ',
         errCaptcha:'รหัสยืนยันไม่ถูกต้อง กรุณาลองอีกครั้ง',
         closeAlert:'ปิด', required:'จำเป็น', optional:'ไม่บังคับ',
@@ -507,7 +507,7 @@ const T: Record<Lang, Record<string, string>> = {
         errNoRoom:'Please specify a location.',
         errNoCustomer:'Customer not found. Please register or contact admin.',
         errLineId:'Unable to retrieve LINE User ID. Open from within LINE.',
-        errNoLiffId:'NEXT_PUBLIC_LINE_LIFF_ID is not configured.',
+        errNoLiffId:'NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID or NEXT_PUBLIC_LINE_LIFF_ID is not configured.',
         errSubmit:'An error occurred while submitting.', errGeneric:'Submission failed.',
         errCaptcha:'Incorrect verification code. Please try again.',
         closeAlert:'Dismiss', required:'Required', optional:'Optional',
@@ -542,7 +542,7 @@ const T: Record<Lang, Record<string, string>> = {
         errNoRoom:'場所を指定してください。',
         errNoCustomer:'顧客が見つかりません。管理者にお問い合わせください。',
         errLineId:'LINE User IDを取得できませんでした。LINEから開いてください。',
-        errNoLiffId:'NEXT_PUBLIC_LINE_LIFF_IDが設定されていません。',
+        errNoLiffId:'NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID または NEXT_PUBLIC_LINE_LIFF_ID が設定されていません。',
         errSubmit:'送信中にエラーが発生しました。', errGeneric:'送信に失敗しました。',
         errCaptcha:'認証コードが間違っています。もう一度お試しください。',
         closeAlert:'閉じる', required:'必須', optional:'任意',
@@ -838,7 +838,9 @@ export default function LineRepairRequestClient() {
         let cancelled = false;
         async function run() {
             if (lineUserIdFromQuery) { if (!cancelled) { setLineUserId(lineUserIdFromQuery); setDetectingLineId(false); } return; }
-            const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID;
+            const liffId =
+                process.env.NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID
+                || process.env.NEXT_PUBLIC_LINE_LIFF_ID;
             if (!liffId) { if (!cancelled) { setDetectingLineId(false); setAlert({ kind:'info', text:t('errNoLiffId') }); } return; }
             try {
                 await loadLiffSdk();
