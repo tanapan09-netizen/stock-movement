@@ -740,6 +740,12 @@ function SuccessDialog({
 export default function LineRepairRequestClient() {
     const searchParams = useSearchParams();
     const lineUserIdFromQuery = (searchParams.get('line_user_id') || '').trim();
+    const debugLiffEnabled = searchParams.get('debug_liff') === '1';
+    const resolvedLiffId =
+        process.env.NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID
+        || process.env.NEXT_PUBLIC_LINE_LIFF_ID
+        || '';
+    const safeRedirectUri = buildSafeLiffRedirectUri() || '';
 
     // Language
     const [lang, setLangState] = useState<Lang>('th');
@@ -1070,6 +1076,29 @@ export default function LineRepairRequestClient() {
                 <p style={{ textAlign:'center', fontSize:'0.69rem', color:'var(--text-muted)', marginTop:14, letterSpacing:'0.02em' }}>
                     {t('footer')}
                 </p>
+
+                {debugLiffEnabled && (
+                    <div
+                        style={{
+                            marginTop: 14,
+                            background: '#fff',
+                            border: '1px solid #eeddd0',
+                            borderRadius: 14,
+                            padding: 14,
+                            boxShadow: '0 4px 18px rgba(186,120,70,0.08)',
+                            fontSize: '0.76rem',
+                            color: '#6b5744',
+                            wordBreak: 'break-word',
+                        }}
+                    >
+                        <div style={{ fontWeight: 700, color: '#1a1209', marginBottom: 8 }}>LIFF Debug</div>
+                        <div><strong>Resolved LIFF ID:</strong> {resolvedLiffId || '-'}</div>
+                        <div><strong>LIFF URL:</strong> {resolvedLiffId ? `https://liff.line.me/${resolvedLiffId}` : '-'}</div>
+                        <div><strong>Safe Redirect URI:</strong> {safeRedirectUri || '-'}</div>
+                        <div><strong>Current URL:</strong> {typeof window !== 'undefined' ? window.location.href : '-'}</div>
+                        <div><strong>Query line_user_id:</strong> {lineUserIdFromQuery || '-'}</div>
+                    </div>
+                )}
             </div>
 
             {/* Confirm Dialog */}
