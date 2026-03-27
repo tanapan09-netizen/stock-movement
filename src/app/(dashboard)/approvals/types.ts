@@ -13,6 +13,17 @@ export interface LinkedPurchaseOrderSummary {
     status?: string | null;
 }
 
+export interface ApprovalStepLog {
+    id: number;
+    step_order: number;
+    action: string;
+    acted_at?: string | Date | null;
+    comment?: string | null;
+    actor?: {
+        username?: string | null;
+    } | null;
+}
+
 export interface ApprovalRequest {
     request_id: number;
     request_number: string;
@@ -34,6 +45,7 @@ export interface ApprovalRequest {
     tbl_users?: ApprovalUser | null;
     tbl_approver?: ApprovalApprover | null;
     linked_purchase_orders?: LinkedPurchaseOrderSummary[];
+    step_logs?: ApprovalStepLog[];
 }
 
 export interface ActiveJob {

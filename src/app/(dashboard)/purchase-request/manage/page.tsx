@@ -45,6 +45,18 @@ export default async function PurchaseRequestManagementPage() {
                     steps: true,
                 },
             },
+            step_logs: {
+                include: {
+                    actor: {
+                        select: {
+                            username: true,
+                        },
+                    },
+                },
+                orderBy: {
+                    acted_at: 'asc',
+                },
+            },
         },
         orderBy: {
             created_at: 'desc',

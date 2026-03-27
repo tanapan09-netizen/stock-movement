@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { CheckCircle2, CircleSlash, ClipboardList, ExternalLink, FileCheck2, FilePenLine, Filter, Loader2, Printer, Search, ShoppingCart } from 'lucide-react';
+import { CheckCircle2, CircleSlash, ClipboardList, ExternalLink, FileCheck2, FilePenLine, FileText, Filter, Loader2, Printer, Search, ShoppingCart, X } from 'lucide-react';
 
 import { updateApprovalStatus, updatePurchaseRequest } from '@/actions/approvalActions';
 import { isDepartmentRole } from '@/lib/roles';
@@ -165,6 +165,45 @@ function getPurchaseOrderProgressClass(request: ApprovalRequest) {
     return getProcurementStatusBadgeClass('ordered');
 }
 
+function formatDisplayDateTime(value: string | Date | null | undefined) {
+    if (!value) return '-';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('th-TH', {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
+function getStepLogActionLabel(action?: string | null) {
+    switch (action) {
+        case 'approved':
+            return 'อนุมัติ / ส่งต่อ';
+        case 'returned':
+            return 'ตีกลับแก้ไข';
+        case 'rejected':
+            return 'ไม่อนุมัติ';
+        default:
+            return action || '-';
+    }
+}
+
+function getStepLogActionClass(action?: string | null) {
+    switch (action) {
+        case 'approved':
+            return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+        case 'returned':
+            return 'border-orange-200 bg-orange-50 text-orange-700';
+        case 'rejected':
+            return 'border-rose-200 bg-rose-50 text-rose-700';
+        default:
+            return 'border-slate-200 bg-slate-50 text-slate-600';
+    }
+}
+
 export default function PurchaseRequestManagementClient({ initialRequests, currentRole }: Props) {
     const router = useRouter();
     const [requests, setRequests] = useState<ApprovalRequest[]>(initialRequests);
@@ -176,6 +215,7 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
     const [search, setSearch] = useState('');
     const [pendingRequestId, setPendingRequestId] = useState<number | null>(null);
     const [editingRequest, setEditingRequest] = useState<ApprovalRequest | null>(null);
+    const [selectedRequest, setSelectedRequest] = useState<ApprovalRequest | null>(null);
     const [editRequestDate, setEditRequestDate] = useState('');
     const [editAmount, setEditAmount] = useState('');
     const [editReferenceJob, setEditReferenceJob] = useState('');
@@ -320,6 +360,10 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
         setEditAmount('');
         setEditReferenceJob('');
         setEditReason('');
+    };
+
+    const closeDetailDialog = () => {
+        setSelectedRequest(null);
     };
 
     const handleSaveEdit = async () => {
@@ -690,6 +734,14 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                             </td>
                                             <td className="px-5 py-4">
                                                 <div className="flex flex-wrap justify-end gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedRequest(request)}
+                                                        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                                                    >
+                                                        <FileText className="h-4 w-4" />
+                                                        รายละเอียด
+                                                    </button>
                                                     <Link
                                                         href={`/print/purchase-request/${request.request_id}`}
                                                         target="_blank"
@@ -772,6 +824,189 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                     </table>
                 </div>
             </div>
+
+            {selectedRequest && (
+                <div
+                    className="fixed inset-0 z-50 flex items-start justify-center bg-black/45 p-4"
+                    onMouseDown={(event) => {
+                        if (event.target === event.currentTarget) {
+                            closeDetailDialog();
+                        }
+                    }}
+                >
+                    <div className="my-8 w-full max-w-4xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+                                        <FileText className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-slate-900">รายละเอียดและประวัติคำขอซื้อ</h3>
+                                        <p className="mt-1 text-sm text-slate-500">{selectedRequest.request_number}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeDetailDialog}
+                                className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="max-h-[80vh] overflow-y-auto px-6 py-5">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">ผู้ขอ</div>
+                                    <div className="mt-2 text-sm font-semibold text-slate-900">{selectedRequest.tbl_users?.username || '-'}</div>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">สถานะ</div>
+                                    <div className="mt-2">
+                                        <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getProcurementStatusBadgeClass(selectedRequest.status)}`}>
+                                            {getProcurementStatusLabel(selectedRequest.status)}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">ขั้นตอนปัจจุบัน</div>
+                                    <div className="mt-2 text-sm font-semibold text-slate-900">{getPurchaseWorkflowStageHeading(selectedRequest)}</div>
+                                    <div className="mt-1 text-xs text-slate-500">
+                                        ขั้นตอน {getPurchaseRequestDisplayStep(selectedRequest.status, selectedRequest.current_step)}/{PURCHASE_REQUEST_WORKFLOW_LABELS.length}
+                                    </div>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <div className="text-xs font-medium uppercase tracking-wide text-slate-500">ยอดรวม</div>
+                                    <div className="mt-2 text-sm font-semibold text-emerald-700">฿{formatCurrency(selectedRequest.amount)}</div>
+                                </div>
+                            </div>
+
+                            <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-slate-900">Workflow ปัจจุบัน</h4>
+                                        <p className="mt-1 text-sm text-slate-500">{getPurchaseWorkflowStageDescription(selectedRequest)}</p>
+                                    </div>
+                                    <Link
+                                        href={`/print/purchase-request/${selectedRequest.request_id}`}
+                                        target="_blank"
+                                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                    >
+                                        <Printer className="h-4 w-4" />
+                                        เปิดเอกสาร PR
+                                    </Link>
+                                </div>
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                    {PURCHASE_REQUEST_WORKFLOW_LABELS.map((label, index) => {
+                                        const stepNumber = index + 1;
+                                        const currentDisplayStep = getPurchaseRequestDisplayStep(selectedRequest.status, selectedRequest.current_step);
+                                        const isCompleted = selectedRequest.status === 'approved' || stepNumber < currentDisplayStep;
+                                        const isCurrent = selectedRequest.status !== 'approved' && stepNumber === currentDisplayStep;
+                                        const isIssuedPOStage = stepNumber === 5 && selectedRequest.current_step === 4 && hasIssuedPurchaseOrder(selectedRequest);
+
+                                        return (
+                                            <span
+                                                key={`${selectedRequest.request_id}-detail-${label}-${stepNumber}`}
+                                                className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+                                                    isIssuedPOStage
+                                                        ? 'border-cyan-200 bg-cyan-50 text-cyan-700'
+                                                        : isCompleted ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : isCurrent ? 'border-cyan-200 bg-cyan-50 text-cyan-700' : 'border-slate-200 bg-white text-slate-400'
+                                                }`}
+                                            >
+                                                {isIssuedPOStage ? `${label} (มี PO)` : label}
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                                <div className="space-y-5">
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                        <h4 className="text-sm font-semibold text-slate-900">รายละเอียดคำขอซื้อ</h4>
+                                        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            <div>
+                                                <div className="text-xs font-medium uppercase tracking-wide text-slate-500">เลขงานอ้างอิง</div>
+                                                <div className="mt-1 text-sm text-slate-800">{selectedRequest.reference_job || '-'}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs font-medium uppercase tracking-wide text-slate-500">วันที่สร้าง</div>
+                                                <div className="mt-1 text-sm text-slate-800">{formatDisplayDateTime(selectedRequest.created_at)}</div>
+                                            </div>
+                                        </div>
+                                        <div className="mt-4">
+                                            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">เหตุผล / รายละเอียด</div>
+                                            <div className="mt-2 whitespace-pre-wrap rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+                                                {selectedRequest.reason || '-'}
+                                            </div>
+                                        </div>
+                                        {selectedRequest.rejection_reason && (
+                                            <div className="mt-4 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800">
+                                                <div className="font-semibold">
+                                                    {selectedRequest.status === 'returned' ? 'เหตุผลที่ตีกลับ' : 'เหตุผลที่ไม่อนุมัติ'}
+                                                </div>
+                                                <div className="mt-1 whitespace-pre-wrap">{selectedRequest.rejection_reason}</div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {selectedRequest.linked_purchase_orders && selectedRequest.linked_purchase_orders.length > 0 && (
+                                        <div className="rounded-2xl border border-cyan-200 bg-cyan-50/40 p-5">
+                                            <h4 className="text-sm font-semibold text-slate-900">Purchase Orders ที่เชื่อมกับ PR นี้</h4>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                {selectedRequest.linked_purchase_orders.map((purchaseOrder) => (
+                                                    <Link
+                                                        key={purchaseOrder.po_id}
+                                                        href={`/purchase-orders/${purchaseOrder.po_id}`}
+                                                        className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-medium text-cyan-700 transition hover:bg-cyan-50"
+                                                    >
+                                                        <ExternalLink className="h-4 w-4" />
+                                                        {purchaseOrder.po_number}
+                                                    </Link>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                                    <h4 className="text-sm font-semibold text-slate-900">ประวัติการดำเนินการ</h4>
+                                    <div className="mt-4 space-y-4">
+                                        {selectedRequest.step_logs && selectedRequest.step_logs.length > 0 ? (
+                                            selectedRequest.step_logs.map((log) => (
+                                                <div key={log.id} className="relative rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <div className="text-sm font-semibold text-slate-900">
+                                                            ขั้น {log.step_order}: {PURCHASE_REQUEST_WORKFLOW_LABELS[Math.max(log.step_order - 1, 0)] || `Step ${log.step_order}`}
+                                                        </div>
+                                                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getStepLogActionClass(log.action)}`}>
+                                                            {getStepLogActionLabel(log.action)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-2 text-xs text-slate-500">
+                                                        โดย {log.actor?.username || '-'} • {formatDisplayDateTime(log.acted_at)}
+                                                    </div>
+                                                    {log.comment && (
+                                                        <div className="mt-3 rounded-xl bg-white px-3 py-2 text-sm leading-6 text-slate-700">
+                                                            {log.comment}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                                                ยังไม่มีประวัติการอนุมัติในคำขอนี้
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {editingRequest && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
