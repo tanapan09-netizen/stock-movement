@@ -24,6 +24,9 @@ const PAGE_NAMES: Record<string, string> = {
     '/fixed-assets': 'ทรัพย์สินถาวร',
     '/inventory-audit': 'ตรวจนับสต็อก',
     '/accounting-dashboard': 'แดชบอร์ดบัญชี',
+    '/purchase-request/manage': 'Workflow จัดซื้อ / คิวงาน',
+    '/approvals/purchasing': 'คิวคำขอซื้อ (Legacy Redirect)',
+    '/purchasing-dashboard': 'แดชบอร์ดจัดซื้อ',
 };
 
 function getPageName(pathname: string): string {

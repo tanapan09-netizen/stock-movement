@@ -7,6 +7,7 @@ import { auth } from '@/auth';
 import { canEditPurchaseOrders, canPrintPurchaseOrders, canReceivePurchaseOrders, canViewPurchaseOrders } from '@/lib/rbac';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { getProcurementStatusBadgeClass, getProcurementStatusLabel } from '@/lib/procurement-status';
+import { parsePurchaseOrderRequestReference } from '@/lib/purchase-order-reference';
 
 
 const PO_STEPS = [
@@ -146,6 +147,7 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
     const supplier = po.supplier_id
         ? await prisma.tbl_suppliers.findUnique({ where: { id: po.supplier_id } })
         : null;
+    const requestReference = parsePurchaseOrderRequestReference(po.notes);
 
     
     const workflowSteps = await prisma.tbl_purchase_orders.findMany({
@@ -226,6 +228,29 @@ export default async function PODetailPage(props: { params: Promise<{ id: string
                         <div className="text-gray-600">{supplier?.address}</div>
                         <div className="text-gray-600">{supplier?.phone}</div>
                     </div>
+                    {requestReference.requestNumber && (
+                        <div>
+                            <h3 className="text-gray-500 text-sm uppercase font-semibold">Purchase Request</h3>
+                            <div className="font-bold text-lg text-cyan-700">{requestReference.requestNumber}</div>
+                            <div className="mt-2 flex flex-wrap gap-2 text-sm">
+                                {requestReference.requestId ? (
+                                    <Link
+                                        href={`/print/purchase-request/${requestReference.requestId}`}
+                                        target="_blank"
+                                        className="inline-flex items-center rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 font-medium text-cyan-700 hover:bg-cyan-100"
+                                    >
+                                        เปิดเอกสารคำขอซื้อ
+                                    </Link>
+                                ) : null}
+                                <Link
+                                    href="/purchase-request/manage"
+                                    className="inline-flex items-center rounded-lg border border-slate-200 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50"
+                                >
+                                    กลับคิวจัดซื้อ
+                                </Link>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="border-t">

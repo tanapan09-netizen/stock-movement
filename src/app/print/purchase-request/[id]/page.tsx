@@ -117,6 +117,21 @@ function formatRoleLabel(role: string) {
         .join(' ') || '-';
 }
 
+function getPrintablePurchaseRequestStatusLabel(status?: string | null) {
+    switch ((status || '').toLowerCase()) {
+        case 'pending':
+            return 'Pending';
+        case 'returned':
+            return 'Returned For Revision';
+        case 'approved':
+            return 'Completed';
+        case 'rejected':
+            return 'Rejected';
+        default:
+            return status || '-';
+    }
+}
+
 export default async function PurchaseRequestPrintPage(props: { params: Promise<{ id: string }> }) {
     const params = await props.params;
     const requestId = Number(params.id);
@@ -206,9 +221,10 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
     const parsed = parsePurchaseReason(request.reason);
     const displaySubtotal = parsed.subtotal !== '-' ? parsed.subtotal : `฿${formatCurrency(Number(request.amount || 0))}`;
     const displayNetTotal = parsed.netTotal !== '-' ? parsed.netTotal : `฿${formatCurrency(Number(request.amount || 0))}`;
-    const effectiveWorkflowSource = request.status === 'pending'
-        ? getEffectiveApprovalWorkflowSteps(request.request_type, request.workflow?.steps || [])
-        : (request.workflow?.steps || []);
+    const effectiveWorkflowSource = getEffectiveApprovalWorkflowSteps(
+        request.request_type,
+        request.workflow?.steps || [],
+    );
 
     const workflowSteps = effectiveWorkflowSource.map((step) => ({
         stepOrder: step.step_order,
@@ -233,7 +249,7 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
         <div className="min-h-screen bg-white p-8 print:p-0 text-black">
             <div className="mx-auto max-w-[210mm] print:max-w-none">
                 <div className="mb-6 flex justify-end gap-3 print:hidden">
-                    {request.status === 'pending' && (
+                    {(request.status === 'pending' || request.status === 'returned') && (
                         <Link
                             href={`/purchase-request?edit=${request.request_id}`}
                             className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-white px-4 py-2 text-amber-700 hover:bg-amber-50"
@@ -266,7 +282,7 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                         </div>
                         <div>
                             <span className="block text-sm text-gray-500">Status</span>
-                            <span className="font-semibold uppercase">{request.status}</span>
+                            <span className="font-semibold uppercase">{getPrintablePurchaseRequestStatusLabel(request.status)}</span>
                         </div>
                     </div>
                 </div>
@@ -289,6 +305,17 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                         <div className="text-lg font-bold">{parsed.priority}</div>
                     </div>
                 </div>
+
+                {(request.status === 'returned' || request.status === 'rejected') && request.rejection_reason && (
+                    <div className={`mb-8 rounded-sm border p-4 ${request.status === 'returned' ? 'border-orange-300 bg-orange-50' : 'border-rose-300 bg-rose-50'}`}>
+                        <h3 className="mb-2 text-xs font-bold uppercase text-gray-600">
+                            {request.status === 'returned' ? 'Return Reason' : 'Rejection Reason'}
+                        </h3>
+                        <div className={`text-sm font-medium ${request.status === 'returned' ? 'text-orange-800' : 'text-rose-800'}`}>
+                            {request.rejection_reason}
+                        </div>
+                    </div>
+                )}
 
                 <table className="mb-8 w-full text-sm">
                     <thead>

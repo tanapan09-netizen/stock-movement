@@ -7,15 +7,17 @@ export interface ApprovalWorkflowStepLike {
 export const PURCHASE_REQUEST_APPROVAL_STEPS = [
     { step_order: 1, approver_role: 'purchasing', approver_id: null },
     { step_order: 2, approver_role: 'manager', approver_id: null },
-    { step_order: 3, approver_role: 'purchasing', approver_id: null },
-    { step_order: 4, approver_role: 'store', approver_id: null },
+    { step_order: 3, approver_role: 'accounting', approver_id: null },
+    { step_order: 4, approver_role: 'purchasing', approver_id: null },
+    { step_order: 5, approver_role: 'store', approver_id: null },
 ] as const;
 
 export const PURCHASE_REQUEST_WORKFLOW_LABELS = [
     'ช่าง',
     'จัดซื้อ',
     'ผู้จัดการ',
-    'จัดซื้อ',
+    'บัญชี',
+    'จัดซื้อออก PO',
     'Store',
 ] as const;
 
@@ -85,6 +87,10 @@ export function getPurchaseRequestDisplayStep(
         return 1;
     }
 
+    if (status === 'returned') {
+        return 1;
+    }
+
     if (status === 'approved') {
         return PURCHASE_REQUEST_WORKFLOW_LABELS.length;
     }
@@ -104,5 +110,5 @@ export function getPurchaseRequestStageLabel(
 }
 
 export function isPurchaseRequestPurchasingStep(currentStep?: number | null) {
-    return currentStep === 1 || currentStep === 3;
+    return currentStep === 1 || currentStep === 4;
 }

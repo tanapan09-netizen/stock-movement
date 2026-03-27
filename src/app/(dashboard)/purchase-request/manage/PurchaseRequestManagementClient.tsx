@@ -17,7 +17,9 @@ interface Props {
     currentRole: string | null;
 }
 
-type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
+type StatusFilter = 'all' | 'pending' | 'returned' | 'approved' | 'rejected';
+type ViewMode = 'all' | 'my_queue';
+type PurchaseOrderFilter = 'all' | 'has_po' | 'received_po';
 
 function formatCurrency(value: unknown) {
     return Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -27,33 +29,150 @@ function getSummaryLine(reason?: string | null) {
     return reason?.split('\n').find((line) => line.trim()) || '-';
 }
 
-function getApproveActionLabel(request: ApprovalRequest) {
+function getQueueLabelByRole(role?: string | null) {
+    if (isDepartmentRole(role, 'purchasing')) return 'คิวจัดซื้อ';
+    if (isDepartmentRole(role, 'accounting')) return 'คิวบัญชี';
+    if (isDepartmentRole(role, 'store')) return 'คิว Store';
+    if (isDepartmentRole(role, 'technician')) return 'คิวช่าง';
+    if (isDepartmentRole(role, 'operation')) return 'คิวปฏิบัติการ';
+    if ((role || '').trim().toLowerCase() === 'manager') return 'คิวผู้จัดการ';
+    return 'คิวของฉัน';
+}
+
+function getPrimaryNavigation(role?: string | null) {
+    if (isDepartmentRole(role, 'purchasing')) {
+        return { href: '/purchasing-dashboard', label: 'กลับไปหน้า Purchasing Dashboard' };
+    }
+
+    if (isDepartmentRole(role, 'accounting')) {
+        return { href: '/accounting-dashboard', label: 'กลับไปหน้า Accounting Dashboard' };
+    }
+
+    if (isDepartmentRole(role, 'store')) {
+        return { href: '/store-dashboard', label: 'กลับไปหน้า Store Dashboard' };
+    }
+
+    if ((role || '').trim().toLowerCase() === 'manager') {
+        return { href: '/manager-dashboard', label: 'กลับไปหน้า Manager Dashboard' };
+    }
+
+    return null;
+}
+
+function hasIssuedPurchaseOrder(request: ApprovalRequest) {
+    return Boolean(request.linked_purchase_orders?.length);
+}
+
+function getStructuredApproveActionLabel(request: ApprovalRequest) {
     switch (request.current_step) {
         case 1: return 'ส่งผู้จัดการ';
-        case 2: return 'ส่งจัดซื้อ';
-        case 3: return 'ส่ง Store';
-        case 4: return 'รับเข้าคลัง';
+        case 2: return 'ส่งบัญชี';
+        case 3: return 'ส่งจัดซื้อออก PO';
+        case 4: return 'ส่ง Store รับเข้า';
+        case 5: return 'รับเข้าคลัง';
         default: return 'อนุมัติ';
     }
 }
 
-function getCurrentStageDescription(request: ApprovalRequest) {
+function getStructuredReturnActionLabel(request: ApprovalRequest) {
+    switch (request.current_step) {
+        case 1: return 'ตีกลับผู้ขอ';
+        case 2: return 'ส่งกลับจัดซื้อ';
+        case 3: return 'ส่งกลับจัดซื้อ';
+        case 4: return 'ส่งกลับบัญชี';
+        case 5: return 'ส่งกลับจัดซื้อออก PO';
+        default: return 'ตีกลับแก้ไข';
+    }
+}
+
+function getStructuredStageDescription(request: ApprovalRequest) {
     if (request.status === 'approved') return 'Workflow เสร็จสมบูรณ์';
+    if (request.status === 'returned') return 'ตีกลับให้ผู้ขอแก้ไขและส่งเข้า workflow ใหม่';
     if (request.status === 'rejected') return `สิ้นสุดที่ขั้น ${getPurchaseRequestStageLabel(request.status, request.current_step)}`;
 
     switch (request.current_step) {
-        case 1: return 'รอจัดซื้อทบทวนและตรวจสอบรายการ';
-        case 2: return 'รอผู้จัดการอนุมัติ';
-        case 3: return 'รอจัดซื้อดำเนินการหลังผู้จัดการอนุมัติ';
-        case 4: return 'รอ Store รับเข้าคลัง';
+        case 1: return 'รอจัดซื้อทบทวนรายการและความจำเป็น';
+        case 2: return 'รอผู้จัดการอนุมัติงบและแนวทางจัดซื้อ';
+        case 3: return 'รอบัญชีตรวจสอบงบ เอกสาร และเงื่อนไขจ่าย';
+        case 4: return 'รอจัดซื้อออกใบสั่งซื้อและยืนยันผู้ขาย';
+        case 5: return 'รอ Store รับเข้าและปิดงานรับของ';
         default: return '-';
     }
+}
+
+function getPurchaseOrderDraftHref(request: ApprovalRequest) {
+    const params = new URLSearchParams({
+        request_id: String(request.request_id),
+        request_number: request.request_number,
+    });
+
+    if (request.reference_job) {
+        params.set('reference_job', request.reference_job);
+    }
+
+    if (request.amount !== null && request.amount !== undefined) {
+        params.set('amount', String(Number(request.amount)));
+    }
+
+    const summary = getSummaryLine(request.reason);
+    if (summary && summary !== '-') {
+        params.set('reason', summary);
+    }
+
+    return `/purchase-orders/new?${params.toString()}`;
+}
+
+function getPurchaseWorkflowStageHeading(request: ApprovalRequest) {
+    if (request.current_step === 5 && hasReceivedPurchaseOrder(request)) {
+        return 'Store รับเข้า (PO รับเข้าแล้ว)';
+    }
+
+    if (request.current_step === 4 && hasIssuedPurchaseOrder(request)) {
+        return 'จัดซื้อออก PO (มี PO แล้ว)';
+    }
+
+    return getPurchaseRequestStageLabel(request.status, request.current_step);
+}
+
+function getPurchaseWorkflowStageDescription(request: ApprovalRequest) {
+    if (request.current_step === 5 && hasReceivedPurchaseOrder(request) && request.status === 'pending') {
+        return 'PO รับเข้าแล้ว รอ Store ยืนยันและปิดงานรับเข้าใน workflow';
+    }
+
+    if (request.current_step === 4 && hasIssuedPurchaseOrder(request) && request.status === 'pending') {
+        return 'มี PO แล้ว รอจัดซื้อส่งต่อให้ Store รับเข้า';
+    }
+
+    return getStructuredStageDescription(request);
+}
+
+function getPrimaryPurchaseOrder(request: ApprovalRequest) {
+    return request.linked_purchase_orders?.[0] ?? null;
+}
+
+function hasReceivedPurchaseOrder(request: ApprovalRequest) {
+    return request.linked_purchase_orders?.some((purchaseOrder) => purchaseOrder.status === 'received') ?? false;
+}
+
+function getPurchaseOrderProgressLabel(request: ApprovalRequest) {
+    if (hasReceivedPurchaseOrder(request)) return 'PO รับเข้าแล้ว';
+    if (hasIssuedPurchaseOrder(request)) return 'ออก PO แล้ว';
+    return null;
+}
+
+function getPurchaseOrderProgressClass(request: ApprovalRequest) {
+    if (hasReceivedPurchaseOrder(request)) return getProcurementStatusBadgeClass('received');
+    return getProcurementStatusBadgeClass('ordered');
 }
 
 export default function PurchaseRequestManagementClient({ initialRequests, currentRole }: Props) {
     const router = useRouter();
     const [requests, setRequests] = useState<ApprovalRequest[]>(initialRequests);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+    const [purchaseOrderFilter, setPurchaseOrderFilter] = useState<PurchaseOrderFilter>('all');
+    const [viewMode, setViewMode] = useState<ViewMode>(() => (
+        isDepartmentRole(currentRole, 'purchasing') ? 'all' : 'my_queue'
+    ));
     const [search, setSearch] = useState('');
     const [pendingRequestId, setPendingRequestId] = useState<number | null>(null);
     const [editingRequest, setEditingRequest] = useState<ApprovalRequest | null>(null);
@@ -64,32 +183,122 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
     const [isSavingEdit, setIsSavingEdit] = useState(false);
     const [isPending, startTransition] = useTransition();
     const canEditManagedRequests = isDepartmentRole(currentRole, 'purchasing');
+    const queueLabel = getQueueLabelByRole(currentRole);
+    const primaryNavigation = getPrimaryNavigation(currentRole);
 
     const summary = useMemo(() => {
         const pending = requests.filter((request) => request.status === 'pending').length;
         const actionable = requests.filter((request) => request.status === 'pending' && request.can_approve).length;
+        const hasPurchaseOrder = requests.filter((request) => hasIssuedPurchaseOrder(request)).length;
+        const receivedPurchaseOrder = requests.filter((request) => hasReceivedPurchaseOrder(request)).length;
+        const returned = requests.filter((request) => request.status === 'returned').length;
         const approved = requests.filter((request) => request.status === 'approved').length;
         const rejected = requests.filter((request) => request.status === 'rejected').length;
-        return { pending, actionable, approved, rejected };
+        return { pending, actionable, hasPurchaseOrder, receivedPurchaseOrder, returned, approved, rejected };
     }, [requests]);
+
+    const resetFilters = () => {
+        setStatusFilter('all');
+        setPurchaseOrderFilter('all');
+        setSearch('');
+        setViewMode(isDepartmentRole(currentRole, 'purchasing') ? 'all' : 'my_queue');
+    };
+
+    const applySummaryFilter = (filter: 'pending' | 'actionable' | 'approved' | 'returned' | 'rejected' | 'has_po' | 'received_po') => {
+        if (isSummaryFilterActive(filter)) {
+            resetFilters();
+            return;
+        }
+
+        switch (filter) {
+            case 'pending':
+                setStatusFilter('pending');
+                setPurchaseOrderFilter('all');
+                return;
+            case 'actionable':
+                setStatusFilter('pending');
+                setPurchaseOrderFilter('all');
+                setViewMode('my_queue');
+                return;
+            case 'approved':
+                setStatusFilter('approved');
+                setPurchaseOrderFilter('all');
+                return;
+            case 'returned':
+                setStatusFilter('returned');
+                setPurchaseOrderFilter('all');
+                return;
+            case 'rejected':
+                setStatusFilter('rejected');
+                setPurchaseOrderFilter('all');
+                return;
+            case 'has_po':
+                setStatusFilter('all');
+                setPurchaseOrderFilter('has_po');
+                return;
+            case 'received_po':
+                setStatusFilter('all');
+                setPurchaseOrderFilter('received_po');
+                return;
+            default:
+                return;
+        }
+    };
+
+    const isSummaryFilterActive = (filter: 'pending' | 'actionable' | 'approved' | 'returned' | 'rejected' | 'has_po' | 'received_po') => {
+        switch (filter) {
+            case 'pending':
+                return statusFilter === 'pending' && purchaseOrderFilter === 'all';
+            case 'actionable':
+                return viewMode === 'my_queue' && statusFilter === 'pending' && purchaseOrderFilter === 'all';
+            case 'approved':
+                return statusFilter === 'approved' && purchaseOrderFilter === 'all';
+            case 'returned':
+                return statusFilter === 'returned' && purchaseOrderFilter === 'all';
+            case 'rejected':
+                return statusFilter === 'rejected' && purchaseOrderFilter === 'all';
+            case 'has_po':
+                return purchaseOrderFilter === 'has_po' && statusFilter === 'all';
+            case 'received_po':
+                return purchaseOrderFilter === 'received_po' && statusFilter === 'all';
+            default:
+                return false;
+        }
+    };
+
+    const hasActiveFilters = statusFilter !== 'all'
+        || purchaseOrderFilter !== 'all'
+        || search.trim().length > 0
+        || viewMode !== (isDepartmentRole(currentRole, 'purchasing') ? 'all' : 'my_queue');
 
     const filteredRequests = useMemo(() => {
         const keyword = search.trim().toLowerCase();
         return [...requests]
             .filter((request) => {
+                if (viewMode === 'my_queue' && !(request.status === 'pending' && request.can_approve)) return false;
                 if (statusFilter !== 'all' && request.status !== statusFilter) return false;
+                if (purchaseOrderFilter === 'has_po' && !hasIssuedPurchaseOrder(request)) return false;
+                if (purchaseOrderFilter === 'received_po' && !hasReceivedPurchaseOrder(request)) return false;
                 if (!keyword) return true;
-                const haystack = [request.request_number, request.tbl_users?.username, request.reference_job, request.reason].filter(Boolean).join(' ').toLowerCase();
+                const haystack = [
+                    request.request_number,
+                    request.tbl_users?.username,
+                    request.reference_job,
+                    request.reason,
+                    ...(request.linked_purchase_orders?.map((purchaseOrder) => purchaseOrder.po_number) || []),
+                ].filter(Boolean).join(' ').toLowerCase();
                 return haystack.includes(keyword);
             })
             .sort((a, b) => {
+                const actionableCompare = Number(Boolean(b.can_approve && b.status === 'pending')) - Number(Boolean(a.can_approve && a.status === 'pending'));
+                if (actionableCompare !== 0) return actionableCompare;
                 const statusCompare = getProcurementStatusOrder(a.status) - getProcurementStatusOrder(b.status);
                 if (statusCompare !== 0) return statusCompare;
                 const workflowCompare = getPurchaseRequestDisplayStep(a.status, a.current_step) - getPurchaseRequestDisplayStep(b.status, b.current_step);
                 if (workflowCompare !== 0) return workflowCompare;
                 return new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime();
             });
-    }, [requests, search, statusFilter]);
+    }, [purchaseOrderFilter, requests, search, statusFilter, viewMode]);
 
     const applyUpdatedRequest = (updated: ApprovalRequest) => {
         setRequests((prev) => prev.map((request) => (request.request_id === updated.request_id ? { ...request, ...updated } : request)));
@@ -154,13 +363,23 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
     };
 
     const handleApprove = (request: ApprovalRequest) => {
+        if (request.current_step === 4 && !hasIssuedPurchaseOrder(request)) {
+            toast.error('กรุณาสร้าง PO ก่อนส่งต่อให้ Store รับเข้า');
+            return;
+        }
+
+        if (request.current_step === 5 && !hasReceivedPurchaseOrder(request)) {
+            toast.error('กรุณารับสินค้าในเอกสาร PO ก่อนปิดงานรับเข้าคลัง');
+            return;
+        }
+
         setPendingRequestId(request.request_id);
         startTransition(async () => {
             const result = await updateApprovalStatus(request.request_id, 'approved');
 
             if (result.success && result.data) {
                 applyUpdatedRequest({ ...(result.data as ApprovalRequest), can_approve: false });
-                toast.success(request.current_step === 4 ? 'ยืนยันรับเข้าคลังแล้ว' : 'อัปเดต workflow คำขอซื้อแล้ว');
+                toast.success(request.current_step === 5 ? 'ยืนยันรับเข้าคลังแล้ว' : 'อัปเดต workflow คำขอซื้อแล้ว');
                 router.refresh();
             } else {
                 toast.error(result.error || 'ไม่สามารถอนุมัติคำขอซื้อได้');
@@ -190,6 +409,26 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
         });
     };
 
+    const handleReturn = (request: ApprovalRequest) => {
+        const promptValue = window.prompt('ระบุเหตุผลที่ตีกลับเพื่อให้แก้ไข', '');
+        if (promptValue === null) return;
+
+        setPendingRequestId(request.request_id);
+        startTransition(async () => {
+            const result = await updateApprovalStatus(request.request_id, 'returned', promptValue.trim() || undefined);
+
+            if (result.success && result.data) {
+                applyUpdatedRequest({ ...(result.data as ApprovalRequest), can_approve: false });
+                toast.success(request.current_step === 1 ? 'ตีกลับให้ผู้ขอแก้ไขแล้ว' : 'ส่งกลับไปขั้นก่อนหน้าแล้ว');
+                router.refresh();
+            } else {
+                toast.error(result.error || 'ไม่สามารถตีกลับคำขอซื้อได้');
+            }
+
+            setPendingRequestId(null);
+        });
+    };
+
     return (
         <div className="mx-auto max-w-[1500px] space-y-6">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -201,7 +440,7 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                         <div>
                             <h1 className="text-2xl font-bold text-slate-900">จัดการระบบคำขอซื้อ</h1>
                             <p className="mt-1 text-sm text-slate-600">
-                                ติดตามคำขอซื้อให้เดินตาม workflow ช่าง &gt; จัดซื้อ &gt; ผู้จัดการ &gt; จัดซื้อ &gt; Store
+                                ติดตามคำขอซื้อให้เดินตาม workflow ช่าง &gt; จัดซื้อ &gt; ผู้จัดการ &gt; บัญชี &gt; จัดซื้อออก PO &gt; Store
                             </p>
                             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
                                 {PURCHASE_REQUEST_WORKFLOW_LABELS.map((label, index) => (
@@ -214,13 +453,15 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                     </div>
 
                     <div className="flex flex-wrap gap-3">
-                        <Link
-                            href="/approvals/purchasing"
-                            className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50"
-                        >
-                            <FileCheck2 className="h-4 w-4" />
-                            หน้าอนุมัติจัดซื้อ
-                        </Link>
+                        {primaryNavigation && (
+                            <Link
+                                href={primaryNavigation.href}
+                                className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50"
+                            >
+                                <FileCheck2 className="h-4 w-4" />
+                                {primaryNavigation.label}
+                            </Link>
+                        )}
                         <Link
                             href="/purchase-orders"
                             className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800"
@@ -232,23 +473,35 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-7">
+                <button type="button" onClick={() => applySummaryFilter('pending')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('pending') ? 'border-amber-400 ring-2 ring-amber-200' : 'border-amber-200'}`}>
                     <div className="text-sm font-medium text-slate-500">รอดำเนินการ</div>
                     <div className="mt-2 text-3xl font-bold text-amber-600">{summary.pending}</div>
-                </div>
-                <div className="rounded-2xl border border-cyan-200 bg-white p-5 shadow-sm">
-                    <div className="text-sm font-medium text-slate-500">รอฉันดำเนินการ</div>
+                </button>
+                <button type="button" onClick={() => applySummaryFilter('actionable')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('actionable') ? 'border-cyan-400 ring-2 ring-cyan-200' : 'border-cyan-200'}`}>
+                    <div className="text-sm font-medium text-slate-500">{queueLabel}</div>
                     <div className="mt-2 text-3xl font-bold text-cyan-700">{summary.actionable}</div>
-                </div>
-                <div className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm">
+                </button>
+                <button type="button" onClick={() => applySummaryFilter('has_po')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('has_po') ? 'border-blue-400 ring-2 ring-blue-200' : 'border-blue-200'}`}>
+                    <div className="text-sm font-medium text-slate-500">มี PO แล้ว</div>
+                    <div className="mt-2 text-3xl font-bold text-blue-600">{summary.hasPurchaseOrder}</div>
+                </button>
+                <button type="button" onClick={() => applySummaryFilter('received_po')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('received_po') ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-emerald-200'}`}>
+                    <div className="text-sm font-medium text-slate-500">PO รับเข้าแล้ว</div>
+                    <div className="mt-2 text-3xl font-bold text-emerald-700">{summary.receivedPurchaseOrder}</div>
+                </button>
+                <button type="button" onClick={() => applySummaryFilter('approved')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('approved') ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-emerald-200'}`}>
                     <div className="text-sm font-medium text-slate-500">อนุมัติแล้ว</div>
                     <div className="mt-2 text-3xl font-bold text-emerald-600">{summary.approved}</div>
-                </div>
-                <div className="rounded-2xl border border-rose-200 bg-white p-5 shadow-sm">
+                </button>
+                <button type="button" onClick={() => applySummaryFilter('returned')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('returned') ? 'border-orange-400 ring-2 ring-orange-200' : 'border-orange-200'}`}>
+                    <div className="text-sm font-medium text-slate-500">ตีกลับแก้ไข</div>
+                    <div className="mt-2 text-3xl font-bold text-orange-600">{summary.returned}</div>
+                </button>
+                <button type="button" onClick={() => applySummaryFilter('rejected')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('rejected') ? 'border-rose-400 ring-2 ring-rose-200' : 'border-rose-200'}`}>
                     <div className="text-sm font-medium text-slate-500">ไม่อนุมัติ</div>
                     <div className="mt-2 text-3xl font-bold text-rose-600">{summary.rejected}</div>
-                </div>
+                </button>
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -259,11 +512,33 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                         </div>
                         <div>
                             <h2 className="text-lg font-semibold text-slate-900">รายการคำขอซื้อทั้งหมด</h2>
-                            <p className="text-sm text-slate-500">{filteredRequests.length} รายการที่แสดงอยู่</p>
+                            <p className="text-sm text-slate-500">
+                                {viewMode === 'my_queue' ? `${queueLabel} ${filteredRequests.length} รายการ` : `${filteredRequests.length} รายการที่แสดงอยู่`}
+                            </p>
                         </div>
                     </div>
 
                     <div className="flex flex-col gap-3 md:flex-row">
+                        <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50 p-1">
+                            <button
+                                type="button"
+                                onClick={() => setViewMode('my_queue')}
+                                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                                    viewMode === 'my_queue' ? 'bg-white text-cyan-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                คิวของฉัน
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setViewMode('all')}
+                                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                                    viewMode === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                ทุกคำขอซื้อ
+                            </button>
+                        </div>
                         <div className="relative min-w-[260px]">
                             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                             <input
@@ -287,6 +562,30 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                 ))}
                             </select>
                         </div>
+                        <div className="relative">
+                            <FileCheck2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                            <select
+                                value={purchaseOrderFilter}
+                                onChange={(event) => setPurchaseOrderFilter(event.target.value as PurchaseOrderFilter)}
+                                className="min-w-[180px] rounded-xl border border-slate-200 py-2.5 pl-10 pr-8 text-sm text-slate-700 outline-none transition focus:border-cyan-400"
+                            >
+                                <option value="all">ทุกสถานะ PO</option>
+                                <option value="has_po">มี PO แล้ว</option>
+                                <option value="received_po">PO รับเข้าแล้ว</option>
+                            </select>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={resetFilters}
+                            disabled={!hasActiveFilters}
+                            className={`rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
+                                hasActiveFilters
+                                    ? 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                                    : 'cursor-not-allowed border-slate-100 text-slate-300'
+                            }`}
+                        >
+                            ล้างตัวกรอง
+                        </button>
                     </div>
                 </div>
 
@@ -315,7 +614,11 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                 filteredRequests.map((request) => {
                                     const isMutating = isPending && pendingRequestId === request.request_id;
                                     const currentDisplayStep = getPurchaseRequestDisplayStep(request.status, request.current_step);
+                                    const primaryPurchaseOrder = getPrimaryPurchaseOrder(request);
+                                    const linkedPurchaseOrderCount = request.linked_purchase_orders?.length || 0;
                                     const canEditRequest = request.status === 'pending' && canEditManagedRequests && isPurchaseRequestPurchasingStep(request.current_step);
+                                    const canIssuePurchaseOrder = canEditRequest && request.current_step === 4;
+                                    const canEditPurchasingRequest = canEditRequest && request.current_step !== 4;
                                     const canApproveRequest = request.status === 'pending' && Boolean(request.can_approve);
 
                                     return (
@@ -323,6 +626,24 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                             <td className="px-5 py-4">
                                                 <div className="space-y-1">
                                                     <div className="font-semibold text-slate-900">{request.request_number}</div>
+                                                    {linkedPurchaseOrderCount > 0 && (
+                                                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-cyan-700">
+                                                            <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 font-semibold">
+                                                                มี PO แล้ว {linkedPurchaseOrderCount} ฉบับ
+                                                            </span>
+                                                            {getPurchaseOrderProgressLabel(request) && (
+                                                                <span className={`rounded-full border px-2 py-0.5 font-semibold ${getPurchaseOrderProgressClass(request)}`}>
+                                                                    {getPurchaseOrderProgressLabel(request)}
+                                                                </span>
+                                                            )}
+                                                            {primaryPurchaseOrder && (
+                                                                <Link href={`/purchase-orders/${primaryPurchaseOrder.po_id}`} className="inline-flex items-center gap-1 font-medium hover:text-cyan-800">
+                                                                    <ExternalLink className="h-3.5 w-3.5" />
+                                                                    {primaryPurchaseOrder.po_number}
+                                                                </Link>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                     <div className="max-w-[420px] text-xs leading-6 text-slate-500">{getSummaryLine(request.reason)}</div>
                                                 </div>
                                             </td>
@@ -334,27 +655,30 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                                     <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getProcurementStatusBadgeClass(request.status)}`}>
                                                         {getProcurementStatusLabel(request.status)}
                                                     </span>
-                                                    <div className="text-xs text-slate-500">{getCurrentStageDescription(request)}</div>
+                                                    <div className="text-xs text-slate-500">{getPurchaseWorkflowStageDescription(request)}</div>
                                                 </div>
                                             </td>
                                             <td className="px-5 py-4">
                                                 <div className="space-y-2">
-                                                    <div className="text-sm font-semibold text-slate-800">{getPurchaseRequestStageLabel(request.status, request.current_step)}</div>
+                                                    <div className="text-sm font-semibold text-slate-800">{getPurchaseWorkflowStageHeading(request)}</div>
                                                     <div className="text-xs text-slate-500">ขั้นตอน {currentDisplayStep}/{PURCHASE_REQUEST_WORKFLOW_LABELS.length}</div>
                                                     <div className="flex max-w-[320px] flex-wrap gap-1">
                                                         {PURCHASE_REQUEST_WORKFLOW_LABELS.map((label, index) => {
                                                             const stepNumber = index + 1;
                                                             const isCompleted = request.status === 'approved' || stepNumber < currentDisplayStep;
                                                             const isCurrent = request.status !== 'approved' && stepNumber === currentDisplayStep;
+                                                            const isIssuedPOStage = stepNumber === 5 && request.current_step === 4 && hasIssuedPurchaseOrder(request);
 
                                                             return (
                                                                 <span
                                                                     key={`${request.request_id}-${label}-${stepNumber}`}
                                                                     className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
-                                                                        isCompleted ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : isCurrent ? 'border-cyan-200 bg-cyan-50 text-cyan-700' : 'border-slate-200 bg-white text-slate-400'
+                                                                        isIssuedPOStage
+                                                                            ? 'border-cyan-200 bg-cyan-50 text-cyan-700'
+                                                                            : isCompleted ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : isCurrent ? 'border-cyan-200 bg-cyan-50 text-cyan-700' : 'border-slate-200 bg-white text-slate-400'
                                                                     }`}
                                                                 >
-                                                                    {label}
+                                                                    {isIssuedPOStage ? `${label} (มี PO)` : label}
                                                                 </span>
                                                             );
                                                         })}
@@ -375,7 +699,27 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                                         พิมพ์
                                                     </Link>
 
-                                                    {canEditRequest && (
+                                                    {canIssuePurchaseOrder && (
+                                                        <Link
+                                                            href={getPurchaseOrderDraftHref(request)}
+                                                            className="inline-flex items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-medium text-cyan-700 transition hover:bg-cyan-100"
+                                                        >
+                                                            <FileCheck2 className="h-4 w-4" />
+                                                            {linkedPurchaseOrderCount > 0 ? 'สร้าง PO เพิ่ม' : 'ออก PO'}
+                                                        </Link>
+                                                    )}
+
+                                                    {primaryPurchaseOrder && (
+                                                        <Link
+                                                            href={`/purchase-orders/${primaryPurchaseOrder.po_id}`}
+                                                            className="inline-flex items-center gap-2 rounded-lg border border-sky-200 px-3 py-2 text-xs font-medium text-sky-700 transition hover:bg-sky-50"
+                                                        >
+                                                            <ExternalLink className="h-4 w-4" />
+                                                            ดู PO
+                                                        </Link>
+                                                    )}
+
+                                                    {canEditPurchasingRequest && (
                                                         <button
                                                             type="button"
                                                             onClick={() => openEditDialog(request)}
@@ -396,7 +740,16 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                                                 className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                                                             >
                                                                 {isMutating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                                                                {getApproveActionLabel(request)}
+                                                                {getStructuredApproveActionLabel(request)}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleReturn(request)}
+                                                                disabled={isMutating}
+                                                                className="inline-flex items-center gap-2 rounded-lg border border-orange-200 px-3 py-2 text-xs font-medium text-orange-700 transition hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                                            >
+                                                                <CircleSlash className="h-4 w-4" />
+                                                                {getStructuredReturnActionLabel(request)}
                                                             </button>
                                                             <button
                                                                 type="button"

@@ -18,6 +18,7 @@ interface RecentPR {
     request_number: string;
     status: string;
     amount: number | null | string;
+    queue_label: string;
     reason: string | null;
     created_at: Date | string;
     tbl_users: { username: string | null } | null;
@@ -34,8 +35,8 @@ interface RecentPO {
 
 interface PurchasingDashboardProps {
     summary: {
-        pendingPRCount: number;
-        approvedPRCount: number;
+        reviewQueueCount: number;
+        issuePOQueueCount: number;
         monthlyPOIssuedCount: number;
         monthlyPOSpend: number;
     };
@@ -51,22 +52,22 @@ export default function PurchasingDashboardClient({
 }: PurchasingDashboardProps) {
     const cards = [
         {
-            title: 'คำขอซื้อรอดำเนินการ',
-            value: summary.pendingPRCount.toString(),
+            title: 'คำขอซื้อรอจัดซื้อทบทวน',
+            value: summary.reviewQueueCount.toString(),
             icon: Clock,
             color: 'text-amber-600',
             bg: 'bg-amber-100 dark:bg-amber-900/30',
             border: 'border-amber-200 dark:border-amber-800',
-            link: '/approvals/purchasing'
+            link: '/purchase-request/manage'
         },
         {
-            title: 'คำขอซื้อรอเปิด PO',
-            value: summary.approvedPRCount.toString(),
+            title: 'คำขอซื้อรอจัดซื้อออก PO',
+            value: summary.issuePOQueueCount.toString(),
             icon: AlertCircle,
             color: 'text-blue-600',
             bg: 'bg-blue-100 dark:bg-blue-900/30',
             border: 'border-blue-200 dark:border-blue-800',
-            link: '/approvals/purchasing'
+            link: '/purchase-request/manage'
         },
         {
             title: 'ใบสั่งซื้อในเดือนนี้',
@@ -115,10 +116,10 @@ export default function PurchasingDashboardClient({
                         <FileText className="w-4 h-4" /> ระบบใบสั่งซื้อ (PO)
                     </Link>
                     <Link 
-                        href="/approvals/purchasing"
+                        href="/purchase-request/manage"
                         className="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/30 rounded-xl transition-colors text-sm font-medium flex items-center justify-center gap-2"
                     >
-                        <AlertCircle className="w-4 h-4" /> อนุมัติคำขอซื้อ
+                        <AlertCircle className="w-4 h-4" /> เปิดคิวคำขอซื้อ
                     </Link>
                 </div>
             </div>
@@ -160,7 +161,7 @@ export default function PurchasingDashboardClient({
                             </div>
                             <h2 className="text-lg font-bold text-gray-900 dark:text-white">คำขอซื้อล่าสุด (PR)</h2>
                         </div>
-                        <Link href="/approvals/purchasing" className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-1">
+                        <Link href="/purchase-request/manage" className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-1">
                             ดูทั้งหมด <ChevronRight className="w-4 h-4" />
                         </Link>
                     </div>
@@ -183,6 +184,9 @@ export default function PurchasingDashboardClient({
                                                     </p>
                                                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getProcurementStatusBadgeClass(pr.status)} shrink-0`}>
                                                         {getProcurementStatusLabel(pr.status)}
+                                                    </span>
+                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-cyan-200 bg-cyan-50 text-cyan-700 shrink-0">
+                                                        {pr.queue_label}
                                                     </span>
                                                 </div>
                                                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-1 bg-white dark:bg-slate-800 px-2 py-1 rounded inline-block border border-gray-100 dark:border-slate-700 max-w-fit">

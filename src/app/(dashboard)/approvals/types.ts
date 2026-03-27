@@ -7,6 +7,12 @@ export interface ApprovalApprover {
     username?: string | null;
 }
 
+export interface LinkedPurchaseOrderSummary {
+    po_id: number;
+    po_number: string;
+    status?: string | null;
+}
+
 export interface ApprovalRequest {
     request_id: number;
     request_number: string;
@@ -27,6 +33,7 @@ export interface ApprovalRequest {
     can_approve?: boolean;
     tbl_users?: ApprovalUser | null;
     tbl_approver?: ApprovalApprover | null;
+    linked_purchase_orders?: LinkedPurchaseOrderSummary[];
 }
 
 export interface ActiveJob {

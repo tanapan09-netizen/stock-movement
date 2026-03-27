@@ -32,7 +32,7 @@ export default async function ApprovalsManagePage() {
             permissionContext.isApprover,
         )
     ) {
-        redirect('/approvals/purchasing');
+        redirect('/purchase-request/manage');
     }
 
     const canApprove = canManageGeneralApprovals(

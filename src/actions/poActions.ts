@@ -59,6 +59,7 @@ export async function createPO(formData: FormData) {
         const subtotal = parseFloat(formData.get('subtotal') as string) || 0;
         const tax_amount = parseFloat(formData.get('tax_amount') as string) || 0;
         const total_amount = parseFloat(formData.get('total_amount') as string) || 0;
+        let createdPOId: number | null = null;
 
         await prisma.$transaction(async (tx) => {
             const po = await tx.tbl_purchase_orders.create({
@@ -75,6 +76,7 @@ export async function createPO(formData: FormData) {
                     created_by: user.name,
                 },
             });
+            createdPOId = po.po_id;
 
             await tx.tbl_po_approval_logs.create({
                 data: {
@@ -87,7 +89,7 @@ export async function createPO(formData: FormData) {
                 },
             });
 
-            for (const item of items) {
+            for (const item of items ?? []) {
                 await tx.tbl_po_items.create({
                     data: {
                         po_id: po.po_id,
@@ -100,6 +102,8 @@ export async function createPO(formData: FormData) {
                 });
             }
         });
+        revalidatePath('/purchase-orders');
+        return { success: true, poId: createdPOId };
     } catch (error) {
         console.error('Create PO failed:', error);
         return { error: 'สร้างใบสั่งซื้อล้มเหลว' };

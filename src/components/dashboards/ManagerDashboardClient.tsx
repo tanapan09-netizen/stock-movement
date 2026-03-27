@@ -210,7 +210,7 @@ const MODULE_CONFIG: Record<
   purchase: {
     title: 'คำขอซื้อ',
     subtitle: 'รอการจัดซื้อ',
-    href: '/approvals/purchasing',
+    href: '/purchase-request/manage',
     icon: ShoppingCart,
     iconBg: 'bg-indigo-50',
     iconColor: 'text-indigo-600',
@@ -1121,7 +1121,7 @@ export default function ManagerDashboardClient({ data }: { data: DashboardDataPr
       title: 'คำขอซื้อ',
       value: moduleItems.purchase.length,
       sub: 'รอการจัดซื้อ',
-      href: '/approvals/purchasing',
+      href: '/purchase-request/manage',
       icon: ShoppingCart,
       iconBg: 'bg-indigo-50',
       iconColor: 'text-indigo-600',

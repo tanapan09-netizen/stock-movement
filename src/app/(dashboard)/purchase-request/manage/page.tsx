@@ -50,12 +50,30 @@ export default async function PurchaseRequestManagementPage() {
             created_at: 'desc',
         },
     });
+    const purchaseOrders = await prisma.tbl_purchase_orders.findMany({
+        select: {
+            po_id: true,
+            po_number: true,
+            status: true,
+            notes: true,
+        },
+        orderBy: {
+            created_at: 'desc',
+        },
+    });
 
     return (
         <PurchaseRequestManagementClient
             initialRequests={requests.map((request) => ({
                 ...request,
                 amount: request.amount ? Number(request.amount) : null,
+                linked_purchase_orders: purchaseOrders
+                    .filter((po) => (po.notes || '').includes(`อ้างอิงคำขอซื้อ: ${request.request_number}`))
+                    .map((po) => ({
+                        po_id: po.po_id,
+                        po_number: po.po_number,
+                        status: po.status,
+                    })),
                 can_approve: canApproveApprovalRequest(
                     permissionContext.role,
                     permissionContext.permissions,

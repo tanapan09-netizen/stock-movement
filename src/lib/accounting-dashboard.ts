@@ -10,7 +10,7 @@ export const ACCOUNTING_DASHBOARD_COPY = {
       iconKey: 'wallet',
     },
     approvals: {
-      title: 'คำขอค่าใช้จ่ายรอตรวจ',
+      title: 'คิวตรวจค่าใช้จ่ายและจัดซื้อ',
       noteSuffix: 'คำขอที่ยังรอดำเนินการ',
       tone: 'bg-rose-50',
       iconKey: 'approvals',
@@ -45,9 +45,9 @@ export const ACCOUNTING_DASHBOARD_COPY = {
   recentSections: {
     pettyCashTitle: 'เงินสดย่อยล่าสุด',
     pettyCashSubtitle: 'รายการที่ยังไม่ปิดยอดหรือยังต้องติดตามต่อ',
-    approvalsTitle: 'คำขอค่าใช้จ่ายล่าสุด',
-    approvalsSubtitle: 'คำขอค่าใช้จ่ายและจัดซื้อที่ยังรอเดิน workflow',
-    approvalsEmpty: 'ไม่พบคำขอค่าใช้จ่ายที่ต้องติดตามในตอนนี้',
+    approvalsTitle: 'คิวบัญชีล่าสุด',
+    approvalsSubtitle: 'ค่าใช้จ่ายที่รอตรวจและคำขอซื้อที่อยู่ขั้นบัญชี',
+    approvalsEmpty: 'ไม่พบคำขอที่ต้องติดตามในตอนนี้',
     purchaseOrdersTitle: 'PO เปิดค้างล่าสุด',
     purchaseOrdersSubtitle: 'ภาระผูกพันที่ยังต้องติดตามการสั่งซื้อและรับของ',
     purchaseOrdersEmpty: 'ไม่พบใบสั่งซื้อที่ต้องติดตามในตอนนี้',
@@ -67,6 +67,7 @@ export const ACCOUNTING_DASHBOARD_COPY = {
 export const ACCOUNTING_DASHBOARD_QUICK_LINKS = [
   { href: '/petty-cash', title: 'เงินสดย่อย', iconKey: 'pettyCash' },
   { href: '/approvals', title: 'คำขออนุมัติ', iconKey: 'approvals' },
+  { href: '/purchase-request/manage', title: 'คำขอซื้อรอบัญชี', iconKey: 'purchaseRequests' },
   { href: '/purchase-orders', title: 'ใบสั่งซื้อ', iconKey: 'purchaseOrders' },
   { href: '/maintenance/part-requests', title: 'คำขออะไหล่', iconKey: 'partRequests' },
   { href: '/assets', title: 'ทรัพย์สิน', iconKey: 'assets' },
@@ -74,7 +75,7 @@ export const ACCOUNTING_DASHBOARD_QUICK_LINKS = [
 
 export const ACCOUNTING_DASHBOARD_HERO_STATS = [
   { key: 'pettyCashPending', label: 'รออนุมัติเงินสดย่อย' },
-  { key: 'approvalQueue', label: 'คิวคำขอค่าใช้จ่าย' },
+  { key: 'approvalQueue', label: 'คิวตรวจบัญชี' },
   { key: 'openPurchaseOrders', label: 'PO เปิดค้าง' },
   { key: 'partRequestQueue', label: 'คำขออะไหล่รอบัญชี' },
 ] as const;

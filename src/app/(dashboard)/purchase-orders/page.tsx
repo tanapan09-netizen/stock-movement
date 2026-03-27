@@ -6,6 +6,7 @@ import { canEditPurchaseOrders, canViewPurchaseOrders } from '@/lib/rbac';
 import PurchaseOrderActions from './PurchaseOrderActions';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { getProcurementStatusBadgeClass, getProcurementStatusLabel } from '@/lib/procurement-status';
+import { parsePurchaseOrderRequestReference } from '@/lib/purchase-order-reference';
 
 export default async function POListPage() {
     const session = await auth();
@@ -61,7 +62,23 @@ export default async function POListPage() {
                     <tbody className="divide-y divide-gray-200">
                         {pos.map(po => (
                             <tr key={po.po_id} className="hover:bg-gray-50">
-                                <td className="px-6 py-4 font-medium">{po.po_number}</td>
+                                <td className="px-6 py-4 font-medium">
+                                    <div>{po.po_number}</div>
+                                    {(() => {
+                                        const requestReference = parsePurchaseOrderRequestReference(po.notes);
+                                        if (!requestReference.requestNumber) return null;
+
+                                        return (
+                                            <div className="mt-1 text-xs text-cyan-700">
+                                                PR: {requestReference.requestId ? (
+                                                    <Link href={`/print/purchase-request/${requestReference.requestId}`} className="font-medium hover:text-cyan-800">
+                                                        {requestReference.requestNumber}
+                                                    </Link>
+                                                ) : requestReference.requestNumber}
+                                            </div>
+                                        );
+                                    })()}
+                                </td>
                                 <td className="px-6 py-4">{supplierMap.get(po.supplier_id!) || '-'}</td>
                                 <td className="px-6 py-4">{po.order_date ? new Date(po.order_date).toLocaleDateString('th-TH') : '-'}</td>
                                 <td className="px-6 py-4 text-right">{Number(po.total_amount).toLocaleString()}</td>

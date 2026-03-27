@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import React, { useMemo, useState } from 'react';
 import {
     FileDown, FileText, Plus, Search, CheckCircle2, XCircle,
@@ -9,7 +10,6 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/components/ToastProvider';
 import { createApprovalRequest, updateApprovalStatus } from '@/actions/approvalActions';
-import ApprovalDetailModal from './components/ApprovalDetailModal';
 import CreateApprovalModal from './components/CreateApprovalModal';
 import RejectApprovalModal from './components/RejectApprovalModal';
 import { ActiveJob, ApprovalFormData, ApprovalRequest } from './types';
@@ -42,6 +42,12 @@ const STATUS_CONFIG = {
     rejected: { label: 'ไม่อนุมัติ',  icon: XCircle,      classes: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200' },
 };
 
+(STATUS_CONFIG as Record<string, { label: string; icon: typeof AlertCircle; classes: string }>).returned = {
+    label: 'ตีกลับแก้ไข',
+    icon: AlertCircle,
+    classes: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
+};
+
 const defaultFormData = (requestType = 'ot'): ApprovalFormData => ({
     request_type: requestType,
     request_date: new Date().toISOString().slice(0, 10),
@@ -72,6 +78,7 @@ function ApprovalCard({
     const canApprove = request.can_approve ?? globalCanApprove;
     const typeBadge = getApprovalRequestTypeBadgeClass(request.request_type);
     const typeLabel = getApprovalRequestTypeLabel(request.request_type);
+    const canEditReturnedPurchaseRequest = request.request_type === 'purchase' && request.status === 'returned';
 
     const dateStr = request.created_at
         ? new Date(request.created_at).toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' })
@@ -146,7 +153,17 @@ function ApprovalCard({
 
                     {/* Approval buttons removed to enforce approvals strictly via Manager Dashboard */}
 
-                    {request.status !== 'pending' && request.tbl_approver && (
+                    {canEditReturnedPurchaseRequest && (
+                        <Link
+                            href={`/purchase-request?edit=${request.request_id}`}
+                            onClick={(event) => event.stopPropagation()}
+                            className="inline-flex items-center rounded-lg bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700 ring-1 ring-orange-200 transition hover:bg-orange-100"
+                        >
+                            แก้ไขคำขอซื้อ
+                        </Link>
+                    )}
+
+                    {!canEditReturnedPurchaseRequest && request.status !== 'pending' && request.tbl_approver && (
                         <span className="text-xs text-slate-400 truncate max-w-[100px]">
                             โดย {request.tbl_approver.username}
                         </span>
@@ -200,6 +217,8 @@ function DetailModal({ isOpen, request, onClose }: {
     const approvedDateStr = request.approved_at
         ? new Date(request.approved_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
         : null;
+    const reasonLabel = request.status === 'returned' ? 'เหตุผลที่ตีกลับ' : 'เหตุผลที่ไม่อนุมัติ';
+    const canEditReturnedPurchaseRequest = request.request_type === 'purchase' && request.status === 'returned';
 
     // Try to get a human-readable label for a URL
     const getLinkLabel = (url: string) => {
@@ -221,10 +240,12 @@ function DetailModal({ isOpen, request, onClose }: {
                 <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start gap-3">
                     <div className={`mt-0.5 w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                         request.status === 'approved' ? 'bg-emerald-100' :
+                        request.status === 'returned' ? 'bg-orange-100' :
                         request.status === 'rejected' ? 'bg-rose-100' : 'bg-amber-100'
                     }`}>
                         <StatusIcon size={18} className={
                             request.status === 'approved' ? 'text-emerald-600' :
+                            request.status === 'returned' ? 'text-orange-600' :
                             request.status === 'rejected' ? 'text-rose-600' : 'text-amber-600'
                         } />
                     </div>
@@ -316,11 +337,14 @@ function DetailModal({ isOpen, request, onClose }: {
                         )}
 
                         {request.rejection_reason && (
-                            <div className="col-span-2 rounded-xl bg-rose-50 ring-1 ring-rose-200 px-4 py-3">
-                                <dt className="text-xs text-rose-500 mb-1 flex items-center gap-1">
+                            <div className={`col-span-2 rounded-xl px-4 py-3 ${request.status === 'returned' ? 'bg-orange-50 ring-1 ring-orange-200' : 'bg-rose-50 ring-1 ring-rose-200'}`}>
+                                <dt aria-label={reasonLabel} className={`text-xs mb-1 flex items-center gap-1 ${request.status === 'returned' ? 'text-orange-500' : 'text-rose-500'}`}>
                                     <AlertCircle size={11} />เหตุผลที่ไม่อนุมัติ
                                 </dt>
-                                <dd className="text-rose-700 text-sm">{request.rejection_reason}</dd>
+                                {request.status === 'returned' && (
+                                    <div className="mb-1 text-xs font-medium text-orange-600">คำขอนี้ถูกตีกลับเพื่อให้แก้ไขและส่งใหม่</div>
+                                )}
+                                <dd className={`text-sm ${request.status === 'returned' ? 'text-orange-700' : 'text-rose-700'}`}>{request.rejection_reason}</dd>
                             </div>
                         )}
                     </dl>
@@ -369,6 +393,14 @@ function DetailModal({ isOpen, request, onClose }: {
                 </div>
 
                 <div className="px-6 py-4 border-t border-slate-100">
+                    {canEditReturnedPurchaseRequest && (
+                        <Link
+                            href={`/purchase-request?edit=${request.request_id}`}
+                            className="mb-3 inline-flex w-full items-center justify-center rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600"
+                        >
+                            แก้ไขคำขอซื้อ
+                        </Link>
+                    )}
                     <button
                         type="button"
                         onClick={onClose}
@@ -590,6 +622,7 @@ export default function ApprovalClient({
     const requestSummary = useMemo(() => ({
         total: personalRequests.length,
         pending: personalRequests.filter((r) => r.status === 'pending').length,
+        returned: personalRequests.filter((r) => r.status === 'returned').length,
         approved: personalRequests.filter((r) => r.status === 'approved').length,
         rejected: personalRequests.filter((r) => r.status === 'rejected').length,
     }), [personalRequests]);
@@ -637,12 +670,13 @@ export default function ApprovalClient({
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
                 {/* ── Summary Cards ──────────────────────────────────── */}
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
                     {[
                         { label: 'ทั้งหมด', value: requestSummary.total, color: 'text-slate-700', bg: 'bg-white border-slate-200', dot: 'bg-slate-400' },
                         { label: 'รอพิจารณา', value: requestSummary.pending, color: 'text-amber-700', bg: 'bg-amber-50 border-amber-100', dot: 'bg-amber-400' },
                         { label: 'อนุมัติแล้ว', value: requestSummary.approved, color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-100', dot: 'bg-emerald-400' },
                         { label: 'ไม่อนุมัติ', value: requestSummary.rejected, color: 'text-rose-700', bg: 'bg-rose-50 border-rose-100', dot: 'bg-rose-400' },
+                        { label: 'ตีกลับแก้ไข', value: requestSummary.returned, color: 'text-orange-700', bg: 'bg-orange-50 border-orange-100', dot: 'bg-orange-400' },
                     ].map((item) => (
                         <div key={item.label} className={`rounded-2xl border ${item.bg} px-4 py-3 flex flex-col gap-1`}>
                             <div className="flex items-center gap-1.5">
@@ -707,6 +741,7 @@ export default function ApprovalClient({
                                     <option value="pending">รอพิจารณา</option>
                                     <option value="approved">อนุมัติแล้ว</option>
                                     <option value="rejected">ไม่อนุมัติ</option>
+                                    <option value="returned">ตีกลับแก้ไข</option>
                                 </select>
                             </div>
 

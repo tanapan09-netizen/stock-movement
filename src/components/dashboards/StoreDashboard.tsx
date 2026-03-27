@@ -151,6 +151,7 @@ export default async function StoreDashboard() {
         lowStockResult,
         pendingVerificationCount,
         pendingPartRequestCount,
+        pendingPurchaseReceiveCount,
         recentPendingPartRequests,
     ] = await Promise.all([
         prisma.tbl_products.count({ where: { active: true } }),
@@ -164,6 +165,13 @@ export default async function StoreDashboard() {
         getLowStockItems(),
         prisma.tbl_maintenance_parts.count({ where: { status: 'pending_verification' } }),
         prisma.tbl_part_requests.count({ where: { status: 'pending' } }),
+        prisma.tbl_approval_requests.count({
+            where: {
+                request_type: 'purchase',
+                status: 'pending',
+                current_step: 5,
+            },
+        }),
         prisma.tbl_part_requests.findMany({
             where: { status: 'pending' },
             include: {
@@ -196,10 +204,10 @@ export default async function StoreDashboard() {
     const productNameMap = new Map(products.map(p => [p.p_id, p.p_name]));
 
     /* derived metrics */
-    const openWorkload = pendingVerificationCount + pendingPartRequestCount + lowStockList.length;
+    const openWorkload = pendingVerificationCount + pendingPartRequestCount + pendingPurchaseReceiveCount + lowStockList.length;
     const fulfillmentRate = Math.max(
         0,
-        100 - Math.min((pendingVerificationCount + pendingPartRequestCount) * 5, 95),
+        100 - Math.min((pendingVerificationCount + pendingPartRequestCount + pendingPurchaseReceiveCount) * 5, 95),
     );
 
     return (
@@ -256,6 +264,7 @@ export default async function StoreDashboard() {
                             <MixBar label="สินค้าต้องเติม" value={lowStockList.length} total={openWorkload} />
                             <MixBar label="รอตรวจรับอะไหล่" value={pendingVerificationCount} total={openWorkload} />
                             <MixBar label="คำขอเบิกอะไหล่" value={pendingPartRequestCount} total={openWorkload} />
+                            <MixBar label="คำขอซื้อรอรับเข้า" value={pendingPurchaseReceiveCount} total={openWorkload} />
                             <MixBar label="หมดสต็อก" value={outOfStock} total={Math.max(lowStockList.length, 1)} />
                         </div>
 
@@ -306,7 +315,7 @@ export default async function StoreDashboard() {
                     {/* Task Cards */}
                     <Panel className="p-6">
                         <SectionHeader title="งานที่ต้องทำของคลัง" />
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                             <TaskCard
                                 title="รอตรวจรับอะไหล่"
                                 value={pendingVerificationCount}
@@ -322,6 +331,14 @@ export default async function StoreDashboard() {
                                 href="/maintenance/parts"
                                 icon={ShieldCheck}
                                 tone="indigo"
+                            />
+                            <TaskCard
+                                title="คำขอซื้อรอ Store รับเข้า"
+                                value={pendingPurchaseReceiveCount}
+                                description="รายการที่จัดซื้อดำเนินการครบแล้วและรอคลังรับเข้าเพื่อตรวจรับและปิดงาน"
+                                href="/purchase-request/manage"
+                                icon={ArrowDownRight}
+                                tone="amber"
                             />
                         </div>
                     </Panel>

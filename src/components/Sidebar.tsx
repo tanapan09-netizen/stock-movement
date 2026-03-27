@@ -22,7 +22,6 @@ import {
     Briefcase,
     BarChart3,
     AlertTriangle,
-    FileCheck2,
     ShoppingCart,
     Wrench,
     Users,
@@ -49,6 +48,7 @@ export default function Sidebar(props: SidebarProps) {
     const role = user?.role || 'user';
     const normalizedRole = String(role).toLowerCase();
     const isPurchasingTeam = isDepartmentRole(normalizedRole, 'purchasing');
+    const isAccountingTeam = isDepartmentRole(normalizedRole, 'accounting');
     const isStoreTeam = isDepartmentRole(normalizedRole, 'store');
     const isOperationTeam = isDepartmentRole(normalizedRole, 'operation');
     const isAdminTeam = isAdminRole(normalizedRole);
@@ -92,7 +92,6 @@ export default function Sidebar(props: SidebarProps) {
         canAccessDashboardPage(normalizedRole, permissions, route, { isApprover });
     const canGeneralRequestPage = canAccessPage('/general-request');
     const canMaintenancePage = canAccessPage('/maintenance');
-    const canPurchasingApprovalsPage = canAccessPage('/approvals/purchasing');
     const canPurchaseRequestManagePage = canAccessPage('/purchase-request/manage');
     const canAccountingDashboardPage = canAccessPage('/accounting-dashboard');
     const canPurchasingDashboardPage = canAccessPage('/purchasing-dashboard');
@@ -111,7 +110,6 @@ export default function Sidebar(props: SidebarProps) {
     const showPurchasingSection =
         canAccessPage('/purchase-request') ||
         canPurchaseRequestManagePage ||
-        canPurchasingApprovalsPage ||
         canPurchasingDashboardPage ||
         can(PERMISSIONS.ADMIN_PO) ||
         can(PERMISSIONS.ADMIN_SUPPLIERS);
@@ -247,7 +245,7 @@ export default function Sidebar(props: SidebarProps) {
 
                         {renderSectionHeader(showStoreSection, 'คลังสินค้าและสโตร์', 'text-blue-400')}
 
-                        {(normalizedRole === 'admin' || normalizedRole === 'manager' || normalizedRole === 'store' || normalizedRole === 'operation') && canStoreDashboardPage && (
+                        {(isAdminTeam || isManagerTeam || isStoreTeam || isOperationTeam) && canStoreDashboardPage && (
                             <Link
                                 href="/store-dashboard"
                                 onClick={handleLinkClick}
@@ -460,19 +458,7 @@ export default function Sidebar(props: SidebarProps) {
                             </Link>
                         )}
 
-                        {isPurchasingTeam && canPurchasingApprovalsPage && (
-                            <Link
-                                href="/approvals/purchasing"
-                                onClick={handleLinkClick}
-                                className={getNavItemClass(isActive('/approvals/purchasing'))}
-                                title={collapsed ? 'คำขออนุมัติซื้อ' : undefined}
-                            >
-                                <FileCheck2 className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/approvals/purchasing') && 'group-hover:scale-110 group-hover:text-emerald-400'}`} />
-                                {!collapsed && <span className="truncate">คำขออนุมัติซื้อ</span>}
-                            </Link>
-                        )}
-
-                        {(isPurchasingTeam || isManagerTeam || isAdminTeam) && canPurchaseRequestManagePage && (
+                        {(isPurchasingTeam || isManagerTeam || isAdminTeam || isAccountingTeam || isStoreTeam) && canPurchaseRequestManagePage && (
                             <Link
                                 href="/purchase-request/manage"
                                 onClick={handleLinkClick}

@@ -52,6 +52,8 @@ export default function ApprovalDetailModal({ isOpen, request, onClose }: Approv
     const amountNumber = Number(request.amount);
     const showAmount = (request.request_type === 'expense' || request.request_type === 'purchase') && Number.isFinite(amountNumber) && amountNumber > 0;
     const requestDate = request.request_date || request.created_at;
+    const statusLabel = request.status === 'returned' ? 'ตีกลับแก้ไข' : getStatusLabel(request.status);
+    const statusReasonLabel = request.status === 'returned' ? 'เหตุผลที่ตีกลับ' : 'เหตุผลที่ไม่อนุมัติ';
 
     return (
         <div
@@ -89,12 +91,12 @@ export default function ApprovalDetailModal({ isOpen, request, onClose }: Approv
                 <div className="p-6 space-y-5">
                     <div className="flex items-center justify-between gap-4">
                         <div className="text-sm text-gray-600 dark:text-gray-300">
-                            สถานะ: <span className="font-semibold text-gray-900 dark:text-white">{getStatusLabel(request.status)}</span>
+                            สถานะ: <span className="font-semibold text-gray-900 dark:text-white">{statusLabel}</span>
                         </div>
                         <WorkflowStepper
                             currentStep={request.status === 'pending' ? 1 : 2}
                             totalSteps={2}
-                            status={(request.status === 'rejected' ? 'rejected' : request.status) as WorkflowStatus}
+                            status={((request.status === 'rejected' || request.status === 'returned') ? request.status : request.status) as WorkflowStatus}
                             size="sm"
                         />
                     </div>
@@ -115,9 +117,9 @@ export default function ApprovalDetailModal({ isOpen, request, onClose }: Approv
                         <div className="mt-2 text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words leading-relaxed">
                             {request.reason || '-'}
                         </div>
-                        {request.status === 'rejected' && request.rejection_reason && (
-                            <div className="mt-3 text-sm text-rose-700 dark:text-rose-200">
-                                เหตุผลที่ไม่อนุมัติ: <span className="font-medium">{request.rejection_reason}</span>
+                        {(request.status === 'rejected' || request.status === 'returned') && request.rejection_reason && (
+                            <div className={`mt-3 text-sm ${request.status === 'returned' ? 'text-orange-700 dark:text-orange-200' : 'text-rose-700 dark:text-rose-200'}`}>
+                                {statusReasonLabel}: <span className="font-medium">{request.rejection_reason}</span>
                             </div>
                         )}
                     </div>

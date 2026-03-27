@@ -31,6 +31,28 @@ export interface PartRequestData {
     quotation_file?: string | null;
 }
 
+function buildApprovalNotificationHref(data: {
+    eventType: 'pending' | 'approved' | 'rejected' | 'returned';
+    request_type: string;
+    request_id?: number | null;
+}) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+    if (data.eventType === 'pending') {
+        return `${appUrl}${data.request_type === 'purchase' ? '/purchase-request/manage' : '/approvals/manage'}`;
+    }
+
+    if (data.request_type === 'purchase') {
+        if (data.eventType === 'returned' && data.request_id) {
+            return `${appUrl}/purchase-request?edit=${data.request_id}`;
+        }
+
+        return `${appUrl}/purchase-request`;
+    }
+
+    return `${appUrl}/approvals`;
+}
+
 function formatLineSection(title: string, rows: Array<[string, string | number | null | undefined]>) {
     const lines = rows
         .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '')
@@ -706,7 +728,8 @@ export async function notifyPettyCashEvent(
  */
 export async function notifyApprovalEvent(
     data: {
-        eventType: 'pending' | 'approved' | 'rejected';
+        eventType: 'pending' | 'approved' | 'rejected' | 'returned';
+        request_id?: number | null;
         request_number: string;
         request_type: string;
         requested_by: string; // The username of requester
@@ -762,10 +785,14 @@ export async function notifyApprovalEvent(
                 }
             } else {
                 // Approved or Rejected - notify requester
-                const statusStr = data.eventType === 'approved' ? '✅ อนุมัติแล้ว' : '❌ ไม่อนุมัติ';
+                const statusStr = data.eventType === 'approved'
+                    ? '✅ อนุมัติแล้ว'
+                    : data.eventType === 'returned'
+                        ? '↩️ ตีกลับแก้ไข'
+                        : '❌ ไม่อนุมัติ';
                 messageText = `📢 *แจ้งผลคำขอ*\n\nประเภท: ${reqTypeName}\nเลขที่: ${data.request_number}\nผลการพิจารณา: ${statusStr}`;
-                if (data.eventType === 'rejected' && data.rejection_reason) {
-                    messageText += `\nเหตุผลที่ไม่อนุมัติ: ${data.rejection_reason}`;
+                if ((data.eventType === 'rejected' || data.eventType === 'returned') && data.rejection_reason) {
+                    messageText += `\nเหตุผล: ${data.rejection_reason}`;
                 }
 
                 if (data.requester_line_id) {
@@ -782,7 +809,8 @@ export async function notifyApprovalEvent(
 
 export async function notifyApprovalEventFlex(
     data: {
-        eventType: 'pending' | 'approved' | 'rejected';
+        eventType: 'pending' | 'approved' | 'rejected' | 'returned';
+        request_id?: number | null;
         request_number: string;
         request_type: string;
         requested_by: string;
@@ -832,7 +860,7 @@ export async function notifyApprovalEventFlex(
                 amount: data.amount ?? null,
                 referenceJob: data.reference_job ?? null,
                 timeRange,
-                href: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}${data.request_type === 'purchase' ? '/approvals/purchasing' : '/approvals/manage'}`,
+                href: buildApprovalNotificationHref(data),
             }));
             return;
         }
@@ -849,7 +877,7 @@ export async function notifyApprovalEventFlex(
                 requesterName: data.requested_by,
                 status: data.eventType,
                 rejectionReason: data.rejection_reason ?? null,
-                href: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/approvals`,
+                href: buildApprovalNotificationHref(data),
             })
         );
     } catch (err) {

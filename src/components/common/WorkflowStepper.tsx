@@ -6,6 +6,7 @@ import { Check, Clock, X, AlertCircle } from 'lucide-react';
 export type WorkflowStatus = 
     | 'pending' 
     | 'approved' 
+    | 'returned'
     | 'rejected' 
     | 'in_progress' 
     | 'confirmed' 
@@ -76,7 +77,7 @@ const WorkflowStepper: React.FC<WorkflowStepperProps> = ({
         if (stepNumber < currentStep) return 'completed';
         if (stepNumber === currentStep) {
             const s = status as string;
-            if (s === 'rejected' || s === 'cancelled') return 'failed';
+            if (s === 'rejected' || s === 'returned' || s === 'cancelled') return 'failed';
             
             // If the status logically means this step is finished
             const isLastStep = stepNumber === totalSteps;

@@ -7,6 +7,7 @@ import {
   CreditCard,
   FileClock,
   FolderKanban,
+  ShoppingCart,
   Wallet,
 } from 'lucide-react';
 
@@ -24,6 +25,7 @@ import {
 import type { RolePermissions } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
 import { canAccessDashboardPage } from '@/lib/rbac';
+import type { Prisma } from '@prisma/client';
 
 type Props = {
   role?: string;
@@ -93,6 +95,7 @@ function Section({
 const accountingQuickLinkIcons: Record<AccountingDashboardQuickLinkIconKey, ReactNode> = {
   pettyCash: <Wallet className="h-5 w-5 text-emerald-600" />,
   approvals: <FileClock className="h-5 w-5 text-rose-600" />,
+  purchaseRequests: <ShoppingCart className="h-5 w-5 text-cyan-600" />,
   purchaseOrders: <ClipboardCheck className="h-5 w-5 text-blue-600" />,
   partRequests: <FolderKanban className="h-5 w-5 text-amber-600" />,
   assets: <BriefcaseBusiness className="h-5 w-5 text-violet-600" />,
@@ -112,13 +115,21 @@ export default async function AccountingDashboard({
 }: Props) {
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const yearStart = new Date(new Date().getFullYear(), 0, 1);
+  const accountingApprovalWhere: Prisma.tbl_approval_requestsWhereInput = {
+    status: 'pending',
+    OR: [
+      { request_type: 'expense' },
+      { request_type: 'purchase', current_step: 3 },
+    ],
+  };
 
   const [
     pettyCashActive,
     pettyCashPending,
     pettyCashMonth,
     fund,
-    approvals,
+    approvalCount,
+    approvalAmount,
     purchaseOrders,
     partRequests,
     assets,
@@ -138,10 +149,10 @@ export default async function AccountingDashboard({
       where: { status: 'reconciled', reconciled_at: { gte: monthStart } },
     }),
     prisma.tbl_petty_cash_fund.findFirst({ where: { status: 'active' }, orderBy: { updated_at: 'desc' } }),
+    prisma.tbl_approval_requests.count({ where: accountingApprovalWhere }),
     prisma.tbl_approval_requests.aggregate({
-      _count: { request_id: true },
       _sum: { amount: true },
-      where: { status: 'pending', request_type: { in: ['expense', 'purchase'] } },
+      where: accountingApprovalWhere,
     }),
     prisma.tbl_purchase_orders.aggregate({
       _count: { po_id: true },
@@ -170,9 +181,9 @@ export default async function AccountingDashboard({
       select: { id: true, request_number: true, purpose: true, requested_by: true, requested_amount: true, status: true, updated_at: true },
     }),
     prisma.tbl_approval_requests.findMany({
-      where: { status: 'pending', request_type: { in: ['expense', 'purchase'] } },
+      where: accountingApprovalWhere,
       include: { tbl_users: { select: { username: true } } },
-      orderBy: { created_at: 'desc' },
+      orderBy: { updated_at: 'desc' },
       take: 5,
     }),
     prisma.tbl_purchase_orders.findMany({
@@ -189,7 +200,7 @@ export default async function AccountingDashboard({
 
   const heroStatValues: Record<AccountingDashboardHeroStatKey, number> = {
     pettyCashPending,
-    approvalQueue: approvals._count.request_id || 0,
+    approvalQueue: approvalCount,
     openPurchaseOrders: purchaseOrders._count.po_id || 0,
     partRequestQueue: partRequests._count.request_id || 0,
   };
@@ -234,8 +245,8 @@ export default async function AccountingDashboard({
         />
         <StatCard
           title={ACCOUNTING_DASHBOARD_COPY.statCards.approvals.title}
-          value={money(num(approvals._sum.amount))}
-          note={`${count(approvals._count.request_id || 0)} ${ACCOUNTING_DASHBOARD_COPY.statCards.approvals.noteSuffix}`}
+          value={money(num(approvalAmount._sum?.amount))}
+          note={`${count(approvalCount)} ${ACCOUNTING_DASHBOARD_COPY.statCards.approvals.noteSuffix}`}
           icon={accountingMetricCardIcons[ACCOUNTING_DASHBOARD_COPY.statCards.approvals.iconKey]}
           tone={ACCOUNTING_DASHBOARD_COPY.statCards.approvals.tone}
         />

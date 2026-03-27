@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import ApprovalClient from './ApprovalClient';
 import { getApprovalRequests } from '@/actions/approvalActions';
 import { getMaintenanceRequests } from '@/actions/maintenanceActions';
-import { canAccessPurchasingApprovals, canManageGeneralApprovals } from '@/lib/rbac';
+import { canAccessPurchaseWorkflowQueue, canManageGeneralApprovals } from '@/lib/rbac';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 interface MaintenanceRequestStatusLike {
@@ -28,14 +28,14 @@ export default async function ApprovalsPage() {
         permissionContext.permissions,
         permissionContext.isApprover,
     );
-    const canApprovePurchasing = canAccessPurchasingApprovals(
+    const canAccessPurchaseWorkflow = canAccessPurchaseWorkflowQueue(
         role,
         permissionContext.permissions,
         permissionContext.isApprover,
     );
 
-    if (canApprovePurchasing && !canApprove) {
-        redirect('/approvals/purchasing');
+    if (canAccessPurchaseWorkflow && !canApprove) {
+        redirect('/purchase-request/manage');
     }
     if (canApprove) {
         redirect('/approvals/manage');

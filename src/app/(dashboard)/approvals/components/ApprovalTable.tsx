@@ -24,7 +24,7 @@ function StatusBadge({ req }: { req: ApprovalRequest }) {
             <WorkflowStepper
                 currentStep={status === 'pending' ? 1 : 2}
                 totalSteps={2}
-                status={(status === 'rejected' ? 'rejected' : status) as WorkflowStatus}
+                status={((status === 'rejected' || status === 'returned') ? status : status) as WorkflowStatus}
                 size="sm"
             />
         </div>
@@ -158,8 +158,8 @@ export default function ApprovalTable({
                                     </td>
                                     <td className="px-6 py-4 whitespace-normal min-w-[230px]">
                                         <StatusBadge req={req} />
-                                        {req.status === 'rejected' && req.rejection_reason && (
-                                            <div className="text-xs text-red-500 mt-1 italic">เหตุผล: {req.rejection_reason}</div>
+                                        {(req.status === 'rejected' || req.status === 'returned') && req.rejection_reason && (
+                                            <div className={`text-xs mt-1 italic ${req.status === 'returned' ? 'text-orange-600' : 'text-red-500'}`}>เหตุผล: {req.rejection_reason}</div>
                                         )}
                                         {req.status === 'approved' && (
                                             <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">

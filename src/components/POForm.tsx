@@ -22,10 +22,37 @@ type POData = {
     tbl_po_items: any[];
 }
 
-export default function POForm({ products, suppliers, initialData }: { products: Product[], suppliers: Supplier[], initialData?: POData }) {
+type PurchaseRequestContext = {
+    requestId?: number | null;
+    requestNumber: string;
+    referenceJob?: string | null;
+    amount?: number | null;
+    reason?: string | null;
+};
+
+export default function POForm({
+    products,
+    suppliers,
+    initialData,
+    initialRequestContext,
+}: {
+    products: Product[];
+    suppliers: Supplier[];
+    initialData?: POData;
+    initialRequestContext?: PurchaseRequestContext;
+}) {
     const router = useRouter();
     const { showConfirm, showToast } = useToast();
     const isEditMode = !!initialData;
+    const requestContextNote = initialRequestContext
+        ? [
+            `อ้างอิงคำขอซื้อ: ${initialRequestContext.requestNumber}`,
+            initialRequestContext.requestId ? `PR Request ID: ${initialRequestContext.requestId}` : null,
+            initialRequestContext.referenceJob ? `งานอ้างอิง: ${initialRequestContext.referenceJob}` : null,
+            initialRequestContext.amount ? `ยอดประมาณการจาก PR: ${initialRequestContext.amount.toLocaleString()} บาท` : null,
+            initialRequestContext.reason ? `สรุปรายการ: ${initialRequestContext.reason}` : null,
+        ].filter(Boolean).join('\n')
+        : '';
 
     // Form state
     const [supplierId, setSupplierId] = useState(initialData?.supplier_id?.toString() || '');
@@ -33,7 +60,7 @@ export default function POForm({ products, suppliers, initialData }: { products:
     const [orderDate, setOrderDate] = useState(initialData?.order_date ? new Date(initialData.order_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
     const [expectedDate, setExpectedDate] = useState(initialData?.expected_date ? new Date(initialData.expected_date).toISOString().split('T')[0] : '');
     const [status, setStatus] = useState(initialData?.status || 'draft');
-    const [notes, setNotes] = useState(initialData?.notes || '');
+    const [notes, setNotes] = useState(initialData?.notes || requestContextNote);
     const [taxRate, setTaxRate] = useState(7); // 7% VAT
     const [includeTax, setIncludeTax] = useState(true);
 
@@ -134,7 +161,8 @@ export default function POForm({ products, suppliers, initialData }: { products:
             setIsPending(false);
         } else {
             showToast(isEditMode ? 'แก้ไขใบสั่งซื้อสำเร็จ' : 'สร้างใบสั่งซื้อสำเร็จ', 'success');
-            router.push('/purchase-orders');
+            const nextPOId = !isEditMode && 'poId' in res ? res.poId : null;
+            router.push(nextPOId ? `/purchase-orders/${nextPOId}` : '/purchase-orders');
             router.refresh(); // Refresh to show updated data
         }
     };
@@ -148,6 +176,21 @@ export default function POForm({ products, suppliers, initialData }: { products:
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left Column - PO Info */}
             <div className="lg:col-span-1 space-y-6">
+                {initialRequestContext && !isEditMode && (
+                    <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900">
+                        <div className="font-semibold">กำลังออก PO จากคำขอซื้อ</div>
+                        <div className="mt-1 text-xs text-cyan-700">
+                            {initialRequestContext.requestNumber}
+                            {initialRequestContext.referenceJob ? ` • งาน ${initialRequestContext.referenceJob}` : ''}
+                        </div>
+                        {initialRequestContext.amount ? (
+                            <div className="mt-2 text-xs text-cyan-800">
+                                ยอดประมาณจากคำขอซื้อ: {initialRequestContext.amount.toLocaleString()} บาท
+                            </div>
+                        ) : null}
+                    </div>
+                )}
+
                 <div className="bg-white p-6 rounded-lg shadow space-y-4">
                     <h3 className="font-bold text-gray-800 border-b pb-2">ข้อมูลใบสั่งซื้อ {isEditMode ? '(แก้ไข)' : '(สร้างใหม่)'}</h3>
 

@@ -34,7 +34,7 @@ function StatusBadge({ status }: { status: string }) {
         <WorkflowStepper
             currentStep={status === 'pending' ? 1 : 2}
             totalSteps={2}
-            status={(status === 'rejected' ? 'rejected' : status) as WorkflowStatus}
+            status={((status === 'rejected' || status === 'returned') ? status : status) as WorkflowStatus}
             size="sm"
         />
     );
@@ -162,8 +162,8 @@ export default function ApprovalGrid({
                                 </div>
                             )}
 
-                            {req.status === 'rejected' && req.rejection_reason && (
-                                <div className="text-xs text-rose-600 dark:text-rose-200 italic">
+                            {(req.status === 'rejected' || req.status === 'returned') && req.rejection_reason && (
+                                <div className={`text-xs italic ${req.status === 'returned' ? 'text-orange-600 dark:text-orange-200' : 'text-rose-600 dark:text-rose-200'}`}>
                                     เหตุผล: {req.rejection_reason}
                                 </div>
                             )}

@@ -22,10 +22,11 @@ import { resolveAuthenticatedUserId } from '@/lib/server/auth-user';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import {
     getCurrentApprovalWorkflowStep,
+    getEffectiveApprovalWorkflowSteps,
     getEffectiveApprovalTotalSteps,
 } from '@/lib/purchase-request-workflow';
 
-type ApprovalAction = 'pending' | 'approved' | 'rejected';
+type ApprovalAction = 'pending' | 'approved' | 'rejected' | 'returned';
 
 interface CreateApprovalRequestInput {
     request_type: string;
@@ -46,6 +47,7 @@ interface UpdatePurchaseRequestInput {
 }
 
 interface ApprovalNotificationRequest {
+    request_id: number;
     request_number: string;
     request_type: string;
     reason?: string | null;
@@ -141,9 +143,26 @@ function getEffectiveTotalSteps(request: ApprovalRequestWorkflowLike) {
     );
 }
 
+function getPurchaseReturnTargetStep(currentStep?: number | null) {
+    switch (Number(currentStep || 1)) {
+        case 1:
+            return 1;
+        case 2:
+            return 1;
+        case 3:
+            return 1;
+        case 4:
+            return 3;
+        case 5:
+            return 4;
+        default:
+            return 1;
+    }
+}
+
 async function notifyPurchasingDecision(
     request: ApprovalNotificationRequest,
-    status: 'approved' | 'rejected',
+    status: 'approved' | 'rejected' | 'returned',
 ) {
     try {
         if (process.env.LINE_MESSAGING_ENABLED === 'false') return;
@@ -171,7 +190,7 @@ async function notifyPurchasingDecision(
 
 async function sendApprovalRecipientsNotification(
     request: ApprovalNotificationRequest,
-    status: 'approved' | 'rejected'
+    status: 'approved' | 'rejected' | 'returned'
 ) {
     try {
         if (process.env.LINE_MESSAGING_ENABLED === 'false') return;
@@ -226,6 +245,8 @@ async function sendNextApprovalStepNotification(
                 recipientIds = await getLineIdsByRoles(['manager']);
             } else if (request.request_type === 'purchase' && normalizedRole === 'purchasing') {
                 recipientIds = await getLineIdsByRoles(['purchasing', 'leader_purchasing']);
+            } else if (request.request_type === 'purchase' && normalizedRole === 'accounting') {
+                recipientIds = await getLineIdsByRoles(['accounting', 'leader_accounting']);
             } else if (request.request_type === 'purchase' && normalizedRole === 'store') {
                 recipientIds = await getLineIdsByRoles(['store', 'leader_store']);
             } else {
@@ -458,6 +479,11 @@ export async function updatePurchaseRequest(data: UpdatePurchaseRequestInput) {
 
         const existing = await prisma.tbl_approval_requests.findUnique({
             where: { request_id: data.requestId },
+            include: {
+                workflow: {
+                    include: { steps: true },
+                },
+            },
         });
 
         if (!existing || existing.request_type !== 'purchase') {
@@ -476,9 +502,12 @@ export async function updatePurchaseRequest(data: UpdatePurchaseRequestInput) {
             return { success: false, error: 'Permission denied' };
         }
 
-        if (existing.status !== 'pending') {
-            return { success: false, error: 'Only pending purchase requests can be edited' };
+        if (!['pending', 'returned'].includes(existing.status || '')) {
+            return { success: false, error: 'Only pending or returned purchase requests can be edited' };
         }
+
+        const isResubmission = existing.status === 'returned';
+        const effectiveTotalSteps = getEffectiveTotalSteps(existing);
 
         const rawData = {
             request_type: 'purchase',
@@ -498,6 +527,10 @@ export async function updatePurchaseRequest(data: UpdatePurchaseRequestInput) {
                 amount: (validData.amount || 0) > 0 ? validData.amount : null,
                 reason: validData.reason,
                 reference_job: validData.reference_job || null,
+                status: isResubmission ? 'pending' : existing.status,
+                current_step: isResubmission ? 1 : existing.current_step,
+                total_steps: effectiveTotalSteps,
+                rejection_reason: isResubmission ? null : existing.rejection_reason,
             },
             include: {
                 tbl_users: {
@@ -509,9 +542,26 @@ export async function updatePurchaseRequest(data: UpdatePurchaseRequestInput) {
             },
         });
 
+        if (isResubmission) {
+            const nextWorkflowStep = getCurrentApprovalWorkflowStep(
+                existing.request_type,
+                1,
+                existing.workflow?.steps || [],
+            );
+
+            if (nextWorkflowStep) {
+                await sendNextApprovalStepNotification(
+                    { ...updated, total_steps: effectiveTotalSteps },
+                    nextWorkflowStep,
+                    1,
+                );
+            }
+        }
+
         revalidatePath('/purchase-request');
         revalidatePath('/purchase-request/manage');
         revalidatePath('/approvals');
+        revalidatePath('/approvals/purchasing');
         revalidatePath(`/print/purchase-request/${data.requestId}`);
         return { success: true, data: updated };
     } catch (error: unknown) {
@@ -520,7 +570,7 @@ export async function updatePurchaseRequest(data: UpdatePurchaseRequestInput) {
     }
 }
 
-export async function updateApprovalStatus(requestId: number, status: 'approved' | 'rejected', rejectionReason?: string) {
+export async function updateApprovalStatus(requestId: number, status: 'approved' | 'rejected' | 'returned', rejectionReason?: string) {
     try {
         const session = await auth();
         if (!session?.user?.id) {
@@ -567,15 +617,30 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
             return { success: false, error: 'Permission denied' };
         }
 
+        if (status === 'returned' && currentRequest.request_type !== 'purchase') {
+            return { success: false, error: 'Return action is only supported for purchase requests' };
+        }
+
         let newStatus = currentRequest.status;
         let nextStep = currentRequest.current_step;
         let finalAction = false; // Whether this action completes the request
+        let requesterNotificationAction: ApprovalAction | null = null;
         const effectiveTotalSteps = getEffectiveTotalSteps(currentRequest);
 
         // Process step logic
         if (status === 'rejected') {
             newStatus = 'rejected';
             finalAction = true;
+            requesterNotificationAction = 'rejected';
+        } else if (status === 'returned') {
+            if (Number(currentRequest.current_step || 1) <= 1) {
+                newStatus = 'returned';
+                nextStep = 1;
+                requesterNotificationAction = 'returned';
+            } else {
+                newStatus = 'pending';
+                nextStep = getPurchaseReturnTargetStep(currentRequest.current_step);
+            }
         } else if (status === 'approved') {
             if (currentRequest.current_step < effectiveTotalSteps) {
                 // Advance step
@@ -585,6 +650,7 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
                 // Final step
                 newStatus = 'approved';
                 finalAction = true;
+                requesterNotificationAction = 'approved';
             }
         }
 
@@ -593,12 +659,14 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
             status: newStatus,
             current_step: nextStep,
             total_steps: effectiveTotalSteps,
-            rejection_reason: rejectionReason || currentRequest.rejection_reason
+            rejection_reason: status === 'approved' ? null : (rejectionReason || currentRequest.rejection_reason),
         };
 
         if (finalAction) {
             updateData.supervisor_id = userId; // The person who finalized it (or could just use logs)
             updateData.approved_at = status === 'approved' ? new Date() : null;
+        } else if (status === 'returned') {
+            updateData.approved_at = null;
         }
 
         const updated = await prisma.tbl_approval_requests.update({
@@ -624,15 +692,17 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
         });
 
         // Notify
+        if (requesterNotificationAction) {
+            await sendLineNotification(updated, requesterNotificationAction);
+        }
+
         if (finalAction) {
-            // Notify requester of completion
-            await sendLineNotification(updated, status);
             if (currentRequest.request_type === 'purchase' && currentStep?.approver_role?.trim().toLowerCase() === 'manager') {
                 await notifyPurchasingDecision(updated, status);
             } else {
                 await sendApprovalRecipientsNotification(updated, status);
             }
-        } else if (status === 'approved') {
+        } else if (status === 'approved' || (status === 'returned' && newStatus === 'pending')) {
             const nextWorkflowStep = getCurrentApprovalWorkflowStep(
                 currentRequest.request_type,
                 nextStep,
@@ -647,9 +717,12 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
             }
         }
 
+        revalidatePath('/purchase-request');
         revalidatePath('/approvals');
+        // Keep the legacy purchasing route fresh while it redirects to the unified workflow page.
         revalidatePath('/approvals/purchasing');
         revalidatePath('/purchase-request/manage');
+        revalidatePath(`/print/purchase-request/${requestId}`);
         return { success: true, data: updated };
     } catch (error: unknown) {
         console.error('Error updating approval status:', error);
@@ -663,6 +736,7 @@ async function sendLineNotification(request: ApprovalNotificationRequest, action
 
         await notifyApprovalEventFlex({
             eventType: action,
+            request_id: request.request_id,
             request_number: request.request_number,
             request_type: request.request_type,
             requested_by: requesterName,
@@ -710,7 +784,26 @@ export async function getApprovalWorkflows() {
             }
         });
 
-        return { success: true, data: workflows };
+        const normalizedWorkflows = workflows.map((workflow) => {
+            const effectiveSteps = getEffectiveApprovalWorkflowSteps(
+                workflow.request_type,
+                workflow.steps,
+            );
+
+            return {
+                ...workflow,
+                total_steps: effectiveSteps.length,
+                steps: effectiveSteps.map((step, index) => ({
+                    id: workflow.steps[index]?.id ?? -(index + 1),
+                    workflow_id: workflow.id,
+                    step_order: step.step_order,
+                    approver_role: step.approver_role || '',
+                    approver_id: step.approver_id ?? null,
+                })),
+            };
+        });
+
+        return { success: true, data: normalizedWorkflows };
     } catch (error: unknown) {
         console.error('Error fetching workflows:', error);
         return { success: false, error: getErrorMessage(error) };

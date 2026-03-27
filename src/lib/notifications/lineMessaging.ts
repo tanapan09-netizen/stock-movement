@@ -101,12 +101,12 @@ export function createApprovalDecisionFlexMessage(data: {
     requestNumber: string;
     requestType: string;
     requesterName: string;
-    status: 'approved' | 'rejected';
+    status: 'approved' | 'rejected' | 'returned';
     rejectionReason?: string | null;
     href: string;
 }): FlexMessage {
     const statusLabel = data.status === 'approved' ? 'อนุมัติแล้ว' : 'ไม่อนุมัติ';
-    const statusColor = data.status === 'approved' ? '#10b981' : '#ef4444';
+    const statusColor = data.status === 'approved' ? '#10b981' : data.status === 'returned' ? '#f97316' : '#ef4444';
 
     return {
         type: 'flex',
@@ -162,7 +162,7 @@ export function createApprovalDecisionFlexMessage(data: {
                         layout: 'baseline',
                         contents: [
                             { type: 'text', text: 'ผล', size: 'sm', color: '#6b7280', flex: 2 },
-                            { type: 'text', text: statusLabel, size: 'sm', color: statusColor, weight: 'bold', wrap: true, flex: 5 },
+                            { type: 'text', text: data.status === 'returned' ? 'ตีกลับแก้ไข' : statusLabel, size: 'sm', color: statusColor, weight: 'bold', wrap: true, flex: 5 },
                         ],
                     },
                     ...(data.rejectionReason

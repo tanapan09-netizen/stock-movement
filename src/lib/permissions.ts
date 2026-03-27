@@ -52,7 +52,7 @@ const BASE_PERMISSION_LIST: PermissionItem[] = [
     { key: PERMISSIONS.GENERAL_REQUEST, label: 'General Request', description: 'Access general request page', category: 'Maintenance' },
     { key: PERMISSIONS.MAINTENANCE, label: 'Maintenance', description: 'Access maintenance requests', category: 'Core' },
     { key: PERMISSIONS.APPROVALS, label: 'Approvals', description: 'Access approval requests', category: 'Core' },
-    { key: PERMISSIONS.PURCHASING_APPROVALS, label: 'Purchasing Approvals', description: 'Access purchasing approval requests', category: 'Core' },
+    { key: PERMISSIONS.PURCHASING_APPROVALS, label: 'Purchase Workflow', description: 'Access the procurement workflow queue and purchase request management pages', category: 'Core' },
     { key: PERMISSIONS.PETTY_CASH, label: 'Petty Cash', description: 'Access petty cash module', category: 'Core' },
 
     // Maintenance

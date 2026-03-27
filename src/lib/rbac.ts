@@ -244,6 +244,7 @@ const SPECIAL_ROUTE_BASELINE_ACCESS: Record<string, BaselineAccessResolver> = {
     const allowed =
       isManagerRole(role) ||
       isDepartmentRole(role, 'purchasing') ||
+      isDepartmentRole(role, 'accounting') ||
       isDepartmentRole(role, 'store');
     return { canReadPage: allowed, canEditPage: allowed };
   },
@@ -464,7 +465,7 @@ export function canViewPurchaseApprovalNotifications(
   userPermissions: PagePermissionMap,
   isApprover = false,
 ) {
-  return canAccessPurchasingApprovals(role, userPermissions, isApprover);
+  return canAccessPurchaseWorkflowQueue(role, userPermissions, isApprover);
 }
 
 export function canViewPartRequestNotifications(
@@ -521,7 +522,7 @@ export function canReceiveApprovalRequestNotification(
   if (requestType === 'expense' || requestType === 'purchase') {
     return (
       canManageGeneralApprovals(role, userPermissions, isApprover) ||
-      canAccessPurchasingApprovals(role, userPermissions, isApprover)
+      canAccessPurchaseWorkflowQueue(role, userPermissions, isApprover)
     );
   }
 
@@ -546,7 +547,7 @@ export function canReceiveApprovalStepNotification(
   }
 
   if (normalizedApproverRole === 'purchasing') {
-    return canAccessPurchasingApprovals(normalizedRole, userPermissions, isApprover);
+    return canAccessPurchaseWorkflowQueue(normalizedRole, userPermissions, isApprover);
   }
 
   if (normalizedApproverRole === 'admin') {
@@ -992,7 +993,7 @@ export function canViewApprovalQueue(
 ) {
   return (
     canManageGeneralApprovals(role, userPermissions, isApprover) ||
-    canAccessPurchasingApprovals(role, userPermissions, isApprover)
+    canAccessPurchaseWorkflowQueue(role, userPermissions, isApprover)
   );
 }
 
@@ -1011,7 +1012,7 @@ export function canViewApprovalRequest(
     canManageGeneralApprovals(role, userPermissions, options.isApprover) ||
     (
       options.requestType === 'purchase' &&
-      canAccessPurchasingApprovals(role, userPermissions, options.isApprover)
+      canAccessPurchaseWorkflowQueue(role, userPermissions, options.isApprover)
     )
   );
 }
@@ -1059,11 +1060,19 @@ export function canApproveApprovalRequest(
       return canManageGeneralApprovals(role, userPermissions, options.isApprover);
     }
 
+    if (approverRole === 'admin') {
+      return isAdminRole(role);
+    }
+
+    if (['purchasing', 'accounting', 'store', 'technician', 'operation'].includes(approverRole)) {
+      return isDepartmentRole(role, approverRole);
+    }
+
     return normalizeRole(role) === approverRole;
   }
 
   if (options.requestType === 'purchase') {
-    return canAccessPurchasingApprovals(role, userPermissions, options.isApprover);
+    return canAccessPurchaseWorkflowQueue(role, userPermissions, options.isApprover);
   }
 
   return canManageGeneralApprovals(role, userPermissions, options.isApprover);
@@ -1077,12 +1086,21 @@ export function canManageGeneralApprovals(
   return canAccessDashboardPage(role, userPermissions, '/approvals/manage', { isApprover });
 }
 
-export function canAccessPurchasingApprovals(
+export function canAccessPurchaseWorkflowQueue(
   role: string | null | undefined,
   userPermissions: PagePermissionMap,
   isApprover = false,
 ) {
   return canAccessDashboardPage(role, userPermissions, '/approvals/purchasing', { isApprover });
+}
+
+// Legacy alias kept for existing imports while the procurement workflow moves to /purchase-request/manage.
+export function canAccessPurchasingApprovals(
+  role: string | null | undefined,
+  userPermissions: PagePermissionMap,
+  isApprover = false,
+) {
+  return canAccessPurchaseWorkflowQueue(role, userPermissions, isApprover);
 }
 
 /**
