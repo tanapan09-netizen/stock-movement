@@ -29,6 +29,22 @@ function formatCurrency(value: number) {
     });
 }
 
+function formatShortProductLink(link: string) {
+    try {
+        const parsed = new URL(link);
+        const path = parsed.pathname.replace(/\/+$/, '') || '/';
+        const compactPath = path === '/'
+            ? ''
+            : path.length > 24
+                ? `${path.slice(0, 24)}...`
+                : path;
+
+        return `${parsed.hostname}${compactPath}`;
+    } catch {
+        return link.length > 36 ? `${link.slice(0, 36)}...` : link;
+    }
+}
+
 function getValueByPrefixes(lines: string[], prefixes: string[], fallback: string = '-') {
     for (const prefix of prefixes) {
         const line = lines.find((entry) => entry.startsWith(prefix));
@@ -333,8 +349,8 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                                     <td className="whitespace-pre-wrap py-3">{item.line}</td>
                                     <td className="break-all py-3">
                                         {item.link ? (
-                                            <a href={item.link} target="_blank" rel="noreferrer" className="text-blue-700 underline">
-                                                {item.link}
+                                            <a href={item.link} target="_blank" rel="noreferrer" title={item.link} className="text-blue-700 underline">
+                                                {formatShortProductLink(item.link)}
                                             </a>
                                         ) : (
                                             '-'
