@@ -228,7 +228,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             req.request_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
             req.tbl_rooms?.room_name?.toLowerCase().includes(searchQuery.toLowerCase());
 
-        const matchStatus = statusFilter === 'all' || req.status === statusFilter;
+        const matchStatus = statusFilter === 'all'
+            || (statusFilter === 'finished' ? ['completed', 'verified'].includes(req.status) : req.status === statusFilter);
         return matchSearch && matchStatus;
     });
 
@@ -486,6 +487,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         aria-label="กรองตามสถานะ"
                     >
                         <option value="all">ทุกสถานะ</option>
+                        <option value="finished">�ҹ�������</option>
                         {Object.entries(GENERAL_REQUEST_STATUS_CONFIG).map(([key, cfg]) => (
                             <option key={key} value={key}>{cfg.label}</option>
                         ))}
