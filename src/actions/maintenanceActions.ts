@@ -29,6 +29,11 @@ import {
     canVerifyMaintenanceParts,
 } from '@/lib/rbac';
 import { isManagerRole } from '@/lib/roles';
+import {
+    canTransitionMaintenanceStatus,
+    isMaintenanceWorkflowClosed,
+    normalizeMaintenanceWorkflowStatus,
+} from '@/lib/maintenance-workflow';
 
 type MaintenanceNotificationRequest = {
     request_number: string;
@@ -311,6 +316,37 @@ async function getAuthorizedMaintenanceActorNames(
     return actorNames;
 }
 
+async function getMaintenanceRequestStatusById(requestId: number) {
+    return prisma.tbl_maintenance_requests.findUnique({
+        where: { request_id: requestId },
+        select: {
+            request_id: true,
+            request_number: true,
+            status: true,
+            assigned_to: true,
+            actual_cost: true,
+        }
+    });
+}
+
+async function assertMaintenanceRequestAllowsPartChanges(requestId: number) {
+    const request = await getMaintenanceRequestStatusById(requestId);
+    if (!request) {
+        throw new Error('Maintenance request not found');
+    }
+
+    const normalizedStatus = normalizeMaintenanceWorkflowStatus(request.status);
+    if (normalizedStatus === 'confirmed') {
+        throw new Error('Cannot modify parts while the request is awaiting head technician approval');
+    }
+
+    if (isMaintenanceWorkflowClosed(request.status)) {
+        throw new Error('Cannot modify parts for a closed maintenance request');
+    }
+
+    return request;
+}
+
 export async function getMaintenanceRequests(filters?: {
     status?: string | string[];
     room_id?: number;
@@ -546,7 +582,7 @@ export async function submitCustomerRepairRequest(formData: FormData) {
         const target_role = 'general';
         const reported_by = customer.full_name;
         
-        let tagsArray = formData.get('tags') ? (formData.get('tags') as string).split(',').map(t=>t.trim()).filter(Boolean) : [];
+        const tagsArray = formData.get('tags') ? (formData.get('tags') as string).split(',').map(t=>t.trim()).filter(Boolean) : [];
         if (!tagsArray.includes('ลูกค้า')) {
            tagsArray.push('ลูกค้า');
         }
@@ -632,17 +668,80 @@ export async function submitCustomerRepairRequest(formData: FormData) {
 
 export async function updateMaintenanceRequestStatus(request_id: number, new_status: string, changed_by: string, notes?: string) {
     try {
+        void notes;
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        const canEditMaintenance = canManageMaintenanceEdit(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        );
+        const canApproveCompletion = canApproveMaintenanceCompletion(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        );
+        if (!canEditMaintenance && !canApproveCompletion) {
+            return { success: false, error: 'Permission denied' };
+        }
+
+        const actorName = authContext.session.user.name || changed_by || 'System';
+        const current = await prisma.tbl_maintenance_requests.findUnique({
+            where: { request_id },
+            select: { status: true, completed_at: true }
+        });
+
+        if (!current) {
+            return { success: false, error: 'Maintenance request not found' };
+        }
+
+        if (isMaintenanceWorkflowClosed(current.status)) {
+            return { success: false, error: 'This maintenance request is closed and cannot be updated' };
+        }
+
+        const normalizedCurrentStatus = normalizeMaintenanceWorkflowStatus(current.status);
+        const normalizedNextStatus = normalizeMaintenanceWorkflowStatus(new_status);
+
+        if (!normalizedCurrentStatus || !normalizedNextStatus) {
+            return { success: false, error: 'Invalid maintenance status transition' };
+        }
+
+        const isHeadTechCompletion = normalizedCurrentStatus === 'confirmed' && normalizedNextStatus === 'completed';
+
+        if (normalizedCurrentStatus === 'confirmed' && !isHeadTechCompletion) {
+            return { success: false, error: 'This maintenance request is locked while awaiting head technician approval' };
+        }
+
+        if (isHeadTechCompletion && !canApproveCompletion) {
+            return { success: false, error: 'Only head technicians can approve completed maintenance jobs' };
+        }
+
+        if (!canEditMaintenance && !isHeadTechCompletion) {
+            return { success: false, error: 'Permission denied' };
+        }
+
+        if (!canTransitionMaintenanceStatus(current.status, new_status, { canApproveCompletion })) {
+            return { success: false, error: 'Invalid maintenance status transition' };
+        }
+
         const request = await prisma.tbl_maintenance_requests.update({
             where: { request_id },
-            data: { status: new_status }
+            data: {
+                status: normalizedNextStatus,
+                completed_at: normalizedNextStatus === 'completed' ? new Date() : current.completed_at ? null : undefined,
+            }
         });
 
         await prisma.tbl_maintenance_history.create({
             data: {
                 request_id,
-                action: `Status change to ${new_status}`,
-                new_value: new_status,
-                changed_by
+                action: 'status_change',
+                old_value: current.status || '',
+                new_value: normalizedNextStatus,
+                changed_by: actorName
             }
         });
 
@@ -673,10 +772,7 @@ export async function requestMaintenancePartWithdrawal(data: {
         const requestedBy = authContext.session.user.name || data.requested_by || 'System';
 
         const [maintenanceRequest, product] = await Promise.all([
-            prisma.tbl_maintenance_requests.findUnique({
-                where: { request_id: data.request_id },
-                select: { request_id: true, request_number: true }
-            }),
+            getMaintenanceRequestStatusById(data.request_id),
             prisma.tbl_products.findUnique({
                 where: { p_id: data.p_id },
                 select: { p_id: true, p_name: true }
@@ -689,6 +785,14 @@ export async function requestMaintenancePartWithdrawal(data: {
 
         if (!product) {
             return { success: false, error: 'Product not found' };
+        }
+
+        if (normalizeMaintenanceWorkflowStatus(maintenanceRequest.status) === 'confirmed') {
+            return { success: false, error: 'Cannot request parts while the job is awaiting head technician approval' };
+        }
+
+        if (isMaintenanceWorkflowClosed(maintenanceRequest.status)) {
+            return { success: false, error: 'Cannot request parts for a closed maintenance request' };
         }
 
         const pendingRequest = await prisma.tbl_part_requests.findFirst({
@@ -766,18 +870,7 @@ export async function withdrawPartForMaintenance(data: {
             return { success: false, error: 'Invalid withdrawal payload' };
         }
 
-        const maintenanceRequest = await prisma.tbl_maintenance_requests.findUnique({
-            where: { request_id: data.request_id },
-            select: { status: true }
-        });
-
-        if (!maintenanceRequest) {
-            return { success: false, error: 'Maintenance request not found' };
-        }
-
-        if (['completed', 'cancelled'].includes(maintenanceRequest.status || '')) {
-            return { success: false, error: 'Cannot issue parts to a closed maintenance request' };
-        }
+        await assertMaintenanceRequestAllowsPartChanges(data.request_id);
 
         const wh01 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-01' } });
         const wh03 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-03' } });
@@ -861,18 +954,7 @@ export async function withdrawPartsForMaintenanceBatch(data: {
 
         const withdrawnBy = authContext.session.user.name || data.withdrawn_by || 'System';
 
-        const maintenanceRequest = await prisma.tbl_maintenance_requests.findUnique({
-            where: { request_id: data.request_id },
-            select: { status: true }
-        });
-
-        if (!maintenanceRequest) {
-            return { success: false, error: 'Maintenance request not found' };
-        }
-
-        if (['completed', 'cancelled'].includes(maintenanceRequest.status || '')) {
-            return { success: false, error: 'Cannot issue parts to a closed maintenance request' };
-        }
+        await assertMaintenanceRequestAllowsPartChanges(data.request_id);
 
         const normalizedItems = Array.isArray(data.items)
             ? data.items
@@ -1018,10 +1100,7 @@ export async function confirmPartsUsed(data: {
             return { success: false, error: `Actual used must be between 0 and ${maxUsableQty}` };
         }
 
-        const request = await prisma.tbl_maintenance_requests.findUnique({
-            where: { request_id: part.request_id },
-            select: { actual_cost: true, assigned_to: true }
-        });
+        const request = await assertMaintenanceRequestAllowsPartChanges(part.request_id);
 
         const actorDisplayName = (authContext.session.user.name || '').trim();
         const assignedTechnician = normalizeComparableName(request?.assigned_to);
@@ -1140,6 +1219,8 @@ export async function returnPartToStock(data: { part_id: number; returned_qty: n
         const part = await prisma.tbl_maintenance_parts.findUnique({ where: { part_id: data.part_id } });
         if (!part) return { success: false, error: 'Part record not found' };
 
+        await assertMaintenanceRequestAllowsPartChanges(part.request_id);
+
         if (part.status !== 'withdrawn') {
             return { success: false, error: 'Only unconsumed withdrawn parts can be returned to stock' };
         }
@@ -1204,6 +1285,8 @@ export async function completeMaintenanceWithParts(request_id: number, changed_b
         }
 
         const changedBy = authContext.session.user.name || changed_by || 'System';
+
+        await assertMaintenanceRequestAllowsPartChanges(request_id);
 
         const parts = await prisma.tbl_maintenance_parts.findMany({
             where: { request_id }
@@ -1292,6 +1375,14 @@ export async function submitRepairCompletion(formData: FormData) {
             where: { request_id },
             select: { status: true }
         });
+
+        if (!currentRequest) {
+            return { success: false, error: 'Maintenance request not found' };
+        }
+
+        if (normalizeMaintenanceWorkflowStatus(currentRequest.status) !== 'in_progress') {
+            return { success: false, error: 'Only in-progress jobs can be submitted for head technician approval' };
+        }
 
         const request = await prisma.tbl_maintenance_requests.update({
             where: { request_id },
@@ -1610,8 +1701,13 @@ export async function updateMaintenanceRequest(
             authContext.permissions,
             authContext.isApprover,
         );
+        const canApproveCompletion = canApproveMaintenanceCompletion(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        );
 
-        if (!canEditMaintenance && !(isAssignmentOnlyUpdate && canReassignRequest)) {
+        if (!canEditMaintenance && !(isAssignmentOnlyUpdate && canReassignRequest) && !canApproveCompletion) {
             return { success: false, error: 'Permission denied' };
         }
 
@@ -1623,8 +1719,24 @@ export async function updateMaintenanceRequest(
             return { success: false, error: 'Maintenance request not found' };
         }
 
-        const isHeadTechApproval = current.status === 'confirmed' && data.status === 'completed';
-        if (isHeadTechApproval && !canApproveMaintenanceCompletion(
+        if (isMaintenanceWorkflowClosed(current.status)) {
+            return { success: false, error: 'This maintenance request is closed and cannot be updated' };
+        }
+
+        const normalizedCurrentStatus = normalizeMaintenanceWorkflowStatus(current.status);
+        const normalizedNextStatus = normalizeMaintenanceWorkflowStatus(data.status);
+
+        const isHeadTechApproval = normalizedCurrentStatus === 'confirmed' && normalizedNextStatus === 'completed';
+        if (normalizedCurrentStatus === 'confirmed' && !isHeadTechApproval) {
+            return { success: false, error: 'This maintenance request is locked while awaiting head technician approval' };
+        }
+        if (!canEditMaintenance && canApproveCompletion && !isHeadTechApproval) {
+            return { success: false, error: 'Permission denied' };
+        }
+        if (isHeadTechApproval && !canApproveCompletion) {
+            return { success: false, error: 'Only head technicians can approve completed maintenance jobs' };
+        }
+        if (false && isHeadTechApproval && !canApproveMaintenanceCompletion(
             authContext.role,
             authContext.permissions,
             authContext.isApprover,
@@ -1636,6 +1748,10 @@ export async function updateMaintenanceRequest(
         const historyActions: Array<{ action: string; old_value: string; new_value: string }> = [];
 
         if (data.status && data.status !== current.status) {
+            if (!canTransitionMaintenanceStatus(current.status, data.status, { canApproveCompletion })) {
+                return { success: false, error: 'Invalid maintenance status transition' };
+            }
+
             updateData.status = data.status;
             historyActions.push({
                 action: isHeadTechApproval ? 'HEAD_TECH_APPROVED' : 'status_change',
@@ -1683,15 +1799,6 @@ export async function updateMaintenanceRequest(
                         action: 'status_change',
                         old_value: current.status || '',
                         new_value: 'approved'
-                    });
-                }
-
-                if (current.status === 'approved' && !data.assigned_to) {
-                    updateData.status = 'pending';
-                    historyActions.push({
-                        action: 'status_change',
-                        old_value: current.status || '',
-                        new_value: 'pending'
                     });
                 }
             }
@@ -2199,6 +2306,8 @@ export async function storeVerifyParts(data: {
             return { success: false, error: 'Part record not found' };
         }
 
+        await assertMaintenanceRequestAllowsPartChanges(part.request_id);
+
         const expectedQty = part.actual_used ?? part.quantity;
         const nextStatus = data.verified_quantity === expectedQty ? 'verified' : 'verification_failed';
 
@@ -2234,7 +2343,114 @@ export async function storeVerifyParts(data: {
     }
 }
 
+export async function returnMaintenanceForRework(request_id: number, note?: string) {
+    try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canApproveMaintenanceCompletion(
+            authContext.role,
+            authContext.permissions,
+            authContext.isApprover,
+        )) {
+            return { success: false, error: 'Permission denied' };
+        }
+
+        const actorName = authContext.session.user.name || 'System';
+        const trimmedNote = note?.trim();
+
+        const current = await prisma.tbl_maintenance_requests.findUnique({
+            where: { request_id },
+            include: {
+                tbl_rooms: {
+                    select: { room_code: true, room_name: true }
+                }
+            }
+        });
+
+        if (!current) {
+            return { success: false, error: 'Maintenance request not found' };
+        }
+
+        if (normalizeMaintenanceWorkflowStatus(current.status) !== 'confirmed') {
+            return { success: false, error: 'Only jobs awaiting head technician approval can be sent back for rework' };
+        }
+
+        const updated = await prisma.tbl_maintenance_requests.update({
+            where: { request_id },
+            data: {
+                status: 'in_progress',
+                completed_at: null,
+            },
+            include: {
+                tbl_rooms: {
+                    select: { room_code: true, room_name: true }
+                }
+            }
+        });
+
+        await prisma.tbl_maintenance_history.create({
+            data: {
+                request_id,
+                action: 'HEAD_TECH_REQUESTED_REWORK',
+                old_value: current.status,
+                new_value: 'in_progress',
+                changed_by: actorName,
+            }
+        });
+
+        if (trimmedNote) {
+            await prisma.tbl_maintenance_history.create({
+                data: {
+                    request_id,
+                    action: 'note_update',
+                    old_value: null,
+                    new_value: trimmedNote,
+                    changed_by: actorName,
+                }
+            });
+        }
+
+        try {
+            if (updated.tbl_rooms) {
+                await notifyMaintenanceStatusChange(
+                    {
+                        request_number: updated.request_number,
+                        title: updated.title,
+                        room_code: updated.tbl_rooms.room_code,
+                        room_name: updated.tbl_rooms.room_name,
+                        reported_by: updated.reported_by,
+                        assigned_to: updated.assigned_to,
+                    },
+                    current.status || '',
+                    'in_progress',
+                    trimmedNote || 'Returned for rework by head technician',
+                );
+            }
+        } catch (notificationError) {
+            console.error('Failed to notify maintenance rework request:', notificationError);
+        }
+
+        revalidatePath('/maintenance');
+        revalidatePath('/maintenance/dashboard');
+        return { success: true, data: updated };
+    } catch (error: unknown) {
+        console.error('Error returning maintenance request for rework:', error);
+        return { success: false, error: getErrorMessage(error, 'Failed to return maintenance request for rework') };
+    }
+}
+
 export async function reopenMaintenanceRequest(request_id: number, reason: string, password: string) {
+    void request_id;
+    void reason;
+    void password;
+    return {
+        success: false,
+        error: 'Reopening completed maintenance requests is disabled',
+    };
+
     try {
         const authContext = await getMaintenanceAuthContext();
         if (!authContext?.session?.user) {

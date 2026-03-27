@@ -10,8 +10,8 @@ export default function AutoLogout() {
     const shouldAutoLogout = Boolean(session) && userRole !== 'employee';
     const timeoutRedirectUrl = '/login?reason=timeout';
 
-    // 10 minutes in milliseconds
-    const TIMEOUT_MS = 10 * 60 * 1000;
+    // 15 minutes in milliseconds
+    const TIMEOUT_MS = 15 * 60 * 1000;
 
     const handleLogout = useCallback(async () => {
         if (!shouldAutoLogout || !session) {
@@ -23,7 +23,7 @@ export default function AutoLogout() {
             timeoutId.current = null;
         }
 
-        console.log('User inactive for 10 mins, logging out...');
+        console.log('User inactive for 15 mins, logging out...');
 
         try {
             const result = await signOut({

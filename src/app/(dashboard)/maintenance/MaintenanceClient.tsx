@@ -25,6 +25,7 @@ import {
     History as HistoryIcon, User, DollarSign, Printer, Image as ImageIcon, ShoppingCart, Package, AlertTriangle, Bell, X, Hash,
     Activity, Loader2, ShieldCheck, ChevronDown, Check, ArrowRight, MessageSquare
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import MaintenanceRequestCard from '@/components/maintenance/MaintenanceRequestCard';
 import VehicleLicensePlateSelector from '@/components/VehicleLicensePlateSelector';
@@ -44,10 +45,10 @@ import {
     confirmPartsUsed,
     storeVerifyParts,
     withdrawPartsForMaintenanceBatch,
-    reopenMaintenanceRequest,
     resendMaintenanceNotification,
     getProducts,
-    submitRepairCompletion
+    submitRepairCompletion,
+    returnMaintenanceForRework,
 } from '@/actions/maintenanceActions';
 import { getAllVehicles } from '@/actions/vehicleActions';
 import SignaturePad from '@/components/SignaturePad';
@@ -62,7 +63,6 @@ import {
     canApproveMaintenanceCompletion,
     canConfirmMaintenancePartUsage,
     canReassignMaintenanceRequest,
-    canReopenMaintenanceRequest,
     canVerifyMaintenanceParts,
     isMaintenanceTechnician,
 } from '@/lib/rbac';
@@ -70,10 +70,17 @@ import { isManagerRole, normalizeRole } from '@/lib/roles';
 import {
     MAINTENANCE_CATEGORY_OPTIONS,
     MAINTENANCE_PRIORITY_OPTIONS,
-    MAINTENANCE_STATUS_OPTIONS,
     MAINTENANCE_TARGET_ROLE_OPTIONS,
 } from '@/lib/maintenance-options';
-import { getMaintenanceWorkflowStep, MAINTENANCE_WORKFLOW_LABELS } from '@/lib/maintenance-workflow';
+import {
+    getAllowedMaintenanceTransitions,
+    getMaintenanceWorkflowStep,
+    isMaintenanceWorkflowClosed,
+    isMaintenanceWorkflowLocked,
+    MAINTENANCE_WORKFLOW_LABELS,
+    normalizeMaintenanceWorkflowStatus,
+} from '@/lib/maintenance-workflow';
+import type { MaintenanceWorkflowStatus } from '@/lib/maintenance-workflow';
 import { getCopiedImageMetadata, parseMaintenanceImageUrls } from '@/lib/maintenance-images';
 
 interface Room {
@@ -160,12 +167,45 @@ interface Technician {
     status: string;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any; bg?: string }> = {
+interface LineTechnician {
+    display_name: string;
+    role?: string | null;
+    is_active?: boolean | null;
+}
+
+interface ProductOption {
+    p_id: string;
+    p_name: string;
+    p_count: number;
+    p_unit?: string | null;
+    available_stock?: number | null;
+}
+
+interface AssetSearchItem {
+    asset_id: number;
+    asset_code: string;
+    asset_name: string;
+    serial_number?: string | null;
+    category?: string | null;
+    location?: string | null;
+}
+
+interface PartRequestSummaryItem {
+    item_name: string;
+    quantity: number;
+}
+
+type SessionUserLike = {
+    role?: string | null;
+    is_approver?: boolean | null;
+};
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: LucideIcon; bg?: string }> = {
     pending: { label: 'รอเรื่อง', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: Clock },
     approved: { label: 'แจ้งเรื่องต่อ', color: 'bg-orange-100 text-orange-700 border-orange-200', icon: ArrowRight },
     in_progress: { label: 'ดำเนินการ', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Loader2 },
-    confirmed: { label: 'ยืนยันงาน', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: CheckCircle2 },
-    completed: { label: 'เสร็จสมบูรณ์', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle2 },
+    confirmed: { label: 'รอหัวหน้าช่างตรวจรับ', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: CheckCircle2 },
+    completed: { label: 'ปิดงานแล้ว', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle2 },
     cancelled: { label: 'ยกเลิก', color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle },
     verified: { label: 'ตรวจสอบแล้ว', color: 'bg-cyan-100 text-cyan-700 border-cyan-200', icon: ShieldCheck },
 };
@@ -200,6 +240,8 @@ const getHistoryActionLabel = (action: string): string => {
     switch (action) {
         case 'HEAD_TECH_APPROVED':
             return 'หัวหน้าช่างตรวจรับงาน';
+        case 'HEAD_TECH_REQUESTED_REWORK':
+            return 'หัวหน้าช่างส่งกลับแก้ไข';
         case 'SUBMITTED_FOR_HEAD_TECH_APPROVAL':
             return 'ช่างส่งงานให้หัวหน้าช่างตรวจรับ';
         case 'status_change':
@@ -264,16 +306,15 @@ const FALLBACK_TECHNICIAN_TARGET_ROLE_OPTION = {
 
 export default function MaintenanceClient({ userPermissions = {}, canEditPage = false }: MaintenanceClientProps) {
     const { data: session } = useSession();
-    const loggedInRole = normalizeRole(((session?.user as any)?.role || '').toString());
-    const isLeaderTechnician = loggedInRole === 'leader_technician';
+    const sessionUser = session?.user as SessionUserLike | undefined;
+    const loggedInRole = normalizeRole((sessionUser?.role || '').toString());
     const canEditActualCost = isManagerRole(loggedInRole);
     const derivedDepartment = resolveDepartmentFromRole(loggedInRole);
-    const sessionIsApprover = Boolean((session?.user as any)?.is_approver || userPermissions.can_approve);
+    const sessionIsApprover = Boolean(sessionUser?.is_approver || userPermissions.can_approve);
     const canPrioritizeMaintenance = canAdjustMaintenancePriority(loggedInRole, userPermissions, sessionIsApprover);
     const canAssignMaintenance = canReassignMaintenanceRequest(loggedInRole, userPermissions, sessionIsApprover);
     const canVerifyParts = canVerifyMaintenanceParts(loggedInRole, userPermissions);
     const canApproveCompletion = canApproveMaintenanceCompletion(loggedInRole, userPermissions, sessionIsApprover);
-    const canReopenClosedRequest = canReopenMaintenanceRequest(loggedInRole, userPermissions);
     const searchParams = useSearchParams();
     const reqQueryParam = searchParams.get('req');
     const [hasOpenedFromUrl, setHasOpenedFromUrl] = useState(false);
@@ -302,7 +343,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const [showRoomForm, setShowRoomForm] = useState(false);
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [showPartRequestModal, setShowPartRequestModal] = useState(false);
-    const [selectedRequest, setSelectedRequest] = useState<any>(null);
+    const [selectedRequest, setSelectedRequest] = useState<MaintenanceRequestItem | null>(null);
     const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterRoom, setFilterRoom] = useState<number | null>(null);
@@ -314,9 +355,9 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const [locationMode, setLocationMode] = useState<'location' | 'vehicle'>('location');
 
     const [assetSearchQuery, setAssetSearchQuery] = useState('');
-    const [assetResults, setAssetResults] = useState<any[]>([]);
+    const [assetResults, setAssetResults] = useState<AssetSearchItem[]>([]);
     const [showAssetDropdown, setShowAssetDropdown] = useState(false);
-    const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
+    const [selectedAsset, setSelectedAsset] = useState<AssetSearchItem | null>(null);
     const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
     const [searchTerm, setSearchTerm] = useState('');
     const [summary, setSummary] = useState({
@@ -352,14 +393,14 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         customerSignature: null,
         partsUsed: []
     });
-    const [partRequestsForSummary, setPartRequestsForSummary] = useState<any[]>([]);
+    const [partRequestsForSummary, setPartRequestsForSummary] = useState<PartRequestSummaryItem[]>([]);
 
     // Dynamic technicians list from database
     const [technicians, setTechnicians] = useState<Technician[]>([]);
-    const [lineTechnicians, setLineTechnicians] = useState<any[]>([]);
+    const [lineTechnicians, setLineTechnicians] = useState<LineTechnician[]>([]);
 
     // Parts Verification State
-    const [products, setProducts] = useState<any[]>([]);
+    const [products, setProducts] = useState<ProductOption[]>([]);
     const [parts, setParts] = useState<MaintenancePart[]>([]);
     const [verifyingPartId, setVerifyingPartId] = useState<number | null>(null);
     const [verifyQty, setVerifyQty] = useState<number>(0);
@@ -396,8 +437,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         : null;
     const selectedPulledRequestImageUrls = parseMaintenanceImageUrls(selectedPulledRequest?.image_url);
     const [roomSearch, setRoomSearch] = useState('');
-    const [showReopenModal, setShowReopenModal] = useState(false);
-    const [reopenRequest, setReopenRequest] = useState<MaintenanceRequestItem | null>(null);
+    const [showReworkModal, setShowReworkModal] = useState(false);
+    const [reworkRequest, setReworkRequest] = useState<MaintenanceRequestItem | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const roomPanelCloseTimeoutRef = useRef<number | null>(null);
 
@@ -467,7 +508,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 status: 'pending'
             });
             if (result && result.success) {
-                setGeneralRequests(Array.isArray(result.data) ? result.data as any : []);
+                setGeneralRequests(Array.isArray(result.data) ? result.data as MaintenanceRequestItem[] : []);
             } else {
                 setGeneralRequests([]);
             }
@@ -559,12 +600,14 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             else setTechnicians([]);
             
             if (lineUserResult.success) {
-                const lineTechs = Array.isArray(lineUserResult.data) ? (lineUserResult.data as any[]).filter(u => isMaintenanceTechnician(u.role) && u.display_name && u.is_active) : [];
+                const lineTechs = Array.isArray(lineUserResult.data)
+                    ? (lineUserResult.data as LineTechnician[]).filter((u) => isMaintenanceTechnician(u.role || '') && u.display_name && u.is_active)
+                    : [];
                 setLineTechnicians(lineTechs);
             } else setLineTechnicians([]);
             
             if (productResult && productResult.success) {
-                setProducts(Array.isArray(productResult.data) ? productResult.data as any[] : []);
+                setProducts(Array.isArray(productResult.data) ? productResult.data as ProductOption[] : []);
             } else setProducts([]);
 
             if (vehicleResult) {
@@ -643,7 +686,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             padding: '2rem',
             buttonsStyling: false,
             customClass: { confirmButton: 'premium-swal-confirm-blue', cancelButton: 'premium-swal-cancel', popup: 'premium-swal-popup' }
-        } as any);
+        });
 
         if (!result.isConfirmed) return;
 
@@ -749,7 +792,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                         selectedGeneralRequestId,
                         {
                             status: 'completed',
-                            notes: `ใบงานถูกสร้างใหม่เลขที่: ${(result.data as any)?.request_number}`
+                            notes: `ใบงานถูกสร้างใหม่เลขที่: ${(result.data as { request_number?: string } | undefined)?.request_number || ''}`
                         },
                         formData.reported_by
                     );
@@ -822,7 +865,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         }
     }
 
-    function handleAssetSelect(asset: any) {
+    function handleAssetSelect(asset: AssetSearchItem) {
         setSelectedAsset(asset);
         setAssetSearchQuery(`${asset.asset_code} - ${asset.asset_name}`);
         setFormData({ ...formData, image_url: `${asset.asset_code} [SN: ${asset.serial_number || 'N/A'}]` });
@@ -870,7 +913,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         if (!statusChangeData.request) return;
         if (!ensureCanEditPage()) return;
 
-        if (statusChangeData.newStatus === 'completed') {
+        if (statusChangeData.newStatus === 'confirmed') {
             const formData = new FormData();
             formData.append('request_id', statusChangeData.request.request_id.toString());
             formData.append('completionNotes', statusChangeData.completionNotes);
@@ -950,10 +993,9 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             updateData.scheduled_date = statusChangeData.scheduledDate;
         }
 
-        // If changing to completed, add completion notes and timestamp
-        if (statusChangeData.newStatus === 'completed') {
+        // If changing to confirmed, submit technician completion details before head-tech approval.
+        if (statusChangeData.newStatus === 'confirmed') {
             updateData.notes = statusChangeData.completionNotes || 'ซ่อมเสร็จเรียบร้อย';
-            updateData.completed_at = new Date();
         }
 
         const result = await updateMaintenanceRequest(
@@ -966,8 +1008,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             setShowStatusModal(false);
             loadData();
             showToast(
-                statusChangeData.newStatus === 'completed'
-                    ? 'บันทึกการซ่อมเสร็จสิ้น'
+                statusChangeData.newStatus === 'confirmed'
+                    ? 'ส่งงานให้หัวหน้าช่างตรวจรับแล้ว'
                     : 'เปลี่ยนสถานะสำเร็จ',
                 'success'
             );
@@ -1003,7 +1045,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             padding: '2.5rem',
             buttonsStyling: false,
             customClass: { confirmButton: 'premium-swal-confirm', cancelButton: 'premium-swal-cancel', popup: 'premium-swal-popup' }
-        } as any);
+        });
 
         if (!result.isConfirmed) return;
         const res = await deleteMaintenanceRequest(request_id);
@@ -1040,6 +1082,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     async function handleVerifyPart(partId: number) {
         if (!session?.user?.name) return;
         if (!ensureCanEditPage()) return;
+        if (isMaintenanceWorkflowLocked(selectedRequest?.status)) {
+            showToast('ใบงานนี้ถูกล็อกแล้ว ไม่สามารถตรวจนับเพิ่มได้', 'warning');
+            return;
+        }
 
         try {
             const result = await storeVerifyParts({
@@ -1071,6 +1117,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     async function handleConfirmUsage(partId: number) {
         if (!session?.user?.name) return;
         if (!ensureCanEditPage()) return;
+        if (isMaintenanceWorkflowLocked(selectedRequest?.status)) {
+            showToast('ใบงานนี้ถูกล็อกแล้ว ไม่สามารถรายงานการใช้เพิ่มได้', 'warning');
+            return;
+        }
 
         try {
             const result = await confirmPartsUsed({
@@ -1085,10 +1135,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 setConfirmingPartId(null);
                 setIsDefective(false);
 
-                const updatedActualCost = Number((result.data as any)?.actual_cost ?? NaN);
+                const updatedActualCost = Number((result.data as { actual_cost?: number | null } | undefined)?.actual_cost ?? NaN);
                 if (!Number.isNaN(updatedActualCost)) {
                     setEditData(prev => ({ ...prev, actual_cost: updatedActualCost }));
-                    setSelectedRequest((prev: any) => prev ? { ...prev, actual_cost: updatedActualCost } : prev);
+                    setSelectedRequest((prev) => prev ? { ...prev, actual_cost: updatedActualCost } : prev);
                 }
 
                 // Refresh parts
@@ -1108,6 +1158,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     async function handleWithdrawSelectedParts() {
         if (!selectedRequest || !session?.user?.name) return;
         if (!ensureCanEditPage()) return;
+        if (isMaintenanceWorkflowLocked(selectedRequest.status)) {
+            showToast('ใบงานนี้ถูกล็อกแล้ว ไม่สามารถเบิกอะไหล่เพิ่มได้', 'warning');
+            return;
+        }
 
         if (newPartsUsed.length === 0) {
             showToast('กรุณาเลือกอะไหล่อย่างน้อย 1 รายการ', 'warning');
@@ -1169,7 +1223,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             }
 
             if (productResult.success) {
-                setProducts(Array.isArray(productResult.data) ? productResult.data as any[] : []);
+                setProducts(Array.isArray(productResult.data) ? productResult.data as ProductOption[] : []);
             } else {
                 setProducts([]);
             }
@@ -1188,10 +1242,14 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     async function handleUpdateRequest() {
         if (!selectedRequest) return;
         if (!ensureCanEditPage()) return;
+        if (isMaintenanceWorkflowLocked(selectedRequest.status)) {
+            showToast('ใบงานนี้ถูกล็อกไว้และไม่สามารถแก้ไขผ่านฟอร์มนี้ได้', 'warning');
+            return;
+        }
 
-        // Validation for technician role and in_progress status
+        // Validation for technician completion handoff
         const isTechnician = isMaintenanceTechnician(loggedInRole);
-        if (isTechnician && editData.status === 'completed') {
+        if (isTechnician && editData.status === 'confirmed') {
             const blockingPartStatuses = new Set(['withdrawn', 'used', 'pending_verification']);
             const hasUncheckedParts = parts.some((part) => blockingPartStatuses.has(part.status));
 
@@ -1216,10 +1274,9 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         const isAutoAssignmentStatusChange =
             editData.status !== selectedRequest.status
             && nextAssignedTo !== currentAssignedTo
-            && (
-                (selectedRequest.status === 'pending' && nextAssignedTo !== '' && editData.status === 'approved')
-                || (selectedRequest.status === 'approved' && nextAssignedTo === '' && editData.status === 'pending')
-            );
+            && selectedRequest.status === 'pending'
+            && nextAssignedTo !== ''
+            && editData.status === 'approved';
 
         const submitData = {
             status: !isAutoAssignmentStatusChange && editData.status !== selectedRequest.status ? editData.status : undefined,
@@ -1231,13 +1288,17 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             notes: nextNotes !== currentNotes ? nextNotes : undefined
         };
 
-        if (isActualCostChanged && nextActualCostReason.length < 8) {
-            showToast('กรุณาระบุเหตุผลการแก้ค่าใช้จ่ายจริงอย่างน้อย 8 ตัวอักษร', 'warning');
+        if (
+            submitData.status &&
+            !allowedDetailStatusTransitions.includes(submitData.status as MaintenanceWorkflowStatus)
+        ) {
+            showToast('สถานะใบงานต้องเดินหน้าตามขั้นตอนและไม่สามารถย้อนกลับได้', 'warning');
             return;
         }
 
-        if (isMaintenanceTechnician(loggedInRole) && submitData.status === 'completed') {
-            submitData.status = 'confirmed';
+        if (isActualCostChanged && nextActualCostReason.length < 8) {
+            showToast('กรุณาระบุเหตุผลการแก้ค่าใช้จ่ายจริงอย่างน้อย 8 ตัวอักษร', 'warning');
+            return;
         }
 
         const changeSummary: string[] = [];
@@ -1314,7 +1375,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 `ห้อง: ${selectedRequest.tbl_rooms?.room_code || '-'} - ${selectedRequest.tbl_rooms?.room_name || '-'}`,
                 `ช่างรับผิดชอบ: ${selectedRequest.assigned_to || '-'}`,
                 '',
-                'เมื่อยืนยันแล้ว ระบบจะเปลี่ยนสถานะเป็น "เสร็จสมบูรณ์"',
+                'เมื่อยืนยันแล้ว ระบบจะเปลี่ยนสถานะเป็น "ปิดงานแล้ว"',
             ].join('\n'),
             confirmText: 'ยืนยันตรวจรับ',
             cancelText: 'กลับไปตรวจสอบ',
@@ -1340,6 +1401,27 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             showToast('หัวหน้าช่างตรวจรับงานเรียบร้อยแล้ว', 'success');
         } else {
             showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
+        }
+    }
+
+    async function handleReturnForRework(note: string) {
+        if (!selectedRequest) return;
+        if (!ensureCanEditPage()) return;
+        if (!canApproveCompletion) {
+            showToast('เฉพาะหัวหน้าช่างเท่านั้นที่ส่งงานกลับแก้ได้', 'warning');
+            return;
+        }
+
+        const result = await returnMaintenanceForRework(selectedRequest.request_id, note);
+
+        if (result.success) {
+            setShowReworkModal(false);
+            setReworkRequest(null);
+            setShowDetailModal(false);
+            loadData();
+            showToast('ส่งใบงานกลับไปแก้ไขแล้ว', 'success');
+        } else {
+            throw new Error(result.error || 'Failed to return maintenance request for rework');
         }
     }
 
@@ -1411,8 +1493,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         { key: 'pending', label: 'รอเรื่อง', value: summary.pending, className: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700', accent: 'text-yellow-600', helper: 'ยังไม่เริ่มดำเนินการ', status: 'pending' },
         { key: 'approved', label: 'แจ้งเรื่องต่อ', value: summary.approved, className: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700', accent: 'text-orange-600', helper: 'รอเริ่มงาน', status: 'approved' },
         { key: 'in_progress', label: 'ดำเนินการ', value: summary.in_progress, className: 'bg-blue-50 dark:bg-blue-900/20 text-blue-700', accent: 'text-blue-600', helper: 'กำลังซ่อม', status: 'in_progress' },
-        { key: 'completed', label: 'เสร็จสมบูรณ์', value: summary.completed, className: 'bg-green-50 dark:bg-green-900/20 text-green-700', accent: 'text-green-600', helper: 'ปิดงานแล้ว', status: 'completed' },
-        { key: 'confirmed', label: 'รอตรวจสอบ', value: summary.pending_verification || 0, className: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700', accent: 'text-orange-600', helper: 'WH-03 / รอปิดงาน', status: 'confirmed' },
+        { key: 'completed', label: 'ปิดงานแล้ว', value: summary.completed, className: 'bg-green-50 dark:bg-green-900/20 text-green-700', accent: 'text-green-600', helper: 'ตรวจรับเสร็จสิ้น', status: 'completed' },
+        { key: 'confirmed', label: 'รอหัวหน้าช่างตรวจรับ', value: summary.pending_verification || 0, className: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700', accent: 'text-orange-600', helper: 'งานเสร็จแล้ว รอยืนยันรับงาน', status: 'confirmed' },
         { key: 'cost', label: 'ค่าใช้จ่ายรวม', value: `฿${summary.total_cost.toLocaleString()}`, className: 'bg-purple-50 dark:bg-purple-900/20 text-purple-700', accent: 'text-purple-600', helper: 'รวมทุกใบงาน', status: null },
     ] as const;
 
@@ -1422,6 +1504,31 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
     const selectedRequestImageUrls = parseMaintenanceImageUrls(selectedRequest?.image_url);
     const selectedRequestCopiedImageMeta = getCopiedImageMetadata(selectedRequest?.tags);
+    const selectedWorkflowStatus = normalizeMaintenanceWorkflowStatus(selectedRequest?.status);
+    const isSelectedRequestAwaitingHeadApproval = selectedWorkflowStatus === 'confirmed';
+    const isSelectedRequestReadOnly = isSelectedRequestAwaitingHeadApproval || isMaintenanceWorkflowClosed(selectedWorkflowStatus);
+    const isDetailReadOnly = !canEditPage || isSelectedRequestReadOnly;
+    const allowedDetailStatusTransitions = selectedRequest && !isSelectedRequestReadOnly
+        ? getAllowedMaintenanceTransitions(selectedRequest.status)
+        : [];
+    const detailStatusOptions = selectedRequest
+        ? [
+            {
+                value: selectedRequest.status,
+                label: `${STATUS_CONFIG[selectedRequest.status as keyof typeof STATUS_CONFIG]?.label || selectedRequest.status} (ปัจจุบัน)`,
+            },
+            ...allowedDetailStatusTransitions
+                .filter((status) => status !== selectedRequest.status)
+                .map((status) => ({
+                    value: status,
+                    label: STATUS_CONFIG[status as keyof typeof STATUS_CONFIG]?.label || status,
+                })),
+        ]
+        : [];
+    const canEditDetailStatus = !isDetailReadOnly && detailStatusOptions.length > 1;
+    const canShowDetailSaveButton = !isSelectedRequestReadOnly;
+    const canShowHeadTechnicianActions = canApproveCompletion && isSelectedRequestAwaitingHeadApproval;
+    const canShowPartsAddSection = !isSelectedRequestReadOnly && editData.status === 'confirmed';
 
     return (
         <div className="space-y-6">
@@ -1567,8 +1674,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                         <option value="pending">รอเรื่อง</option>
                         <option value="approved">แจ้งเรื่องต่อ</option>
                         <option value="in_progress">ดำเนินการ</option>
-                        <option value="confirmed">ยืนยันงาน</option>
-                        <option value="completed">เสร็จสมบูรณ์</option>
+                        <option value="confirmed">รอหัวหน้าช่างตรวจรับ</option>
+                        <option value="completed">ปิดงานแล้ว</option>
                         <option value="cancelled">ยกเลิก</option>
                     </select>
                 </div>
@@ -2142,7 +2249,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                                 }
                                                 const matchedRoom = rooms.find(r => r.room_code.trim().toLowerCase() === ownerRoom.toLowerCase());
                                                 if (!matchedRoom) {
-                                                    return <div className="text-xs text-amber-600 mt-2">ไม่พบห้องรหัส "{ownerRoom}" ที่ผูกกับทะเบียนรถนี้ (แก้ไขได้ที่หน้า /admin/rooms)</div>;
+                                                    return (
+                                                        <div className="text-xs text-amber-600 mt-2">
+                                                            ไม่พบห้องรหัส <span>&quot;{ownerRoom}&quot;</span> ที่ผูกกับทะเบียนรถนี้ (แก้ไขได้ที่หน้า /admin/rooms)
+                                                        </div>
+                                                    );
                                                 }
                                                 return <div className="text-xs text-gray-500 mt-2">ระบบจะใช้สถานที่อัตโนมัติ: {matchedRoom.room_code} — {matchedRoom.room_name}</div>;
                                             })()}
@@ -2482,26 +2593,31 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     value={editData.status}
                     onChange={(e) => {
                       setEditData({ ...editData, status: e.target.value });
-                      if (e.target.value !== 'completed') {
+                      if (e.target.value !== 'confirmed') {
                         setNewPartsUsed([]);
                       }
                     }}
-                    className="h-14 w-full rounded-2xl border border-slate-300 bg-white px-4 text-xl font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                    disabled={!canEditDetailStatus}
+                    className="h-14 w-full rounded-2xl border border-slate-300 bg-white px-4 text-xl font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                   >
-                    {MAINTENANCE_STATUS_OPTIONS.filter((option) => {
-                      if (option.value === 'pending') {
-                        return sessionIsApprover || editData.status === 'pending';
-                      }
-                      if (option.value === 'cancelled') {
-                        return sessionIsApprover;
-                      }
-                      return true;
-                    }).map((option) => (
+                    {detailStatusOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
                     ))}
                   </select>
+
+                  {isSelectedRequestAwaitingHeadApproval && (
+                    <div className="mt-3 rounded-2xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm font-medium text-purple-700">
+                      ใบงานนี้รอหัวหน้าช่างตรวจรับ 
+                    </div>
+                  )}
+
+                  {selectedWorkflowStatus === 'completed' && (
+                    <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+                      ใบงานนี้ปิดสมบูรณ์แล้วและไม่สามารถแก้ไขได้
+                    </div>
+                  )}
 
                   {hasCompletedStockPosting(parts, historyItems) && (
                     <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
@@ -2529,22 +2645,14 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                         nextEditData.status = 'approved';
                       }
 
-                      if (
-                        selectedRequest.status === 'approved' &&
-                        editData.status === 'approved' &&
-                        !nextAssignedTo
-                      ) {
-                        nextEditData.status = 'pending';
-                      }
-
                       setEditData(nextEditData);
                     }}
                     className={`h-14 w-full rounded-2xl border border-slate-300 bg-white px-4 text-xl font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100 ${
-                      selectedRequest.status === 'in_progress' && !canAssignMaintenance
+                      (selectedRequest.status === 'in_progress' && !canAssignMaintenance) || isDetailReadOnly
                         ? 'cursor-not-allowed bg-slate-100 opacity-70'
                         : ''
                     }`}
-                    disabled={selectedRequest.status === 'in_progress' && !canAssignMaintenance}
+                    disabled={isDetailReadOnly || (selectedRequest.status === 'in_progress' && !canAssignMaintenance)}
                   >
                     <option value="">-- ไม่ระบุ --</option>
                     {Array.from(
@@ -2584,7 +2692,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     onChange={(e) =>
                       setEditData({ ...editData, scheduled_date: e.target.value })
                     }
-                    className="h-14 w-full rounded-2xl border border-slate-300 bg-white px-4 text-xl font-medium text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                    disabled={isDetailReadOnly}
+                    className="h-14 w-full rounded-2xl border border-slate-300 bg-white px-4 text-xl font-medium text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                   />
                 </div>
 
@@ -2598,13 +2707,14 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     onChange={(e) =>
                       setEditData({ ...editData, actual_cost: Number(e.target.value) })
                     }
-                    disabled={!canEditActualCost}
+                    disabled={!canEditActualCost || isSelectedRequestReadOnly}
                     className="h-14 w-full rounded-2xl border border-slate-300 bg-white px-4 text-2xl font-medium text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                     placeholder="0"
                     min="0"
                   />
                   
                   {canEditActualCost &&
+                    !isSelectedRequestReadOnly &&
                     Number(editData.actual_cost || 0) !== Number(selectedRequest.actual_cost || 0) && (
                       <div className="mt-3">
                         <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-amber-700">
@@ -2630,7 +2740,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                   <textarea
                     value={editData.notes}
                     onChange={(e) => setEditData({ ...editData, notes: e.target.value })}
-                    className="min-h-[130px] w-full rounded-2xl border border-slate-300 bg-white px-4 py-4 text-lg text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                    disabled={isDetailReadOnly}
+                    className="min-h-[130px] w-full rounded-2xl border border-slate-300 bg-white px-4 py-4 text-lg text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                     rows={4}
                     placeholder="เพิ่มหมายเหตุ..."
                   />
@@ -2641,7 +2752,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         </div>
 
         {/* Parts Add Section */}
-        {editData.status === 'completed' && selectedRequest.status !== 'completed' && (
+        {canShowPartsAddSection && (
           <div className="border-t border-slate-200 px-5 py-5 sm:px-6">
             <details open className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
               <summary className="flex cursor-pointer items-center gap-3 px-5 py-4 text-lg font-semibold text-slate-900">
@@ -2707,10 +2818,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                             </div>
                             <div className="text-sm font-medium text-slate-900">
                               เริ่มค้นหาอะไหล่ที่ต้องการเบิก
-                            </div>
-                            <div className="text-xs leading-5 text-slate-500">
-                              ระบบจะแสดงรายการที่ยังไม่ถูกเลือก พร้อมจำนวนคงเหลือในคลังให้ตรวจสอบก่อนกดเพิ่ม
-                            </div>
+                            </div>                            
                           </div>
                         </div>
                       )}
@@ -2948,6 +3056,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                   </div>
 
                   {part.status === 'withdrawn' &&
+                    !isSelectedRequestReadOnly &&
                     canConfirmMaintenancePartUsage(loggedInRole) && (
                       <div className="mt-3 border-t border-slate-200 pt-3">
                         {confirmingPartId === part.part_id ? (
@@ -3007,7 +3116,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                       </div>
                     )}
 
-                  {part.status === 'pending_verification' && canVerifyParts && (
+                  {part.status === 'pending_verification' && !isSelectedRequestReadOnly && canVerifyParts && (
                     <div className="mt-3 rounded-xl bg-yellow-50 px-3 pb-2 pt-3 ring-1 ring-yellow-200">
                       {verifyingPartId === part.part_id ? (
                         <div className="flex flex-col gap-2">
@@ -3218,23 +3327,21 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
             <div className="flex-1" />
 
-            {canReopenClosedRequest &&
-              ['completed', 'cancelled'].includes(selectedRequest.status) && (
-                <button
-                  onClick={() => {
-                    setReopenRequest(selectedRequest);
-                    setShowReopenModal(true);
-                  }}
-                  disabled={!canEditPage}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-5 py-4 text-lg font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Manager Override"
-                >
-                  <AlertTriangle size={18} />
-                  เปิดงานใหม่ (Manager)
-                </button>
-              )}
+            {canShowHeadTechnicianActions && (
+              <button
+                onClick={() => {
+                  setReworkRequest(selectedRequest);
+                  setShowReworkModal(true);
+                }}
+                disabled={!canEditPage}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-500 px-5 py-4 text-lg font-medium text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <AlertTriangle size={18} />
+                ให้แก้งานใหม่
+              </button>
+            )}
 
-            {canApproveCompletion && selectedRequest.status === 'confirmed' && (
+            {canShowHeadTechnicianActions && (
               <button
                 onClick={handleHeadTechnicianApproval}
                 disabled={!canEditPage}
@@ -3245,8 +3352,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
               </button>
             )}
 
-            {!['completed', 'cancelled'].includes(selectedRequest.status) &&
-              !(isLeaderTechnician && selectedRequest.status === 'confirmed') && (
+            {canShowDetailSaveButton && !canShowHeadTechnicianActions && (
                 <button
                   onClick={handleUpdateRequest}
                   disabled={!canEditPage}
@@ -3273,7 +3379,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                 ? 'bg-gradient-to-r from-blue-500 to-blue-600'
                                 : statusChangeData.newStatus === 'approved'
                                     ? 'bg-gradient-to-r from-orange-500 to-amber-600'
-                                : statusChangeData.newStatus === 'completed'
+                                : statusChangeData.newStatus === 'confirmed'
                                     ? 'bg-gradient-to-r from-green-500 to-emerald-600'
                                     : 'bg-gradient-to-r from-gray-500 to-gray-600'
                                 }`}>
@@ -3283,7 +3389,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                             <Wrench className="text-white" size={24} />
                                         ) : statusChangeData.newStatus === 'approved' ? (
                                             <ArrowRight className="text-white" size={24} />
-                                        ) : statusChangeData.newStatus === 'completed' ? (
+                                        ) : statusChangeData.newStatus === 'confirmed' ? (
                                             <CheckCircle2 className="text-white" size={24} />
                                         ) : (
                                             <Clock className="text-white" size={24} />
@@ -3293,7 +3399,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         <h3 className="text-lg font-bold text-white">
                                             {statusChangeData.newStatus === 'approved' && 'แจ้งเรื่องต่อ'}
                                             {statusChangeData.newStatus === 'in_progress' && 'เริ่มดำเนินการซ่อม'}
-                                            {statusChangeData.newStatus === 'completed' && 'ยืนยันการซ่อมเสร็จ'}
+                                            {statusChangeData.newStatus === 'confirmed' && 'ส่งงานให้หัวหน้าช่างตรวจรับ'}
                                             {statusChangeData.newStatus === 'pending' && 'ยืนยันการเปลี่ยนสถานะ'}
                                         </h3>
                                         <p className="text-white/80 text-sm mb-2">
@@ -3369,8 +3475,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                     </div>
                                 )}
 
-                                {/* Completed: Summary */}
-                                {statusChangeData.newStatus === 'completed' && (
+                                {/* Confirmed: Summary */}
+                                {statusChangeData.newStatus === 'confirmed' && (
                                     <div className="space-y-4">
                                         {/* Work Summary */}
                                         <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
@@ -3409,7 +3515,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         <div className="bg-gray-50 dark:bg-slate-700/50 border border-gray-200 dark:border-slate-600 rounded-lg p-4 space-y-3">
                                             <h4 className="font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
                                                 <ShoppingCart size={16} />
-                                                เพิ่มอะไหล่ที่ใช้ (ถ้ามี)
+                                                เพิ่มอะไหล่ที่ใช้ก่อนส่งตรวจรับ (ถ้ามี)
                                             </h4>
                                             {statusChangeData.partsUsed.map((part, index) => {
                                                 const product = products.find(p => p.p_id === part.p_id);
@@ -3538,7 +3644,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         ? 'bg-blue-600 hover:bg-blue-700'
                                         : statusChangeData.newStatus === 'approved'
                                             ? 'bg-orange-600 hover:bg-orange-700'
-                                        : statusChangeData.newStatus === 'completed'
+                                        : statusChangeData.newStatus === 'confirmed'
                                             ? 'bg-green-600 hover:bg-green-700'
                                             : 'bg-gray-600 hover:bg-gray-700'
                                         } disabled:cursor-not-allowed disabled:opacity-50`}
@@ -3555,10 +3661,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                             เริ่มซ่อม
                                         </>
                                     )}
-                                    {statusChangeData.newStatus === 'completed' && (
+                                    {statusChangeData.newStatus === 'confirmed' && (
                                         <>
                                             <CheckCircle2 size={18} />
-                                            ยืนยันเสร็จสิ้น
+                                            ส่งตรวจรับ
                                         </>
                                     )}
                                     {statusChangeData.newStatus === 'pending' && 'ยืนยัน'}
@@ -3577,16 +3683,14 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 />
             )}
 
-            {showReopenModal && reopenRequest && (
-                <ReopenModal
-                    request={reopenRequest}
-                    onClose={() => setShowReopenModal(false)}
-                    onConfirm={() => {
-                        setShowReopenModal(false);
-                        setShowDetailModal(false);
-                        loadData();
-                        showToast('เปิดงานซ่อมใหม่เรียบร้อยแล้ว', 'success');
+            {showReworkModal && reworkRequest && (
+                <ReworkModal
+                    request={reworkRequest}
+                    onClose={() => {
+                        setShowReworkModal(false);
+                        setReworkRequest(null);
                     }}
+                    onConfirm={handleReturnForRework}
                 />
             )}
 
@@ -3696,17 +3800,16 @@ function PartRequestModal({
     );
 }
 
-function ReopenModal({
+function ReworkModal({
     request,
     onClose,
     onConfirm
 }: {
     request: MaintenanceRequestItem;
     onClose: () => void;
-    onConfirm: () => void;
+    onConfirm: (note: string) => Promise<void>;
 }) {
-    const [reason, setReason] = useState('');
-    const [password, setPassword] = useState('');
+    const [note, setNote] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -3715,26 +3818,24 @@ function ReopenModal({
         setError('');
         setLoading(true);
 
-        const result = await reopenMaintenanceRequest(request.request_id, reason, password);
+        try {
+            await onConfirm(note);
+        } catch (submitError) {
+            setError(submitError instanceof Error ? submitError.message : 'Failed to return for rework');
+        }
 
         setLoading(false);
-
-        if (result.success) {
-            onConfirm();
-        } else {
-            setError(result.error || 'Failed to reopen');
-        }
     }
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70]">
             <div className="bg-white dark:bg-slate-800 rounded-xl p-6 w-full max-w-sm shadow-xl border dark:border-slate-700">
-                <h2 className="text-xl font-bold mb-2 text-red-600 flex items-center gap-2">
+                <h2 className="text-xl font-bold mb-2 text-amber-600 flex items-center gap-2">
                     <AlertTriangle size={24} />
-                    Manager Override
+                    ให้แก้งานใหม่
                 </h2>
                 <p className="text-sm text-gray-500 mb-4">
-                    เปิดงานซ่อม <b>#{request.request_number}</b> ใหม่อีกครั้ง
+                    ส่งใบงาน <b>#{request.request_number}</b> กลับไปที่ขั้นดำเนินการ
                 </p>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -3745,26 +3846,14 @@ function ReopenModal({
                     )}
 
                     <div className="space-y-2">
-                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">สาเหตุการเปิดใหม่</label>
+                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">หมายเหตุถึงช่าง</label>
                         <textarea
-                            value={reason}
-                            onChange={e => setReason(e.target.value)}
-                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 resize-none focus:ring-2 focus:ring-red-500 outline-none"
-                            placeholder="ระบุสาเหตุ..."
+                            value={note}
+                            onChange={e => setNote(e.target.value)}
+                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 resize-none focus:ring-2 focus:ring-amber-500 outline-none"
+                            placeholder="ระบุสิ่งที่ต้องแก้ไขเพิ่มเติม"
                             required
                             rows={3}
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">Master Password</label>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={e => setPassword(e.target.value)}
-                            className="w-full border rounded-lg px-3 py-2 dark:bg-slate-700 dark:border-slate-600 focus:ring-2 focus:ring-red-500 outline-none"
-                            placeholder="รหัสผ่านผู้ดูแล"
-                            required
                         />
                     </div>
 
@@ -3778,10 +3867,10 @@ function ReopenModal({
                         </button>
                         <button
                             type="submit"
-                            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-medium"
+                            className="flex-1 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 font-medium"
                             disabled={loading}
                         >
-                            {loading ? 'กำลังดำเนินการ...' : 'ยืนยันเปิดใหม่'}
+                            {loading ? 'กำลังส่งกลับ...' : 'ยืนยันส่งกลับ'}
                         </button>
                     </div>
                 </form>

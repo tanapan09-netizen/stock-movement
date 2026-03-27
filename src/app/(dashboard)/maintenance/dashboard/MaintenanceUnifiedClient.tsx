@@ -563,7 +563,7 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                             </div>
                         </div>
                         <div className="mt-4 pt-4 border-t border-green-400/30 flex items-center gap-2 text-sm text-green-100">
-                            <CheckCircle size={16} /> งานที่เสร็จสมบูรณ์
+                            <CheckCircle size={16} /> งานที่ปิดแล้ว
                         </div>
                     </div>
                     <div className="bg-orange-500 text-white p-5 rounded-xl shadow-lg shadow-orange-200">

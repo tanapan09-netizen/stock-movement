@@ -350,10 +350,10 @@ export default function MaintenanceDashboardClient({
                                         )}
                                         {task.status === 'in_progress' && (
                                             <button
-                                                onClick={() => handleQuickStatusChange(task.request_id, 'completed')}
+                                                onClick={() => handleQuickStatusChange(task.request_id, 'confirmed')}
                                                 className="text-xs bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600"
                                             >
-                                                เสร็จแล้ว
+                                                ส่งตรวจรับ
                                             </button>
                                         )}
                                     </div>

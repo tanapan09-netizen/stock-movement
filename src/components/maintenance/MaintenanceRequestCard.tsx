@@ -24,8 +24,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
     pending: { label: 'รอเรื่อง', color: 'text-yellow-600', bg: 'bg-yellow-50', icon: Clock },
     approved: { label: 'แจ้งเรื่องต่อ', color: 'text-orange-600', bg: 'bg-orange-50', icon: ArrowRight },
     in_progress: { label: 'ดำเนินการ', color: 'text-blue-600', bg: 'bg-blue-50', icon: Wrench },
-    confirmed: { label: 'ยืนยันงาน', color: 'text-purple-600', bg: 'bg-purple-50', icon: CheckCircle },
-    completed: { label: 'เสร็จสมบูรณ์', color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle },
+    confirmed: { label: 'รอหัวหน้าช่างตรวจรับ', color: 'text-purple-600', bg: 'bg-purple-50', icon: CheckCircle },
+    completed: { label: 'ปิดงานแล้ว', color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle },
     cancelled: { label: 'ยกเลิก', color: 'text-gray-600', bg: 'bg-gray-50', icon: XCircle }
 };
 

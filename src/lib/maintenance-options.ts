@@ -9,8 +9,17 @@ export const MAINTENANCE_STATUS_OPTIONS = [
     { value: 'pending', label: 'รอเรื่อง' },
     { value: 'approved', label: 'แจ้งเรื่องต่อ' },
     { value: 'in_progress', label: 'ดำเนินการ' },
-    { value: 'completed', label: 'เสร็จสมบูรณ์' },
+    { value: 'confirmed', label: 'รอหัวหน้าช่างตรวจรับ' },
+    { value: 'completed', label: 'ปิดงานแล้ว' },
     { value: 'cancelled', label: 'ยกเลิก' },
+] as const;
+
+export const MAINTENANCE_WORKFLOW_STATUS_OPTIONS = [
+    { value: 'pending', label: 'รอเรื่อง' },
+    { value: 'approved', label: 'แจ้งเรื่องต่อ' },
+    { value: 'in_progress', label: 'ดำเนินการ' },
+    { value: 'confirmed', label: 'รอหัวหน้าช่างตรวจรับ' },
+    { value: 'completed', label: 'ปิดงานแล้ว' },
 ] as const;
 
 export const MAINTENANCE_CATEGORY_OPTIONS = [
