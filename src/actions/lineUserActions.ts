@@ -22,6 +22,46 @@ import { normalizeRole } from '@/lib/roles';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
 import { provisionLineUserLinkByRowId } from '@/lib/server/auth-user';
 
+function sanitizeUsernameCandidate(value: string) {
+    return value
+        .normalize('NFKC')
+        .replace(/\s+/g, '_')
+        .replace(/[^\p{L}\p{N}._-]/gu, '')
+        .replace(/^[_\-.]+|[_\-.]+$/g, '')
+        .slice(0, 50);
+}
+
+async function buildSyncedLinkedUsername(lineUser: {
+    id: number;
+    display_name: string | null;
+    full_name: string | null;
+}, currentUserId: number, currentUsername: string) {
+    const preferredName = lineUser.full_name?.trim() || lineUser.display_name?.trim();
+    if (!preferredName) {
+        return currentUsername;
+    }
+
+    const baseUsername = sanitizeUsernameCandidate(preferredName) || currentUsername;
+    const suffix = `_line${lineUser.id}`;
+    let username = baseUsername;
+    let attempt = 0;
+
+    while (true) {
+        const existingUser = await prisma.tbl_users.findUnique({
+            where: { username },
+            select: { p_id: true },
+        });
+
+        if (!existingUser || existingUser.p_id === currentUserId) {
+            return username;
+        }
+
+        attempt += 1;
+        const indexedSuffix = `${suffix}_${attempt}`;
+        username = `${baseUsername.slice(0, Math.max(1, 50 - indexedSuffix.length))}${indexedSuffix}`;
+    }
+}
+
 async function getLineUserAdminContext() {
     const session = await auth();
     if (!session?.user) {
@@ -435,6 +475,107 @@ export async function updateLineUserFullName(id: number, fullName: string) {
     } catch (error) {
         console.error('Error updating full name:', error);
         return { success: false, error: 'Failed to update full name' };
+    }
+}
+
+export async function syncLinkedLineUserAccount(id: number) {
+    try {
+        const authContext = await getLineUserAdminContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        const lineUser = await prisma.tbl_line_users.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                user_id: true,
+                line_user_id: true,
+                display_name: true,
+                full_name: true,
+                role: true,
+            },
+        });
+
+        if (!lineUser?.user_id) {
+            return { success: false, error: 'LINE user นี้ยังไม่มี System Link' };
+        }
+
+        const linkedUser = await prisma.tbl_users.findUnique({
+            where: { p_id: lineUser.user_id },
+            select: {
+                p_id: true,
+                username: true,
+                role: true,
+                line_user_id: true,
+            },
+        });
+
+        if (!linkedUser) {
+            return { success: false, error: 'ไม่พบผู้ใช้ระบบที่เชื่อมอยู่' };
+        }
+
+        const normalizedRole = normalizeRole(lineUser.role);
+        if (!normalizedRole || normalizedRole === 'pending') {
+            return { success: false, error: 'กรุณากำหนด Department Role ก่อน sync System Link' };
+        }
+
+        const nextUsername = await buildSyncedLinkedUsername(lineUser, linkedUser.p_id, linkedUser.username);
+        const roleRecord = await prisma.tbl_roles.findUnique({
+            where: { role_name: normalizedRole },
+            select: { role_id: true },
+        });
+
+        const changes: string[] = [];
+        if (linkedUser.username !== nextUsername) {
+            changes.push(`ชื่อ: ${linkedUser.username} -> ${nextUsername}`);
+        }
+        if (normalizeRole(linkedUser.role) !== normalizedRole) {
+            changes.push(`Role: ${normalizeRole(linkedUser.role) || '-'} -> ${normalizedRole}`);
+        }
+        if ((linkedUser.line_user_id || null) !== (lineUser.line_user_id || null)) {
+            changes.push('LINE Link');
+        }
+
+        const updatedLinkedUser = await prisma.tbl_users.update({
+            where: { p_id: linkedUser.p_id },
+            data: {
+                username: nextUsername,
+                role: normalizedRole,
+                role_id: roleRecord?.role_id ?? null,
+                line_user_id: lineUser.line_user_id,
+            },
+            select: {
+                p_id: true,
+                username: true,
+                role: true,
+                line_user_id: true,
+            },
+        });
+
+        revalidatePath('/settings/line-users');
+
+        await logSystemAction(
+            'UPDATE',
+            'LineUser',
+            id,
+            `Synced linked system user ${updatedLinkedUser.username} from LINE user ${lineUser.full_name || lineUser.display_name || id}${changes.length ? ` (${changes.join(', ')})` : ''}`,
+            (parseInt(authContext.session.user.id as string) || 0),
+            authContext.session.user.name || 'System',
+            'unknown'
+        );
+
+        return {
+            success: true,
+            data: updatedLinkedUser,
+            changes,
+            message: changes.length > 0
+                ? `อัปเดต System Link แล้ว: ${changes.join(', ')}`
+                : 'System Link เป็นข้อมูลล่าสุดอยู่แล้ว',
+        };
+    } catch (error) {
+        console.error('Error syncing linked LINE user account:', error);
+        return { success: false, error: 'Failed to sync linked system user' };
     }
 }
 

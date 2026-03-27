@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { Trash2, UserCheck, UserX, Plus, Link2 } from 'lucide-react';
+import { useToast } from '@/components/ToastProvider';
 import { LINE_USER_ROLE_OPTIONS, partitionLineUsersByAssignment } from '@/lib/line-users';
+import { getRoleLabel } from '@/lib/roles';
 import {
     getLineUsers,
     toggleApprover,
@@ -12,6 +14,7 @@ import {
     updateLineUserFullName,
     refreshLineUserProfiles,
     provisionLineUserAccount,
+    syncLinkedLineUserAccount,
 } from '@/actions/lineUserActions';
 
 interface LineUser {
@@ -33,6 +36,20 @@ interface LineUser {
     } | null;
 }
 
+function getExpectedLinkedUsername(user: LineUser) {
+    const preferredName = user.full_name?.trim() || user.display_name?.trim() || '';
+    if (!preferredName) {
+        return user.linked_user?.username || '';
+    }
+
+    return preferredName
+        .normalize('NFKC')
+        .replace(/\s+/g, '_')
+        .replace(/[^\p{L}\p{N}._-]/gu, '')
+        .replace(/^[_\-.]+|[_\-.]+$/g, '')
+        .slice(0, 50);
+}
+
 const TABLE_HEADERS = (
     <tr>
         <th className="p-4 text-sm font-semibold text-gray-600 dark:text-gray-200">User</th>
@@ -46,6 +63,7 @@ const TABLE_HEADERS = (
 );
 
 export default function LineUserClient() {
+    const { showToast, showConfirm } = useToast();
     const [users, setUsers] = useState<LineUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [showQRCode, setShowQRCode] = useState(false);
@@ -66,14 +84,30 @@ export default function LineUserClient() {
         loadUsers();
     }, []);
 
+    const syncLinkedUser = async (id: number) => {
+        const syncResult = await syncLinkedLineUserAccount(id);
+        if (syncResult.success && syncResult.data) {
+            setUsers(prev => prev.map((u) => (
+                u.id === id
+                    ? { ...u, linked_user: syncResult.data as LineUser['linked_user'] }
+                    : u
+            )));
+            showToast(syncResult.message || 'System Link updated', 'success');
+            return true;
+        }
+
+        showToast(syncResult.error || 'Failed to sync System Link', 'error');
+        return false;
+    };
+
     const handleRefreshPhotos = async () => {
         setRefreshing(true);
         const result = await refreshLineUserProfiles();
         if (result.success) {
-            alert(result.message || 'Refresh completed');
+            showToast(result.message || 'Refresh completed', 'success');
             loadUsers();
         } else {
-            alert('Failed to refresh photos: ' + result.error);
+            showToast('Failed to refresh photos: ' + result.error, 'error');
         }
         setRefreshing(false);
     };
@@ -93,13 +127,13 @@ export default function LineUserClient() {
             });
             if (response.ok) {
                 setQrTimestamp(Date.now());
-                alert('QR Code uploaded successfully');
+                showToast('QR Code uploaded successfully', 'success');
             } else {
-                alert('Failed to upload QR Code');
+                showToast('Failed to upload QR Code', 'error');
             }
         } catch (error) {
             console.error(error);
-            alert('Error uploading file');
+            showToast('Error uploading file', 'error');
         } finally {
             setUploadingQR(false);
         }
@@ -122,26 +156,66 @@ export default function LineUserClient() {
     const handleUpdateRole = async (id: number, role: string) => {
         const result = await updateLineUserRole(id, role);
         if (result.success) {
-            setUsers(prev => prev.map(u => (u.id === id ? { ...u, role } : u)));
+            let shouldOfferSync = false;
+            setUsers(prev => prev.map((u) => {
+                if (u.id !== id) return u;
+                shouldOfferSync = Boolean(u.linked_user && u.linked_user.role !== role);
+                return { ...u, role };
+            }));
+
+            if (shouldOfferSync && await showConfirm({
+                title: 'Sync System Link',
+                message: 'Department Role มีการเปลี่ยนแปลง ต้องการ sync ไปที่ System Link ด้วยหรือไม่?',
+                confirmText: 'Sync now',
+                cancelText: 'Later',
+                type: 'warning',
+            })) {
+                await syncLinkedUser(id);
+            }
         } else {
-            alert('Failed to update role');
+            showToast('Failed to update role', 'error');
         }
     };
 
     const handleUpdateFullName = async (id: number, fullName: string) => {
         const result = await updateLineUserFullName(id, fullName);
         if (result.success) {
-            setUsers(prev => prev.map(u => (u.id === id ? { ...u, full_name: fullName } : u)));
+            let shouldOfferSync = false;
+            setUsers(prev => prev.map((u) => {
+                if (u.id !== id) return u;
+                shouldOfferSync = Boolean(u.linked_user);
+                return { ...u, full_name: fullName };
+            }));
+
+            if (shouldOfferSync && await showConfirm({
+                title: 'Sync System Link',
+                message: 'ชื่อผู้ใช้มีการเปลี่ยนแปลง ต้องการ sync ชื่อไปที่ System Link ด้วยหรือไม่?',
+                confirmText: 'Sync now',
+                cancelText: 'Later',
+                type: 'info',
+            })) {
+                await syncLinkedUser(id);
+            }
         } else {
-            alert('Failed to update name');
+            showToast('Failed to update name', 'error');
         }
     };
 
     const handleDelete = async (id: number) => {
-        if (!confirm('Are you sure you want to delete this user?')) return;
+        const confirmed = await showConfirm({
+            title: 'Delete LINE User',
+            message: 'Are you sure you want to delete this user?',
+            confirmText: 'Delete',
+            cancelText: 'Cancel',
+            type: 'danger',
+        });
+        if (!confirmed) return;
         const result = await deleteLineUser(id);
         if (result.success) {
             setUsers(prev => prev.filter(u => u.id !== id));
+            showToast('LINE user deleted', 'success');
+        } else {
+            showToast(result.error || 'Failed to delete user', 'error');
         }
     };
 
@@ -153,9 +227,9 @@ export default function LineUserClient() {
                     ? { ...user, linked_user: result.data as LineUser['linked_user'] }
                     : user
             )));
-            alert('Provision ระบบให้ LINE account เรียบร้อยแล้ว');
+            showToast('Provision ระบบให้ LINE account เรียบร้อยแล้ว', 'success');
         } else {
-            alert(result.error || 'Failed to provision account');
+            showToast(result.error || 'Failed to provision account', 'error');
         }
     };
 
@@ -220,8 +294,18 @@ export default function LineUserClient() {
                             </div>
                             <div className="text-sm font-medium text-gray-800 dark:text-gray-100">{user.linked_user.username}</div>
                             <div className="text-xs text-gray-500 dark:text-gray-400">
-                                User #{user.linked_user.p_id} • {user.linked_user.role}
+                                User #{user.linked_user.p_id} • {getRoleLabel(user.linked_user.role)}
                             </div>
+                            {(user.linked_user.username !== getExpectedLinkedUsername(user)
+                                || user.linked_user.role !== user.role) && (
+                                <button
+                                    type="button"
+                                    onClick={() => void syncLinkedUser(user.id)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-100"
+                                >
+                                    Sync changes
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <div className="space-y-2">
