@@ -31,6 +31,17 @@ type PurchaseRequestContext = {
     reason?: string | null;
 };
 
+function roundToTwoDecimals(value: number) {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function formatMoney(value: number) {
+    return value.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
 export default function POForm({
     products,
     suppliers,
@@ -51,7 +62,7 @@ export default function POForm({
             `อ้างอิงคำขอซื้อ: ${initialRequestContext.requestNumber}`,
             initialRequestContext.requestId ? `PR Request ID: ${initialRequestContext.requestId}` : null,
             initialRequestContext.referenceJob ? `งานอ้างอิง: ${initialRequestContext.referenceJob}` : null,
-            initialRequestContext.amount ? `ยอดประมาณการจาก PR: ${initialRequestContext.amount.toLocaleString()} บาท` : null,
+            initialRequestContext.amount ? `ยอดประมาณการจาก PR: ${formatMoney(initialRequestContext.amount)} บาท` : null,
             initialRequestContext.reason ? `สรุปรายการ: ${initialRequestContext.reason}` : null,
         ].filter(Boolean).join('\n')
         : '';
@@ -79,7 +90,7 @@ export default function POForm({
                     p_id: item.p_id,
                     p_name: itemMeta.displayName || product?.p_name || item.p_id,
                     quantity: item.quantity,
-                    unit_price: Number(item.unit_price),
+                    unit_price: roundToTwoDecimals(Number(item.unit_price)),
                     item_type: itemMeta.kind,
                 };
             });
@@ -110,7 +121,7 @@ export default function POForm({
             p_id: product.p_id,
             p_name: product.p_name,
             quantity: 1,
-            unit_price: product.price_unit || 0,
+            unit_price: roundToTwoDecimals(product.price_unit || 0),
             item_type: 'stock',
         }]);
         setSearchTerm('');
@@ -148,7 +159,19 @@ export default function POForm({
     };
 
     const updateItem = (p_id: string, field: 'quantity' | 'unit_price' | 'p_name', value: number | string) => {
-        setCart(cart.map(i => i.p_id === p_id ? { ...i, [field]: value } : i));
+        setCart(cart.map((item) => {
+            if (item.p_id !== p_id) return item;
+
+            if (field === 'unit_price') {
+                return { ...item, unit_price: roundToTwoDecimals(Number(value) || 0) };
+            }
+
+            if (field === 'quantity') {
+                return { ...item, quantity: Math.max(1, Math.trunc(Number(value) || 1)) };
+            }
+
+            return { ...item, p_name: String(value) };
+        }));
     };
 
     const removeItem = (p_id: string) => {
@@ -170,7 +193,7 @@ export default function POForm({
 
         const confirmed = await showConfirm({
             title: isEditMode ? 'ยืนยันการแก้ไขใบสั่งซื้อ' : 'ยืนยันการสร้างใบสั่งซื้อ',
-            message: `เลขที่: ${poNumber}\nผู้ขาย: ${suppliers.find(s => s.id === parseInt(supplierId))?.name}\nจำนวนรายการ: ${cart.length}\nยอดรวม: ${grandTotal.toLocaleString()} บาท`,
+            message: `เลขที่: ${poNumber}\nผู้ขาย: ${suppliers.find(s => s.id === parseInt(supplierId))?.name}\nจำนวนรายการ: ${cart.length}\nยอดรวม: ${formatMoney(grandTotal)} บาท`,
             confirmText: 'ยืนยัน',
             cancelText: 'ยกเลิก',
             type: 'info'
@@ -189,9 +212,9 @@ export default function POForm({
         formData.append('order_date', orderDate);
         formData.append('expected_date', expectedDate);
         formData.append('status', status);
-        formData.append('subtotal', subtotal.toString());
-        formData.append('tax_amount', taxAmount.toString());
-        formData.append('total_amount', grandTotal.toString());
+        formData.append('subtotal', subtotal.toFixed(2));
+        formData.append('tax_amount', taxAmount.toFixed(2));
+        formData.append('total_amount', grandTotal.toFixed(2));
         formData.append('notes', notes);
         formData.append('items', JSON.stringify(cart));
 
@@ -218,9 +241,9 @@ export default function POForm({
     };
 
     // Calculate totals
-    const subtotal = cart.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
-    const taxAmount = includeTax ? (subtotal * taxRate / 100) : 0;
-    const grandTotal = subtotal + taxAmount;
+    const subtotal = roundToTwoDecimals(cart.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0));
+    const taxAmount = includeTax ? roundToTwoDecimals(subtotal * taxRate / 100) : 0;
+    const grandTotal = roundToTwoDecimals(subtotal + taxAmount);
 
     return (
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -235,7 +258,7 @@ export default function POForm({
                         </div>
                         {initialRequestContext.amount ? (
                             <div className="mt-2 text-xs text-cyan-800">
-                                ยอดประมาณจากคำขอซื้อ: {initialRequestContext.amount.toLocaleString()} บาท
+                                ยอดประมาณจากคำขอซื้อ: {formatMoney(initialRequestContext.amount)} บาท
                             </div>
                         ) : null}
                     </div>
@@ -350,7 +373,8 @@ export default function POForm({
                             <input
                                 type="number"
                                 value={taxRate}
-                                onChange={e => setTaxRate(parseFloat(e.target.value) || 0)}
+                                step="0.01"
+                                onChange={e => setTaxRate(roundToTwoDecimals(parseFloat(e.target.value) || 0))}
                                 className="w-full border rounded-lg p-2 mt-1"
                             />
                         </div>
@@ -363,18 +387,18 @@ export default function POForm({
                     <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                             <span>ยอดก่อนภาษี</span>
-                            <span>{subtotal.toLocaleString()} บาท</span>
+                            <span>{formatMoney(subtotal)} บาท</span>
                         </div>
                         {includeTax && (
                             <div className="flex justify-between">
                                 <span>VAT ({taxRate}%)</span>
-                                <span>{taxAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
+                                <span>{formatMoney(taxAmount)} บาท</span>
                             </div>
                         )}
                         <div className="border-t border-white/30 pt-2 mt-2">
                             <div className="flex justify-between text-lg font-bold">
                                 <span>ยอดรวมทั้งสิ้น</span>
-                                <span>{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
+                                <span>{formatMoney(grandTotal)} บาท</span>
                             </div>
                         </div>
                     </div>
@@ -425,7 +449,7 @@ export default function POForm({
                                         <div className="text-xs text-gray-500">{p.p_id}</div>
                                     </div>
                                     <div className="text-blue-600 font-medium">
-                                        {(p.price_unit || 0).toLocaleString()} บาท
+                                        {formatMoney(roundToTwoDecimals(p.price_unit || 0))} บาท
                                     </div>
                                 </div>
                             ))}
@@ -532,7 +556,7 @@ export default function POForm({
                                         />
                                     </div>
                                     <div className="col-span-2 text-right font-bold text-blue-600">
-                                        {(item.quantity * item.unit_price).toLocaleString()}
+                                        {formatMoney(roundToTwoDecimals(item.quantity * item.unit_price))}
                                     </div>
                                     <div className="col-span-1 text-right">
                                         <button
@@ -552,3 +576,5 @@ export default function POForm({
         </form>
     );
 }
+
+
