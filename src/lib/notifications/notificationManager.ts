@@ -62,6 +62,50 @@ function formatLineSection(title: string, rows: Array<[string, string | number |
     return [title, ...lines];
 }
 
+async function resolveApprovalRequesterLineIds(data: {
+    requested_by: string;
+    requester_line_id?: string | null;
+}): Promise<string[]> {
+    const ids = new Set<string>();
+
+    if (data.requester_line_id) {
+        ids.add(data.requester_line_id);
+    }
+
+    if (!data.requested_by?.trim()) {
+        return [...ids];
+    }
+
+    const { prisma } = await import('@/lib/prisma');
+    const requesterName = data.requested_by.trim();
+
+    const [requesterUser, requesterTech, requesterLineUser] = await Promise.all([
+        prisma.tbl_users.findUnique({
+            where: { username: requesterName },
+            select: { line_user_id: true },
+        }),
+        prisma.tbl_technicians.findFirst({
+            where: { name: requesterName, status: 'active' },
+            select: { line_user_id: true },
+        }),
+        prisma.tbl_line_users.findFirst({
+            where: {
+                OR: [
+                    { display_name: requesterName },
+                    { full_name: requesterName },
+                ],
+            },
+            select: { line_user_id: true },
+        }),
+    ]);
+
+    if (requesterUser?.line_user_id) ids.add(requesterUser.line_user_id);
+    if (requesterTech?.line_user_id) ids.add(requesterTech.line_user_id);
+    if (requesterLineUser?.line_user_id) ids.add(requesterLineUser.line_user_id);
+
+    return [...ids];
+}
+
 /**
  * Send notifications for a new part request
  */
@@ -795,9 +839,10 @@ export async function notifyApprovalEvent(
                     messageText += `\nเหตุผล: ${data.rejection_reason}`;
                 }
 
-                if (data.requester_line_id) {
+                const requesterLineIds = await resolveApprovalRequesterLineIds(data);
+                if (requesterLineIds.length > 0) {
                     const fallbackMsg = { type: 'text' as const, text: messageText };
-                    await sendPushMessage(data.requester_line_id!, fallbackMsg);
+                    await sendMulticastMessage(requesterLineIds, fallbackMsg);
                     console.log(`[Notification] Approval result sent to requester:`, data.requested_by);
                 }
             }
@@ -865,12 +910,13 @@ export async function notifyApprovalEventFlex(
             return;
         }
 
-        if (!data.requester_line_id) {
+        const requesterLineIds = await resolveApprovalRequesterLineIds(data);
+        if (requesterLineIds.length === 0) {
             return;
         }
 
         await sendMulticastMessage(
-            [data.requester_line_id],
+            requesterLineIds,
             createApprovalDecisionFlexMessage({
                 requestNumber: data.request_number,
                 requestType: requestTypeLabel,
