@@ -64,7 +64,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string
 export default function MaintenanceRequestCard({ request, onClick, onResend, ageBadge }: MaintenanceRequestCardProps) {
     const status = STATUS_CONFIG[request.status] || STATUS_CONFIG.pending;
     const priority = PRIORITY_CONFIG[request.priority] || PRIORITY_CONFIG.normal;
-    const canResendAfterApproval = ['approved', 'in_progress', 'confirmed'].includes(request.status);
+    const canResendBeforeInProgress = request.status === 'approved';
     const hasPartsStockPosted = Array.isArray(request.tbl_maintenance_history)
         && request.tbl_maintenance_history.some((item) => item.action === 'PARTS_STOCK_POSTED');
     const hasBeenReopened = Array.isArray(request.tbl_maintenance_history)
@@ -206,7 +206,7 @@ export default function MaintenanceRequestCard({ request, onClick, onResend, age
                             </span>
                         )}
                     </div>
-                    {canResendAfterApproval && onResend && (
+                    {canResendBeforeInProgress && onResend && (
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
