@@ -13,38 +13,38 @@ type AlertState = {
 const BOOLEAN_FIELDS: Array<{ key: AssetPolicyKey; label: string; hint: string }> = [
     {
         key: 'require_serial',
-        label: 'Require serial number',
-        hint: 'Block asset creation when serial number is empty',
+        label: 'บังคับกรอก Serial Number',
+        hint: 'ไม่อนุญาตให้สร้างทรัพย์สินหากไม่ได้กรอก Serial Number',
     },
     {
         key: 'require_custodian_on_in_use',
-        label: 'Require custodian on in-use',
-        hint: 'Asset cannot move to in_use without owner',
+        label: 'บังคับผู้รับผิดชอบเมื่อเริ่มใช้งาน',
+        hint: 'ไม่สามารถเปลี่ยนสถานะเป็นใช้งานได้ หากยังไม่ระบุผู้รับผิดชอบ',
     },
     {
         key: 'transfer_requires_approval',
-        label: 'Transfer requires approval',
-        hint: 'Every transfer must be approved before completion',
+        label: 'การโอนย้ายต้องได้รับอนุมัติ',
+        hint: 'ทุกการโอนย้ายต้องผ่านการอนุมัติก่อนเสร็จสิ้น',
     },
     {
         key: 'disposal_requires_dual_approval',
-        label: 'Dual approval for disposal',
-        hint: 'Require two approvers before disposing asset',
+        label: 'การจำหน่ายต้องอนุมัติ 2 ชั้น',
+        hint: 'ต้องมีผู้อนุมัติ 2 คนก่อนจำหน่ายทรัพย์สิน',
     },
 ];
 
 const SLA_FIELDS: Array<{ key: AssetPolicyKey; label: string; suffix: string; min: number; step: number }> = [
-    { key: 'approval_sla_hours', label: 'Approval SLA', suffix: 'hours', min: 1, step: 1 },
-    { key: 'transfer_sla_hours', label: 'Transfer SLA', suffix: 'hours', min: 1, step: 1 },
-    { key: 'repair_sla_critical_hours', label: 'Critical repair SLA', suffix: 'hours', min: 1, step: 1 },
-    { key: 'repair_sla_normal_hours', label: 'Normal repair SLA', suffix: 'hours', min: 1, step: 1 },
+    { key: 'approval_sla_hours', label: 'SLA การอนุมัติ', suffix: 'ชั่วโมง', min: 1, step: 1 },
+    { key: 'transfer_sla_hours', label: 'SLA การโอนย้าย', suffix: 'ชั่วโมง', min: 1, step: 1 },
+    { key: 'repair_sla_critical_hours', label: 'SLA งานซ่อมเร่งด่วน', suffix: 'ชั่วโมง', min: 1, step: 1 },
+    { key: 'repair_sla_normal_hours', label: 'SLA งานซ่อมปกติ', suffix: 'ชั่วโมง', min: 1, step: 1 },
 ];
 
 const ALERT_FIELDS: Array<{ key: AssetPolicyKey; label: string; suffix: string; min: number; step: number }> = [
-    { key: 'scrap_rate_threshold_pct', label: 'Scrap rate threshold', suffix: '%', min: 0, step: 0.1 },
-    { key: 'repair_frequency_threshold', label: 'Repair frequency threshold', suffix: 'times', min: 1, step: 1 },
-    { key: 'warranty_expiry_alert_days', label: 'Warranty expiry alert', suffix: 'days', min: 1, step: 1 },
-    { key: 'stocktake_accuracy_min_pct', label: 'Minimum stocktake accuracy', suffix: '%', min: 0, step: 0.1 },
+    { key: 'scrap_rate_threshold_pct', label: 'เกณฑ์อัตราของเสีย', suffix: '%', min: 0, step: 0.1 },
+    { key: 'repair_frequency_threshold', label: 'เกณฑ์ความถี่การซ่อม', suffix: 'ครั้ง', min: 1, step: 1 },
+    { key: 'warranty_expiry_alert_days', label: 'แจ้งเตือนก่อนหมดประกัน', suffix: 'วัน', min: 1, step: 1 },
+    { key: 'stocktake_accuracy_min_pct', label: 'ความแม่นยำขั้นต่ำของการตรวจนับ', suffix: '%', min: 0, step: 0.1 },
 ];
 
 export default function AssetPolicyClient() {
@@ -75,7 +75,7 @@ export default function AssetPolicyClient() {
             setForm(result.data);
             setInitialForm(result.data);
         } else {
-            setAlert({ type: 'error', text: result.error || 'Failed to load asset policy settings' });
+            setAlert({ type: 'error', text: result.error || 'ไม่สามารถโหลดการตั้งค่านโยบายทรัพย์สินได้' });
         }
 
         setLoading(false);
@@ -90,9 +90,9 @@ export default function AssetPolicyClient() {
         if (result.success && result.data) {
             setForm(result.data);
             setInitialForm(result.data);
-            setAlert({ type: 'success', text: 'Asset policy updated successfully' });
+            setAlert({ type: 'success', text: 'บันทึกนโยบายทรัพย์สินเรียบร้อยแล้ว' });
         } else {
-            setAlert({ type: 'error', text: result.error || 'Failed to save asset policy settings' });
+            setAlert({ type: 'error', text: result.error || 'ไม่สามารถบันทึกการตั้งค่านโยบายทรัพย์สินได้' });
         }
 
         setSaving(false);
@@ -107,7 +107,7 @@ export default function AssetPolicyClient() {
         return (
             <div className="p-6">
                 <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-                    Loading asset policy settings...
+                    กำลังโหลดการตั้งค่านโยบายทรัพย์สิน...
                 </div>
             </div>
         );
@@ -121,9 +121,9 @@ export default function AssetPolicyClient() {
                         <Settings2 className="h-5 w-5" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Asset Policy</h1>
+                        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">นโยบายทรัพย์สิน</h1>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
-                            Configure baseline controls for asset registration, lifecycle, SLA, and alerts.
+                            กำหนดนโยบายพื้นฐานสำหรับการลงทะเบียน วงจรชีวิต SLA และเกณฑ์การแจ้งเตือนของทรัพย์สิน
                         </p>
                     </div>
                 </div>
@@ -147,14 +147,14 @@ export default function AssetPolicyClient() {
                         className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-60"
                     >
                         {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        Save Policy
+                        บันทึกนโยบาย
                     </button>
                     <button
                         type="button"
                         onClick={handleResetDefault}
                         className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                     >
-                        Reset Default
+                        รีเซ็ตค่าเริ่มต้น
                     </button>
                     <button
                         type="button"
@@ -162,10 +162,10 @@ export default function AssetPolicyClient() {
                         className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                     >
                         <RefreshCw className="h-4 w-4" />
-                        Reload
+                        โหลดใหม่
                     </button>
                     <span className="text-xs text-slate-500 dark:text-slate-400">
-                        {hasChanges ? 'Unsaved changes in form' : 'Form is in sync with default baseline'}
+                        {hasChanges ? 'มีการเปลี่ยนแปลงที่ยังไม่บันทึก' : 'แบบฟอร์มตรงกับค่าพื้นฐานล่าสุด'}
                     </span>
                 </div>
             </div>
@@ -174,12 +174,12 @@ export default function AssetPolicyClient() {
                 <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
                     <div className="mb-4 flex items-center gap-2">
                         <ShieldCheck className="h-4 w-4 text-indigo-500" />
-                        <h2 className="text-base font-semibold text-slate-900 dark:text-white">Registration & Control</h2>
+                        <h2 className="text-base font-semibold text-slate-900 dark:text-white">การลงทะเบียนและการควบคุม</h2>
                     </div>
 
                     <div className="space-y-4">
                         <label className="block">
-                            <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Asset code format</span>
+                            <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">รูปแบบรหัสทรัพย์สิน</span>
                             <input
                                 type="text"
                                 value={form.asset_code_format}
@@ -207,7 +207,7 @@ export default function AssetPolicyClient() {
                 </section>
 
                 <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                    <h2 className="mb-4 text-base font-semibold text-slate-900 dark:text-white">Service Level (SLA)</h2>
+                    <h2 className="mb-4 text-base font-semibold text-slate-900 dark:text-white">ระดับการให้บริการ (SLA)</h2>
                     <div className="space-y-4">
                         {SLA_FIELDS.map((field) => (
                             <label key={field.key} className="block">
@@ -234,7 +234,7 @@ export default function AssetPolicyClient() {
             </div>
 
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                <h2 className="mb-4 text-base font-semibold text-slate-900 dark:text-white">Alert Thresholds</h2>
+                <h2 className="mb-4 text-base font-semibold text-slate-900 dark:text-white">เกณฑ์การแจ้งเตือน</h2>
                 <div className="grid gap-4 md:grid-cols-2">
                     {ALERT_FIELDS.map((field) => (
                         <label key={field.key} className="block">
