@@ -684,7 +684,17 @@ export default function Sidebar(props: SidebarProps) {
                                                     <span className="truncate">ตั้งค่าทั่วไป</span>
                                                 </Link>
                                             )}
-                                                                                        {can(PERMISSIONS.ADMIN_SETTINGS) && (
+                                            {can(PERMISSIONS.ADMIN_SETTINGS) && (
+                                                <Link
+                                                    href="/settings/asset-policy"
+                                                    onClick={handleLinkClick}
+                                                    className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isActive('/settings/asset-policy') ? 'bg-white/15 text-cyan-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                                                >
+                                                    <ClipboardList className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isActive('/settings/asset-policy') && 'group-hover:scale-110 group-hover:text-cyan-300'}`} />
+                                                    <span className="truncate">Asset Policy</span>
+                                                </Link>
+                                            )}
+                                            {can(PERMISSIONS.ADMIN_SETTINGS) && (
                                                 <Link
                                                     href="/settings/line-users"
                                                     onClick={handleLinkClick}
@@ -694,8 +704,7 @@ export default function Sidebar(props: SidebarProps) {
                                                     <span className="truncate">ผู้ใช้ LINE ภายใน</span>
                                                 </Link>
                                             )}
-
-                                                                                        {can(PERMISSIONS.ADMIN_SETTINGS) && (
+                                            {can(PERMISSIONS.ADMIN_SETTINGS) && (
                                                 <Link
                                                     href="/settings/line-customers"
                                                     onClick={handleLinkClick}

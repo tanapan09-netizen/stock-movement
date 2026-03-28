@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { createPO, updatePO } from '@/actions/poActions';
@@ -59,11 +59,11 @@ export default function POForm({
     const isWorkflowPurchaseOrder = Boolean(initialRequestContext) && !isEditMode;
     const requestContextNote = initialRequestContext
         ? [
-            `เธญเนเธฒเธเธญเธดเธเธเธณเธเธญเธเธทเนเธญ: ${initialRequestContext.requestNumber}`,
+            `อ้างอิงคำขอซื้อ: ${initialRequestContext.requestNumber}`,
             initialRequestContext.requestId ? `PR Request ID: ${initialRequestContext.requestId}` : null,
-            initialRequestContext.referenceJob ? `เธเธฒเธเธญเนเธฒเธเธญเธดเธ: ${initialRequestContext.referenceJob}` : null,
-            initialRequestContext.amount ? `เธขเธญเธ”เธเธฃเธฐเธกเธฒเธ“เธเธฒเธฃเธเธฒเธ PR: ${formatMoney(initialRequestContext.amount)} เธเธฒเธ—` : null,
-            initialRequestContext.reason ? `เธชเธฃเธธเธเธฃเธฒเธขเธเธฒเธฃ: ${initialRequestContext.reason}` : null,
+            initialRequestContext.referenceJob ? `งานอ้างอิง: ${initialRequestContext.referenceJob}` : null,
+            initialRequestContext.amount ? `ยอดประมาณการจาก PR: ${formatMoney(initialRequestContext.amount)} บาท` : null,
+            initialRequestContext.reason ? `สรุปรายการ: ${initialRequestContext.reason}` : null,
         ].filter(Boolean).join('\n')
         : '';
 
@@ -114,7 +114,7 @@ export default function POForm({
 
     const addToCart = (product: Product) => {
         if (cart.find(i => i.p_id === product.p_id)) {
-            showToast('เธชเธดเธเธเนเธฒเธเธตเนเธกเธตเนเธเธฃเธฒเธขเธเธฒเธฃเนเธฅเนเธง', 'warning');
+            showToast('สินค้านี้มีในรายการแล้ว', 'warning');
             return;
         }
         setCart([...cart, {
@@ -130,7 +130,7 @@ export default function POForm({
     const addManualItem = () => {
         const trimmedName = manualItemName.trim();
         if (!trimmedName) {
-            showToast('เธเธฃเธธเธ“เธฒเธฃเธฐเธเธธเธเธทเนเธญเธชเธดเธเธเนเธฒเธเธญเธ stock', 'warning');
+            showToast('กรุณาระบุชื่อสินค้านอก stock', 'warning');
             return;
         }
 
@@ -140,7 +140,7 @@ export default function POForm({
             : `NON-STOCK-${Date.now()}`;
 
         if (cart.find((item) => item.p_id === generatedId)) {
-            showToast('เธฃเธซเธฑเธชเธชเธดเธเธเนเธฒเธเธญเธ stock เธเธตเนเธ–เธนเธเนเธเนเนเธฅเนเธง', 'warning');
+            showToast('รหัสสินค้านอก stock นี้ถูกใช้แล้ว', 'warning');
             return;
         }
 
@@ -182,20 +182,20 @@ export default function POForm({
         e.preventDefault();
 
         if (!supplierId || cart.length === 0) {
-            setError('เธเธฃเธธเธ“เธฒเน€เธฅเธทเธญเธ Supplier เนเธฅเธฐเน€เธเธดเนเธกเธชเธดเธเธเนเธฒเธญเธขเนเธฒเธเธเนเธญเธข 1 เธฃเธฒเธขเธเธฒเธฃ');
+            setError('กรุณาเลือก Supplier และเพิ่มสินค้าอย่างน้อย 1 รายการ');
             return;
         }
 
         if (cart.some((item) => item.item_type === 'non_stock' && !item.p_name.trim())) {
-            setError('เธเธฃเธธเธ“เธฒเธฃเธฐเธเธธเธเธทเนเธญเธชเธดเธเธเนเธฒเธเธญเธ stock เนเธซเนเธเธฃเธเธ—เธธเธเธเธฃเธฃเธ—เธฑเธ”');
+            setError('กรุณาระบุชื่อสินค้านอก stock ให้ครบทุกบรรทัด');
             return;
         }
 
         const confirmed = await showConfirm({
-            title: isEditMode ? 'เธขเธทเธเธขเธฑเธเธเธฒเธฃเนเธเนเนเธเนเธเธชเธฑเนเธเธเธทเนเธญ' : 'เธขเธทเธเธขเธฑเธเธเธฒเธฃเธชเธฃเนเธฒเธเนเธเธชเธฑเนเธเธเธทเนเธญ',
-            message: `เน€เธฅเธเธ—เธตเน: ${poNumber}\nเธเธนเนเธเธฒเธข: ${suppliers.find(s => s.id === parseInt(supplierId))?.name}\nเธเธณเธเธงเธเธฃเธฒเธขเธเธฒเธฃ: ${cart.length}\nเธขเธญเธ”เธฃเธงเธก: ${formatMoney(grandTotal)} เธเธฒเธ—`,
-            confirmText: 'เธขเธทเธเธขเธฑเธ',
-            cancelText: 'เธขเธเน€เธฅเธดเธ',
+            title: isEditMode ? 'ยืนยันการแก้ไขใบสั่งซื้อ' : 'ยืนยันการสร้างใบสั่งซื้อ',
+            message: `เลขที่: ${poNumber}\nผู้ขาย: ${suppliers.find(s => s.id === parseInt(supplierId))?.name}\nจำนวนรายการ: ${cart.length}\nยอดรวม: ${formatMoney(grandTotal)} บาท`,
+            confirmText: 'ยืนยัน',
+            cancelText: 'ยกเลิก',
             type: 'info'
         });
 
@@ -230,7 +230,7 @@ export default function POForm({
             showToast(res.error, 'error');
             setIsPending(false);
         } else {
-            showToast(isEditMode ? 'เนเธเนเนเธเนเธเธชเธฑเนเธเธเธทเนเธญเธชเธณเน€เธฃเนเธ' : 'เธชเธฃเนเธฒเธเนเธเธชเธฑเนเธเธเธทเนเธญเธชเธณเน€เธฃเนเธ', 'success');
+            showToast(isEditMode ? 'แก้ไขใบสั่งซื้อสำเร็จ' : 'สร้างใบสั่งซื้อสำเร็จ', 'success');
             const nextPOId = !isEditMode && 'poId' in res ? res.poId : null;
             const nextRoute = isWorkflowPurchaseOrder
                 ? '/purchase-request/manage'
@@ -251,24 +251,24 @@ export default function POForm({
             <div className="lg:col-span-1 space-y-6">
                 {initialRequestContext && !isEditMode && (
                     <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900">
-                        <div className="font-semibold">เธเธณเธฅเธฑเธเธญเธญเธ PO เธเธฒเธเธเธณเธเธญเธเธทเนเธญ</div>
+                        <div className="font-semibold">กำลังออก PO จากคำขอซื้อ</div>
                         <div className="mt-1 text-xs text-cyan-700">
                             {initialRequestContext.requestNumber}
-                            {initialRequestContext.referenceJob ? ` โ€ข เธเธฒเธ ${initialRequestContext.referenceJob}` : ''}
+                            {initialRequestContext.referenceJob ? ` • งาน ${initialRequestContext.referenceJob}` : ''}
                         </div>
                         {initialRequestContext.amount ? (
                             <div className="mt-2 text-xs text-cyan-800">
-                                เธขเธญเธ”เธเธฃเธฐเธกเธฒเธ“เธเธฒเธเธเธณเธเธญเธเธทเนเธญ: {formatMoney(initialRequestContext.amount)} เธเธฒเธ—
+                                ยอดประมาณการจากคำขอซื้อ: {formatMoney(initialRequestContext.amount)} บาท
                             </div>
                         ) : null}
                     </div>
                 )}
 
                 <div className="bg-white p-6 rounded-lg shadow space-y-4">
-                    <h3 className="font-bold text-gray-800 border-b pb-2">เธเนเธญเธกเธนเธฅเนเธเธชเธฑเนเธเธเธทเนเธญ {isEditMode ? '(เนเธเนเนเธ)' : '(เธชเธฃเนเธฒเธเนเธซเธกเน)'}</h3>
+                    <h3 className="font-bold text-gray-800 border-b pb-2">ข้อมูลใบสั่งซื้อ {isEditMode ? '(แก้ไข)' : '(สร้างใหม่)'}</h3>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">เน€เธฅเธเธ—เธตเนเนเธเธชเธฑเนเธเธเธทเนเธญ *</label>
+                        <label className="block text-sm font-medium text-gray-700">เลขที่ใบสั่งซื้อ *</label>
                         <input
                             type="text"
                             name="po_number"
@@ -280,7 +280,7 @@ export default function POForm({
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">เธเธนเนเธเธฒเธข (Supplier) *</label>
+                        <label className="block text-sm font-medium text-gray-700">ผู้ขาย (Supplier) *</label>
                         <select
                             name="supplier_id"
                             required
@@ -288,19 +288,19 @@ export default function POForm({
                             onChange={e => setSupplierId(e.target.value)}
                             className="w-full border rounded-lg p-2.5 mt-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
-                            <option value="">-- เน€เธฅเธทเธญเธเธเธนเนเธเธฒเธข --</option>
+                            <option value="">-- เลือกผู้ขาย --</option>
                             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                         {isWorkflowPurchaseOrder && (
                             <p className="mt-2 text-xs text-cyan-700">
-                                PO เธ—เธตเนเธชเธฃเนเธฒเธเธเธฒเธ workflow เธเธฐเธ–เธนเธเธ•เธฑเนเธเธชเธ–เธฒเธเธฐเน€เธเนเธ Ordered เธญเธฑเธ•เนเธเธกเธฑเธ•เธด เน€เธเธทเนเธญเธฃเธญเธเธฑเธ”เธเธทเนเธญเธชเนเธเธ•เนเธญเนเธซเน Store เธฃเธฑเธเน€เธเนเธฒ
+                                PO ที่สร้างจาก workflow จะถูกตั้งสถานะเป็น Ordered อัตโนมัติ เพื่อรอจัดซื้อส่งต่อให้ Store รับเข้า
                             </p>
                         )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">เธงเธฑเธเธ—เธตเนเธชเธฑเนเธเธเธทเนเธญ *</label>
+                            <label className="block text-sm font-medium text-gray-700">วันที่สั่งซื้อ *</label>
                             <input
                                 type="date"
                                 name="order_date"
@@ -311,7 +311,7 @@ export default function POForm({
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">เธงเธฑเธเธ—เธตเนเธเธฒเธ”เธงเนเธฒเธเธฐเนเธ”เนเธฃเธฑเธ</label>
+                            <label className="block text-sm font-medium text-gray-700">วันที่คาดว่าจะได้รับ</label>
                             <input
                                 type="date"
                                 name="expected_date"
@@ -323,7 +323,7 @@ export default function POForm({
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">เธชเธ–เธฒเธเธฐ</label>
+                        <label className="block text-sm font-medium text-gray-700">สถานะ</label>
                         <select
                             name="status"
                             value={status}
@@ -331,24 +331,24 @@ export default function POForm({
                             className="w-full border rounded-lg p-2.5 mt-1"
                             disabled={isWorkflowPurchaseOrder || initialData?.status === 'received'} // Disable status change if received via this form
                         >
-                            <option value="draft">เธฃเนเธฒเธ (Draft)</option>
-                            <option value="pending">เธฃเธญเธญเธเธธเธกเธฑเธ•เธด (Pending)</option>
-                            <option value="approved">เธญเธเธธเธกเธฑเธ•เธดเนเธฅเนเธง (Approved)</option>
-                            <option value="ordered">เธชเธฑเนเธเธเธทเนเธญเนเธฅเนเธง (Ordered)</option>
+                            <option value="draft">ร่าง (Draft)</option>
+                            <option value="pending">รออนุมัติ (Pending)</option>
+                            <option value="approved">อนุมัติแล้ว (Approved)</option>
+                            <option value="ordered">สั่งซื้อแล้ว (Ordered)</option>
                             {/* Received status is usually set by system actions, but kept for viewing */}
-                            {status === 'received' && <option value="received">เนเธ”เนเธฃเธฑเธเธชเธดเธเธเนเธฒเนเธฅเนเธง (Received)</option>}
+                            {status === 'received' && <option value="received">ได้รับสินค้าแล้ว (Received)</option>}
                         </select>
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">เธซเธกเธฒเธขเน€เธซเธ•เธธ</label>
+                        <label className="block text-sm font-medium text-gray-700">หมายเหตุ</label>
                         <textarea
                             name="notes"
                             value={notes}
                             onChange={e => setNotes(e.target.value)}
                             className="w-full border rounded-lg p-2.5 mt-1"
                             rows={3}
-                            placeholder="เธฃเธฐเธเธธเธซเธกเธฒเธขเน€เธซเธ•เธธเน€เธเธดเนเธกเน€เธ•เธดเธก..."
+                            placeholder="ระบุหมายเหตุเพิ่มเติม..."
                         ></textarea>
                     </div>
                 </div>
@@ -356,10 +356,10 @@ export default function POForm({
                 {/* Tax Settings */}
                 <div className="bg-white p-6 rounded-lg shadow space-y-4">
                     <h3 className="font-bold text-gray-800 border-b pb-2 flex items-center gap-2">
-                        <Calculator className="w-5 h-5" /> เธ เธฒเธฉเธต
+                        <Calculator className="w-5 h-5" /> ภาษี
                     </h3>
                     <label className="flex items-center justify-between cursor-pointer">
-                        <span className="text-sm text-gray-700">เธฃเธงเธกเธ เธฒเธฉเธตเธกเธนเธฅเธเนเธฒเน€เธเธดเนเธก (VAT)</span>
+                        <span className="text-sm text-gray-700">รวมภาษีมูลค่าเพิ่ม (VAT)</span>
                         <input
                             type="checkbox"
                             checked={includeTax}
@@ -369,7 +369,7 @@ export default function POForm({
                     </label>
                     {includeTax && (
                         <div>
-                            <label className="text-sm text-gray-500">เธญเธฑเธ•เธฃเธฒเธ เธฒเธฉเธต (%)</label>
+                            <label className="text-sm text-gray-500">อัตราภาษี (%)</label>
                             <input
                                 type="number"
                                 value={taxRate}
@@ -383,22 +383,22 @@ export default function POForm({
 
                 {/* Summary Box */}
                 <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-6 rounded-lg shadow text-white">
-                    <h3 className="font-bold mb-4">เธชเธฃเธธเธเธขเธญเธ”</h3>
+                    <h3 className="font-bold mb-4">สรุปยอด</h3>
                     <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                            <span>เธขเธญเธ”เธเนเธญเธเธ เธฒเธฉเธต</span>
-                            <span>{formatMoney(subtotal)} เธเธฒเธ—</span>
+                            <span>ยอดก่อนภาษี</span>
+                            <span>{formatMoney(subtotal)} บาท</span>
                         </div>
                         {includeTax && (
                             <div className="flex justify-between">
                                 <span>VAT ({taxRate}%)</span>
-                                <span>{formatMoney(taxAmount)} เธเธฒเธ—</span>
+                                <span>{formatMoney(taxAmount)} บาท</span>
                             </div>
                         )}
                         <div className="border-t border-white/30 pt-2 mt-2">
                             <div className="flex justify-between text-lg font-bold">
-                                <span>เธขเธญเธ”เธฃเธงเธกเธ—เธฑเนเธเธชเธดเนเธ</span>
-                                <span>{formatMoney(grandTotal)} เธเธฒเธ—</span>
+                                <span>ยอดรวมทั้งสิ้น</span>
+                                <span>{formatMoney(grandTotal)} บาท</span>
                             </div>
                         </div>
                     </div>
@@ -406,7 +406,7 @@ export default function POForm({
 
                 {isWorkflowPurchaseOrder && (
                     <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                        เน€เธกเธทเนเธญเธชเธฃเนเธฒเธ PO เธชเธณเน€เธฃเนเธ เธฃเธฐเธเธเธเธฐเธเธฒเธเธฅเธฑเธเนเธเธซเธเนเธฒ <span className="font-semibold">purchase workflow</span> เน€เธเธทเนเธญเนเธซเนเธเธฑเธ”เธเธทเนเธญเธชเนเธเธ•เนเธญ Store เธฃเธฑเธเน€เธเนเธฒ
+                        เมื่อสร้าง PO สำเร็จ ระบบจะพากลับไปหน้า <span className="font-semibold">purchase workflow</span> เพื่อให้จัดซื้อส่งต่อ Store รับเข้า
                     </div>
                 )}
 
@@ -416,7 +416,7 @@ export default function POForm({
                     className="w-full bg-green-600 text-white font-bold py-3.5 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition"
                 >
                     <Save className="w-5 h-5" />
-                    {isPending ? 'เธเธณเธฅเธฑเธเธเธฑเธเธ—เธถเธ...' : (isEditMode ? 'เธเธฑเธเธ—เธถเธเธเธฒเธฃเนเธเนเนเธ' : 'เธขเธทเธเธขเธฑเธเธชเธฃเนเธฒเธเนเธเธชเธฑเนเธเธเธทเนเธญ')}
+                    {isPending ? 'กำลังบันทึก...' : (isEditMode ? 'บันทึกการแก้ไข' : 'ยืนยันสร้างใบสั่งซื้อ')}
                 </button>
                 {error && <div className="text-red-500 text-sm text-center bg-red-50 p-3 rounded-lg">{error}</div>}
             </div>
@@ -425,12 +425,12 @@ export default function POForm({
             <div className="lg:col-span-2 space-y-6">
                 {/* Search Products */}
                 <div className="bg-white p-4 rounded-lg shadow relative">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">เธเนเธเธซเธฒเนเธฅเธฐเน€เธเธดเนเธกเธชเธดเธเธเนเธฒ</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">ค้นหาและเพิ่มสินค้า</label>
                     <div className="flex items-center border rounded-lg px-3 py-2.5 focus-within:ring-2 focus-within:ring-blue-500">
                         <Search className="w-5 h-5 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="เธเธดเธกเธเนเธเธทเนเธญเธชเธดเธเธเนเธฒเธซเธฃเธทเธญเธฃเธซเธฑเธช..."
+                            placeholder="พิมพ์ชื่อสินค้าหรือรหัส..."
                             className="flex-1 outline-none ml-2"
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
@@ -449,7 +449,7 @@ export default function POForm({
                                         <div className="text-xs text-gray-500">{p.p_id}</div>
                                     </div>
                                     <div className="text-blue-600 font-medium">
-                                        {formatMoney(roundToTwoDecimals(p.price_unit || 0))} เธเธฒเธ—
+                                        {formatMoney(roundToTwoDecimals(p.price_unit || 0))} บาท
                                     </div>
                                 </div>
                             ))}
@@ -460,8 +460,8 @@ export default function POForm({
                 <div className="bg-white rounded-lg shadow p-4">
                     <div className="flex items-center justify-between gap-3">
                         <div>
-                            <h3 className="font-bold text-gray-800">เน€เธเธดเนเธกเธชเธดเธเธเนเธฒเธเธญเธ stock</h3>
-                            <p className="mt-1 text-sm text-gray-500">เนเธเนเธชเธณเธซเธฃเธฑเธเธฃเธฒเธขเธเธฒเธฃเธ—เธตเนเธขเธฑเธเนเธกเนเธกเธตเนเธ product master เนเธฅเธฐเนเธกเนเธ•เนเธญเธเธฃเธฑเธเน€เธเนเธฒเธชเธ•เนเธญเธ</p>
+                            <h3 className="font-bold text-gray-800">เพิ่มสินค้านอก stock</h3>
+                            <p className="mt-1 text-sm text-gray-500">ใช้สำหรับรายการที่ยังไม่มีใน product master และไม่ต้องรับเข้าสต็อก</p>
                         </div>
                         <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
                             Non-stock
@@ -472,14 +472,14 @@ export default function POForm({
                             type="text"
                             value={manualItemName}
                             onChange={(e) => setManualItemName(e.target.value)}
-                            placeholder="เธเธทเนเธญเธชเธดเธเธเนเธฒเธเธญเธ stock"
+                            placeholder="ชื่อสินค้านอก stock"
                             className="w-full rounded-lg border p-2.5"
                         />
                         <input
                             type="text"
                             value={manualItemCode}
                             onChange={(e) => setManualItemCode(e.target.value)}
-                            placeholder="เธฃเธซเธฑเธชเธญเนเธฒเธเธญเธดเธ (เธ–เนเธฒเธกเธต)"
+                            placeholder="รหัสอ้างอิง (ถ้ามี)"
                             className="w-full rounded-lg border p-2.5"
                         />
                         <button
@@ -487,7 +487,7 @@ export default function POForm({
                             onClick={addManualItem}
                             className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-2.5 text-sm font-medium text-orange-700 transition hover:bg-orange-100"
                         >
-                            เน€เธเธดเนเธกเธฃเธฒเธขเธเธฒเธฃ
+                            เพิ่มรายการ
                         </button>
                     </div>
                 </div>
@@ -495,23 +495,23 @@ export default function POForm({
                 {/* Cart Items */}
                 <div className="bg-white rounded-lg shadow">
                     <div className="p-4 border-b bg-gray-50 rounded-t-lg">
-                        <h3 className="font-bold text-gray-800">เธฃเธฒเธขเธเธฒเธฃเธชเธดเธเธเนเธฒ ({cart.length} เธฃเธฒเธขเธเธฒเธฃ)</h3>
+                        <h3 className="font-bold text-gray-800">รายการสินค้า ({cart.length} รายการ)</h3>
                     </div>
 
                     {cart.length === 0 ? (
                         <div className="p-12 text-center text-gray-400">
                             <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                            <p>เธขเธฑเธเนเธกเนเธกเธตเธชเธดเธเธเนเธฒเนเธเธฃเธฒเธขเธเธฒเธฃ</p>
-                            <p className="text-sm">เธเนเธเธซเธฒเนเธฅเธฐเน€เธเธดเนเธกเธชเธดเธเธเนเธฒเธ”เนเธฒเธเธเธ</p>
+                            <p>ยังไม่มีสินค้าในรายการ</p>
+                            <p className="text-sm">ค้นหาและเพิ่มสินค้าด้านบน</p>
                         </div>
                     ) : (
                         <div className="divide-y">
                             {/* Header */}
                             <div className="grid grid-cols-12 gap-2 p-3 bg-gray-100 text-xs font-medium text-gray-600">
-                                <div className="col-span-5">เธชเธดเธเธเนเธฒ</div>
-                                <div className="col-span-2 text-center">เธเธณเธเธงเธ</div>
-                                <div className="col-span-2 text-center">เธฃเธฒเธเธฒ/เธซเธเนเธงเธข</div>
-                                <div className="col-span-2 text-right">เธฃเธงเธก</div>
+                                <div className="col-span-5">สินค้า</div>
+                                <div className="col-span-2 text-center">จำนวน</div>
+                                <div className="col-span-2 text-center">ราคา/หน่วย</div>
+                                <div className="col-span-2 text-right">รวม</div>
                                 <div className="col-span-1"></div>
                             </div>
 
@@ -525,7 +525,7 @@ export default function POForm({
                                                 value={item.p_name}
                                                 onChange={e => updateItem(item.p_id, 'p_name', e.target.value)}
                                                 className="w-full rounded border p-1.5 text-sm font-medium text-gray-800"
-                                                placeholder="เธเธทเนเธญเธชเธดเธเธเนเธฒเธเธญเธ stock"
+                                                placeholder="ชื่อสินค้านอก stock"
                                             />
                                         ) : (
                                             <div className="font-medium text-gray-800">{item.p_name}</div>
