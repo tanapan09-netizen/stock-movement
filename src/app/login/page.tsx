@@ -135,11 +135,9 @@ export default function LoginPage() {
     const t = useMemo(() => translations[locale], [locale]);
     const customerRegisterLiffId =
         process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID
-        || process.env.NEXT_PUBLIC_LINE_LIFF_ID
         || '';
     const repairRequestLiffId =
         process.env.NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID
-        || process.env.NEXT_PUBLIC_LINE_LIFF_ID
         || '';
     const customerRegisterUrl = customerRegisterLiffId
         ? `https://liff.line.me/${customerRegisterLiffId}`

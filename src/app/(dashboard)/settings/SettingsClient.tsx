@@ -140,9 +140,7 @@ export default function SettingsClient() {
     const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; filename: string }>({ isOpen: false, filename: '' });
     const [statusModal, setStatusModal] = useState<{ isOpen: boolean; type: 'success' | 'error'; message: string }>({ isOpen: false, type: 'success', message: '' });
     const customerRegisterLiffId =
-        process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID
-        || process.env.NEXT_PUBLIC_LINE_LIFF_ID
-        || '';
+        process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID || '';
     const customerRegisterPublicUrl = customerRegisterLiffId
         ? `https://liff.line.me/${customerRegisterLiffId}`
         : (typeof window !== 'undefined' ? `${window.location.origin}/line/customer-register` : '/line/customer-register');

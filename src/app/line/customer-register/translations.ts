@@ -48,7 +48,7 @@ export const translations = {
         errorNoLineId: 'ไม่พบ LINE User ID กรุณาเปิดหน้านี้จากแชท LINE หรือใส่ line_user_id ใน URL',
         errorSave: 'บันทึกข้อมูลไม่สำเร็จ',
         errorGeneral: 'เกิดข้อผิดพลาดระหว่างบันทึกข้อมูล',
-        liffEnvMissing: 'ยังไม่ได้ตั้งค่า NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID หรือ NEXT_PUBLIC_LINE_LIFF_ID (จำเป็นสำหรับดึง LINE User ID อัตโนมัติ)',
+        liffEnvMissing: 'ยังไม่ได้ตั้งค่า NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID (จำเป็นสำหรับดึง LINE User ID อัตโนมัติ)',
         liffFetchError: 'ไม่สามารถดึง LINE User ID อัตโนมัติได้ (แนะนำให้เปิดหน้านี้จากใน LINE)',
     },
     en: {
@@ -91,7 +91,7 @@ export const translations = {
         errorNoLineId: 'LINE User ID not found. Please open this page from LINE chat or add line_user_id to the URL.',
         errorSave: 'Registration failed',
         errorGeneral: 'An error occurred while saving data',
-        liffEnvMissing: 'NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID or NEXT_PUBLIC_LINE_LIFF_ID is not configured (required for automatic LINE User ID detection)',
+        liffEnvMissing: 'NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID is not configured (required for automatic LINE User ID detection)',
         liffFetchError: 'Unable to detect LINE User ID automatically (we recommend opening this page from LINE)',
     },
     ja: {
@@ -134,7 +134,7 @@ export const translations = {
         errorNoLineId: 'LINE ユーザーIDが見つかりません。LINEチャットからページを開くか、URLにline_user_idを追加してください。',
         errorSave: '登録に失敗しました',
         errorGeneral: 'データ保存中にエラーが発生しました',
-        liffEnvMissing: 'NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID または NEXT_PUBLIC_LINE_LIFF_ID が設定されていません（LINE ユーザーIDの自動取得に必要です）',
+        liffEnvMissing: 'NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID が設定されていません（LINE ユーザーIDの自動取得に必要です）',
         liffFetchError: 'LINE ユーザーIDを自動取得できませんでした（LINEアプリ内からページを開くことをお勧めします）',
     },
 } as const satisfies Record<Lang, Record<string, string>>;

@@ -205,8 +205,7 @@ export default function LineCustomerRegisterClient() {
             }
 
             const liffId =
-                process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID
-                || process.env.NEXT_PUBLIC_LINE_LIFF_ID;
+                process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID;
             if (!liffId) {
                 if (!cancelled) {
                     setDetectingLineId(false);
