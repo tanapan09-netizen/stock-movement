@@ -109,7 +109,13 @@ export default function LineCustomersClient({ canEdit }: Props) {
     }
 
     async function handleCopyRegisterLink() {
-        const url = `${window.location.origin}/line/customer-register`;
+        const registerLiffId =
+            process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID
+            || process.env.NEXT_PUBLIC_LINE_LIFF_ID
+            || '';
+        const url = registerLiffId
+            ? `https://liff.line.me/${registerLiffId}`
+            : `${window.location.origin}/line/customer-register`;
         await navigator.clipboard.writeText(url);
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);

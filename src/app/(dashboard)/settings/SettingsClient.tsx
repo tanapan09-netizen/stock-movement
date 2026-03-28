@@ -139,6 +139,13 @@ export default function SettingsClient() {
     // Modal States
     const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; filename: string }>({ isOpen: false, filename: '' });
     const [statusModal, setStatusModal] = useState<{ isOpen: boolean; type: 'success' | 'error'; message: string }>({ isOpen: false, type: 'success', message: '' });
+    const customerRegisterLiffId =
+        process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID
+        || process.env.NEXT_PUBLIC_LINE_LIFF_ID
+        || '';
+    const customerRegisterPublicUrl = customerRegisterLiffId
+        ? `https://liff.line.me/${customerRegisterLiffId}`
+        : (typeof window !== 'undefined' ? `${window.location.origin}/line/customer-register` : '/line/customer-register');
 
     async function loadData() {
         setLoading(true);
@@ -398,7 +405,7 @@ export default function SettingsClient() {
                         </div>
                         <div className="text-sm text-gray-500">จัดการรายชื่อลูกค้าที่สมัครผ่าน LINE แยกจากผู้ใช้ภายในระบบ</div>
                         <div className="text-xs text-gray-400 mt-1">
-                            หน้าสมัครลูกค้า: <span className="font-mono">{typeof window !== 'undefined' ? `${window.location.origin}/line/customer-register` : '/line/customer-register'}</span>
+                            หน้าสมัครลูกค้า: <span className="font-mono">{customerRegisterPublicUrl}</span>
                         </div>
                     </div>
                     <div className="text-blue-600 text-sm font-medium">Manage &rarr;</div>

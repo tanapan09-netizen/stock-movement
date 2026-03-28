@@ -133,6 +133,29 @@ export default function LoginPage() {
     const router = useRouter();
 
     const t = useMemo(() => translations[locale], [locale]);
+    const customerRegisterLiffId =
+        process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID
+        || process.env.NEXT_PUBLIC_LINE_LIFF_ID
+        || '';
+    const repairRequestLiffId =
+        process.env.NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID
+        || process.env.NEXT_PUBLIC_LINE_LIFF_ID
+        || '';
+    const customerRegisterUrl = customerRegisterLiffId
+        ? `https://liff.line.me/${customerRegisterLiffId}`
+        : '/line/customer-register';
+    const repairRequestUrl = repairRequestLiffId
+        ? `https://liff.line.me/${repairRequestLiffId}`
+        : '/line/repair-request';
+
+    const openCustomerServicePage = (targetUrl: string) => {
+        if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) {
+            window.location.href = targetUrl;
+            return;
+        }
+
+        router.push(targetUrl);
+    };
 
     useEffect(() => {
         if (!lockoutEndTime) return;
@@ -336,7 +359,7 @@ export default function LoginPage() {
 
                         <button
                             type="button"
-                            onClick={() => router.push('/line/customer-register')}
+                            onClick={() => openCustomerServicePage(customerRegisterUrl)}
                             className="w-full py-3 border border-green-200 bg-green-50 text-green-700 font-medium rounded-xl hover:bg-green-100 transition-all duration-200 flex items-center justify-center gap-2"
                         >
                             <UserPlus className="w-5 h-5" />
@@ -345,7 +368,7 @@ export default function LoginPage() {
 
                         <button
                             type="button"
-                            onClick={() => router.push('/line/repair-request')}
+                            onClick={() => openCustomerServicePage(repairRequestUrl)}
                             className="w-full py-3 border border-orange-200 bg-orange-50 text-orange-700 font-medium rounded-xl hover:bg-orange-100 shadow-sm transition-all duration-200 flex items-center justify-center gap-2"
                         >
                             <Wrench className="w-5 h-5" />
