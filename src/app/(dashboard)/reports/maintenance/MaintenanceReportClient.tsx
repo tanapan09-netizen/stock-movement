@@ -979,11 +979,14 @@ export default function MaintenanceReportClient() {
                                     <YAxis tick={{ fontSize: 11 }} />
                                     <RechartsTooltip
                                         labelFormatter={(value) => `Date: ${value}`}
-                                        formatter={(value: number, name: string) => {
-                                            if (name === 'consumption_qty') return [Number(value).toLocaleString(), 'Consumption'];
-                                            if (name === 'scrap_qty') return [Number(value).toLocaleString(), 'Scrap'];
-                                            if (name === 'defective_scrap_qty') return [Number(value).toLocaleString(), 'Defective Scrap'];
-                                            return [Number(value).toLocaleString(), name];
+                                        formatter={(value, name) => {
+                                            const metric = String(name);
+                                            const numericValue = Number(value ?? 0);
+
+                                            if (metric === 'consumption_qty') return [numericValue.toLocaleString(), 'Consumption'];
+                                            if (metric === 'scrap_qty') return [numericValue.toLocaleString(), 'Scrap'];
+                                            if (metric === 'defective_scrap_qty') return [numericValue.toLocaleString(), 'Defective Scrap'];
+                                            return [numericValue.toLocaleString(), metric];
                                         }}
                                     />
                                     <Legend
@@ -1073,10 +1076,13 @@ export default function MaintenanceReportClient() {
                                             <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
                                             <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tick={{ fontSize: 11 }} />
                                             <RechartsTooltip
-                                                formatter={(value: number, name: string) => {
-                                                    if (name === 'scrap_qty') return [Number(value).toLocaleString(), 'Scrap Qty'];
-                                                    if (name === 'cumulative_pct') return [`${Number(value).toFixed(1)}%`, 'Cumulative %'];
-                                                    return [Number(value).toLocaleString(), name];
+                                                formatter={(value, name) => {
+                                                    const metric = String(name);
+                                                    const numericValue = Number(value ?? 0);
+
+                                                    if (metric === 'scrap_qty') return [numericValue.toLocaleString(), 'Scrap Qty'];
+                                                    if (metric === 'cumulative_pct') return [`${numericValue.toFixed(1)}%`, 'Cumulative %'];
+                                                    return [numericValue.toLocaleString(), metric];
                                                 }}
                                                 labelFormatter={(value) => `Rank: ${value}`}
                                             />

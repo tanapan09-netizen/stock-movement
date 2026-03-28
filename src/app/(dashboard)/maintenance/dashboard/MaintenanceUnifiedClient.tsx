@@ -510,7 +510,13 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
             {/* Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredRequests.map(req => (
-                    <MaintenanceRequestCard key={req.request_id} request={req} onClick={openDetailModal} />
+                    <MaintenanceRequestCard
+                        key={req.request_id}
+                        request={req}
+                        onClick={() => {
+                            void openDetailModal(req);
+                        }}
+                    />
                 ))}
             </div>
         </div>
