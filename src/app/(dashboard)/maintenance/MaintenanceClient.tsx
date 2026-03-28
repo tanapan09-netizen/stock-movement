@@ -294,6 +294,26 @@ const getLatestHistoryTimeByAction = (historyItems: HistoryItem[] | null | undef
     return value ? new Date(value) : null;
 };
 
+const getLatestExecutionTechnician = (
+    historyItems: HistoryItem[] | null | undefined,
+    fallbackAssignedTo?: string | null,
+): string => {
+    const fallback = (fallbackAssignedTo || '').trim();
+    if (!Array.isArray(historyItems) || historyItems.length === 0) return fallback;
+
+    // Prefer the actor who actually performed work/completed submission.
+    const executionActor =
+        historyItems.find((item) => item.action === 'SUBMITTED_FOR_HEAD_TECH_APPROVAL')?.changed_by?.trim()
+        || historyItems.find((item) => item.action === 'PART_USED')?.changed_by?.trim();
+    if (executionActor) return executionActor;
+
+    const latestAssigned = historyItems
+        .find((item) => item.action === 'assignment_change')
+        ?.new_value
+        ?.trim();
+    return latestAssigned || fallback;
+};
+
 const escapeCsvCell = (value: unknown): string => {
     const text = value === null || value === undefined ? '' : String(value);
     if (/[",\r\n]/.test(text)) {
@@ -1092,9 +1112,15 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         });
 
         const historyResult = await getMaintenanceHistory(request.request_id);
-        if (historyResult.success) {
-            setHistoryItems(Array.isArray(historyResult.data) ? historyResult.data as HistoryItem[] : []);
-        } else setHistoryItems([]);
+        const nextHistoryItems = historyResult.success && Array.isArray(historyResult.data)
+            ? historyResult.data as HistoryItem[]
+            : [];
+        setHistoryItems(nextHistoryItems);
+
+        const executedTechnician = getLatestExecutionTechnician(nextHistoryItems, request.assigned_to);
+        if (executedTechnician) {
+            setEditData((prev) => ({ ...prev, assigned_to: executedTechnician }));
+        }
 
         const partsResult = await getMaintenanceParts(request.request_id);
         if (partsResult.success) {
@@ -1661,6 +1687,13 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const selectedRequestHasBeenReopened = hasReopenHistory(historyItems);
     const selectedRequestLatestReopenReason = getLatestHistoryValueByAction(historyItems, 'reopen_reason');
     const selectedRequestLatestReopenAt = getLatestHistoryTimeByAction(historyItems, 'reopen_request');
+    const selectedRequestExecutionTechnician = getLatestExecutionTechnician(historyItems, selectedRequest?.assigned_to);
+    const shouldLockAssignedTechnician =
+        ['in_progress', 'confirmed', 'completed'].includes(selectedWorkflowStatus || '')
+        && Boolean(selectedRequestExecutionTechnician);
+    const assignedTechnicianFieldValue = shouldLockAssignedTechnician
+        ? selectedRequestExecutionTechnician
+        : (editData.assigned_to || '');
     const isSelectedRequestAwaitingHeadApproval = selectedWorkflowStatus === 'confirmed';
     const canManagerEditClosedRequest =
         isManagerRole(loggedInRole) && isMaintenanceWorkflowClosed(selectedWorkflowStatus);
@@ -1694,6 +1727,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const canShowDetailSaveButton = !isSelectedRequestReadOnly;
     const canShowHeadTechnicianActions = canApproveCompletion && isSelectedRequestAwaitingHeadApproval;
     const canShowPartsAddSection = !isSelectedRequestReadOnly && editData.status === 'confirmed';
+    const isAssignedTechnicianInputDisabled =
+        isDetailReadOnly
+        || shouldLockAssignedTechnician
+        || (selectedRequest?.status === 'in_progress' && !canAssignMaintenance);
 
     return (
         <div className="space-y-6">
@@ -2850,8 +2887,9 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     ผู้รับผิดชอบ/ช่าง
                   </label>
                   <select
-                    value={editData.assigned_to || ''}
+                    value={assignedTechnicianFieldValue}
                     onChange={(e) => {
+                      if (shouldLockAssignedTechnician) return;
                       const nextAssignedTo = e.target.value;
                       const nextEditData = { ...editData, assigned_to: nextAssignedTo };
 
@@ -2866,11 +2904,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                       setEditData(nextEditData);
                     }}
                     className={`h-14 w-full rounded-2xl border border-slate-300 bg-white px-4 text-xl font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100 ${
-                      (selectedRequest.status === 'in_progress' && !canAssignMaintenance) || isDetailReadOnly
+                      isAssignedTechnicianInputDisabled
                         ? 'cursor-not-allowed bg-slate-100 opacity-70'
                         : ''
                     }`}
-                    disabled={isDetailReadOnly || (selectedRequest.status === 'in_progress' && !canAssignMaintenance)}
+                    disabled={isAssignedTechnicianInputDisabled}
                   >
                     <option value="">-- ไม่ระบุ --</option>
                     {Array.from(
@@ -2886,18 +2924,23 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                           {name}
                         </option>
                       ))}
-                    {editData.assigned_to &&
+                    {assignedTechnicianFieldValue &&
                       !Array.from(
                         new Set([
                           ...technicians.map((t) => t.name),
                           ...lineTechnicians.map((u) => u.display_name),
                         ]),
-                      ).includes(editData.assigned_to) && (
-                        <option value={editData.assigned_to}>
-                          {editData.assigned_to}
+                      ).includes(assignedTechnicianFieldValue) && (
+                        <option value={assignedTechnicianFieldValue}>
+                          {assignedTechnicianFieldValue}
                         </option>
                       )}
                   </select>
+                  {shouldLockAssignedTechnician && (
+                    <p className="mt-2 text-xs text-slate-500">
+                      อ้างอิงช่างผู้ดำเนินการล่าสุด: {selectedRequestExecutionTechnician}
+                    </p>
+                  )}
                 </div>
 
                 <div>
