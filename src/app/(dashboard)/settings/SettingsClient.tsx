@@ -553,10 +553,11 @@ export default function SettingsClient() {
                     <div className="mt-4 pt-4 border-t dark:border-slate-700">
                         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Recent Updates:</h3>
                         <ul className="list-disc list-inside text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                            <li><strong>แก้ไขการจัดการห้อง:</strong> จัดการหน้าจัดการห้องพักให้เป็นระเบียบมากขึ้น.</li>
-                            <li><strong>UI/UX Upgrade:</strong> เพิ่ม Document Workflow status.</li>
-                            <li><strong>หน้ารายงานแจ้งซ่อม:</strong> เพิ่มให้ตัวกรองใช้งานได้ง่ายขึ้น.</li>
-                            <li><strong>Role:</strong> เพิ่ม Role employee (พนักงานทั่วไป).</li>
+                            <li><strong>Mar 2026 - Maintenance Reports:</strong> เพิ่ม Consumption / Scrap / Technician Usage, Daily Trend, Pareto 80/20 และ Drilldown.</li>
+                            <li><strong>Mar 2026 - CSV Export:</strong> รองรับ Export CSV สำหรับ Reopened jobs, Filtered requests, Pareto และ Drilldown.</li>
+                            <li><strong>Mar 2026 - Workflow:</strong> ผู้จัดการสามารถแก้ไข/เปิดงานที่ปิดแล้วใหม่ได้ โดยต้องระบุเหตุผล และมี Reopened badge/filter ครบ.</li>
+                            <li><strong>Mar 2026 - Navigation:</strong> เพิ่ม Deep Link เปิดงานตรงจาก <code>/maintenance?req=...</code> และลิงก์ลัดจากหน้า Reports.</li>
+                            <li><strong>General:</strong> ปรับปรุงความเสถียรและประสบการณ์ใช้งานในหน้าซ่อมบำรุงอย่างต่อเนื่อง.</li>
                         </ul>
                     </div>
                 </div>

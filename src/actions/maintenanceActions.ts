@@ -668,7 +668,6 @@ export async function submitCustomerRepairRequest(formData: FormData) {
 
 export async function updateMaintenanceRequestStatus(request_id: number, new_status: string, changed_by: string, notes?: string) {
     try {
-        void notes;
         const authContext = await getMaintenanceAuthContext();
         if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
@@ -698,18 +697,28 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
             return { success: false, error: 'Maintenance request not found' };
         }
 
-        if (isMaintenanceWorkflowClosed(current.status)) {
+        const canManagerEditClosedRequest = isMaintenanceWorkflowClosed(current.status) && isManagerRole(authContext.role);
+
+        if (isMaintenanceWorkflowClosed(current.status) && !canManagerEditClosedRequest) {
             return { success: false, error: 'This maintenance request is closed and cannot be updated' };
         }
 
         const normalizedCurrentStatus = normalizeMaintenanceWorkflowStatus(current.status);
         const normalizedNextStatus = normalizeMaintenanceWorkflowStatus(new_status);
+        const reopenReason = (notes || '').trim();
 
         if (!normalizedCurrentStatus || !normalizedNextStatus) {
             return { success: false, error: 'Invalid maintenance status transition' };
         }
 
         const isHeadTechCompletion = normalizedCurrentStatus === 'confirmed' && normalizedNextStatus === 'completed';
+        const isManagerReopenFromClosed =
+            canManagerEditClosedRequest
+            && ['pending', 'approved', 'in_progress'].includes(normalizedNextStatus);
+
+        if (isManagerReopenFromClosed && reopenReason.length < 8) {
+            return { success: false, error: 'Please provide a reopen reason (at least 8 characters)' };
+        }
 
         if (normalizedCurrentStatus === 'confirmed' && !isHeadTechCompletion) {
             return { success: false, error: 'This maintenance request is locked while awaiting head technician approval' };
@@ -723,7 +732,7 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
             return { success: false, error: 'Permission denied' };
         }
 
-        if (!canTransitionMaintenanceStatus(current.status, new_status, { canApproveCompletion })) {
+        if (!isManagerReopenFromClosed && !canTransitionMaintenanceStatus(current.status, new_status, { canApproveCompletion })) {
             return { success: false, error: 'Invalid maintenance status transition' };
         }
 
@@ -731,19 +740,33 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
             where: { request_id },
             data: {
                 status: normalizedNextStatus,
-                completed_at: normalizedNextStatus === 'completed' ? new Date() : current.completed_at ? null : undefined,
+                completed_at: normalizedNextStatus === 'completed'
+                    ? new Date()
+                    : (current.completed_at || isManagerReopenFromClosed) ? null : undefined,
             }
         });
 
         await prisma.tbl_maintenance_history.create({
             data: {
                 request_id,
-                action: 'status_change',
+                action: isManagerReopenFromClosed ? 'reopen_request' : 'status_change',
                 old_value: current.status || '',
                 new_value: normalizedNextStatus,
                 changed_by: actorName
             }
         });
+
+        if (isManagerReopenFromClosed) {
+            await prisma.tbl_maintenance_history.create({
+                data: {
+                    request_id,
+                    action: 'reopen_reason',
+                    old_value: null,
+                    new_value: reopenReason,
+                    changed_by: actorName
+                }
+            });
+        }
 
         revalidatePath('/maintenance');
         return { success: true, data: request };
@@ -1674,6 +1697,7 @@ export async function updateMaintenanceRequest(
         actual_cost?: number;
         actual_cost_reason?: string;
         notes?: string;
+        reopen_reason?: string;
         completed_at?: Date;
     },
     changed_by: string
@@ -1719,7 +1743,9 @@ export async function updateMaintenanceRequest(
             return { success: false, error: 'Maintenance request not found' };
         }
 
-        if (isMaintenanceWorkflowClosed(current.status)) {
+        const canManagerEditClosedRequest = isMaintenanceWorkflowClosed(current.status) && isManagerRole(authContext.role);
+
+        if (isMaintenanceWorkflowClosed(current.status) && !canManagerEditClosedRequest) {
             return { success: false, error: 'This maintenance request is closed and cannot be updated' };
         }
 
@@ -1736,32 +1762,46 @@ export async function updateMaintenanceRequest(
         if (isHeadTechApproval && !canApproveCompletion) {
             return { success: false, error: 'Only head technicians can approve completed maintenance jobs' };
         }
-        if (false && isHeadTechApproval && !canApproveMaintenanceCompletion(
-            authContext.role,
-            authContext.permissions,
-            authContext.isApprover,
-        )) {
-            return { success: false, error: 'เฉพาะหัวหน้าช่างเท่านั้นที่ตรวจรับงานได้' };
-        }
 
         const updateData: Record<string, unknown> = {};
         const historyActions: Array<{ action: string; old_value: string; new_value: string }> = [];
 
         if (data.status && data.status !== current.status) {
-            if (!canTransitionMaintenanceStatus(current.status, data.status, { canApproveCompletion })) {
+            const isManagerReopenFromClosed =
+                canManagerEditClosedRequest
+                && !!normalizedNextStatus
+                && ['pending', 'approved', 'in_progress'].includes(normalizedNextStatus);
+
+            if (isManagerReopenFromClosed) {
+                const reopenReason = (data.reopen_reason || '').trim();
+                if (reopenReason.length < 8) {
+                    return { success: false, error: 'Please provide a reopen reason (at least 8 characters)' };
+                }
+                historyActions.push({
+                    action: 'reopen_reason',
+                    old_value: '',
+                    new_value: reopenReason,
+                });
+            }
+
+            if (!isManagerReopenFromClosed && !canTransitionMaintenanceStatus(current.status, data.status, { canApproveCompletion })) {
                 return { success: false, error: 'Invalid maintenance status transition' };
             }
 
-            updateData.status = data.status;
+            updateData.status = normalizedNextStatus || data.status;
             historyActions.push({
-                action: isHeadTechApproval ? 'HEAD_TECH_APPROVED' : 'status_change',
+                action: isHeadTechApproval
+                    ? 'HEAD_TECH_APPROVED'
+                    : isManagerReopenFromClosed
+                        ? 'reopen_request'
+                        : 'status_change',
                 old_value: current.status || '',
-                new_value: data.status
+                new_value: normalizedNextStatus || data.status
             });
 
-            if (data.status === 'completed') {
+            if (normalizedNextStatus === 'completed') {
                 updateData.completed_at = data.completed_at || new Date();
-            } else if (current.completed_at) {
+            } else if (current.completed_at || isManagerReopenFromClosed) {
                 updateData.completed_at = null;
             }
         }
@@ -2215,6 +2255,320 @@ export async function getMaintenanceExceptionReport(filters?: {
     }
 }
 
+export async function getMaintenancePartUsageReports(filters?: {
+    roomId?: number;
+    technician?: string;
+    partId?: string;
+    startDate?: Date;
+    endDate?: Date;
+}) {
+    try {
+        const requestWhere: {
+            room_id?: number;
+            assigned_to?: { contains: string };
+            created_at?: {
+                gte?: Date;
+                lte?: Date;
+            };
+            tbl_maintenance_parts?: {
+                some: { p_id: string };
+            };
+        } = {};
+
+        if (filters?.roomId) {
+            requestWhere.room_id = filters.roomId;
+        }
+        if (filters?.technician) {
+            requestWhere.assigned_to = { contains: filters.technician };
+        }
+        if (filters?.startDate || filters?.endDate) {
+            requestWhere.created_at = {};
+            if (filters.startDate) requestWhere.created_at.gte = filters.startDate;
+            if (filters.endDate) {
+                const end = new Date(filters.endDate);
+                end.setHours(23, 59, 59, 999);
+                requestWhere.created_at.lte = end;
+            }
+        }
+        if (filters?.partId) {
+            requestWhere.tbl_maintenance_parts = {
+                some: { p_id: filters.partId }
+            };
+        }
+
+        const requests = await prisma.tbl_maintenance_requests.findMany({
+            where: requestWhere,
+            select: {
+                request_id: true,
+                request_number: true,
+                title: true,
+                assigned_to: true,
+                created_at: true,
+                tbl_rooms: {
+                    select: {
+                        room_code: true,
+                        room_name: true,
+                    }
+                }
+            }
+        });
+
+        if (requests.length === 0) {
+            return {
+                success: true,
+                data: {
+                    summary: {
+                        records: 0,
+                        withdrawn_qty: 0,
+                        used_qty: 0,
+                        verified_qty: 0,
+                        returned_qty: 0,
+                        scrap_qty: 0,
+                        usage_cost: 0,
+                    },
+                    consumption: [],
+                    scrap: [],
+                    technician_usage: [],
+                    daily_trend: [],
+                }
+            };
+        }
+
+        const requestIds = requests.map((request) => request.request_id);
+        const requestMap = new Map(requests.map((request) => [request.request_id, request]));
+
+        const parts = await prisma.tbl_maintenance_parts.findMany({
+            where: { request_id: { in: requestIds } },
+            orderBy: { withdrawn_at: 'desc' },
+            include: {
+                tbl_products: {
+                    select: {
+                        p_name: true,
+                        p_unit: true,
+                        price_unit: true,
+                    }
+                }
+            }
+        });
+
+        const consumptionMap = new Map<string, {
+            p_id: string;
+            p_name: string;
+            unit: string | null;
+            withdrawn_qty: number;
+            used_qty: number;
+            verified_qty: number;
+            returned_qty: number;
+            estimated_scrap_qty: number;
+            usage_cost: number;
+            request_ids: Set<number>;
+        }>();
+
+        const technicianMap = new Map<string, {
+            technician: string;
+            request_ids: Set<number>;
+            withdrawn_qty: number;
+            used_qty: number;
+            verified_qty: number;
+            returned_qty: number;
+            estimated_scrap_qty: number;
+            usage_cost: number;
+        }>();
+
+        const scrapItems: Array<{
+            request_id: number;
+            request_number: string;
+            title: string;
+            room_code: string;
+            room_name: string;
+            technician: string;
+            p_id: string;
+            p_name: string;
+            unit: string | null;
+            status: string;
+            expected_qty: number;
+            verified_qty: number;
+            verification_loss_qty: number;
+            defective_marked_qty: number;
+            scrap_estimate_qty: number;
+            occurred_at: Date;
+        }> = [];
+
+        let totalWithdrawnQty = 0;
+        let totalUsedQty = 0;
+        let totalVerifiedQty = 0;
+        let totalReturnedQty = 0;
+        let totalScrapQty = 0;
+        let totalUsageCost = 0;
+        const dailyTrendMap = new Map<string, {
+            date_key: string;
+            consumption_qty: number;
+            scrap_qty: number;
+            defective_scrap_qty: number;
+            usage_cost: number;
+        }>();
+
+        for (const part of parts) {
+            const request = requestMap.get(part.request_id);
+            const withdrawnQty = Number(part.quantity || 0);
+            const usedQty = Number(part.actual_used ?? 0);
+            const verifiedQty = Number(part.verified_quantity ?? 0);
+            const returnedQty = Number(part.returned_qty || 0);
+            const unitPrice = Number(part.tbl_products?.price_unit ?? 0);
+            const expectedQty = usedQty > 0 ? usedQty : withdrawnQty;
+            const verificationLossQty = Math.max(expectedQty - verifiedQty, 0);
+            const isDefectiveMarked = (part.notes || '').includes('MARKED AS DEFECTIVE');
+            const defectiveMarkedQty = isDefectiveMarked ? expectedQty : 0;
+            const scrapEstimateQty = verificationLossQty + defectiveMarkedQty;
+            const usageCost = usedQty * unitPrice;
+            const consumptionDate = part.used_at || part.withdrawn_at;
+            const scrapOccurredAt = part.verified_at || part.used_at || part.withdrawn_at;
+            const consumptionDateKey = consumptionDate.toISOString().slice(0, 10);
+            const scrapDateKey = scrapOccurredAt.toISOString().slice(0, 10);
+
+            totalWithdrawnQty += withdrawnQty;
+            totalUsedQty += usedQty;
+            totalVerifiedQty += verifiedQty;
+            totalReturnedQty += returnedQty;
+            totalScrapQty += scrapEstimateQty;
+            totalUsageCost += usageCost;
+
+            const consumptionTrend = dailyTrendMap.get(consumptionDateKey) || {
+                date_key: consumptionDateKey,
+                consumption_qty: 0,
+                scrap_qty: 0,
+                defective_scrap_qty: 0,
+                usage_cost: 0,
+            };
+            consumptionTrend.consumption_qty += usedQty;
+            consumptionTrend.usage_cost += usageCost;
+            dailyTrendMap.set(consumptionDateKey, consumptionTrend);
+
+            const scrapTrend = dailyTrendMap.get(scrapDateKey) || {
+                date_key: scrapDateKey,
+                consumption_qty: 0,
+                scrap_qty: 0,
+                defective_scrap_qty: 0,
+                usage_cost: 0,
+            };
+            scrapTrend.scrap_qty += scrapEstimateQty;
+            scrapTrend.defective_scrap_qty += defectiveMarkedQty;
+            dailyTrendMap.set(scrapDateKey, scrapTrend);
+
+            const productKey = part.p_id;
+            const currentProduct = consumptionMap.get(productKey) || {
+                p_id: part.p_id,
+                p_name: part.tbl_products?.p_name || part.p_id,
+                unit: part.tbl_products?.p_unit || part.unit || null,
+                withdrawn_qty: 0,
+                used_qty: 0,
+                verified_qty: 0,
+                returned_qty: 0,
+                estimated_scrap_qty: 0,
+                usage_cost: 0,
+                request_ids: new Set<number>(),
+            };
+
+            currentProduct.withdrawn_qty += withdrawnQty;
+            currentProduct.used_qty += usedQty;
+            currentProduct.verified_qty += verifiedQty;
+            currentProduct.returned_qty += returnedQty;
+            currentProduct.estimated_scrap_qty += scrapEstimateQty;
+            currentProduct.usage_cost += usageCost;
+            currentProduct.request_ids.add(part.request_id);
+            consumptionMap.set(productKey, currentProduct);
+
+            const technicianName = request?.assigned_to || part.withdrawn_by || 'Unassigned';
+            const currentTechnician = technicianMap.get(technicianName) || {
+                technician: technicianName,
+                request_ids: new Set<number>(),
+                withdrawn_qty: 0,
+                used_qty: 0,
+                verified_qty: 0,
+                returned_qty: 0,
+                estimated_scrap_qty: 0,
+                usage_cost: 0,
+            };
+
+            currentTechnician.withdrawn_qty += withdrawnQty;
+            currentTechnician.used_qty += usedQty;
+            currentTechnician.verified_qty += verifiedQty;
+            currentTechnician.returned_qty += returnedQty;
+            currentTechnician.estimated_scrap_qty += scrapEstimateQty;
+            currentTechnician.usage_cost += usageCost;
+            currentTechnician.request_ids.add(part.request_id);
+            technicianMap.set(technicianName, currentTechnician);
+
+            if (scrapEstimateQty > 0 || part.status === 'verification_failed') {
+                scrapItems.push({
+                    request_id: part.request_id,
+                    request_number: request?.request_number || `REQ-${part.request_id}`,
+                    title: request?.title || '-',
+                    room_code: request?.tbl_rooms?.room_code || '-',
+                    room_name: request?.tbl_rooms?.room_name || '-',
+                    technician: request?.assigned_to || part.withdrawn_by || '-',
+                    p_id: part.p_id,
+                    p_name: part.tbl_products?.p_name || part.p_id,
+                    unit: part.tbl_products?.p_unit || part.unit || null,
+                    status: part.status,
+                    expected_qty: expectedQty,
+                    verified_qty: verifiedQty,
+                    verification_loss_qty: verificationLossQty,
+                    defective_marked_qty: defectiveMarkedQty,
+                    scrap_estimate_qty: scrapEstimateQty,
+                    occurred_at: part.verified_at || part.used_at || part.withdrawn_at,
+                });
+            }
+        }
+
+        const consumption = Array.from(consumptionMap.values())
+            .map(({ request_ids, ...item }) => ({
+                ...item,
+                request_count: request_ids.size,
+            }))
+            .sort((a, b) => b.used_qty - a.used_qty);
+
+        const technicianUsage = Array.from(technicianMap.values())
+            .map(({ request_ids, ...item }) => ({
+                ...item,
+                request_count: request_ids.size,
+            }))
+            .sort((a, b) => b.used_qty - a.used_qty);
+
+        const scrap = scrapItems
+            .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
+
+        const dailyTrend = Array.from(dailyTrendMap.values())
+            .sort((a, b) => a.date_key.localeCompare(b.date_key))
+            .map((item) => ({
+                ...item,
+                date_label: item.date_key,
+            }));
+
+        return {
+            success: true,
+            data: {
+                summary: {
+                    records: parts.length,
+                    withdrawn_qty: totalWithdrawnQty,
+                    used_qty: totalUsedQty,
+                    verified_qty: totalVerifiedQty,
+                    returned_qty: totalReturnedQty,
+                    scrap_qty: totalScrapQty,
+                    usage_cost: totalUsageCost,
+                },
+                consumption,
+                scrap,
+                technician_usage: technicianUsage,
+                daily_trend: dailyTrend,
+            }
+        };
+    } catch (error: unknown) {
+        console.error('Error generating maintenance part usage reports:', error);
+        return { success: false, error: getErrorMessage(error, 'Failed to generate part usage reports') };
+    }
+}
+
 export async function getMaintenanceSummary() {
     try {
         const [total, pending, approved, inProgress, completed, pendingVerification, costAgg] = await Promise.all([
@@ -2450,100 +2804,6 @@ export async function reopenMaintenanceRequest(request_id: number, reason: strin
         success: false,
         error: 'Reopening completed maintenance requests is disabled',
     };
-
-    try {
-        const authContext = await getMaintenanceAuthContext();
-        if (!authContext?.session?.user) {
-            return { success: false, error: 'Unauthorized' };
-        }
-
-        if (!canReopenMaintenanceRequest(authContext.role, authContext.permissions)) {
-            return { success: false, error: 'Permission denied' };
-        }
-
-        const overridePassword =
-            process.env.MAINTENANCE_REOPEN_PASSWORD ||
-            process.env.MANAGER_OVERRIDE_PASSWORD ||
-            process.env.MASTER_PASSWORD;
-
-        if (!overridePassword) {
-            return { success: false, error: 'Reopen password is not configured' };
-        }
-
-        if (password !== overridePassword) {
-            return { success: false, error: 'Invalid master password' };
-        }
-
-        const current = await prisma.tbl_maintenance_requests.findUnique({
-            where: { request_id }
-        });
-
-        if (!current) {
-            return { success: false, error: 'Maintenance request not found' };
-        }
-
-        const reopenedStatus = current.assigned_to ? 'approved' : 'pending';
-        const updated = await prisma.tbl_maintenance_requests.update({
-            where: { request_id },
-            data: {
-                status: reopenedStatus,
-                completed_at: null
-            },
-            include: {
-                tbl_rooms: {
-                    select: { room_code: true, room_name: true }
-                }
-            }
-        });
-
-        await prisma.tbl_maintenance_history.create({
-            data: {
-                request_id,
-                action: 'reopen_request',
-                old_value: current.status,
-                new_value: reopenedStatus,
-                changed_by: 'manager_override'
-            }
-        });
-
-        if (reason) {
-            await prisma.tbl_maintenance_history.create({
-                data: {
-                    request_id,
-                    action: 'reopen_reason',
-                    old_value: null,
-                    new_value: reason,
-                    changed_by: 'manager_override'
-                }
-            });
-        }
-
-        try {
-            if (updated.tbl_rooms) {
-                await notifyMaintenanceStatusChange(
-                    {
-                        request_number: updated.request_number,
-                        title: updated.title,
-                        room_code: updated.tbl_rooms.room_code,
-                        room_name: updated.tbl_rooms.room_name,
-                        reported_by: updated.reported_by,
-                        assigned_to: updated.assigned_to,
-                    },
-                    current.status || '',
-                    reopenedStatus,
-                    reason || 'Reopened by manager override',
-                );
-            }
-        } catch (notificationError) {
-            console.error('Failed to notify reopened maintenance request:', notificationError);
-        }
-
-        revalidatePath('/maintenance');
-        return { success: true, data: updated };
-    } catch (error: unknown) {
-        console.error('Error reopening maintenance request:', error);
-        return { success: false, error: getErrorMessage(error, 'Failed to reopen maintenance request') };
-    }
 }
 
 export async function resendMaintenanceNotification(request_id: number) {
@@ -2650,3 +2910,4 @@ export async function resendMaintenanceNotification(request_id: number) {
         };
     }
 }
+

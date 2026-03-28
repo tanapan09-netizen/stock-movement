@@ -1,6 +1,7 @@
 'use client';
 
-import { Wrench, Clock, CheckCircle, XCircle, MapPin, User, Calendar, AlertTriangle, ArrowRight, BellRing, ShieldCheck, AlertCircle, Package } from 'lucide-react';
+import { Wrench, Clock, CheckCircle, XCircle, MapPin, User, Calendar, AlertTriangle, ArrowRight, BellRing, ShieldCheck, AlertCircle, Package, RotateCcw } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import { getMaintenanceWorkflowStep, MAINTENANCE_WORKFLOW_LABELS } from '@/lib/maintenance-workflow';
 
@@ -12,15 +13,39 @@ export interface AgeBadgeInfo {
     colorClass: string;
 }
 
+type MaintenanceHistoryLite = {
+    action?: string;
+    new_value?: string | null;
+};
+
+type MaintenanceRequestCardRequest = {
+    request_number: string;
+    title: string;
+    description?: string | null;
+    status: string;
+    priority: string;
+    reported_by: string;
+    created_at: Date | string;
+    assigned_to?: string | null;
+    tbl_rooms?: {
+        room_code?: string | null;
+        room_name?: string | null;
+        zone?: string | null;
+        building?: string | null;
+        floor?: string | null;
+    } | null;
+    tbl_maintenance_history?: MaintenanceHistoryLite[] | null;
+};
+
 interface MaintenanceRequestCardProps {
-    request: any;
-    onClick: (request: any) => void;
-    onResend?: (request: any) => void;
+    request: MaintenanceRequestCardRequest;
+    onClick: (request: MaintenanceRequestCardRequest) => void;
+    onResend?: (request: MaintenanceRequestCardRequest) => void;
     /** ส่งมาจาก MaintenanceClient — null หมายถึงงานปิดแล้ว ไม่ต้องแสดง */
     ageBadge?: AgeBadgeInfo | null;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: LucideIcon }> = {
     pending: { label: 'รอเรื่อง', color: 'text-yellow-600', bg: 'bg-yellow-50', icon: Clock },
     approved: { label: 'แจ้งเรื่องต่อ', color: 'text-orange-600', bg: 'bg-orange-50', icon: ArrowRight },
     in_progress: { label: 'ดำเนินการ', color: 'text-blue-600', bg: 'bg-blue-50', icon: Wrench },
@@ -29,7 +54,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
     cancelled: { label: 'ยกเลิก', color: 'text-gray-600', bg: 'bg-gray-50', icon: XCircle }
 };
 
-const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
+const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string; icon: LucideIcon }> = {
     low: { label: 'ต่ำ', color: 'text-gray-500', bg: 'bg-gray-50', icon: AlertTriangle },
     normal: { label: 'ปกติ', color: 'text-blue-500', bg: 'bg-blue-50', icon: AlertTriangle },
     high: { label: 'สูง', color: 'text-orange-500', bg: 'bg-orange-50', icon: AlertTriangle },
@@ -40,7 +65,12 @@ export default function MaintenanceRequestCard({ request, onClick, onResend, age
     const status = STATUS_CONFIG[request.status] || STATUS_CONFIG.pending;
     const priority = PRIORITY_CONFIG[request.priority] || PRIORITY_CONFIG.normal;
     const hasPartsStockPosted = Array.isArray(request.tbl_maintenance_history)
-        && request.tbl_maintenance_history.some((item: { action?: string }) => item.action === 'PARTS_STOCK_POSTED');
+        && request.tbl_maintenance_history.some((item) => item.action === 'PARTS_STOCK_POSTED');
+    const hasBeenReopened = Array.isArray(request.tbl_maintenance_history)
+        && request.tbl_maintenance_history.some((item) => item.action === 'reopen_request');
+    const latestReopenReason = Array.isArray(request.tbl_maintenance_history)
+        ? request.tbl_maintenance_history.find((item) => item.action === 'reopen_reason')?.new_value || null
+        : null;
 
     return (
         <div
@@ -165,6 +195,15 @@ export default function MaintenanceRequestCard({ request, onClick, onResend, age
                                 ตัดสต็อกแล้ว
                             </span>
                         )}
+                        {hasBeenReopened && (
+                            <span
+                                className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700"
+                                title={latestReopenReason || 'opened again'}
+                            >
+                                <RotateCcw size={11} />
+                                Reopened
+                            </span>
+                        )}
                     </div>
                     {request.status === 'pending' && onResend && (
                         <button
@@ -201,3 +240,4 @@ export default function MaintenanceRequestCard({ request, onClick, onResend, age
         </div>
     );
 }
+

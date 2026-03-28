@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Bell,
@@ -48,10 +48,18 @@ type AppNotification = {
   read: boolean;
 };
 
+type SessionUserLike = {
+  id?: string | null;
+  name?: string | null;
+  role?: string | null;
+  is_approver?: boolean | null;
+};
+
 export default function NotificationBell() {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session } = useSession();
+  const sessionUser = session?.user as SessionUserLike | undefined;
   const { showToast } = useToast();
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -81,7 +89,9 @@ export default function NotificationBell() {
     return 'default';
   });
 
-  const readNotificationsKey = getReadNotificationsKey(session?.user?.id, session?.user?.name);
+  const readNotificationsKey = getReadNotificationsKey(sessionUser?.id, sessionUser?.name);
+  const normalizedRole = (sessionUser?.role || '').trim().toLowerCase();
+  const isApprover = Boolean(sessionUser?.is_approver);
 
   const moduleFromPathname = useCallback((path: string): NotificationModule => {
     if (path.startsWith('/products')) return 'products';
@@ -101,10 +111,54 @@ export default function NotificationBell() {
     moduleFromPathname(pathname),
   );
 
+  const moduleOptions = useMemo(() => {
+    const options: Array<{ value: NotificationModule; label: string }> = [
+      { value: 'all', label: 'All' },
+      { value: 'products', label: 'Products' },
+      { value: 'purchase_orders', label: 'Purchasing' },
+      { value: 'borrow', label: 'Borrow/Return' },
+      { value: 'maintenance', label: 'Maintenance' },
+      { value: 'part_requests', label: 'Part Requests' },
+      { value: 'petty_cash', label: 'Petty Cash' },
+      { value: 'approvals', label: 'Approvals' },
+    ];
+
+    const isManager = ['owner', 'admin', 'manager'].includes(normalizedRole);
+    if (isManager) return options;
+
+    const allowed = new Set<NotificationModule>(['all']);
+    const isOperation = ['operation', 'leader_operation'].includes(normalizedRole);
+    const isPurchasing = ['purchasing', 'leader_purchasing'].includes(normalizedRole);
+    const isAccounting = ['accounting', 'leader_accounting'].includes(normalizedRole);
+    const isStore = ['store', 'leader_store'].includes(normalizedRole);
+    const isTechnician = ['technician', 'leader_technician', 'head_technician'].includes(normalizedRole);
+    const isGeneralRequester = ['general', 'leader_general', 'employee', 'leader_employee'].includes(normalizedRole);
+
+    if (isOperation || isPurchasing || isStore) allowed.add('products');
+    if (isPurchasing || isAccounting) allowed.add('purchase_orders');
+    if (isOperation || isGeneralRequester) allowed.add('borrow');
+    if (isTechnician || isGeneralRequester || isApprover) allowed.add('maintenance');
+    if (isTechnician || isPurchasing || isApprover) allowed.add('part_requests');
+    if (isAccounting) allowed.add('petty_cash');
+    if (isApprover || isPurchasing) allowed.add('approvals');
+
+    return options.filter(option => allowed.has(option.value));
+  }, [isApprover, normalizedRole]);
+
+  const effectiveSelectedModule = useMemo<NotificationModule>(() => {
+    return moduleOptions.some(option => option.value === selectedModule) ? selectedModule : 'all';
+  }, [moduleOptions, selectedModule]);
+
   useEffect(() => {
     if (userSelectedModuleRef.current) return;
     setSelectedModule(moduleFromPathname(pathname));
   }, [moduleFromPathname, pathname]);
+
+  useEffect(() => {
+    if (effectiveSelectedModule === selectedModule) return;
+    setSelectedModule('all');
+    userSelectedModuleRef.current = false;
+  }, [effectiveSelectedModule, selectedModule]);
 
   const getNotificationHref = useCallback((notification: AppNotification) => {
     if (notification.id.startsWith('general_request_')) {
@@ -258,7 +312,9 @@ export default function NotificationBell() {
     const fetchNotifications = async () => {
       try {
         const query =
-          selectedModule === 'all' ? '' : `?module=${encodeURIComponent(selectedModule)}`;
+          effectiveSelectedModule === 'all'
+            ? ''
+            : `?module=${encodeURIComponent(effectiveSelectedModule)}`;
         const res = await fetch(`/api/notifications${query}`, { cache: 'no-store' });
 
         if (res.ok) {
@@ -325,8 +381,8 @@ export default function NotificationBell() {
     return () => clearInterval(interval);
   }, [
     playNotificationSound,
+    effectiveSelectedModule,
     readNotificationsKey,
-    selectedModule,
     showBrowserNotification,
     showToast,
   ]);
@@ -432,21 +488,27 @@ export default function NotificationBell() {
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <select
-                  value={selectedModule}
+                  value={effectiveSelectedModule}
                   onChange={e => {
+                    const nextModule = e.target.value as NotificationModule;
+                    const hasAccess = moduleOptions.some(option => option.value === nextModule);
+
+                    if (!hasAccess) {
+                      userSelectedModuleRef.current = false;
+                      setSelectedModule('all');
+                      return;
+                    }
+
                     userSelectedModuleRef.current = true;
-                    setSelectedModule(e.target.value as NotificationModule);
+                    setSelectedModule(nextModule);
                   }}
                   className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-600 outline-none"
                 >
-                  <option value="all">ทั้งหมด</option>
-                  <option value="products">สินค้า</option>
-                  <option value="purchase_orders">จัดซื้อ</option>
-                  <option value="borrow">ยืม-คืน</option>
-                  <option value="maintenance">ซ่อมบำรุง</option>
-                  <option value="part_requests">เบิกอะไหล่</option>
-                  <option value="petty_cash">Petty Cash</option>
-                  <option value="approvals">อนุมัติ</option>
+                  {moduleOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
 
                 <button

@@ -23,7 +23,7 @@ import {
     LayoutGrid,
     Table as TableIcon,
     History as HistoryIcon, User, DollarSign, Printer, Image as ImageIcon, ShoppingCart, Package, AlertTriangle, Bell, X, Hash,
-    Activity, Loader2, ShieldCheck, ChevronDown, Check, ArrowRight, MessageSquare
+    Activity, Loader2, ShieldCheck, ChevronDown, Check, ArrowRight, MessageSquare, RotateCcw
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
@@ -280,6 +280,28 @@ const hasCompletedStockPosting = (partsList?: MaintenancePart[] | null, historyI
     (Array.isArray(partsList) && partsList.some((part) => part.status === 'completed'))
     || hasPartsStockPostedHistory(historyItems);
 
+const hasReopenHistory = (historyItems?: HistoryItem[] | null): boolean =>
+    Array.isArray(historyItems) && historyItems.some((item) => item.action === 'reopen_request');
+
+const getLatestHistoryValueByAction = (historyItems: HistoryItem[] | null | undefined, action: string): string | null => {
+    if (!Array.isArray(historyItems) || historyItems.length === 0) return null;
+    return historyItems.find((item) => item.action === action)?.new_value || null;
+};
+
+const getLatestHistoryTimeByAction = (historyItems: HistoryItem[] | null | undefined, action: string): Date | null => {
+    if (!Array.isArray(historyItems) || historyItems.length === 0) return null;
+    const value = historyItems.find((item) => item.action === action)?.changed_at;
+    return value ? new Date(value) : null;
+};
+
+const escapeCsvCell = (value: unknown): string => {
+    const text = value === null || value === undefined ? '' : String(value);
+    if (/[",\r\n]/.test(text)) {
+        return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+};
+
 const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
     low: { label: 'ต่ำ', color: 'text-gray-600', bg: 'bg-gray-100' },
     normal: { label: 'ปกติ', color: 'text-blue-600', bg: 'bg-blue-100' },
@@ -352,6 +374,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const [showCompleted, setShowCompleted] = useState(false);
     const [assignedToMeOnly, setAssignedToMeOnly] = useState(false);
     const [urgentOnly, setUrgentOnly] = useState(false);
+    const [reopenedOnly, setReopenedOnly] = useState(false);
     const [locationMode, setLocationMode] = useState<'location' | 'vehicle'>('location');
 
     const [assetSearchQuery, setAssetSearchQuery] = useState('');
@@ -457,6 +480,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         scheduled_date: '',
         actual_cost: 0,
         actual_cost_reason: '',
+        reopen_reason: '',
         notes: ''
     });
 
@@ -1063,6 +1087,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             scheduled_date: request.scheduled_date ? new Date(request.scheduled_date).toISOString().split('T')[0] : '',
             actual_cost: request.actual_cost ? Number(request.actual_cost) : 0,
             actual_cost_reason: '',
+            reopen_reason: '',
             notes: request.notes || ''
         });
 
@@ -1242,7 +1267,9 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     async function handleUpdateRequest() {
         if (!selectedRequest) return;
         if (!ensureCanEditPage()) return;
-        if (isMaintenanceWorkflowLocked(selectedRequest.status)) {
+        const canManagerEditClosedRequest =
+            isManagerRole(loggedInRole) && isMaintenanceWorkflowClosed(selectedRequest.status);
+        if (isMaintenanceWorkflowLocked(selectedRequest.status) && !canManagerEditClosedRequest) {
             showToast('ใบงานนี้ถูกล็อกไว้และไม่สามารถแก้ไขผ่านฟอร์มนี้ได้', 'warning');
             return;
         }
@@ -1269,8 +1296,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         const nextScheduledDate = editData.scheduled_date || '';
         const nextActualCost = Number(editData.actual_cost || 0);
         const nextActualCostReason = editData.actual_cost_reason.trim();
+        const nextReopenReason = editData.reopen_reason.trim();
         const nextNotes = editData.notes || '';
         const isActualCostChanged = canEditActualCost && nextActualCost !== currentActualCost;
+        const isReopenFromClosedByManager = canManagerEditClosedRequest && editData.status !== selectedRequest.status;
         const isAutoAssignmentStatusChange =
             editData.status !== selectedRequest.status
             && nextAssignedTo !== currentAssignedTo
@@ -1285,6 +1314,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             scheduled_date: nextScheduledDate !== currentScheduledDate ? nextScheduledDate : undefined,
             actual_cost: isActualCostChanged ? nextActualCost : undefined,
             actual_cost_reason: isActualCostChanged ? nextActualCostReason : undefined,
+            reopen_reason: isReopenFromClosedByManager ? nextReopenReason : undefined,
             notes: nextNotes !== currentNotes ? nextNotes : undefined
         };
 
@@ -1298,6 +1328,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
         if (isActualCostChanged && nextActualCostReason.length < 8) {
             showToast('กรุณาระบุเหตุผลการแก้ค่าใช้จ่ายจริงอย่างน้อย 8 ตัวอักษร', 'warning');
+            return;
+        }
+
+        if (isReopenFromClosedByManager && nextReopenReason.length < 8) {
+            showToast('กรุณาระบุเหตุผลการเปิดงานใหม่อย่างน้อย 8 ตัวอักษร', 'warning');
             return;
         }
 
@@ -1319,6 +1354,9 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         }
         if (submitData.notes !== undefined) {
             changeSummary.push(`หมายเหตุ: ${nextNotes || '-'}`);
+        }
+        if (submitData.reopen_reason) {
+            changeSummary.push(`เหตุผลเปิดงานใหม่: ${submitData.reopen_reason}`);
         }
 
         if (changeSummary.length === 0) {
@@ -1463,8 +1501,15 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             return false;
         }
 
+        if (reopenedOnly && !hasReopenHistory(req.tbl_maintenance_history)) {
+            return false;
+        }
+
         return true;
     });
+
+    const reopenedCount = requests.filter((req) => hasReopenHistory(req.tbl_maintenance_history)).length;
+    const reopenedRate = requests.length > 0 ? (reopenedCount / requests.length) * 100 : 0;
 
     const hasActiveRequestFilters = (
         filterStatus !== 'all'
@@ -1475,6 +1520,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         || showCompleted
         || assignedToMeOnly
         || urgentOnly
+        || reopenedOnly
     );
 
     const clearAllRequestFilters = () => {
@@ -1485,7 +1531,113 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         setShowCompleted(false);
         setAssignedToMeOnly(false);
         setUrgentOnly(false);
+        setReopenedOnly(false);
         setSearchTerm('');
+    };
+
+    const triggerCsvDownload = (filename: string, rows: string[][]) => {
+        const csvContent = `\uFEFF${rows.map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')}`;
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleExportFilteredCsv = () => {
+        if (filteredRequests.length === 0) {
+            showToast('ไม่พบข้อมูลสำหรับ Export', 'warning');
+            return;
+        }
+
+        const header = [
+            'request_number',
+            'title',
+            'status',
+            'priority',
+            'room_code',
+            'room_name',
+            'reported_by',
+            'assigned_to',
+            'created_at',
+            'is_reopened',
+            'reopened_at',
+            'reopen_reason',
+        ];
+
+        const dataRows = filteredRequests.map((request) => {
+            const isReopened = hasReopenHistory(request.tbl_maintenance_history);
+            const reopenedAt = getLatestHistoryTimeByAction(request.tbl_maintenance_history, 'reopen_request');
+            const reopenReason = getLatestHistoryValueByAction(request.tbl_maintenance_history, 'reopen_reason') || '';
+
+            return [
+                request.request_number || '',
+                request.title || '',
+                request.status || '',
+                request.priority || '',
+                request.tbl_rooms?.room_code || '',
+                request.tbl_rooms?.room_name || '',
+                request.reported_by || '',
+                request.assigned_to || '',
+                request.created_at ? format(new Date(request.created_at), 'yyyy-MM-dd HH:mm:ss') : '',
+                isReopened ? 'Y' : 'N',
+                reopenedAt ? format(reopenedAt, 'yyyy-MM-dd HH:mm:ss') : '',
+                reopenReason,
+            ];
+        });
+
+        const filename = `maintenance_filtered_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+        triggerCsvDownload(filename, [header, ...dataRows]);
+        showToast(`Export แล้ว ${dataRows.length} รายการ`, 'success');
+    };
+
+    const handleExportReopenedCsv = () => {
+        const reopenedRequests = filteredRequests.filter((request) => hasReopenHistory(request.tbl_maintenance_history));
+        if (reopenedRequests.length === 0) {
+            showToast('ไม่พบงาน Reopened สำหรับ Export', 'warning');
+            return;
+        }
+
+        const header = [
+            'request_number',
+            'title',
+            'status',
+            'priority',
+            'room_code',
+            'room_name',
+            'reported_by',
+            'assigned_to',
+            'created_at',
+            'reopened_at',
+            'reopen_reason',
+        ];
+
+        const dataRows = reopenedRequests.map((request) => {
+            const reopenedAt = getLatestHistoryTimeByAction(request.tbl_maintenance_history, 'reopen_request');
+            const reopenReason = getLatestHistoryValueByAction(request.tbl_maintenance_history, 'reopen_reason') || '';
+
+            return [
+                request.request_number || '',
+                request.title || '',
+                request.status || '',
+                request.priority || '',
+                request.tbl_rooms?.room_code || '',
+                request.tbl_rooms?.room_name || '',
+                request.reported_by || '',
+                request.assigned_to || '',
+                request.created_at ? format(new Date(request.created_at), 'yyyy-MM-dd HH:mm:ss') : '',
+                reopenedAt ? format(reopenedAt, 'yyyy-MM-dd HH:mm:ss') : '',
+                reopenReason,
+            ];
+        });
+
+        const filename = `maintenance_reopened_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+        triggerCsvDownload(filename, [header, ...dataRows]);
+        showToast(`Export Reopened แล้ว ${dataRows.length} รายการ`, 'success');
     };
 
     const summaryCards = [
@@ -1495,6 +1647,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         { key: 'in_progress', label: 'ดำเนินการ', value: summary.in_progress, className: 'bg-blue-50 dark:bg-blue-900/20 text-blue-700', accent: 'text-blue-600', helper: 'กำลังซ่อม', status: 'in_progress' },
         { key: 'completed', label: 'ปิดงานแล้ว', value: summary.completed, className: 'bg-green-50 dark:bg-green-900/20 text-green-700', accent: 'text-green-600', helper: 'ตรวจรับเสร็จสิ้น', status: 'completed' },
         { key: 'confirmed', label: 'รอหัวหน้าช่างตรวจรับ', value: summary.pending_verification || 0, className: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700', accent: 'text-orange-600', helper: 'งานเสร็จแล้ว รอยืนยันรับงาน', status: 'confirmed' },
+        { key: 'reopened', label: 'Reopened', value: reopenedCount, className: 'bg-amber-50 dark:bg-amber-900/20 text-amber-700', accent: 'text-amber-600', helper: `อัตรา ${reopenedRate.toFixed(1)}%`, status: null },
         { key: 'cost', label: 'ค่าใช้จ่ายรวม', value: `฿${summary.total_cost.toLocaleString()}`, className: 'bg-purple-50 dark:bg-purple-900/20 text-purple-700', accent: 'text-purple-600', helper: 'รวมทุกใบงาน', status: null },
     ] as const;
 
@@ -1505,11 +1658,23 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const selectedRequestImageUrls = parseMaintenanceImageUrls(selectedRequest?.image_url);
     const selectedRequestCopiedImageMeta = getCopiedImageMetadata(selectedRequest?.tags);
     const selectedWorkflowStatus = normalizeMaintenanceWorkflowStatus(selectedRequest?.status);
+    const selectedRequestHasBeenReopened = hasReopenHistory(historyItems);
+    const selectedRequestLatestReopenReason = getLatestHistoryValueByAction(historyItems, 'reopen_reason');
+    const selectedRequestLatestReopenAt = getLatestHistoryTimeByAction(historyItems, 'reopen_request');
     const isSelectedRequestAwaitingHeadApproval = selectedWorkflowStatus === 'confirmed';
-    const isSelectedRequestReadOnly = isSelectedRequestAwaitingHeadApproval || isMaintenanceWorkflowClosed(selectedWorkflowStatus);
+    const canManagerEditClosedRequest =
+        isManagerRole(loggedInRole) && isMaintenanceWorkflowClosed(selectedWorkflowStatus);
+    const isSelectedRequestReadOnly =
+        isSelectedRequestAwaitingHeadApproval
+        || (isMaintenanceWorkflowClosed(selectedWorkflowStatus) && !canManagerEditClosedRequest);
     const isDetailReadOnly = !canEditPage || isSelectedRequestReadOnly;
+    const managerClosedReopenStatusOptions: MaintenanceWorkflowStatus[] = ['pending', 'approved', 'in_progress'];
     const allowedDetailStatusTransitions = selectedRequest && !isSelectedRequestReadOnly
-        ? getAllowedMaintenanceTransitions(selectedRequest.status)
+        ? (
+            canManagerEditClosedRequest
+                ? managerClosedReopenStatusOptions.filter((status) => status !== selectedRequest.status)
+                : getAllowedMaintenanceTransitions(selectedRequest.status)
+        )
         : [];
     const detailStatusOptions = selectedRequest
         ? [
@@ -1599,7 +1764,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-7">
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-8">
                 {summaryCards.map((card) => {
                     const isSelected = card.status !== null && filterStatus === card.status;
                     const isInteractive = card.status !== null;
@@ -1641,6 +1806,13 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     </button>
                     <button
                         type="button"
+                        onClick={() => setReopenedOnly((prev) => !prev)}
+                        className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${reopenedOnly ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-200'}`}
+                    >
+                        เฉพาะงานที่ Reopened
+                    </button>
+                    <button
+                        type="button"
                         onClick={() => setShowCompleted((prev) => !prev)}
                         className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${showCompleted ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-200'}`}
                     >
@@ -1655,9 +1827,29 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                             ล้างตัวกรองทั้งหมด
                         </button>
                     ) : null}
-                    <span className="ml-auto text-sm text-gray-500 dark:text-gray-400">
-                        แสดง {filteredRequests.length} จาก {requests.length} ใบงาน
-                    </span>
+                    <div className="ml-auto flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={handleExportReopenedCsv}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 transition hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-200"
+                            title="Export เฉพาะงาน Reopened"
+                        >
+                            <Download size={14} />
+                            Export Reopened CSV
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleExportFilteredCsv}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200"
+                            title="Export ตามตัวกรองปัจจุบัน"
+                        >
+                            <Download size={14} />
+                            Export CSV
+                        </button>
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                            แสดง {filteredRequests.length} จาก {requests.length} ใบงาน
+                        </span>
+                    </div>
                 </div>
 
                 <div className="flex flex-wrap gap-4 items-center">
@@ -1823,6 +2015,15 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                                             ตัดสต็อกแล้ว
                                                         </span>
                                                     )}
+                                                    {hasReopenHistory(request.tbl_maintenance_history) && (
+                                                        <span
+                                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 w-fit"
+                                                            title={getLatestHistoryValueByAction(request.tbl_maintenance_history, 'reopen_reason') || 'เปิดงานใหม่'}
+                                                        >
+                                                            <RotateCcw size={12} />
+                                                            Reopened
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
@@ -1864,7 +2065,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                                        <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
                                             <div className="flex flex-col items-center gap-2">
                                                 <Filter size={40} className="text-gray-200" />
                                                 <p className="text-lg font-medium text-gray-400">No requests found matching your filters</p>
@@ -2449,6 +2650,17 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
               <p className="mt-1 text-lg font-semibold text-white/90">
                 #{selectedRequest.request_number}
               </p>
+              {selectedRequestHasBeenReopened && (
+                <div className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-full border border-amber-200/80 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
+                  <RotateCcw size={12} />
+                  Reopened
+                  {selectedRequestLatestReopenAt && (
+                    <span className="text-amber-700/90">
+                      {selectedRequestLatestReopenAt.toLocaleString('th-TH')}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -2484,6 +2696,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
           size="md"
         />
       </div>
+
+      {selectedRequestHasBeenReopened && selectedRequestLatestReopenReason && (
+        <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-900 sm:px-6">
+          <span className="font-semibold">เหตุผลเปิดงานใหม่:</span> {selectedRequestLatestReopenReason}
+        </div>
+      )}
 
       {/* Body */}
       <div className="max-h-[calc(100vh-180px)] overflow-y-auto">
@@ -2746,6 +2964,22 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     placeholder="เพิ่มหมายเหตุ..."
                   />
                 </div>
+
+                {canManagerEditClosedRequest && editData.status !== selectedRequest.status && (
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-amber-700">
+                      เหตุผลการเปิดงานใหม่ *
+                    </label>
+                    <textarea
+                      value={editData.reopen_reason}
+                      onChange={(e) => setEditData({ ...editData, reopen_reason: e.target.value })}
+                      disabled={isDetailReadOnly}
+                      className="min-h-[110px] w-full rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-amber-700/60 focus:border-amber-400 focus:ring-4 focus:ring-amber-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                      rows={3}
+                      placeholder="ระบุสาเหตุที่ต้องเปิดงานที่ปิดแล้วกลับมาแก้ไข (อย่างน้อย 8 ตัวอักษร)"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>

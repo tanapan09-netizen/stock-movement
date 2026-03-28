@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Building, Building2, ChevronDown, ChevronRight, Clock, Wrench, CheckCircle, Filter, X, Package, User, Calendar, Hash, Layers, ShieldAlert, TriangleAlert, ScanSearch, BadgeDollarSign, Download } from 'lucide-react';
-import { getMaintenanceExceptionReport, getMaintenanceReportByRoom, getAllRooms, getProducts } from '@/actions/maintenanceActions';
+import type { LucideIcon } from 'lucide-react';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ComposedChart, Bar, ReferenceLine } from 'recharts';
+import { getMaintenanceExceptionReport, getMaintenancePartUsageReports, getMaintenanceReportByRoom, getMaintenanceRequestById, getAllRooms, getProducts } from '@/actions/maintenanceActions';
 import { getActiveTechnicians } from '@/actions/technicianActions';
 import {
     MAINTENANCE_PART_STATUS_CONFIG,
@@ -47,6 +49,33 @@ interface FilterState {
     endDate: string;
 }
 
+interface RoomOption {
+    room_id: number;
+    room_code: string;
+    room_name: string;
+    floor: string | null;
+}
+
+interface TechnicianOption {
+    id?: string | number;
+    name: string;
+}
+
+interface ProductOption {
+    p_id: string;
+    p_name: string;
+}
+
+type ReportApiFilters = {
+    roomId?: number;
+    technician?: string;
+    partId?: string;
+    startDate?: Date;
+    endDate?: Date;
+};
+
+type RoomTree = Record<string, Record<string, RoomOption[]>>;
+
 interface ExceptionReportItem {
     type: 'verification_failed' | 'pending_verification_overdue' | 'manual_actual_cost_override' | 'reservation_cleared';
     request_id: number;
@@ -70,6 +99,131 @@ interface ExceptionReportData {
     items: ExceptionReportItem[];
 }
 
+interface PartUsageSummary {
+    records: number;
+    withdrawn_qty: number;
+    used_qty: number;
+    verified_qty: number;
+    returned_qty: number;
+    scrap_qty: number;
+    usage_cost: number;
+}
+
+interface ConsumptionReportItem {
+    p_id: string;
+    p_name: string;
+    unit: string | null;
+    withdrawn_qty: number;
+    used_qty: number;
+    verified_qty: number;
+    returned_qty: number;
+    estimated_scrap_qty: number;
+    usage_cost: number;
+    request_count: number;
+}
+
+interface ScrapReportItem {
+    request_id: number;
+    request_number: string;
+    title: string;
+    room_code: string;
+    room_name: string;
+    technician: string;
+    p_id: string;
+    p_name: string;
+    unit: string | null;
+    status: string;
+    expected_qty: number;
+    verified_qty: number;
+    verification_loss_qty: number;
+    defective_marked_qty: number;
+    scrap_estimate_qty: number;
+    occurred_at: Date;
+}
+
+interface TechnicianUsageReportItem {
+    technician: string;
+    withdrawn_qty: number;
+    used_qty: number;
+    verified_qty: number;
+    returned_qty: number;
+    estimated_scrap_qty: number;
+    usage_cost: number;
+    request_count: number;
+}
+
+interface PartUsageDailyTrendItem {
+    date_key: string;
+    date_label: string;
+    consumption_qty: number;
+    scrap_qty: number;
+    defective_scrap_qty: number;
+    usage_cost: number;
+}
+
+interface ScrapParetoItem {
+    p_id: string;
+    p_name: string;
+    scrap_qty: number;
+    item_share_pct: number;
+    cumulative_pct: number;
+}
+
+interface ScrapParetoChartItem {
+    p_id: string;
+    label: string;
+    scrap_qty: number;
+    cumulative_pct: number;
+}
+
+interface MaintenanceRequestDetail {
+    request_id: number;
+    request_number: string;
+    title: string;
+    description?: string | null;
+    status: string;
+    priority: string;
+    reported_by?: string | null;
+    assigned_to?: string | null;
+    notes?: string | null;
+    created_at: Date;
+    completed_at?: Date | null;
+    tbl_rooms?: {
+        room_code?: string | null;
+        room_name?: string | null;
+    } | null;
+    tbl_maintenance_parts?: Array<{
+        part_id: number;
+        p_id: string;
+        quantity: number;
+        unit?: string | null;
+        status: string;
+        actual_used?: number | null;
+        verified_quantity?: number | null;
+        returned_qty?: number | null;
+        notes?: string | null;
+        tbl_products?: {
+            p_name?: string | null;
+            p_unit?: string | null;
+        } | null;
+    }> | null;
+    tbl_maintenance_history?: Array<{
+        action: string;
+        old_value?: string | null;
+        new_value?: string | null;
+        changed_by: string;
+        changed_at: Date;
+    }> | null;
+}
+
+interface PartUsageReportData {
+    summary: PartUsageSummary;
+    consumption: ConsumptionReportItem[];
+    scrap: ScrapReportItem[];
+    technician_usage: TechnicianUsageReportItem[];
+    daily_trend: PartUsageDailyTrendItem[];
+}
+
 function StatusBadge({ status }: { status: string }) {
     const cfg = MAINTENANCE_REPORT_STATUS_CONFIG[status] ?? { label: status, color: 'text-gray-600', bg: 'bg-gray-100', dot: 'bg-gray-400' };
     return (
@@ -91,18 +245,39 @@ export default function MaintenanceReportClient() {
         },
         items: [],
     });
+    const [partUsageReport, setPartUsageReport] = useState<PartUsageReportData>({
+        summary: {
+            records: 0,
+            withdrawn_qty: 0,
+            used_qty: 0,
+            verified_qty: 0,
+            returned_qty: 0,
+            scrap_qty: 0,
+            usage_cost: 0,
+        },
+        consumption: [],
+        scrap: [],
+        technician_usage: [],
+        daily_trend: [],
+    });
     const [loading, setLoading] = useState(true);
     const [expandedRooms, setExpandedRooms] = useState<Set<number>>(new Set());
     const [expandedMainRooms, setExpandedMainRooms] = useState<Set<string>>(new Set());
     const [exceptionTypeFilter, setExceptionTypeFilter] = useState<'all' | ExceptionReportItem['type']>('all');
+    const [partsReportFilter, setPartsReportFilter] = useState<'all' | 'scrap_only' | 'defective_only'>('all');
+    const [selectedParetoPartId, setSelectedParetoPartId] = useState<string | null>(null);
+    const [selectedDrilldownItem, setSelectedDrilldownItem] = useState<ScrapReportItem | null>(null);
+    const [selectedRequestDetail, setSelectedRequestDetail] = useState<MaintenanceRequestDetail | null>(null);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [detailError, setDetailError] = useState<string | null>(null);
 
     const [filters, setFilters] = useState<FilterState>({
         roomId: '', technician: '', partId: '', startDate: '', endDate: ''
     });
 
-    const [rooms, setRooms] = useState<any[]>([]);
-    const [technicians, setTechnicians] = useState<any[]>([]);
-    const [products, setProducts] = useState<any[]>([]);
+    const [rooms, setRooms] = useState<RoomOption[]>([]);
+    const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
+    const [products, setProducts] = useState<ProductOption[]>([]);
 
     // Hierarchical Filter State & Logic
     const [isRoomMenuOpen, setIsRoomMenuOpen] = useState(false);
@@ -112,7 +287,7 @@ export default function MaintenanceReportClient() {
     const roomMenuRef = useRef<HTMLDivElement>(null);
 
     const roomTree = useMemo(() => {
-        return rooms.reduce((acc: any, r: any) => {
+        return rooms.reduce((acc: RoomTree, r: RoomOption) => {
             const floor = r.floor || 'อื่นๆ';
             const parts = r.room_code.split('-');
             const mainRoomCode = parts[0];
@@ -121,7 +296,7 @@ export default function MaintenanceReportClient() {
             if (!acc[floor][mainRoomCode]) acc[floor][mainRoomCode] = [];
             acc[floor][mainRoomCode].push(r);
             return acc;
-        }, {});
+        }, {} as RoomTree);
     }, [rooms]);
 
     const selectedRoomData = useMemo(() => 
@@ -162,16 +337,17 @@ export default function MaintenanceReportClient() {
 
     async function loadReport(currentFilters: FilterState) {
         setLoading(true);
-        const apiFilters: any = {};
+        const apiFilters: ReportApiFilters = {};
         if (currentFilters.roomId) apiFilters.roomId = parseInt(currentFilters.roomId);
         if (currentFilters.technician) apiFilters.technician = currentFilters.technician;
         if (currentFilters.partId) apiFilters.partId = currentFilters.partId;
         if (currentFilters.startDate) apiFilters.startDate = new Date(currentFilters.startDate);
         if (currentFilters.endDate) apiFilters.endDate = new Date(currentFilters.endDate);
 
-        const [result, exceptionResult] = await Promise.all([
+        const [result, exceptionResult, partUsageResult] = await Promise.all([
             getMaintenanceReportByRoom(apiFilters),
             getMaintenanceExceptionReport(apiFilters),
+            getMaintenancePartUsageReports(apiFilters),
         ]);
 
         if (result.success) {
@@ -183,10 +359,18 @@ export default function MaintenanceReportClient() {
         if (exceptionResult.success) {
             setExceptionReport(exceptionResult.data as ExceptionReportData);
         }
+        if (partUsageResult.success) {
+            setPartUsageReport(partUsageResult.data as PartUsageReportData);
+        }
         setLoading(false);
     }
 
-    useEffect(() => { loadData(); }, []);
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            void loadData();
+        }, 0);
+        return () => clearTimeout(timer);
+    }, []);
 
     useEffect(() => {
         const timer = setTimeout(() => loadReport(filters), 500);
@@ -203,7 +387,11 @@ export default function MaintenanceReportClient() {
 
     function toggleRoom(roomId: number) {
         const newSet = new Set(expandedRooms);
-        newSet.has(roomId) ? newSet.delete(roomId) : newSet.add(roomId);
+        if (newSet.has(roomId)) {
+            newSet.delete(roomId);
+        } else {
+            newSet.add(roomId);
+        }
         setExpandedRooms(newSet);
     }
 
@@ -247,7 +435,7 @@ export default function MaintenanceReportClient() {
 
     const uniqueMainRoomsCount = new Set(report.map(r => r.room_code.split('-')[0])).size;
 
-    const exceptionTypeConfig: Record<ExceptionReportItem['type'], { label: string; icon: any; chip: string }> = {
+    const exceptionTypeConfig: Record<ExceptionReportItem['type'], { label: string; icon: LucideIcon; chip: string }> = {
         verification_failed: { label: 'ตรวจนับไม่ตรง', icon: TriangleAlert, chip: 'bg-rose-100 text-rose-700' },
         pending_verification_overdue: { label: 'รอตรวจนับเกิน 24 ชม.', icon: ScanSearch, chip: 'bg-amber-100 text-amber-700' },
         manual_actual_cost_override: { label: 'แก้ค่าใช้จ่ายจริง', icon: BadgeDollarSign, chip: 'bg-violet-100 text-violet-700' },
@@ -258,10 +446,154 @@ export default function MaintenanceReportClient() {
         ? exceptionReport.items
         : exceptionReport.items.filter((item) => item.type === exceptionTypeFilter);
 
+    const defectivePartIds = new Set(
+        partUsageReport.scrap
+            .filter((item) => item.defective_marked_qty > 0)
+            .map((item) => item.p_id)
+    );
+
+    const defectiveTechnicians = new Set(
+        partUsageReport.scrap
+            .filter((item) => item.defective_marked_qty > 0)
+            .map((item) => item.technician || 'Unassigned')
+    );
+
+    const filteredConsumptionItems = partUsageReport.consumption.filter((item) => {
+        if (partsReportFilter === 'scrap_only') {
+            return item.estimated_scrap_qty > 0;
+        }
+        if (partsReportFilter === 'defective_only') {
+            return defectivePartIds.has(item.p_id);
+        }
+        return true;
+    });
+
+    const filteredScrapItems = partUsageReport.scrap.filter((item) => {
+        if (partsReportFilter === 'scrap_only') {
+            return item.scrap_estimate_qty > 0;
+        }
+        if (partsReportFilter === 'defective_only') {
+            return item.defective_marked_qty > 0;
+        }
+        return true;
+    });
+
+    const filteredTechnicianUsageItems = partUsageReport.technician_usage.filter((item) => {
+        if (partsReportFilter === 'scrap_only') {
+            return item.estimated_scrap_qty > 0;
+        }
+        if (partsReportFilter === 'defective_only') {
+            return defectiveTechnicians.has(item.technician);
+        }
+        return true;
+    });
+
+    const filteredDailyTrend = partUsageReport.daily_trend.filter((item) => {
+        if (partsReportFilter === 'scrap_only') {
+            return item.scrap_qty > 0;
+        }
+        if (partsReportFilter === 'defective_only') {
+            return item.defective_scrap_qty > 0;
+        }
+        return true;
+    });
+
+    const filteredTotalScrapQty = filteredScrapItems.reduce((sum, item) => sum + item.scrap_estimate_qty, 0);
+    const filteredVerificationLossQty = filteredScrapItems.reduce((sum, item) => sum + item.verification_loss_qty, 0);
+    const filteredDefectiveQty = filteredScrapItems.reduce((sum, item) => sum + item.defective_marked_qty, 0);
+
+    const scrapByPartMap = new Map<string, { p_id: string; p_name: string; scrap_qty: number }>();
+    for (const item of filteredScrapItems) {
+        const current = scrapByPartMap.get(item.p_id) || {
+            p_id: item.p_id,
+            p_name: item.p_name,
+            scrap_qty: 0,
+        };
+        current.scrap_qty += item.scrap_estimate_qty;
+        scrapByPartMap.set(item.p_id, current);
+    }
+
+    const sortedScrapParts = Array.from(scrapByPartMap.values()).sort((a, b) => b.scrap_qty - a.scrap_qty);
+    const scrapParetoItems: ScrapParetoItem[] = sortedScrapParts.reduce<{
+        rows: ScrapParetoItem[];
+        cumulativeQty: number;
+    }>((acc, item) => {
+        const cumulativeQty = acc.cumulativeQty + item.scrap_qty;
+        const itemSharePct = filteredTotalScrapQty > 0 ? (item.scrap_qty / filteredTotalScrapQty) * 100 : 0;
+        const cumulativePct = filteredTotalScrapQty > 0 ? (cumulativeQty / filteredTotalScrapQty) * 100 : 0;
+        return {
+            cumulativeQty,
+            rows: [
+                ...acc.rows,
+                {
+                    p_id: item.p_id,
+                    p_name: item.p_name,
+                    scrap_qty: item.scrap_qty,
+                    item_share_pct: itemSharePct,
+                    cumulative_pct: cumulativePct,
+                }
+            ],
+        };
+    }, {
+        rows: [],
+        cumulativeQty: 0,
+    }).rows;
+
+    const pareto80Index = scrapParetoItems.findIndex((item) => item.cumulative_pct >= 80);
+    const pareto80Count = pareto80Index >= 0 ? pareto80Index + 1 : scrapParetoItems.length;
+    const activeParetoPartId = (selectedParetoPartId && scrapParetoItems.some((item) => item.p_id === selectedParetoPartId))
+        ? selectedParetoPartId
+        : (scrapParetoItems[0]?.p_id || null);
+    const activeParetoPart = scrapParetoItems.find((item) => item.p_id === activeParetoPartId) || null;
+    const paretoChartData: ScrapParetoChartItem[] = scrapParetoItems
+        .slice(0, 12)
+        .map((item, index) => ({
+            p_id: item.p_id,
+            label: `${index + 1}`,
+            scrap_qty: item.scrap_qty,
+            cumulative_pct: item.cumulative_pct,
+        }));
+    const paretoDrilldownItems = filteredScrapItems
+        .filter((item) => item.p_id === activeParetoPartId)
+        .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())
+        .slice(0, 12);
+    const modalRequestId = selectedRequestDetail?.request_id ?? selectedDrilldownItem?.request_id ?? null;
+    const modalRequestNumber = selectedRequestDetail?.request_number ?? selectedDrilldownItem?.request_number ?? '-';
+    const modalTitle = selectedRequestDetail?.title ?? selectedDrilldownItem?.title ?? '-';
+    const modalRoom = selectedRequestDetail?.tbl_rooms
+        ? `${selectedRequestDetail.tbl_rooms.room_code || '-'} - ${selectedRequestDetail.tbl_rooms.room_name || '-'}`
+        : `${selectedDrilldownItem?.room_code || '-'} - ${selectedDrilldownItem?.room_name || '-'}`;
+    const modalTechnician = selectedRequestDetail?.assigned_to ?? selectedDrilldownItem?.technician ?? '-';
+    const modalPartLabel = selectedDrilldownItem ? `${selectedDrilldownItem.p_name} (${selectedDrilldownItem.p_id})` : '-';
+    const modalCause = selectedDrilldownItem
+        ? (selectedDrilldownItem.defective_marked_qty > 0 ? 'Defective' : 'Verification Loss')
+        : '-';
+    const modalScrapQty = selectedDrilldownItem?.scrap_estimate_qty ?? 0;
+    const modalOccurredAt = selectedDrilldownItem?.occurred_at ? new Date(selectedDrilldownItem.occurred_at).toLocaleString('th-TH') : '-';
+    const modalStatus = selectedDrilldownItem
+        ? (MAINTENANCE_PART_STATUS_CONFIG[selectedDrilldownItem.status]?.label ?? selectedDrilldownItem.status)
+        : '-';
+    const modalParts = selectedRequestDetail?.tbl_maintenance_parts || [];
+    const modalHistory = selectedRequestDetail?.tbl_maintenance_history || [];
+
+    function escapeCsvCell(value: unknown) {
+        return `"${String(value ?? '').replace(/"/g, '""')}"`;
+    }
+
+    function triggerCsvDownload(filename: string, rows: Array<Array<string | number>>) {
+        const csv = rows.map((row) => row.map(escapeCsvCell).join(',')).join('\n');
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+    }
+
     function exportExceptionCsv() {
         if (filteredExceptionItems.length === 0) return;
 
-        const escapeCsv = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
         const rows = [
             ['type', 'request_number', 'title', 'room_code', 'room_name', 'assigned_to', 'actor_name', 'occurred_at', 'detail'],
             ...filteredExceptionItems.map((item) => [
@@ -277,14 +609,147 @@ export default function MaintenanceReportClient() {
             ]),
         ];
 
-        const csv = rows.map((row) => row.map(escapeCsv).join(',')).join('\n');
-        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `maintenance-exceptions-${exceptionTypeFilter}-${new Date().toISOString().slice(0, 10)}.csv`;
-        link.click();
-        URL.revokeObjectURL(url);
+        triggerCsvDownload(
+            `maintenance-exceptions-${exceptionTypeFilter}-${new Date().toISOString().slice(0, 10)}.csv`,
+            rows
+        );
+    }
+
+    function exportConsumptionCsv() {
+        if (filteredConsumptionItems.length === 0) return;
+        const rows: Array<Array<string | number>> = [
+            ['p_id', 'part_name', 'unit', 'withdrawn_qty', 'used_qty', 'verified_qty', 'returned_qty', 'scrap_estimate_qty', 'request_count', 'usage_cost'],
+            ...filteredConsumptionItems.map((item) => [
+                item.p_id,
+                item.p_name,
+                item.unit || '',
+                item.withdrawn_qty,
+                item.used_qty,
+                item.verified_qty,
+                item.returned_qty,
+                item.estimated_scrap_qty,
+                item.request_count,
+                item.usage_cost.toFixed(2),
+            ]),
+        ];
+        triggerCsvDownload(`maintenance-consumption-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    }
+
+    function exportScrapCsv() {
+        if (filteredScrapItems.length === 0) return;
+        const rows: Array<Array<string | number>> = [
+            ['request_number', 'title', 'room_code', 'room_name', 'technician', 'p_id', 'part_name', 'status', 'expected_qty', 'verified_qty', 'verification_loss_qty', 'defective_marked_qty', 'scrap_estimate_qty', 'occurred_at'],
+            ...filteredScrapItems.map((item) => [
+                item.request_number,
+                item.title,
+                item.room_code,
+                item.room_name,
+                item.technician,
+                item.p_id,
+                item.p_name,
+                item.status,
+                item.expected_qty,
+                item.verified_qty,
+                item.verification_loss_qty,
+                item.defective_marked_qty,
+                item.scrap_estimate_qty,
+                new Date(item.occurred_at).toLocaleString('th-TH'),
+            ]),
+        ];
+        triggerCsvDownload(`maintenance-scrap-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    }
+
+    function exportTechnicianUsageCsv() {
+        if (filteredTechnicianUsageItems.length === 0) return;
+        const rows: Array<Array<string | number>> = [
+            ['technician', 'request_count', 'withdrawn_qty', 'used_qty', 'verified_qty', 'returned_qty', 'scrap_estimate_qty', 'usage_cost'],
+            ...filteredTechnicianUsageItems.map((item) => [
+                item.technician,
+                item.request_count,
+                item.withdrawn_qty,
+                item.used_qty,
+                item.verified_qty,
+                item.returned_qty,
+                item.estimated_scrap_qty,
+                item.usage_cost.toFixed(2),
+            ]),
+        ];
+        triggerCsvDownload(`maintenance-technician-usage-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    }
+
+    function exportScrapParetoCsv() {
+        if (scrapParetoItems.length === 0) return;
+        const rows: Array<Array<string | number>> = [
+            ['rank', 'p_id', 'part_name', 'scrap_qty', 'item_share_pct', 'cumulative_pct'],
+            ...scrapParetoItems.map((item, index) => [
+                index + 1,
+                item.p_id,
+                item.p_name,
+                item.scrap_qty,
+                item.item_share_pct.toFixed(2),
+                item.cumulative_pct.toFixed(2),
+            ]),
+        ];
+        triggerCsvDownload(`maintenance-scrap-pareto-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    }
+
+    function exportParetoDrilldownCsv() {
+        if (paretoDrilldownItems.length === 0) return;
+        const rows: Array<Array<string | number>> = [
+            ['request_number', 'request_id', 'room_code', 'room_name', 'technician', 'part_id', 'part_name', 'cause', 'scrap_qty', 'occurred_at'],
+            ...paretoDrilldownItems.map((item) => [
+                item.request_number,
+                item.request_id,
+                item.room_code,
+                item.room_name,
+                item.technician || '',
+                item.p_id,
+                item.p_name,
+                item.defective_marked_qty > 0 ? 'Defective' : 'Verification Loss',
+                item.scrap_estimate_qty,
+                new Date(item.occurred_at).toLocaleString('th-TH'),
+            ]),
+        ];
+        const partSuffix = activeParetoPartId ? `-${activeParetoPartId}` : '';
+        triggerCsvDownload(`maintenance-scrap-drilldown${partSuffix}-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    }
+
+    function handleParetoBarClick(data: unknown) {
+        if (!data || typeof data !== 'object') return;
+        const direct = data as { p_id?: unknown; payload?: { p_id?: unknown } };
+        const partId = typeof direct.p_id === 'string'
+            ? direct.p_id
+            : (typeof direct.payload?.p_id === 'string' ? direct.payload.p_id : null);
+        if (partId) {
+            setSelectedParetoPartId(partId);
+        }
+    }
+
+    function closeDrilldownModal() {
+        setSelectedDrilldownItem(null);
+        setSelectedRequestDetail(null);
+        setDetailError(null);
+        setDetailLoading(false);
+    }
+
+    async function openDrilldownDetail(item: ScrapReportItem) {
+        setSelectedDrilldownItem(item);
+        setSelectedRequestDetail(null);
+        setDetailError(null);
+        setDetailLoading(true);
+        try {
+            const result = await getMaintenanceRequestById(item.request_id);
+            if (result.success && result.data) {
+                setSelectedRequestDetail(result.data as MaintenanceRequestDetail);
+            } else {
+                setDetailError(result.error || 'Unable to load request details');
+            }
+        } catch (error) {
+            console.error('Failed to load maintenance request detail:', error);
+            setDetailError('Unable to load request details');
+        } finally {
+            setDetailLoading(false);
+        }
     }
 
     function toggleMainRoom(roomCode: string) {
@@ -435,6 +900,454 @@ export default function MaintenanceReportClient() {
                 </div>
             </div>
 
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-indigo-100 dark:border-slate-700">
+                <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                        <h2 className="text-sm font-bold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
+                            Parts Consumption / Scrap / Technician Usage
+                        </h2>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            ข้อมูลรวมการเบิก ใช้จริง ตรวจรับ คืน และของเสียจากงานซ่อมตามตัวกรองปัจจุบัน
+                        </p>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-2xl font-bold text-indigo-600">{partUsageReport.summary.records.toLocaleString()}</div>
+                        <div className="text-xs text-gray-400">part records</div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                    <div className="rounded-xl border border-gray-100 dark:border-slate-700 p-3">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">Used Qty</div>
+                        <div className="text-xl font-bold text-blue-600">{partUsageReport.summary.used_qty.toLocaleString()}</div>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 dark:border-slate-700 p-3">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">Returned Qty</div>
+                        <div className="text-xl font-bold text-emerald-600">{partUsageReport.summary.returned_qty.toLocaleString()}</div>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 dark:border-slate-700 p-3">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">Scrap Estimate Qty</div>
+                        <div className="text-xl font-bold text-rose-600">{partUsageReport.summary.scrap_qty.toLocaleString()}</div>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 dark:border-slate-700 p-3">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">Usage Cost</div>
+                        <div className="text-xl font-bold text-violet-600">฿{partUsageReport.summary.usage_cost.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                    </div>
+                </div>
+
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Filter:</span>
+                    <button
+                        type="button"
+                        onClick={() => setPartsReportFilter('all')}
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition ${partsReportFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-700 dark:text-gray-200'}`}
+                    >
+                        All
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setPartsReportFilter('scrap_only')}
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition ${partsReportFilter === 'scrap_only' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-900/30 dark:text-rose-200'}`}
+                    >
+                        Scrap {'>'} 0
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setPartsReportFilter('defective_only')}
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition ${partsReportFilter === 'defective_only' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-200'}`}
+                    >
+                        Defective only
+                    </button>
+                </div>
+
+                <div className="mb-4 rounded-xl border border-gray-100 dark:border-slate-700 p-3">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Daily Trend
+                    </div>
+                    {filteredDailyTrend.length === 0 ? (
+                        <div className="py-8 text-center text-xs text-gray-400">No trend data</div>
+                    ) : (
+                        <div className="h-56 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={filteredDailyTrend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                    <XAxis
+                                        dataKey="date_key"
+                                        tick={{ fontSize: 11 }}
+                                        tickFormatter={(value) => String(value).slice(5)}
+                                    />
+                                    <YAxis tick={{ fontSize: 11 }} />
+                                    <RechartsTooltip
+                                        labelFormatter={(value) => `Date: ${value}`}
+                                        formatter={(value: number, name: string) => {
+                                            if (name === 'consumption_qty') return [Number(value).toLocaleString(), 'Consumption'];
+                                            if (name === 'scrap_qty') return [Number(value).toLocaleString(), 'Scrap'];
+                                            if (name === 'defective_scrap_qty') return [Number(value).toLocaleString(), 'Defective Scrap'];
+                                            return [Number(value).toLocaleString(), name];
+                                        }}
+                                    />
+                                    <Legend
+                                        formatter={(value) => {
+                                            if (value === 'consumption_qty') return 'Consumption';
+                                            if (value === 'scrap_qty') return 'Scrap';
+                                            if (value === 'defective_scrap_qty') return 'Defective Scrap';
+                                            return value;
+                                        }}
+                                    />
+                                    {partsReportFilter !== 'defective_only' && (
+                                        <Line
+                                            type="monotone"
+                                            dataKey="consumption_qty"
+                                            stroke="#2563eb"
+                                            strokeWidth={2}
+                                            dot={false}
+                                        />
+                                    )}
+                                    <Line
+                                        type="monotone"
+                                        dataKey={partsReportFilter === 'defective_only' ? 'defective_scrap_qty' : 'scrap_qty'}
+                                        stroke={partsReportFilter === 'defective_only' ? '#d97706' : '#e11d48'}
+                                        strokeWidth={2}
+                                        dot={false}
+                                    />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                    )}
+                </div>
+
+                <div className="mb-4 grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)]">
+                    <div className="rounded-xl border border-gray-100 dark:border-slate-700 p-3">
+                        <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            Top Scrap Causes
+                        </div>
+                        <div className="space-y-3">
+                            <div>
+                                <div className="text-[11px] text-gray-500 dark:text-gray-400">Verification Loss</div>
+                                <div className="text-lg font-bold text-rose-600">{filteredVerificationLossQty.toLocaleString()}</div>
+                                <div className="text-[11px] text-gray-400">
+                                    {filteredTotalScrapQty > 0 ? ((filteredVerificationLossQty / filteredTotalScrapQty) * 100).toFixed(1) : '0.0'}%
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-[11px] text-gray-500 dark:text-gray-400">Defective Marked</div>
+                                <div className="text-lg font-bold text-amber-600">{filteredDefectiveQty.toLocaleString()}</div>
+                                <div className="text-[11px] text-gray-400">
+                                    {filteredTotalScrapQty > 0 ? ((filteredDefectiveQty / filteredTotalScrapQty) * 100).toFixed(1) : '0.0'}%
+                                </div>
+                            </div>
+                            <div className="border-t border-gray-100 pt-2 dark:border-slate-700">
+                                <div className="text-[11px] text-gray-500 dark:text-gray-400">Total Scrap</div>
+                                <div className="text-lg font-bold text-gray-700 dark:text-gray-200">{filteredTotalScrapQty.toLocaleString()}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-100 dark:border-slate-700 overflow-hidden">
+                        <div className="px-3 py-2.5 bg-gray-50 dark:bg-slate-900/50 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
+                            <div className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                                Scrap Pareto 80/20
+                                <span className="ml-2 text-[11px] text-gray-400">
+                                    {pareto80Count}/{scrapParetoItems.length} parts explain 80%
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={exportScrapParetoCsv}
+                                disabled={scrapParetoItems.length === 0}
+                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400 dark:border-slate-700 dark:text-slate-300"
+                            >
+                                <Download size={12} />
+                                CSV
+                            </button>
+                        </div>
+                        <div className="border-b border-gray-100 px-3 py-3 dark:border-slate-700">
+                            {paretoChartData.length === 0 ? (
+                                <div className="py-8 text-center text-xs text-gray-400">No pareto chart data</div>
+                            ) : (
+                                <div className="h-56 w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <ComposedChart data={paretoChartData} margin={{ top: 8, right: 18, left: 0, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                                            <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+                                            <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tick={{ fontSize: 11 }} />
+                                            <RechartsTooltip
+                                                formatter={(value: number, name: string) => {
+                                                    if (name === 'scrap_qty') return [Number(value).toLocaleString(), 'Scrap Qty'];
+                                                    if (name === 'cumulative_pct') return [`${Number(value).toFixed(1)}%`, 'Cumulative %'];
+                                                    return [Number(value).toLocaleString(), name];
+                                                }}
+                                                labelFormatter={(value) => `Rank: ${value}`}
+                                            />
+                                            <Legend
+                                                formatter={(value) => {
+                                                    if (value === 'scrap_qty') return 'Scrap Qty';
+                                                    if (value === 'cumulative_pct') return 'Cumulative %';
+                                                    return value;
+                                                }}
+                                            />
+                                            <ReferenceLine yAxisId="right" y={80} stroke="#f59e0b" strokeDasharray="5 5" />
+                                            <Bar yAxisId="left" dataKey="scrap_qty" fill="#ef4444" radius={[4, 4, 0, 0]} onClick={handleParetoBarClick} />
+                                            <Line yAxisId="right" type="monotone" dataKey="cumulative_pct" stroke="#2563eb" strokeWidth={2} dot={false} />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="max-h-56 overflow-auto border-b border-gray-100 dark:border-slate-700">
+                            <table className="w-full text-xs">
+                                <thead className="bg-white dark:bg-slate-800 sticky top-0">
+                                    <tr className="text-gray-400 uppercase tracking-wide">
+                                        <th className="px-3 py-2 text-left font-semibold">Part</th>
+                                        <th className="px-3 py-2 text-right font-semibold">Scrap</th>
+                                        <th className="px-3 py-2 text-right font-semibold">Share</th>
+                                        <th className="px-3 py-2 text-right font-semibold">Cum%</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                                    {scrapParetoItems.slice(0, 12).map((item, index) => (
+                                        <tr
+                                            key={item.p_id}
+                                            onClick={() => setSelectedParetoPartId(item.p_id)}
+                                            className={`cursor-pointer transition ${
+                                                item.p_id === activeParetoPartId
+                                                    ? 'bg-indigo-50 dark:bg-indigo-900/20'
+                                                    : item.cumulative_pct <= 80
+                                                        ? 'bg-rose-50/40 dark:bg-rose-950/10'
+                                                        : 'hover:bg-gray-50 dark:hover:bg-slate-700/40'
+                                            }`}
+                                        >
+                                            <td className="px-3 py-2">
+                                                <div className="font-medium text-gray-700 dark:text-gray-200">{item.p_name}</div>
+                                                <div className="text-[11px] text-gray-400">#{index + 1} | {item.p_id}</div>
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-semibold text-rose-600">{item.scrap_qty.toLocaleString()}</td>
+                                            <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{item.item_share_pct.toFixed(1)}%</td>
+                                            <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-200">{item.cumulative_pct.toFixed(1)}%</td>
+                                        </tr>
+                                    ))}
+                                    {scrapParetoItems.length === 0 && (
+                                        <tr>
+                                            <td className="px-3 py-6 text-center text-gray-400" colSpan={4}>No scrap data</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="px-3 py-3">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                                <div className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                                    Drilldown
+                                    {activeParetoPart && (
+                                        <span className="ml-2 text-[11px] text-gray-400">{activeParetoPart.p_name} ({activeParetoPart.p_id})</span>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={exportParetoDrilldownCsv}
+                                    disabled={paretoDrilldownItems.length === 0}
+                                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400 dark:border-slate-700 dark:text-slate-300"
+                                >
+                                    <Download size={12} />
+                                    CSV
+                                </button>
+                            </div>
+                            {paretoDrilldownItems.length === 0 ? (
+                                <div className="py-4 text-xs text-gray-400">No matching requests</div>
+                            ) : (
+                                <div className="max-h-40 overflow-auto">
+                                    <table className="w-full text-xs">
+                                        <thead className="sticky top-0 bg-white dark:bg-slate-800">
+                                            <tr className="text-gray-400 uppercase tracking-wide">
+                                                <th className="px-2 py-2 text-left font-semibold">Request</th>
+                                                <th className="px-2 py-2 text-left font-semibold">Cause</th>
+                                                <th className="px-2 py-2 text-right font-semibold">Qty</th>
+                                                <th className="px-2 py-2 text-right font-semibold">Date</th>
+                                                <th className="px-2 py-2 text-right font-semibold">Go</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                                            {paretoDrilldownItems.map((item, idx) => (
+                                                <tr
+                                                    key={`${item.request_id}-${item.p_id}-${idx}`}
+                                                    onClick={() => void openDrilldownDetail(item)}
+                                                    className="cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/40"
+                                                >
+                                                    <td className="px-2 py-2">
+                                                        <div className="font-mono text-[11px] text-indigo-600">{item.request_number}</div>
+                                                        <div className="text-[11px] text-gray-400">{item.room_code}</div>
+                                                    </td>
+                                                    <td className="px-2 py-2">
+                                                        {item.defective_marked_qty > 0 && (
+                                                            <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Defective</span>
+                                                        )}
+                                                        {item.defective_marked_qty <= 0 && item.verification_loss_qty > 0 && (
+                                                            <span className="inline-flex rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">Verification Loss</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-2 py-2 text-right font-semibold text-rose-600">{item.scrap_estimate_qty.toLocaleString()}</td>
+                                                    <td className="px-2 py-2 text-right text-gray-500">{new Date(item.occurred_at).toLocaleDateString('th-TH')}</td>
+                                                    <td className="px-2 py-2 text-right">
+                                                        <a
+                                                            href={`/maintenance?req=${item.request_id}`}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="inline-flex rounded border border-indigo-200 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 hover:bg-indigo-50 dark:border-indigo-900/60 dark:text-indigo-300"
+                                                        >
+                                                            Open
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid gap-3 lg:grid-cols-3">
+                    <div className="rounded-xl border border-gray-100 dark:border-slate-700 overflow-hidden">
+                        <div className="px-3 py-2.5 bg-gray-50 dark:bg-slate-900/50 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
+                            <div className="text-xs font-semibold text-gray-600 dark:text-gray-300">Consumption Report</div>
+                            <button
+                                type="button"
+                                onClick={exportConsumptionCsv}
+                                disabled={filteredConsumptionItems.length === 0}
+                                className="inline-flex items-center gap-1 rounded-md border border-indigo-200 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400 dark:border-indigo-900/60 dark:text-indigo-300"
+                            >
+                                <Download size={12} />
+                                CSV
+                            </button>
+                        </div>
+                        <div className="max-h-72 overflow-auto">
+                            <table className="w-full text-xs">
+                                <thead className="bg-white dark:bg-slate-800 sticky top-0">
+                                    <tr className="text-gray-400 uppercase tracking-wide">
+                                        <th className="px-3 py-2 text-left font-semibold">Part</th>
+                                        <th className="px-3 py-2 text-right font-semibold">Used</th>
+                                        <th className="px-3 py-2 text-right font-semibold">Scrap</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                                    {filteredConsumptionItems.slice(0, 10).map((item) => (
+                                        <tr key={item.p_id}>
+                                            <td className="px-3 py-2">
+                                                <div className="font-medium text-gray-700 dark:text-gray-200">{item.p_name}</div>
+                                                <div className="text-[11px] text-gray-400">{item.p_id}</div>
+                                            </td>
+                                            <td className="px-3 py-2 text-right text-blue-600 font-semibold">{item.used_qty.toLocaleString()}</td>
+                                            <td className="px-3 py-2 text-right text-rose-600 font-semibold">{item.estimated_scrap_qty.toLocaleString()}</td>
+                                        </tr>
+                                    ))}
+                                    {filteredConsumptionItems.length === 0 && (
+                                        <tr>
+                                            <td className="px-3 py-4 text-center text-gray-400" colSpan={3}>No data</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-100 dark:border-slate-700 overflow-hidden">
+                        <div className="px-3 py-2.5 bg-gray-50 dark:bg-slate-900/50 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
+                            <div className="text-xs font-semibold text-gray-600 dark:text-gray-300">Scrap Report</div>
+                            <button
+                                type="button"
+                                onClick={exportScrapCsv}
+                                disabled={filteredScrapItems.length === 0}
+                                className="inline-flex items-center gap-1 rounded-md border border-rose-200 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400 dark:border-rose-900/60 dark:text-rose-300"
+                            >
+                                <Download size={12} />
+                                CSV
+                            </button>
+                        </div>
+                        <div className="max-h-72 overflow-auto">
+                            <table className="w-full text-xs">
+                                <thead className="bg-white dark:bg-slate-800 sticky top-0">
+                                    <tr className="text-gray-400 uppercase tracking-wide">
+                                        <th className="px-3 py-2 text-left font-semibold">Request</th>
+                                        <th className="px-3 py-2 text-left font-semibold">Part</th>
+                                        <th className="px-3 py-2 text-right font-semibold">Scrap</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                                    {filteredScrapItems.slice(0, 10).map((item, idx) => (
+                                        <tr key={`${item.request_id}-${item.p_id}-${idx}`}>
+                                            <td className="px-3 py-2">
+                                                <div className="font-mono text-[11px] text-indigo-600">{item.request_number}</div>
+                                                <div className="text-[11px] text-gray-400">{item.technician || '-'}</div>
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <div className="font-medium text-gray-700 dark:text-gray-200">{item.p_name}</div>
+                                                <div className={`inline-flex mt-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${MAINTENANCE_PART_STATUS_CONFIG[item.status]?.bg ?? 'bg-gray-100'} ${MAINTENANCE_PART_STATUS_CONFIG[item.status]?.color ?? 'text-gray-600'}`}>
+                                                    {MAINTENANCE_PART_STATUS_CONFIG[item.status]?.label ?? item.status}
+                                                </div>
+                                            </td>
+                                            <td className="px-3 py-2 text-right text-rose-600 font-semibold">{item.scrap_estimate_qty.toLocaleString()}</td>
+                                        </tr>
+                                    ))}
+                                    {filteredScrapItems.length === 0 && (
+                                        <tr>
+                                            <td className="px-3 py-4 text-center text-gray-400" colSpan={3}>No data</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-100 dark:border-slate-700 overflow-hidden">
+                        <div className="px-3 py-2.5 bg-gray-50 dark:bg-slate-900/50 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between">
+                            <div className="text-xs font-semibold text-gray-600 dark:text-gray-300">Technician Usage</div>
+                            <button
+                                type="button"
+                                onClick={exportTechnicianUsageCsv}
+                                disabled={filteredTechnicianUsageItems.length === 0}
+                                className="inline-flex items-center gap-1 rounded-md border border-blue-200 px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400 dark:border-blue-900/60 dark:text-blue-300"
+                            >
+                                <Download size={12} />
+                                CSV
+                            </button>
+                        </div>
+                        <div className="max-h-72 overflow-auto">
+                            <table className="w-full text-xs">
+                                <thead className="bg-white dark:bg-slate-800 sticky top-0">
+                                    <tr className="text-gray-400 uppercase tracking-wide">
+                                        <th className="px-3 py-2 text-left font-semibold">Technician</th>
+                                        <th className="px-3 py-2 text-right font-semibold">Used</th>
+                                        <th className="px-3 py-2 text-right font-semibold">Jobs</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                                    {filteredTechnicianUsageItems.slice(0, 10).map((item) => (
+                                        <tr key={item.technician}>
+                                            <td className="px-3 py-2">
+                                                <div className="font-medium text-gray-700 dark:text-gray-200">{item.technician}</div>
+                                                <div className="text-[11px] text-gray-400">Scrap {item.estimated_scrap_qty.toLocaleString()}</div>
+                                            </td>
+                                            <td className="px-3 py-2 text-right text-blue-600 font-semibold">{item.used_qty.toLocaleString()}</td>
+                                            <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{item.request_count.toLocaleString()}</td>
+                                        </tr>
+                                    ))}
+                                    {filteredTechnicianUsageItems.length === 0 && (
+                                        <tr>
+                                            <td className="px-3 py-4 text-center text-gray-400" colSpan={3}>No data</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-slate-700">
                 <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
@@ -554,7 +1467,7 @@ export default function MaintenanceReportClient() {
 
                                         {roomMenuStep === 3 && navFloor && navMainRoom && (
                                             <div className="space-y-0.5">
-                                                {roomTree[navFloor][navMainRoom].sort((a: any, b: any) => a.room_code.localeCompare(b.room_code)).map((r: any) => {
+                                                {roomTree[navFloor][navMainRoom].sort((a: RoomOption, b: RoomOption) => a.room_code.localeCompare(b.room_code)).map((r: RoomOption) => {
                                                     const zonePart = r.room_code.split('-').slice(1).join('-') || 'MAIN';
                                                     return (
                                                         <button
@@ -863,6 +1776,170 @@ export default function MaintenanceReportClient() {
                     })
                 )}
             </div>
+
+            {selectedDrilldownItem && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4" onClick={closeDrilldownModal}>
+                    <div
+                        className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl dark:bg-slate-800"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-slate-700">
+                            <div>
+                                <div className="text-sm font-semibold text-gray-800 dark:text-white">Maintenance Detail</div>
+                                <div className="font-mono text-xs text-indigo-600 dark:text-indigo-400">{modalRequestNumber}</div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeDrilldownModal}
+                                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-slate-700"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {detailLoading && (
+                            <div className="border-b border-gray-100 px-5 py-2 text-xs text-gray-500 dark:border-slate-700 dark:text-gray-400">
+                                Loading latest request detail...
+                            </div>
+                        )}
+                        {detailError && (
+                            <div className="border-b border-rose-100 bg-rose-50 px-5 py-2 text-xs text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300">
+                                {detailError}
+                            </div>
+                        )}
+
+                        <div className="grid gap-4 px-5 py-4 text-sm sm:grid-cols-2">
+                            <div>
+                                <div className="text-xs text-gray-500">Title</div>
+                                <div className="font-medium text-gray-800 dark:text-gray-200">{modalTitle}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Room</div>
+                                <div className="font-medium text-gray-800 dark:text-gray-200">{modalRoom}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Technician</div>
+                                <div className="font-medium text-gray-800 dark:text-gray-200">{modalTechnician || '-'}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Part</div>
+                                <div className="font-medium text-gray-800 dark:text-gray-200">{modalPartLabel}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Cause</div>
+                                <div className="font-medium text-gray-800 dark:text-gray-200">{modalCause}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Scrap Qty</div>
+                                <div className="font-semibold text-rose-600">{modalScrapQty.toLocaleString()}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Occurred At</div>
+                                <div className="font-medium text-gray-800 dark:text-gray-200">{modalOccurredAt}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Status</div>
+                                <div className="font-medium text-gray-800 dark:text-gray-200">{modalStatus}</div>
+                            </div>
+                        </div>
+
+                        <div className="grid gap-4 border-t border-gray-100 px-5 py-4 sm:grid-cols-2 dark:border-slate-700">
+                            <div>
+                                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Parts</div>
+                                <div className="max-h-44 overflow-auto rounded-lg border border-gray-100 dark:border-slate-700">
+                                    <table className="w-full text-xs">
+                                        <thead className="sticky top-0 bg-white dark:bg-slate-800">
+                                            <tr className="text-gray-400 uppercase tracking-wide">
+                                                <th className="px-2 py-2 text-left font-semibold">Part</th>
+                                                <th className="px-2 py-2 text-right font-semibold">Qty</th>
+                                                <th className="px-2 py-2 text-right font-semibold">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                                            {modalParts.slice(0, 12).map((part) => (
+                                                <tr key={part.part_id}>
+                                                    <td className="px-2 py-2">
+                                                        <div className="font-medium text-gray-700 dark:text-gray-200">{part.tbl_products?.p_name || part.p_id}</div>
+                                                        <div className="text-[11px] text-gray-400">{part.p_id}</div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-right text-gray-700 dark:text-gray-200">{part.quantity.toLocaleString()}</td>
+                                                    <td className="px-2 py-2 text-right text-gray-600 dark:text-gray-300">{MAINTENANCE_PART_STATUS_CONFIG[part.status]?.label ?? part.status}</td>
+                                                </tr>
+                                            ))}
+                                            {modalParts.length === 0 && (
+                                                <tr>
+                                                    <td className="px-2 py-4 text-center text-gray-400" colSpan={3}>No parts data</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div>
+                                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Recent History</div>
+                                <div className="max-h-44 overflow-auto rounded-lg border border-gray-100 dark:border-slate-700">
+                                    <table className="w-full text-xs">
+                                        <thead className="sticky top-0 bg-white dark:bg-slate-800">
+                                            <tr className="text-gray-400 uppercase tracking-wide">
+                                                <th className="px-2 py-2 text-left font-semibold">Action</th>
+                                                <th className="px-2 py-2 text-left font-semibold">By</th>
+                                                <th className="px-2 py-2 text-right font-semibold">Time</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                                            {modalHistory.slice(0, 12).map((h, idx) => (
+                                                <tr key={`${h.action}-${idx}`}>
+                                                    <td className="px-2 py-2">
+                                                        <div className="font-medium text-gray-700 dark:text-gray-200">{h.action}</div>
+                                                        {h.new_value && <div className="text-[11px] text-gray-400 truncate">{h.new_value}</div>}
+                                                    </td>
+                                                    <td className="px-2 py-2 text-gray-700 dark:text-gray-200">{h.changed_by || '-'}</td>
+                                                    <td className="px-2 py-2 text-right text-gray-500">{new Date(h.changed_at).toLocaleString('th-TH')}</td>
+                                                </tr>
+                                            ))}
+                                            {modalHistory.length === 0 && (
+                                                <tr>
+                                                    <td className="px-2 py-4 text-center text-gray-400" colSpan={3}>No history data</td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-4 dark:border-slate-700">
+                            {modalRequestId && (
+                                <a
+                                    href={`/maintenance?req=${modalRequestId}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                                >
+                                    Open Maintenance
+                                </a>
+                            )}
+                            {modalRequestId && (
+                                <a
+                                    href={`/maintenance/job-sheet/${modalRequestId}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                                >
+                                    Open Job Sheet
+                                </a>
+                            )}
+                            <button
+                                type="button"
+                                onClick={closeDrilldownModal}
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:text-gray-300 dark:hover:bg-slate-700"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

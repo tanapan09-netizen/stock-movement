@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
+import { normalizeRole } from '@/lib/roles';
 import {
     canViewBorrowNotifications,
     canViewGeneralMaintenanceNotifications,
@@ -41,9 +42,13 @@ export async function GET(request: Request) {
         const session = await auth();
         const permissionContext = await getUserPermissionContext(session?.user);
         const role = permissionContext.role || 'employee';
+        const normalizedRole = normalizeRole(role);
         const isApprover = permissionContext.isApprover;
         const permissions = permissionContext.permissions;
         const userName = session?.user?.name || '';
+        const isManagerView = ['owner', 'admin', 'manager'].includes(normalizedRole);
+        const isTechnicianView = isMaintenanceTechnician(normalizedRole) || normalizedRole === 'leader_technician';
+        const isGeneralRequesterView = ['general', 'leader_general', 'employee', 'leader_employee'].includes(normalizedRole);
 
         const notifications: NotificationItem[] = [];
 
@@ -160,14 +165,18 @@ export async function GET(request: Request) {
         // ===================================================
         // MAINTENANCE / PART REQUESTS — Technician, Head Tech, Approver
         // ===================================================
-        if (canViewMaintenanceNotifications(role, permissions, isApprover)) {
-            const maintenanceWhere: any = {
+        if (canViewMaintenanceNotifications(role, permissions, isApprover) && (isManagerView || isTechnicianView || isApprover)) {
+            const maintenanceWhere: {
+                status: string;
+                category: { not: string };
+                OR?: Array<{ assigned_to: string | null }>;
+            } = {
                 status: 'pending',
                 category: { not: 'general' },
             };
 
             // Technician: show only unassigned or assigned-to-me (avoid mixing other tech jobs)
-            if (!isApprover && isMaintenanceTechnician(role)) {
+            if (!isManagerView && !isApprover && isTechnicianView) {
                 maintenanceWhere.OR = userName
                     ? [{ assigned_to: null }, { assigned_to: userName }]
                     : [{ assigned_to: null }];
@@ -220,9 +229,23 @@ export async function GET(request: Request) {
         }
 
         // Part requests — Approvers only
-        if (canViewGeneralMaintenanceNotifications(role)) {
+        if (canViewGeneralMaintenanceNotifications(role) && (isManagerView || isGeneralRequesterView)) {
+            const generalWhere: {
+                category: string;
+                status: string;
+                reported_by?: string;
+            } = {
+                category: 'general',
+                status: 'pending',
+            };
+
+            // Non-manager users should only see their own general requests
+            if (!isManagerView) {
+                generalWhere.reported_by = userName || '__UNKNOWN_USER__';
+            }
+
             const generalRequests = await prisma.tbl_maintenance_requests.findMany({
-                where: { category: 'general', status: 'pending' },
+                where: generalWhere,
                 orderBy: { created_at: 'desc' },
                 take: 10,
                 select: {
