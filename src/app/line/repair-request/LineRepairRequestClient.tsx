@@ -450,14 +450,6 @@ function buildSafeLiffRedirectUri() {
     return url.toString();
 }
 
-function buildLiffLoginRedirectUri(liffId?: string) {
-    const trimmedLiffId = (liffId || '').trim();
-    if (trimmedLiffId) {
-        return `https://liff.line.me/${trimmedLiffId}`;
-    }
-
-    return buildSafeLiffRedirectUri();
-}
 
 // ─── i18n ─────────────────────────────────────────────────────────────────────
 type Lang = 'th' | 'en' | 'jp';
@@ -756,7 +748,6 @@ export default function LineRepairRequestClient() {
         || '';
     const liffUrl = resolvedLiffId ? `https://liff.line.me/${resolvedLiffId}` : '';
     const safeRedirectUri = buildSafeLiffRedirectUri() || '';
-    const liffLoginRedirectUri = buildLiffLoginRedirectUri(resolvedLiffId) || safeRedirectUri;
 
     // Language
     const [lang, setLangState] = useState<Lang>('th');
@@ -864,8 +855,7 @@ export default function LineRepairRequestClient() {
                 if (!window.liff) throw new Error('LIFF unavailable');
                 await window.liff.init({ liffId });
                 if (!window.liff.isLoggedIn()) {
-                    const loginRedirectUri = buildLiffLoginRedirectUri(liffId) || buildSafeLiffRedirectUri();
-                    window.liff.login(loginRedirectUri ? { redirectUri: loginRedirectUri } : undefined);
+                    window.liff.login();
                     return;
                 }
                 const p = await window.liff.getProfile();
@@ -1106,7 +1096,6 @@ export default function LineRepairRequestClient() {
                         <div style={{ fontWeight: 700, color: '#1a1209', marginBottom: 8 }}>LIFF Debug</div>
                         <div><strong>Resolved LIFF ID:</strong> {resolvedLiffId || '-'}</div>
                         <div><strong>LIFF URL:</strong> {liffUrl || '-'}</div>
-                        <div><strong>Login Redirect URI:</strong> {liffLoginRedirectUri || '-'}</div>
                         <div><strong>Safe Redirect URI:</strong> {safeRedirectUri || '-'}</div>
                         <div><strong>Current URL:</strong> {typeof window !== 'undefined' ? window.location.href : '-'}</div>
                         <div><strong>Query line_user_id:</strong> {lineUserIdFromQuery || '-'}</div>
@@ -1143,3 +1132,4 @@ export default function LineRepairRequestClient() {
         </div>
     );
 }
+

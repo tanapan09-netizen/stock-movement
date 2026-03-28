@@ -96,14 +96,6 @@ function buildSafeLiffRedirectUri() {
     return url.toString();
 }
 
-function buildLiffLoginRedirectUri(liffId?: string) {
-    const trimmedLiffId = (liffId || '').trim();
-    if (trimmedLiffId) {
-        return `https://liff.line.me/${trimmedLiffId}`;
-    }
-
-    return buildSafeLiffRedirectUri();
-}
 
 type AlertKind = 'success' | 'error' | 'info';
 
@@ -230,8 +222,7 @@ export default function LineCustomerRegisterClient() {
                 await window.liff.init({ liffId });
 
                 if (!window.liff.isLoggedIn()) {
-                    const loginRedirectUri = buildLiffLoginRedirectUri(liffId) || buildSafeLiffRedirectUri();
-                    window.liff.login(loginRedirectUri ? { redirectUri: loginRedirectUri } : undefined);
+                    window.liff.login();
                     return;
                 }
 
@@ -542,3 +533,4 @@ export default function LineCustomerRegisterClient() {
         </div>
     );
 }
+
