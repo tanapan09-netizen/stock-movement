@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useRef } from 'react';
 import { createAsset, updateAsset } from '@/actions/assetActions';
@@ -28,6 +28,7 @@ type Asset = {
 
 export default function AssetForm({ asset }: { asset?: Asset }) {
     const [isPending, setIsPending] = useState(false);
+    const [selectedStatus, setSelectedStatus] = useState(asset?.status || 'Active');
 
     // Auto-detect image URL format
     const getInitialPreview = (url: string | null | undefined) => {
@@ -73,8 +74,11 @@ export default function AssetForm({ asset }: { asset?: Asset }) {
                 showToast(`ลงทะเบียนทรัพย์สิน "${assetName}" สำเร็จ`, 'success');
                 router.push('/assets');
             }
-        } catch {
-            showToast('เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'error');
+        } catch (error) {
+            const message = error instanceof Error
+                ? error.message
+                : 'เกิดข้อผิดพลาดในการบันทึกข้อมูล';
+            showToast(message, 'error');
             setIsPending(false);
         }
     };
@@ -118,15 +122,54 @@ export default function AssetForm({ asset }: { asset?: Asset }) {
                         <label className="block text-sm font-medium text-gray-700">สถานที่ตั้ง</label>
                         <input type="text" name="location" defaultValue={asset?.location || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
                     </div>
+                    {asset?.asset_id && (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Transfer Approval Ref</label>
+                            <input
+                                type="text"
+                                name="transfer_approval_ref"
+                                placeholder="Required if location is changed and policy requires approval (e.g. REQ-YYYYMMDD-001)"
+                                className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                            />
+                        </div>
+                    )}
                     <div>
                         <label className="block text-sm font-medium text-gray-700">สถานะ</label>
-                        <select name="status" defaultValue={asset?.status || 'Active'} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3">
+                        <select
+                            name="status"
+                            value={selectedStatus}
+                            onChange={(event) => setSelectedStatus(event.target.value)}
+                            className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                        >
                             <option value="Active">Active (ใช้งานปกติ)</option>
                             <option value="InRepair">In Repair (ส่งซ่อม)</option>
                             <option value="Disposed">Disposed (จำหน่ายออก)</option>
                             <option value="Lost">Lost (สูญหาย)</option>
                         </select>
                     </div>
+                    {selectedStatus === 'Disposed' && (
+                        <>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Disposal Reason *</label>
+                                <textarea
+                                    name="disposal_reason"
+                                    rows={2}
+                                    required
+                                    placeholder="Reason for disposal / retirement"
+                                    className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Secondary Approver</label>
+                                <input
+                                    type="text"
+                                    name="secondary_approver"
+                                    placeholder="Required when dual approval policy is enabled"
+                                    className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                                />
+                            </div>
+                        </>
+                    )}
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Serial Number (S/N)</label>
                         <input type="text" name="serial_number" defaultValue={asset?.serial_number || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
@@ -204,3 +247,4 @@ export default function AssetForm({ asset }: { asset?: Asset }) {
         </form>
     );
 }
+

@@ -1,13 +1,35 @@
-'use server';
+﻿'use server';
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { uploadFile } from '@/lib/gcs';
+import {
+    getAssetPolicyFromDb,
+    validateAssetInputByPolicy,
+    validateDisposalByPolicy,
+    validateTransferByPolicy,
+} from '@/lib/server/asset-policy-service';
 
 import { auth } from '@/auth';
 
 const UPLOAD_DIR = 'assets';
+
+async function getTransferApprovalByRef(reference: string) {
+    const requestNumber = reference.trim();
+    if (!requestNumber) return null;
+
+    return prisma.tbl_approval_requests.findUnique({
+        where: { request_number: requestNumber },
+        select: {
+            request_id: true,
+            request_type: true,
+            status: true,
+            reference_job: true,
+            approved_at: true,
+        },
+    });
+}
 
 export async function createAsset(formData: FormData) {
     const session = await auth();
@@ -28,6 +50,17 @@ export async function createAsset(formData: FormData) {
     const model = formData.get('model') as string;
     const serial_number = formData.get('serial_number') as string;
     const imageFile = formData.get('image') as File;
+
+    const policy = await getAssetPolicyFromDb();
+    const policyValidation = validateAssetInputByPolicy(policy, {
+        asset_code,
+        serial_number,
+        status,
+        location,
+    });
+    if (!policyValidation.ok) {
+        throw new Error(policyValidation.error);
+    }
 
     let image_url = '';
 
@@ -65,7 +98,7 @@ export async function createAsset(formData: FormData) {
             data: {
                 asset_id: asset.asset_id,
                 action_type: 'Create',
-                description: `ลงทะเบียนทรัพย์สินใหม่: ${asset_name} (${asset_code})`,
+                description: `เธฅเธเธ—เธฐเน€เธเธตเธขเธเธ—เธฃเธฑเธเธขเนเธชเธดเธเนเธซเธกเน: ${asset_name} (${asset_code})`,
                 performed_by: userName,
             }
         });
@@ -82,6 +115,7 @@ export async function createAsset(formData: FormData) {
 export async function updateAsset(formData: FormData) {
     const session = await auth();
     const userName = (session?.user as any)?.name || 'System';
+    const userRole = (session?.user as any)?.role || '';
 
     const asset_id = parseInt(formData.get('asset_id') as string);
     const asset_name = formData.get('asset_name') as string;
@@ -98,6 +132,9 @@ export async function updateAsset(formData: FormData) {
     const brand = formData.get('brand') as string;
     const model = formData.get('model') as string;
     const serial_number = formData.get('serial_number') as string;
+    const disposal_reason = ((formData.get('disposal_reason') as string) || '').trim();
+    const secondary_approver = ((formData.get('secondary_approver') as string) || '').trim();
+    const transfer_approval_ref = ((formData.get('transfer_approval_ref') as string) || '').trim();
 
     const imageFile = formData.get('image') as File;
 
@@ -126,10 +163,57 @@ export async function updateAsset(formData: FormData) {
     }
 
     try {
+        const policy = await getAssetPolicyFromDb();
+
         // Fetch current asset (full record) to compare changes
         const currentAsset = await prisma.tbl_assets.findUnique({
             where: { asset_id },
         });
+        if (!currentAsset) {
+            throw new Error('Asset not found');
+        }
+
+        const policyValidation = validateAssetInputByPolicy(policy, {
+            asset_code: currentAsset.asset_code,
+            serial_number,
+            status,
+            location,
+        });
+        if (!policyValidation.ok) {
+            throw new Error(policyValidation.error);
+        }
+
+        const wasDisposed = String(currentAsset.status || '').toLowerCase() === 'disposed';
+        const willBeDisposed = String(status || '').toLowerCase() === 'disposed';
+        if (!wasDisposed && willBeDisposed) {
+            const disposalValidation = validateDisposalByPolicy(policy, {
+                actorRole: userRole,
+                actorName: userName,
+                secondaryApprover: secondary_approver,
+                reason: disposal_reason || description,
+            });
+            if (!disposalValidation.ok) {
+                throw new Error(disposalValidation.error);
+            }
+        }
+
+        const oldLocation = (currentAsset.location || '').trim();
+        const newLocation = (location || '').trim();
+        const locationChanged = oldLocation !== newLocation;
+        if (locationChanged) {
+            const transferApproval = await getTransferApprovalByRef(transfer_approval_ref);
+            const transferValidation = validateTransferByPolicy(policy, {
+                assetId: asset_id,
+                approvalRef: transfer_approval_ref,
+                approvalStatus: transferApproval?.status,
+                approvalRequestType: transferApproval?.request_type,
+                approvalReferenceJob: transferApproval?.reference_job,
+                approvalApprovedAt: transferApproval?.approved_at ?? null,
+            });
+            if (!transferValidation.ok) {
+                throw new Error(transferValidation.error);
+            }
+        }
 
         await prisma.tbl_assets.update({
             where: { asset_id },
@@ -140,17 +224,17 @@ export async function updateAsset(formData: FormData) {
         const changes: string[] = [];
         if (currentAsset) {
             const fieldLabels: Record<string, string> = {
-                asset_name: 'ชื่อทรัพย์สิน',
-                description: 'รายละเอียด',
-                category: 'หมวดหมู่',
-                location: 'สถานที่',
-                status: 'สถานะ',
-                purchase_price: 'ราคาซื้อ',
-                useful_life_years: 'อายุใช้งาน',
-                salvage_value: 'ราคาซาก',
-                vendor: 'ร้านค้า',
-                brand: 'ยี่ห้อ',
-                model: 'รุ่น',
+                asset_name: 'เธเธทเนเธญเธ—เธฃเธฑเธเธขเนเธชเธดเธ',
+                description: 'เธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”',
+                category: 'เธซเธกเธงเธ”เธซเธกเธนเน',
+                location: 'เธชเธ–เธฒเธเธ—เธตเน',
+                status: 'เธชเธ–เธฒเธเธฐ',
+                purchase_price: 'เธฃเธฒเธเธฒเธเธทเนเธญ',
+                useful_life_years: 'เธญเธฒเธขเธธเนเธเนเธเธฒเธ',
+                salvage_value: 'เธฃเธฒเธเธฒเธเธฒเธ',
+                vendor: 'เธฃเนเธฒเธเธเนเธฒ',
+                brand: 'เธขเธตเนเธซเนเธญ',
+                model: 'เธฃเธธเนเธ',
                 serial_number: 'S/N',
             };
 
@@ -163,19 +247,32 @@ export async function updateAsset(formData: FormData) {
                 const newStr = newVal === null || newVal === undefined ? '' : String(newVal);
 
                 if (oldStr !== newStr) {
-                    changes.push(`${label}: "${oldStr || '-'}" → "${newStr || '-'}"`);
+                    changes.push(`${label}: "${oldStr || '-'}" โ’ "${newStr || '-'}"`);
                 }
             }
 
             // Check image change
             if (data.image_url) {
-                changes.push('อัปโหลดรูปภาพใหม่');
+                changes.push('เธญเธฑเธเนเธซเธฅเธ”เธฃเธนเธเธ เธฒเธเนเธซเธกเน');
+            }
+
+            if (!wasDisposed && willBeDisposed) {
+                if (disposal_reason) {
+                    changes.push(`เหตุผลจำหน่าย: "${disposal_reason}"`);
+                }
+                if (secondary_approver) {
+                    changes.push(`ผู้อนุมัติคนที่ 2: "${secondary_approver}"`);
+                }
+            }
+
+            if (locationChanged && transfer_approval_ref) {
+                changes.push(`เอกสารอนุมัติย้าย: "${transfer_approval_ref}"`);
             }
         }
 
         const changeDescription = changes.length > 0
-            ? `แก้ไข: ${changes.join(', ')}`
-            : 'อัปเดตข้อมูล (ไม่มีการเปลี่ยนแปลง)';
+            ? `เนเธเนเนเธ: ${changes.join(', ')}`
+            : 'เธญเธฑเธเน€เธ”เธ•เธเนเธญเธกเธนเธฅ (เนเธกเนเธกเธตเธเธฒเธฃเน€เธเธฅเธตเนเธขเธเนเธเธฅเธ)';
 
         // Log Update with details
         await prisma.tbl_asset_history.create({
@@ -193,13 +290,14 @@ export async function updateAsset(formData: FormData) {
                 data: {
                     asset_id,
                     action_type: 'Move',
-                    description: `ย้ายจาก "${currentAsset.location || '-'}" ไป "${location}"`,
+                    description: `เธขเนเธฒเธขเธเธฒเธ "${currentAsset.location || '-'}" เนเธ "${location}"${transfer_approval_ref ? ` | Approval: ${transfer_approval_ref}` : ''}`,
                     performed_by: userName,
                 }
             });
         }
     } catch (error) {
-        throw new Error('Failed to update asset');
+        const message = error instanceof Error ? error.message : 'Failed to update asset';
+        throw new Error(message);
     }
 
     revalidatePath('/assets');
@@ -208,20 +306,81 @@ export async function updateAsset(formData: FormData) {
 }
 
 export async function addAssetHistory(formData: FormData) {
+    const session = await auth();
+    const userName = (session?.user as any)?.name || 'System';
+    const userRole = (session?.user as any)?.role || '';
+
     const asset_id = parseInt(formData.get('asset_id') as string);
     const action_type = formData.get('action_type') as string;
     const description = formData.get('description') as string;
     const cost = parseFloat(formData.get('cost') as string) || 0;
-    const performed_by = formData.get('performed_by') as string;
+    const disposal_reason = ((formData.get('disposal_reason') as string) || description || '').trim();
+    const secondary_approver = ((formData.get('secondary_approver') as string) || '').trim();
+    const new_location = ((formData.get('new_location') as string) || '').trim();
+    const transfer_approval_ref = ((formData.get('transfer_approval_ref') as string) || '').trim();
 
     try {
+        const policy = await getAssetPolicyFromDb();
+        const currentAsset = await prisma.tbl_assets.findUnique({
+            where: { asset_id },
+            select: { asset_id: true, location: true },
+        });
+        if (!currentAsset) {
+            throw new Error('Asset not found');
+        }
+
+        if (action_type === 'Dispose') {
+            const disposalValidation = validateDisposalByPolicy(policy, {
+                actorRole: userRole,
+                actorName: userName,
+                secondaryApprover: secondary_approver,
+                reason: disposal_reason,
+            });
+            if (!disposalValidation.ok) {
+                throw new Error(disposalValidation.error);
+            }
+        }
+
+        if (action_type === 'Move') {
+            if (!new_location) {
+                throw new Error('New location is required for move action');
+            }
+
+            const previousLocation = (currentAsset.location || '').trim();
+            if (previousLocation === new_location) {
+                throw new Error('New location must be different from current location');
+            }
+
+            const transferApproval = await getTransferApprovalByRef(transfer_approval_ref);
+            const transferValidation = validateTransferByPolicy(policy, {
+                assetId: asset_id,
+                approvalRef: transfer_approval_ref,
+                approvalStatus: transferApproval?.status,
+                approvalRequestType: transferApproval?.request_type,
+                approvalReferenceJob: transferApproval?.reference_job,
+                approvalApprovedAt: transferApproval?.approved_at ?? null,
+            });
+            if (!transferValidation.ok) {
+                throw new Error(transferValidation.error);
+            }
+        }
+
+        const historyDescription = action_type === 'Dispose'
+            ? [
+                `เหตุผลจำหน่าย: ${disposal_reason}`,
+                secondary_approver ? `ผู้อนุมัติคนที่ 2: ${secondary_approver}` : '',
+            ].filter(Boolean).join(' | ')
+            : action_type === 'Move'
+                ? `ย้ายจาก "${currentAsset.location || '-'}" ไป "${new_location}"${transfer_approval_ref ? ` | ใบอนุมัติ: ${transfer_approval_ref}` : ''}`
+                : description;
+
         await prisma.tbl_asset_history.create({
             data: {
                 asset_id,
                 action_type,
-                description,
+                description: historyDescription,
                 cost,
-                performed_by
+                performed_by: userName
             }
         });
 
@@ -231,9 +390,15 @@ export async function addAssetHistory(formData: FormData) {
                 where: { asset_id },
                 data: { status: 'Disposed' }
             });
+        } else if (action_type === 'Move') {
+            await prisma.tbl_assets.update({
+                where: { asset_id },
+                data: { location: new_location },
+            });
         }
     } catch (error) {
-        throw new Error('Failed to add history');
+        const message = error instanceof Error ? error.message : 'Failed to add history';
+        throw new Error(message);
     }
 
     revalidatePath(`/assets/${asset_id}`);
@@ -394,4 +559,7 @@ export async function getAssetFinancialSummary() {
         };
     }
 }
+
+
+
 

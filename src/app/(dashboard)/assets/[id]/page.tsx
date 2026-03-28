@@ -241,7 +241,29 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                             </select>
                             <input type="text" name="description" placeholder="รายละเอียด..." required className="w-full text-sm border rounded p-2" />
                             <input type="number" name="cost" placeholder="ค่าใช้จ่าย (ถ้ามี)" className="w-full text-sm border rounded p-2" />
-                            <input type="text" name="performed_by" placeholder="ผู้ดำเนินการ" className="w-full text-sm border rounded p-2" />
+                            <input
+                                type="text"
+                                name="new_location"
+                                placeholder='New location (required for "Move")'
+                                className="w-full text-sm border rounded p-2"
+                            />
+                            <input
+                                type="text"
+                                name="transfer_approval_ref"
+                                placeholder='Transfer approval ref (required by policy, e.g. REQ-YYYYMMDD-001)'
+                                className="w-full text-sm border rounded p-2"
+                            />
+                            <textarea
+                                name="disposal_reason"
+                                placeholder="เหตุผลจำหน่าย (จำเป็นเมื่อเลือกจำหน่าย/เลิกใช้งาน)"
+                                className="w-full text-sm border rounded p-2"
+                            />
+                            <input
+                                type="text"
+                                name="secondary_approver"
+                                placeholder="ผู้อนุมัติคนที่ 2 (required when policy enabled)"
+                                className="w-full text-sm border rounded p-2"
+                            />
                             <button type="submit" className="w-full bg-blue-600 text-white rounded py-2 text-sm font-medium hover:bg-blue-700">
                                 บันทึก
                             </button>

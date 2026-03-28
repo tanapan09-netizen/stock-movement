@@ -1,6 +1,6 @@
-import { prisma } from '@/lib/prisma';
+﻿import { prisma } from '@/lib/prisma';
 import POForm from '@/components/POForm';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { ArrowLeft, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { auth } from '@/auth';
@@ -23,7 +23,7 @@ export default async function EditPOPage(props: { params: Promise<{ id: string }
                 <h3 className="text-lg font-medium">Access Denied</h3>
                 <p>คุณไม่มีสิทธิ์แก้ไขใบสั่งซื้อ (ต้องการสิทธิ์: PO_EDIT)</p>
                 <Link href="/purchase-orders" className="mt-4 text-blue-600 hover:underline">
-                    กลับไปหน้ารายการ
+                    กลับไปรายการ
                 </Link>
             </div>
         );
@@ -45,7 +45,7 @@ export default async function EditPOPage(props: { params: Promise<{ id: string }
                 </Link>
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
                     <h3 className="text-lg font-bold text-yellow-800 mb-2">ไม่สามารถแก้ไขได้</h3>
-                    <p className="text-yellow-700">ใบสั่งซื้อนี้ได้รับการรับสินค้าแล้ว ไม่สามารถแก้ไขได้</p>
+                    <p className="text-yellow-700">ใบสั่งซื้อนี้ได้รับสินค้าแล้ว ไม่สามารถแก้ไขได้</p>
                 </div>
             </div>
         );

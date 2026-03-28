@@ -409,6 +409,24 @@ export default function SettingsClient() {
                     <div className="text-blue-600 text-sm font-medium">Manage &rarr;</div>
                 </div>
 
+                <div
+                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                    onClick={() => window.location.href = '/settings/asset-policy'}
+                >
+                    <div>
+                        <div className="font-medium flex items-center gap-2">
+                            Asset Policy
+                            <span className="px-2 py-0.5 rounded text-xs bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                New
+                            </span>
+                        </div>
+                        <div className="text-sm text-gray-500">
+                            ตั้งค่านโยบายทะเบียนทรัพย์สิน เช่น serial requirement, SLA, และ threshold สำหรับการแจ้งเตือน
+                        </div>
+                    </div>
+                    <div className="text-blue-600 text-sm font-medium">Manage &rarr;</div>
+                </div>
+
                 <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">
                     <div className="flex-1 mr-4">
                         <div className="font-medium mb-1">สิทธิ์การอนุมัติ (Manager Approval Limit)</div>
