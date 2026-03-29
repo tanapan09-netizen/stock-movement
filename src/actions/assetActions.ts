@@ -2,18 +2,79 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { uploadFile } from '@/lib/gcs';
+import type { Prisma } from '@prisma/client';
+import type { Session } from 'next-auth';
 import {
     getAssetPolicyFromDb,
     validateAssetInputByPolicy,
     validateDisposalByPolicy,
     validateTransferByPolicy,
 } from '@/lib/server/asset-policy-service';
+import { generateNextAssetCodeByPolicy } from '@/lib/server/asset-code-service';
+import { canAccessDashboardPage } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 import { auth } from '@/auth';
 
 const UPLOAD_DIR = 'assets';
+
+type SessionUserLike = {
+    id?: string | number | null;
+    p_id?: string | number | null;
+    name?: string | null;
+    role?: string | null;
+};
+
+function getSessionUser(session: Session | null): SessionUserLike {
+    return (session?.user ?? {}) as SessionUserLike;
+}
+
+function resolveSessionUserName(user: SessionUserLike, fallback = 'System') {
+    return user.name || fallback;
+}
+
+function resolveSessionUserRole(user: SessionUserLike) {
+    return user.role || '';
+}
+
+async function assertAssetWriteAccess(session: Session | null) {
+    const permissionContext = await getUserPermissionContext(
+        session?.user as PermissionSessionUser | undefined,
+    );
+    const canEditPage = canAccessDashboardPage(
+        permissionContext.role,
+        permissionContext.permissions,
+        '/assets',
+        { isApprover: permissionContext.isApprover, level: 'edit' },
+    );
+
+    if (!canEditPage) {
+        throw new Error('Unauthorized: asset edit permission required');
+    }
+}
+
+function isAssetCodeUniqueConstraintError(error: unknown) {
+    if (!error || typeof error !== 'object') return false;
+
+    const maybePrismaError = error as {
+        code?: string;
+        meta?: { target?: string | string[] };
+    };
+
+    if (maybePrismaError.code !== 'P2002') return false;
+
+    const target = maybePrismaError.meta?.target;
+    if (typeof target === 'string') return target.includes('asset_code');
+    if (Array.isArray(target)) return target.includes('asset_code');
+    return false;
+}
+
+function formatAssetPlacement(location?: string | null, roomSection?: string | null) {
+    const loc = (location || '').trim();
+    const section = (roomSection || '').trim();
+    return [loc, section].filter(Boolean).join(' / ');
+}
 
 async function getTransferApprovalByRef(reference: string) {
     const requestNumber = reference.trim();
@@ -33,9 +94,13 @@ async function getTransferApprovalByRef(reference: string) {
 
 export async function createAsset(formData: FormData) {
     const session = await auth();
-    const userName = (session?.user as any)?.name || 'System';
+    await assertAssetWriteAccess(session);
 
-    const asset_code = formData.get('asset_code') as string;
+    const sessionUser = getSessionUser(session);
+    const userName = resolveSessionUserName(sessionUser);
+
+    const providedAssetCode = ((formData.get('asset_code') as string) || '').trim();
+    let asset_code = providedAssetCode || await generateNextAssetCodeByPolicy();
     const asset_name = formData.get('asset_name') as string;
     const description = formData.get('description') as string;
     const category = formData.get('category') as string;
@@ -44,6 +109,7 @@ export async function createAsset(formData: FormData) {
     const useful_life_years = parseInt(formData.get('useful_life_years') as string) || 1;
     const salvage_value = parseFloat(formData.get('salvage_value') as string) || 0;
     const location = formData.get('location') as string;
+    const room_section = ((formData.get('room_section') as string) || '').trim();
     const status = formData.get('status') as string || 'Active';
     const vendor = formData.get('vendor') as string;
     const brand = formData.get('brand') as string;
@@ -72,56 +138,79 @@ export async function createAsset(formData: FormData) {
         }
     }
 
-    try {
-        const asset = await prisma.tbl_assets.create({
-            data: {
-                asset_code,
-                asset_name,
-                description,
-                category,
-                purchase_date,
-                purchase_price,
-                useful_life_years,
-                salvage_value,
-                location,
-                status,
-                vendor: vendor || null,
-                brand: brand || null,
-                model: model || null,
-                serial_number: serial_number || null,
-                image_url: image_url || null,
-            },
-        });
+    let lastError: unknown = null;
 
-        // Add initial history
-        await prisma.tbl_asset_history.create({
-            data: {
-                asset_id: asset.asset_id,
-                action_type: 'Create',
-                description: `เธฅเธเธ—เธฐเน€เธเธตเธขเธเธ—เธฃเธฑเธเธขเนเธชเธดเธเนเธซเธกเน: ${asset_name} (${asset_code})`,
-                performed_by: userName,
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+            const asset = await prisma.tbl_assets.create({
+                data: {
+                    asset_code,
+                    asset_name,
+                    description,
+                    category,
+                    purchase_date,
+                    purchase_price,
+                    useful_life_years,
+                    salvage_value,
+                    location,
+                    room_section: room_section || null,
+                    status,
+                    vendor: vendor || null,
+                    brand: brand || null,
+                    model: model || null,
+                    serial_number: serial_number || null,
+                    image_url: image_url || null,
+                },
+            });
+
+            const placement = formatAssetPlacement(location, room_section);
+            // Add initial history
+            await prisma.tbl_asset_history.create({
+                data: {
+                    asset_id: asset.asset_id,
+                    action_type: 'Create',
+                    description: `เธฅเธเธ—เธฐเน€เธเธตเธขเธเธ—เธฃเธฑเธเธขเนเธชเธดเธเนเธซเธกเน: ${asset_name} (${asset_code})${placement ? ` | Location: ${placement}` : ''}`,
+                    performed_by: userName,
+                }
+            });
+
+            revalidatePath('/assets');
+            return;
+        } catch (error) {
+            lastError = error;
+
+            if (isAssetCodeUniqueConstraintError(error)) {
+                asset_code = await generateNextAssetCodeByPolicy();
+                continue;
             }
-        });
 
-    } catch (error) {
-        console.error('Failed to create asset:', error);
-        throw new Error('Failed to create asset');
+            break;
+        }
     }
 
-    revalidatePath('/assets');
+    console.error('Failed to create asset:', lastError);
+    if (isAssetCodeUniqueConstraintError(lastError)) {
+        throw new Error('Asset code already exists. Please try again.');
+    }
+    throw new Error('Failed to create asset');
+
     // Return success - redirect handled by client to avoid NEXT_REDIRECT error
 }
 
 export async function updateAsset(formData: FormData) {
     const session = await auth();
-    const userName = (session?.user as any)?.name || 'System';
-    const userRole = (session?.user as any)?.role || '';
+    await assertAssetWriteAccess(session);
+
+    const sessionUser = getSessionUser(session);
+    const userName = resolveSessionUserName(sessionUser);
+    const userRole = resolveSessionUserRole(sessionUser);
 
     const asset_id = parseInt(formData.get('asset_id') as string);
     const asset_name = formData.get('asset_name') as string;
     const description = formData.get('description') as string;
     const category = formData.get('category') as string;
     const location = formData.get('location') as string;
+    const room_section = ((formData.get('room_section') as string) || '').trim();
     const status = formData.get('status') as string;
 
     // Note: Purchase details usually not edited often due to depreciation, allowing here though.
@@ -138,11 +227,12 @@ export async function updateAsset(formData: FormData) {
 
     const imageFile = formData.get('image') as File;
 
-    const data: any = {
+    const data: Prisma.tbl_assetsUpdateInput = {
         asset_name,
         description,
         category,
         location,
+        room_section: room_section || null,
         status,
         purchase_price,
         useful_life_years,
@@ -199,7 +289,10 @@ export async function updateAsset(formData: FormData) {
 
         const oldLocation = (currentAsset.location || '').trim();
         const newLocation = (location || '').trim();
+        const oldRoomSection = (currentAsset.room_section || '').trim();
+        const newRoomSection = room_section;
         const locationChanged = oldLocation !== newLocation;
+        const roomSectionChanged = oldRoomSection !== newRoomSection;
         if (locationChanged) {
             const transferApproval = await getTransferApprovalByRef(transfer_approval_ref);
             const transferValidation = validateTransferByPolicy(policy, {
@@ -228,6 +321,7 @@ export async function updateAsset(formData: FormData) {
                 description: 'เธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”',
                 category: 'เธซเธกเธงเธ”เธซเธกเธนเน',
                 location: 'เธชเธ–เธฒเธเธ—เธตเน',
+                room_section: 'Room Section',
                 status: 'เธชเธ–เธฒเธเธฐ',
                 purchase_price: 'เธฃเธฒเธเธฒเธเธทเนเธญ',
                 useful_life_years: 'เธญเธฒเธขเธธเนเธเนเธเธฒเธ',
@@ -237,10 +331,12 @@ export async function updateAsset(formData: FormData) {
                 model: 'เธฃเธธเนเธ',
                 serial_number: 'S/N',
             };
+            const currentAssetRecord = currentAsset as Record<string, unknown>;
+            const dataRecord = data as Record<string, unknown>;
 
             for (const [key, label] of Object.entries(fieldLabels)) {
-                const oldVal = (currentAsset as any)[key];
-                const newVal = data[key];
+                const oldVal = currentAssetRecord[key];
+                const newVal = dataRecord[key];
 
                 // Compare (handle number vs string, null vs empty)
                 const oldStr = oldVal === null || oldVal === undefined ? '' : String(oldVal);
@@ -285,12 +381,14 @@ export async function updateAsset(formData: FormData) {
         });
 
         // Check and Log Location Move separately
-        if (currentAsset && currentAsset.location !== location) {
+        if (currentAsset && (locationChanged || roomSectionChanged)) {
+            const previousPlacement = formatAssetPlacement(currentAsset.location, currentAsset.room_section);
+            const newPlacement = formatAssetPlacement(location, room_section);
             await prisma.tbl_asset_history.create({
                 data: {
                     asset_id,
                     action_type: 'Move',
-                    description: `เธขเนเธฒเธขเธเธฒเธ "${currentAsset.location || '-'}" เนเธ "${location}"${transfer_approval_ref ? ` | Approval: ${transfer_approval_ref}` : ''}`,
+                    description: `เธขเนเธฒเธขเธเธฒเธ "${previousPlacement || '-'}" เนเธ "${newPlacement || '-'}"${transfer_approval_ref ? ` | Approval: ${transfer_approval_ref}` : ''}`,
                     performed_by: userName,
                 }
             });
@@ -307,8 +405,11 @@ export async function updateAsset(formData: FormData) {
 
 export async function addAssetHistory(formData: FormData) {
     const session = await auth();
-    const userName = (session?.user as any)?.name || 'System';
-    const userRole = (session?.user as any)?.role || '';
+    await assertAssetWriteAccess(session);
+
+    const sessionUser = getSessionUser(session);
+    const userName = resolveSessionUserName(sessionUser);
+    const userRole = resolveSessionUserRole(sessionUser);
 
     const asset_id = parseInt(formData.get('asset_id') as string);
     const action_type = formData.get('action_type') as string;
@@ -317,13 +418,14 @@ export async function addAssetHistory(formData: FormData) {
     const disposal_reason = ((formData.get('disposal_reason') as string) || description || '').trim();
     const secondary_approver = ((formData.get('secondary_approver') as string) || '').trim();
     const new_location = ((formData.get('new_location') as string) || '').trim();
+    const new_room_section = ((formData.get('new_room_section') as string) || '').trim();
     const transfer_approval_ref = ((formData.get('transfer_approval_ref') as string) || '').trim();
 
     try {
         const policy = await getAssetPolicyFromDb();
         const currentAsset = await prisma.tbl_assets.findUnique({
             where: { asset_id },
-            select: { asset_id: true, location: true },
+            select: { asset_id: true, location: true, room_section: true },
         });
         if (!currentAsset) {
             throw new Error('Asset not found');
@@ -342,26 +444,28 @@ export async function addAssetHistory(formData: FormData) {
         }
 
         if (action_type === 'Move') {
-            if (!new_location) {
-                throw new Error('New location is required for move action');
-            }
-
             const previousLocation = (currentAsset.location || '').trim();
-            if (previousLocation === new_location) {
-                throw new Error('New location must be different from current location');
+            const previousRoomSection = (currentAsset.room_section || '').trim();
+            const targetLocation = new_location || previousLocation;
+            const targetRoomSection = new_room_section || previousRoomSection;
+
+            if (previousLocation === targetLocation && previousRoomSection === targetRoomSection) {
+                throw new Error('New location or room section must be different from current location');
             }
 
-            const transferApproval = await getTransferApprovalByRef(transfer_approval_ref);
-            const transferValidation = validateTransferByPolicy(policy, {
-                assetId: asset_id,
-                approvalRef: transfer_approval_ref,
-                approvalStatus: transferApproval?.status,
-                approvalRequestType: transferApproval?.request_type,
-                approvalReferenceJob: transferApproval?.reference_job,
-                approvalApprovedAt: transferApproval?.approved_at ?? null,
-            });
-            if (!transferValidation.ok) {
-                throw new Error(transferValidation.error);
+            if (previousLocation !== targetLocation) {
+                const transferApproval = await getTransferApprovalByRef(transfer_approval_ref);
+                const transferValidation = validateTransferByPolicy(policy, {
+                    assetId: asset_id,
+                    approvalRef: transfer_approval_ref,
+                    approvalStatus: transferApproval?.status,
+                    approvalRequestType: transferApproval?.request_type,
+                    approvalReferenceJob: transferApproval?.reference_job,
+                    approvalApprovedAt: transferApproval?.approved_at ?? null,
+                });
+                if (!transferValidation.ok) {
+                    throw new Error(transferValidation.error);
+                }
             }
         }
 
@@ -371,7 +475,7 @@ export async function addAssetHistory(formData: FormData) {
                 secondary_approver ? `ผู้อนุมัติคนที่ 2: ${secondary_approver}` : '',
             ].filter(Boolean).join(' | ')
             : action_type === 'Move'
-                ? `ย้ายจาก "${currentAsset.location || '-'}" ไป "${new_location}"${transfer_approval_ref ? ` | ใบอนุมัติ: ${transfer_approval_ref}` : ''}`
+                ? `ย้ายจาก "${formatAssetPlacement(currentAsset.location, currentAsset.room_section) || '-'}" ไป "${formatAssetPlacement(new_location || currentAsset.location, new_room_section || currentAsset.room_section) || '-'}"${transfer_approval_ref ? ` | ใบอนุมัติ: ${transfer_approval_ref}` : ''}`
                 : description;
 
         await prisma.tbl_asset_history.create({
@@ -391,9 +495,14 @@ export async function addAssetHistory(formData: FormData) {
                 data: { status: 'Disposed' }
             });
         } else if (action_type === 'Move') {
+            const targetLocation = new_location || currentAsset.location || null;
+            const targetRoomSection = new_room_section || currentAsset.room_section || null;
             await prisma.tbl_assets.update({
                 where: { asset_id },
-                data: { location: new_location },
+                data: {
+                    location: targetLocation,
+                    room_section: targetRoomSection,
+                },
             });
         }
     } catch (error) {
@@ -405,6 +514,9 @@ export async function addAssetHistory(formData: FormData) {
 }
 
 export async function deleteAsset(asset_id: number) {
+    const session = await auth();
+    await assertAssetWriteAccess(session);
+
     try {
         // Delete history first (foreign key constraint)
         await prisma.tbl_asset_history.deleteMany({
@@ -431,6 +543,8 @@ export async function searchAssets(query: string) {
                     { asset_code: { contains: query } },
                     { asset_name: { contains: query } },
                     { serial_number: { contains: query } },
+                    { location: { contains: query } },
+                    { room_section: { contains: query } },
                 ],
                 status: { not: 'Disposed' } // Only show active assets
             },
@@ -441,6 +555,7 @@ export async function searchAssets(query: string) {
                 serial_number: true,
                 category: true,
                 location: true,
+                room_section: true,
             },
             take: 10, // Limit results for performance
             orderBy: { asset_code: 'asc' }
@@ -458,6 +573,12 @@ export async function searchAssets(query: string) {
             data: []
         };
     }
+}
+
+export async function getSuggestedAssetCode() {
+    const session = await auth();
+    await assertAssetWriteAccess(session);
+    return generateNextAssetCodeByPolicy();
 }
 
 export async function getAssetFinancialSummary() {

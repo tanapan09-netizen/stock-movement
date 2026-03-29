@@ -29,6 +29,9 @@ export async function createProduct(formData: FormData) {
         brand_name: formData.get('brand_name') as string,
         brand_code: formData.get('brand_code') as string,
         size: formData.get('size') as string,
+        main_category_code: formData.get('main_category_code') as string,
+        sub_category_code: formData.get('sub_category_code') as string,
+        asset_current_location: formData.get('asset_current_location') as string,
         p_count: parseInt(formData.get('p_count') as string) || 0,
     };
 
@@ -43,11 +46,17 @@ export async function createProduct(formData: FormData) {
     const p_id = formData.get('p_id') as string;
     const cat_id = parseInt(formData.get('cat_id') as string) || null;
     const is_luxury = formData.get('is_luxury') === 'true';
+    const is_asset = formData.get('is_asset') === 'true';
     const imageFile = formData.get('p_image') as File;
     const model_name = normalizeOptionalText(validData.model_name);
     const brand_name = normalizeOptionalText(validData.brand_name);
     const brand_code = normalizeOptionalText(validData.brand_code);
     const size = normalizeOptionalText(validData.size);
+    const main_category_code = normalizeOptionalText(validData.main_category_code);
+    const sub_category_code = normalizeOptionalText(validData.sub_category_code);
+    const asset_current_location = is_asset
+        ? normalizeOptionalText(validData.asset_current_location)
+        : null;
 
     let imageName = '';
 
@@ -86,7 +95,11 @@ export async function createProduct(formData: FormData) {
             SET model_name = ${model_name},
                 brand_name = ${brand_name},
                 brand_code = ${brand_code},
-                size = ${size}
+                size = ${size},
+                main_category_code = ${main_category_code},
+                sub_category_code = ${sub_category_code},
+                is_asset = ${is_asset ? 1 : 0},
+                asset_current_location = ${asset_current_location}
             WHERE p_id = ${p_id}
         `;
 
@@ -122,7 +135,11 @@ export async function updateProduct(formData: FormData) {
     const brand_name = formData.get('brand_name') as string;
     const brand_code = formData.get('brand_code') as string;
     const size = formData.get('size') as string;
+    const main_category_code = formData.get('main_category_code') as string;
+    const sub_category_code = formData.get('sub_category_code') as string;
+    const asset_current_location = formData.get('asset_current_location') as string;
     const is_luxury = formData.get('is_luxury') === 'true';
+    const is_asset = formData.get('is_asset') === 'true';
     const imageFile = formData.get('p_image') as File;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -158,7 +175,11 @@ export async function updateProduct(formData: FormData) {
             SET model_name = ${normalizeOptionalText(model_name)},
                 brand_name = ${normalizeOptionalText(brand_name)},
                 brand_code = ${normalizeOptionalText(brand_code)},
-                size = ${normalizeOptionalText(size)}
+                size = ${normalizeOptionalText(size)},
+                main_category_code = ${normalizeOptionalText(main_category_code)},
+                sub_category_code = ${normalizeOptionalText(sub_category_code)},
+                is_asset = ${is_asset ? 1 : 0},
+                asset_current_location = ${is_asset ? normalizeOptionalText(asset_current_location) : null}
             WHERE p_id = ${p_id}
         `;
 

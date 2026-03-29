@@ -10,6 +10,8 @@
     "build": "(prisma generate || echo [build] prisma generate failed - continuing) && next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prisma:generate": "prisma generate",
     "postinstall": "prisma generate || echo [postinstall] prisma generate failed - continuing"
   },
@@ -49,6 +51,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "prisma": "5.22.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.2"
   }
 }

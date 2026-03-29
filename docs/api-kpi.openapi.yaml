@@ -1,0 +1,236 @@
+openapi: 3.0.3
+info:
+  title: Stock Movement KPI API
+  version: 1.0.0
+  description: API spec for dashboard KPI summary and trend endpoints.
+servers:
+  - url: /api
+security:
+  - sessionAuth: []
+paths:
+  /kpi/summary:
+    get:
+      tags: [KPI]
+      summary: Get KPI summary values
+      description: Returns aggregate KPI values for the selected date range and optional filters.
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Start date in YYYY-MM-DD
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+            format: date
+          description: End date in YYYY-MM-DD
+        - in: query
+          name: location
+          required: false
+          schema:
+            type: string
+          description: Optional asset location filter
+        - in: query
+          name: category
+          required: false
+          schema:
+            type: string
+          description: Optional asset category filter
+        - in: query
+          name: department
+          required: false
+          schema:
+            type: string
+          description: Optional department filter (maintenance KPI)
+      responses:
+        '200':
+          description: KPI summary response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KpiSummaryResponse'
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /kpi/trend:
+    get:
+      tags: [KPI]
+      summary: Get KPI trend series
+      description: Returns time-series data for a selected metric and grain.
+      parameters:
+        - in: query
+          name: metric
+          required: true
+          schema:
+            $ref: '#/components/schemas/KpiMetric'
+        - in: query
+          name: grain
+          required: true
+          schema:
+            $ref: '#/components/schemas/KpiGrain'
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: location
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: category
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: department
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: KPI trend response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KpiTrendResponse'
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: next-auth.session-token
+
+  schemas:
+    KpiMetric:
+      type: string
+      enum:
+        - approval_sla
+        - register_lead
+        - utilization
+        - maintenance_sla
+        - inventory_accuracy
+        - disposal_cycle
+
+    KpiGrain:
+      type: string
+      enum:
+        - day
+        - week
+        - month
+
+    KpiSummaryResponse:
+      type: object
+      required:
+        - approval_sla_pct
+        - register_lead_days
+        - utilization_pct
+        - maintenance_sla_pct
+        - inventory_accuracy_pct
+        - disposal_cycle_days
+      properties:
+        approval_sla_pct:
+          type: number
+          format: float
+        register_lead_days:
+          type: number
+          format: float
+        utilization_pct:
+          type: number
+          format: float
+        maintenance_sla_pct:
+          type: number
+          format: float
+        inventory_accuracy_pct:
+          type: number
+          format: float
+        disposal_cycle_days:
+          type: number
+          format: float
+
+    KpiTrendPoint:
+      type: object
+      required: [period, value]
+      properties:
+        period:
+          type: string
+          example: 2026-03
+        value:
+          type: number
+          format: float
+
+    KpiTrendResponse:
+      type: object
+      required: [metric, grain, points]
+      properties:
+        metric:
+          $ref: '#/components/schemas/KpiMetric'
+        grain:
+          $ref: '#/components/schemas/KpiGrain'
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/KpiTrendPoint'
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: INVALID_QUERY
+            message:
+              type: string
+              example: metric, grain, from and to are required query parameters
+

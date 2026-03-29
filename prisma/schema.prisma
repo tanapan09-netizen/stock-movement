@@ -123,6 +123,7 @@ model tbl_assets {
   useful_life_years Int
   salvage_value     Decimal             @default(1.00) @db.Decimal(10, 2)
   location          String?             @db.VarChar(100)
+  room_section      String?             @db.VarChar(100)
   status            String              @default("Active") @db.VarChar(50)
   image_url         String?             @db.VarChar(255)
   vendor            String?             @db.VarChar(255)
@@ -433,6 +434,8 @@ model tbl_products {
   type_name             String?                 @db.VarChar(100)
   cat_id                Int?
   main_category         String?                 @db.VarChar(50)
+  main_category_code    String?                 @db.VarChar(50)
+  sub_category_code     String?                 @db.VarChar(50)
   p_name                String                  @unique(map: "p_name") @db.VarChar(255)
   p_desc                String?                 @db.Text
   supplier              String?                 @db.VarChar(255)
@@ -450,6 +453,8 @@ model tbl_products {
   p_image               String?                 @db.VarChar(255)
   active                Boolean?                @default(true)
   is_luxury             Boolean?                @default(false)
+  is_asset              Boolean?                @default(false)
+  asset_current_location String?                @db.VarChar(255)
   order_number          Int?
   created_at            DateTime?               @default(now()) @db.DateTime(0)
   deleted_at            DateTime?               @db.DateTime(0)

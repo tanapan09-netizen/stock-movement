@@ -51,6 +51,10 @@ export async function GET(request: NextRequest) {
             price_unit: p.price_unit,
             safety_stock: p.safety_stock,
             active: p.active,
+            main_category_code: p.main_category_code,
+            sub_category_code: p.sub_category_code,
+            is_asset: p.is_asset,
+            asset_current_location: p.asset_current_location,
             category_id: p.cat_id,
             created_at: p.created_at
         }));

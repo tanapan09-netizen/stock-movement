@@ -1,11 +1,27 @@
-import { prisma } from '@/lib/prisma';
+﻿import { prisma } from '@/lib/prisma';
 import AssetForm from '@/components/AssetForm';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { auth } from '@/auth';
+import { canAccessDashboardPage } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 export default async function EditAssetPage({ params }: { params: Promise<{ id: string }> }) {
+    const session = await auth();
+    const permissionContext = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
+    const canEditPage = canAccessDashboardPage(
+        permissionContext.role,
+        permissionContext.permissions,
+        '/assets',
+        { isApprover: permissionContext.isApprover, level: 'edit' },
+    );
+
+    if (!canEditPage) {
+        redirect('/assets');
+    }
+
     const { id } = await params;
     const asset = await prisma.tbl_assets.findUnique({
-        where: { asset_id: parseInt(id) },
+        where: { asset_id: parseInt(id, 10) },
     });
 
     if (!asset) {

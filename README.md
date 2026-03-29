@@ -76,6 +76,7 @@ A comprehensive stock management and maintenance tracking system built with Next
     -   [`docs/DEPLOY.md`](docs/DEPLOY.md)
     -   [`docs/MIGRATION_GUIDE.md`](docs/MIGRATION_GUIDE.md)
     -   [`docs/USER_MANUAL.md`](docs/USER_MANUAL.md)
+    -   [`docs/ASSET_MANAGEMENT_WORKFLOW.md`](docs/ASSET_MANAGEMENT_WORKFLOW.md)
 -   Utility scripts are grouped under [`scripts/`](scripts)
 -   Manual SQL helpers are grouped under [`sql/manual/`](sql/manual)
 

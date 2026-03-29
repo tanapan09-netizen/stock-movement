@@ -29,18 +29,15 @@ ENV NODE_ENV=production
 # during build. The real DATABASE_URL is injected at runtime by docker-compose.
 ENV DATABASE_URL="mysql://build:build@localhost:3306/build_placeholder"
 
-# LINE Login credentials (needed at build time for NextAuth)
-ARG AUTH_LINE_ID=2009265965
-ARG AUTH_LINE_SECRET=2af2043594a8653da078b0fd7a819155
-ENV AUTH_LINE_ID=${AUTH_LINE_ID}
-ENV AUTH_LINE_SECRET=${AUTH_LINE_SECRET}
+# LINE Login credentials are injected at runtime via docker-compose/.env.
+# Build uses non-sensitive placeholders so credentials are never baked into image layers.
 
 # LINE LIFF ID (needed at build time for Next.js NEXT_PUBLIC_*)
 ARG NEXT_PUBLIC_LINE_LIFF_ID="2009265965-HlBi7d2K"
 ENV NEXT_PUBLIC_LINE_LIFF_ID=${NEXT_PUBLIC_LINE_LIFF_ID}
 
 # Build the application
-RUN npm run build
+RUN AUTH_LINE_ID=build_placeholder AUTH_LINE_SECRET=build_placeholder npm run build
 
 # Stage 3: Runner
 FROM node:20-alpine AS runner

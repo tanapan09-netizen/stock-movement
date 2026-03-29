@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Book, ChevronDown, ChevronRight, Copy, Check, Lock, Server, Database, Mail, Shield } from 'lucide-react';
+import { Book, ChevronDown, ChevronRight, Copy, Check, Lock, Server, Database, Mail, Shield, LineChart } from 'lucide-react';
 import Link from 'next/link';
 
 interface Endpoint {
@@ -71,6 +71,42 @@ const apiCategories: Category[] = [
                     { name: 'cat_id', type: 'number', required: false, description: 'ID หมวดหมู่' },
                 ],
                 response: '{ "success": true, "product": {...} }',
+            },
+        ],
+    },
+    {
+        name: 'KPI',
+        icon: <LineChart className="w-5 h-5" />,
+        endpoints: [
+            {
+                method: 'GET',
+                path: '/api/kpi/summary',
+                description: 'Get dashboard KPI summary values by date range',
+                auth: true,
+                params: [
+                    { name: 'from', type: 'YYYY-MM-DD', required: true, description: 'Start date' },
+                    { name: 'to', type: 'YYYY-MM-DD', required: true, description: 'End date' },
+                    { name: 'location', type: 'string', required: false, description: 'Asset location filter' },
+                    { name: 'category', type: 'string', required: false, description: 'Asset category filter' },
+                    { name: 'department', type: 'string', required: false, description: 'Department filter' },
+                ],
+                response: '{ "approval_sla_pct": 92.5, "register_lead_days": 1.3, "utilization_pct": 78.2, "maintenance_sla_pct": 88.1, "inventory_accuracy_pct": 97.4, "disposal_cycle_days": 14.2 }',
+            },
+            {
+                method: 'GET',
+                path: '/api/kpi/trend',
+                description: 'Get KPI trend series by metric and grain',
+                auth: true,
+                params: [
+                    { name: 'metric', type: 'approval_sla|register_lead|utilization|maintenance_sla|inventory_accuracy|disposal_cycle', required: true, description: 'KPI metric key' },
+                    { name: 'grain', type: 'day|week|month', required: true, description: 'Bucket size' },
+                    { name: 'from', type: 'YYYY-MM-DD', required: true, description: 'Start date' },
+                    { name: 'to', type: 'YYYY-MM-DD', required: true, description: 'End date' },
+                    { name: 'location', type: 'string', required: false, description: 'Asset location filter' },
+                    { name: 'category', type: 'string', required: false, description: 'Asset category filter' },
+                    { name: 'department', type: 'string', required: false, description: 'Department filter' },
+                ],
+                response: '{ "metric": "approval_sla", "grain": "month", "points": [{ "period": "2026-03", "value": 92.5 }] }',
             },
         ],
     },

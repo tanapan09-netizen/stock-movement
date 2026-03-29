@@ -6,6 +6,7 @@ import { Save, X } from 'lucide-react';
 import { useToast } from './ToastProvider';
 import { useRouter } from 'next/navigation';
 import CurrencyInput from './CurrencyInput';
+import Image from 'next/image';
 
 type Asset = {
     asset_id?: number;
@@ -18,6 +19,7 @@ type Asset = {
     useful_life_years: number;
     salvage_value: number;
     location: string | null;
+    room_section: string | null;
     status: string;
     image_url: string | null;
     vendor: string | null;
@@ -26,7 +28,28 @@ type Asset = {
     serial_number: string | null;
 };
 
-export default function AssetForm({ asset }: { asset?: Asset }) {
+const ROOM_SECTION_PRESETS = [
+    'ประตูทางเข้า',
+    'พื้นที่นั่งเล่น',
+    'โซนเตียงนอน',
+    'หัวเตียง',
+    'ปลายเตียง',
+    'มุมซ้ายห้อง',
+    'มุมขวาห้อง',
+    'ห้องน้ำ',
+    'ระเบียง',
+    'ตู้เสื้อผ้า',
+    'โต๊ะทำงาน',
+    'ครัว/แพนทรี',
+];
+
+export default function AssetForm({
+    asset,
+    suggestedAssetCode,
+}: {
+    asset?: Asset;
+    suggestedAssetCode?: string;
+}) {
     const [isPending, setIsPending] = useState(false);
     const [selectedStatus, setSelectedStatus] = useState(asset?.status || 'Active');
 
@@ -41,6 +64,8 @@ export default function AssetForm({ asset }: { asset?: Asset }) {
     const formRef = useRef<HTMLFormElement>(null);
     const { showConfirm, showToast } = useToast();
     const router = useRouter();
+    const initialAssetCode = asset?.asset_code || suggestedAssetCode || '';
+    const isAssetCodeReadOnly = Boolean(asset) || Boolean(suggestedAssetCode);
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -101,8 +126,17 @@ export default function AssetForm({ asset }: { asset?: Asset }) {
                 <div className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-700">รหัสทรัพย์สิน *</label>
-                        <input type="text" name="asset_code" defaultValue={asset?.asset_code} required readOnly={!!asset}
-                            className={`mt-1 block w-full rounded-md border py-2 px-3 ${asset ? 'bg-gray-100 text-gray-500' : 'border-gray-300'}`} />
+                        <input
+                            type="text"
+                            name="asset_code"
+                            defaultValue={initialAssetCode}
+                            required
+                            readOnly={isAssetCodeReadOnly}
+                            className={`mt-1 block w-full rounded-md border py-2 px-3 ${isAssetCodeReadOnly ? 'bg-gray-100 text-gray-500' : 'border-gray-300'}`}
+                        />
+                        {!asset && suggestedAssetCode && (
+                            <p className="mt-1 text-xs text-gray-500">สร้างรหัสอัตโนมัติตามนโยบายทะเบียนทรัพย์สิน</p>
+                        )}
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">ชื่อทรัพย์สิน *</label>
@@ -121,6 +155,22 @@ export default function AssetForm({ asset }: { asset?: Asset }) {
                     <div>
                         <label className="block text-sm font-medium text-gray-700">สถานที่ตั้ง</label>
                         <input type="text" name="location" defaultValue={asset?.location || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">ส่วนของห้องพัก / จุดติดตั้ง</label>
+                        <input
+                            type="text"
+                            name="room_section"
+                            list="room-section-presets"
+                            defaultValue={asset?.room_section || ''}
+                            placeholder="เช่น โซนเตียงนอน, ห้องน้ำ, ระเบียง"
+                            className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                        />
+                        <datalist id="room-section-presets">
+                            {ROOM_SECTION_PRESETS.map((section) => (
+                                <option key={section} value={section} />
+                            ))}
+                        </datalist>
                     </div>
                     {asset?.asset_id && (
                         <div>
@@ -221,7 +271,14 @@ export default function AssetForm({ asset }: { asset?: Asset }) {
                         <div className="flex items-center gap-4">
                             <div className="h-32 w-32 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border">
                                 {preview ? (
-                                    <img src={preview} className="h-full w-full object-cover" />
+                                    <Image
+                                        src={preview}
+                                        alt="Asset preview"
+                                        width={128}
+                                        height={128}
+                                        unoptimized
+                                        className="h-full w-full object-cover"
+                                    />
                                 ) : (
                                     <span className="text-xs text-gray-400">No Image</span>
                                 )}

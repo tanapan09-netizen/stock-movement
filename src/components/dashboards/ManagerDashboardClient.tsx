@@ -5,7 +5,6 @@ import Link from 'next/link';
 import {
   Activity,
   AlertTriangle,
-  ArrowRight,
   ArrowUpRight,
   Banknote,
   CalendarDays,
@@ -30,6 +29,8 @@ import {
 import { updateApprovalStatus } from '@/actions/approvalActions';
 import { approvePettyCash, rejectPettyCash } from '@/actions/pettyCashActions';
 import { useToast } from '@/components/ToastProvider';
+import type { KpiGrain, KpiMetric } from '@/lib/kpi/client';
+import { useKpiSummary, useKpiTrend } from '@/lib/kpi/hooks';
 
 const formatDateTime = (value?: Date | string | null) => {
   if (!value) return '-';
@@ -60,6 +61,93 @@ const formatCurrency = (value?: number | null) =>
         maximumFractionDigits: 2,
       }).format(value)
     : '-';
+
+const KPI_METRIC_OPTIONS: Array<{ key: KpiMetric; label: string }> = [
+  { key: 'approval_sla', label: 'Approval SLA' },
+  { key: 'register_lead', label: 'Register Lead' },
+  { key: 'utilization', label: 'Utilization' },
+  { key: 'maintenance_sla', label: 'Maintenance SLA' },
+  { key: 'inventory_accuracy', label: 'Inventory Accuracy' },
+  { key: 'disposal_cycle', label: 'Disposal Cycle' },
+];
+
+const KPI_GRAIN_OPTIONS: Array<{ key: KpiGrain; label: string }> = [
+  { key: 'day', label: 'Day' },
+  { key: 'week', label: 'Week' },
+  { key: 'month', label: 'Month' },
+];
+
+const KPI_SUMMARY_CARDS: Array<{ key: KpiMetric; label: string; suffix: string }> = [
+  { key: 'approval_sla', label: 'Approval SLA', suffix: '%' },
+  { key: 'register_lead', label: 'Register Lead', suffix: 'days' },
+  { key: 'utilization', label: 'Utilization', suffix: '%' },
+  { key: 'maintenance_sla', label: 'Maintenance SLA', suffix: '%' },
+  { key: 'inventory_accuracy', label: 'Inventory Accuracy', suffix: '%' },
+  { key: 'disposal_cycle', label: 'Disposal Cycle', suffix: 'days' },
+];
+
+const toIsoDate = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const getKpiSummaryValue = (
+  metric: KpiMetric,
+  data?: {
+    approval_sla_pct: number;
+    register_lead_days: number;
+    utilization_pct: number;
+    maintenance_sla_pct: number;
+    inventory_accuracy_pct: number;
+    disposal_cycle_days: number;
+  } | null,
+) => {
+  if (!data) return 0;
+  switch (metric) {
+    case 'approval_sla':
+      return data.approval_sla_pct;
+    case 'register_lead':
+      return data.register_lead_days;
+    case 'utilization':
+      return data.utilization_pct;
+    case 'maintenance_sla':
+      return data.maintenance_sla_pct;
+    case 'inventory_accuracy':
+      return data.inventory_accuracy_pct;
+    case 'disposal_cycle':
+      return data.disposal_cycle_days;
+    default:
+      return 0;
+  }
+};
+
+function KpiMiniBars({ points }: { points: Array<{ period: string; value: number }> }) {
+  const maxValue = Math.max(...points.map(point => point.value), 1);
+  return (
+    <div className="overflow-x-auto">
+      <div className="flex h-36 min-w-[480px] items-end gap-2">
+        {points.map(point => {
+          const ratio = maxValue > 0 ? point.value / maxValue : 0;
+          const height = Math.max(ratio * 100, 4);
+          return (
+            <div key={point.period} className="flex min-w-[30px] flex-1 flex-col items-center gap-1.5">
+              <div className="flex h-28 w-full items-end rounded-md bg-slate-100 px-1 py-1">
+                <div
+                  className="w-full rounded-sm bg-gradient-to-t from-indigo-600 to-blue-400"
+                  style={{ height: `${height}%` }}
+                  title={`${point.period}: ${point.value.toFixed(2)}`}
+                />
+              </div>
+              <span className="whitespace-nowrap text-[10px] font-semibold text-slate-500">{point.period}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 const getSteps = (status?: string | null) => {
   const normalized = (status || '').toLowerCase();
@@ -316,18 +404,6 @@ function HeroMixBar({
         <div className="h-full rounded-full bg-indigo-500" style={{ width: `${width}%` }} />
       </div>
     </div>
-  );
-}
-
-function StatPill({ label, value, href }: { label: string; value: number; href: string }) {
-  return (
-    <Link
-      href={href}
-      className="flex flex-col gap-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-slate-50"
-    >
-      <span className="text-[11px] font-medium text-slate-400">{label}</span>
-      <span className="text-2xl font-black leading-none tabular-nums text-slate-900">{value}</span>
-    </Link>
   );
 }
 
@@ -972,6 +1048,14 @@ function DecisionQueueCard({
 export default function ManagerDashboardClient({ data }: { data: DashboardDataProps }) {
   const { showToast } = useToast();
   const [queue, setQueue] = useState<DecisionQueueItem[]>(data.decisionQueue);
+  const [kpiTo, setKpiTo] = useState(() => toIsoDate(new Date()));
+  const [kpiFrom, setKpiFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 29);
+    return toIsoDate(d);
+  });
+  const [kpiMetric, setKpiMetric] = useState<KpiMetric>('approval_sla');
+  const [kpiGrain, setKpiGrain] = useState<KpiGrain>('week');
 
   useEffect(() => {
     setQueue(data.decisionQueue);
@@ -1080,80 +1164,6 @@ export default function ManagerDashboardClient({ data }: { data: DashboardDataPr
     [queue, data.workMonitor],
   );
 
-  const summaryCards: {
-    key: ModuleKey;
-    title: string;
-    value: number;
-    sub: string;
-    href: string;
-    icon: React.ElementType;
-    iconBg: string;
-    iconColor: string;
-    border: string;
-    hasDrawer: boolean;
-  }[] = [
-    {
-      key: 'maintenance',
-      title: 'งานซ่อมค้างอยู่',
-      value: data.activeMaintenance,
-      sub: `ยังไม่มอบหมาย ${data.unassignedMaintenance}`,
-      href: '/maintenance',
-      icon: Wrench,
-      iconBg: 'bg-indigo-50',
-      iconColor: 'text-indigo-600',
-      border: 'border-indigo-100',
-      hasDrawer: true,
-    },
-    {
-      key: 'general',
-      title: 'อนุมัติทั่วไป',
-      value: moduleItems.general.length,
-      sub: 'OT · ลา · เบิกค่าใช้จ่าย',
-      href: '/approvals/manage',
-      icon: FileCheck2,
-      iconBg: 'bg-indigo-50',
-      iconColor: 'text-indigo-600',
-      border: 'border-indigo-100',
-      hasDrawer: true,
-    },
-    {
-      key: 'purchase',
-      title: 'คำขอซื้อ',
-      value: moduleItems.purchase.length,
-      sub: 'รอการจัดซื้อ',
-      href: '/purchase-request/manage',
-      icon: ShoppingCart,
-      iconBg: 'bg-indigo-50',
-      iconColor: 'text-indigo-600',
-      border: 'border-indigo-100',
-      hasDrawer: true,
-    },
-    {
-      key: 'petty',
-      title: 'เงินสดย่อย',
-      value: moduleItems.petty.length,
-      sub: 'รออนุมัติผู้จัดการ',
-      href: '/petty-cash',
-      icon: ReceiptText,
-      iconBg: 'bg-indigo-50',
-      iconColor: 'text-indigo-600',
-      border: 'border-indigo-100',
-      hasDrawer: true,
-    },
-    {
-      key: 'parts',
-      title: 'เบิกอะไหล่',
-      value: data.pendingPartRequests,
-      sub: 'เช็กสถานะสายอนุมัติ',
-      href: '/maintenance/part-requests',
-      icon: ClipboardCheck,
-      iconBg: 'bg-indigo-50',
-      iconColor: 'text-indigo-600',
-      border: 'border-indigo-100',
-      hasDrawer: true,
-    },
-  ];
-
   const totalPending =
     moduleItems.general.length +
     moduleItems.purchase.length +
@@ -1162,6 +1172,13 @@ export default function ManagerDashboardClient({ data }: { data: DashboardDataPr
 
   const openWorkload = totalPending + data.activeMaintenance;
   const approvalRate = totalPending === 0 ? 100 : Math.max(0, 100 - totalPending * 5);
+  const kpiFilters = useMemo(() => ({ from: kpiFrom, to: kpiTo }), [kpiFrom, kpiTo]);
+  const kpiSummary = useKpiSummary(kpiFilters, Boolean(kpiFrom && kpiTo));
+  const kpiTrendRequest = useMemo(
+    () => ({ from: kpiFrom, to: kpiTo, metric: kpiMetric, grain: kpiGrain }),
+    [kpiFrom, kpiTo, kpiMetric, kpiGrain],
+  );
+  const kpiTrend = useKpiTrend(kpiTrendRequest, Boolean(kpiFrom && kpiTo));
 
   return (
   <>
@@ -1271,6 +1288,108 @@ export default function ManagerDashboardClient({ data }: { data: DashboardDataPr
                 </div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="fu fu1 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">KPI Monitor</p>
+              <h2 className="mt-1 text-lg font-black text-slate-900">Asset & Operations KPI</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <input
+                type="date"
+                value={kpiFrom}
+                onChange={e => setKpiFrom(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"
+                aria-label="KPI from date"
+              />
+              <input
+                type="date"
+                value={kpiTo}
+                onChange={e => setKpiTo(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"
+                aria-label="KPI to date"
+              />
+              <select
+                value={kpiMetric}
+                onChange={e => setKpiMetric(e.target.value as KpiMetric)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"
+                aria-label="KPI metric"
+              >
+                {KPI_METRIC_OPTIONS.map(option => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={kpiGrain}
+                onChange={e => setKpiGrain(e.target.value as KpiGrain)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"
+                aria-label="KPI grain"
+              >
+                {KPI_GRAIN_OPTIONS.map(option => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {kpiSummary.error && (
+            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              KPI summary load failed: {kpiSummary.error}
+            </div>
+          )}
+
+          <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-6">
+            {KPI_SUMMARY_CARDS.map(card => {
+              const value = getKpiSummaryValue(card.key, kpiSummary.data);
+              const display =
+                card.key === 'register_lead' || card.key === 'disposal_cycle' ? value.toFixed(2) : value.toFixed(1);
+
+              return (
+                <div key={card.key} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{card.label}</p>
+                  <div className="mt-1 flex items-end gap-1">
+                    {kpiSummary.loading ? (
+                      <div className="h-6 w-14 animate-pulse rounded bg-slate-200" />
+                    ) : (
+                      <>
+                        <p className="text-xl font-black leading-none tabular-nums text-slate-900">{display}</p>
+                        <p className="pb-0.5 text-[10px] font-semibold text-slate-500">{card.suffix}</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-xs font-bold text-slate-700">
+                Trend: {KPI_METRIC_OPTIONS.find(option => option.key === kpiMetric)?.label || kpiMetric}
+              </p>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{kpiGrain}</span>
+            </div>
+
+            {kpiTrend.loading ? (
+              <div className="h-28 animate-pulse rounded-xl bg-slate-200" />
+            ) : kpiTrend.error ? (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                KPI trend load failed: {kpiTrend.error}
+              </div>
+            ) : kpiTrend.data?.points?.length ? (
+              <KpiMiniBars points={kpiTrend.data.points} />
+            ) : (
+              <div className="flex h-28 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white text-xs font-semibold text-slate-400">
+                No KPI trend data for selected range
+              </div>
+            )}
           </div>
         </section>
 

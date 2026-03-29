@@ -193,7 +193,22 @@ export default function LoginPage() {
 
             if (result?.error) {
                 let errorMessage = '';
-                const errCode = result.code || result.error;
+                let errCode = result.code || result.error;
+
+                // In some NextAuth responses, detailed code is only present in result.url query params.
+                if (
+                    (!result.code || errCode === 'credentials' || errCode === 'CredentialsSignin')
+                    && result.url
+                ) {
+                    try {
+                        const parsedUrl = new URL(result.url, window.location.origin);
+                        errCode = parsedUrl.searchParams.get('code')
+                            || parsedUrl.searchParams.get('error')
+                            || errCode;
+                    } catch {
+                        // Keep errCode from result when URL parsing fails.
+                    }
+                }
 
                 if (errCode === 'user_not_found') {
                     errorMessage = getErrorMessage(locale, 'user_not_found');
@@ -208,8 +223,20 @@ export default function LoginPage() {
                     } else {
                         errorMessage = `${getErrorMessage(locale, 'account_locked')} (${t.errorPrefix})`;
                     }
+                } else if (errCode === 'db_unavailable') {
+                    errorMessage = locale === 'th'
+                        ? 'ไม่สามารถเชื่อมต่อฐานข้อมูลได้ กรุณาลองใหม่อีกครั้ง'
+                        : locale === 'jp'
+                            ? 'データベースに接続できません。再試行してください。'
+                            : 'Database is unavailable. Please try again.';
                 } else if (errCode === 'Configuration') {
                     errorMessage = getErrorMessage(locale, 'configuration');
+                } else if (errCode === 'credentials' || errCode === 'CredentialsSignin') {
+                    errorMessage = locale === 'th'
+                        ? 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'
+                        : locale === 'jp'
+                            ? 'ユーザー名またはパスワードが正しくありません'
+                            : 'Invalid username or password';
                 } else {
                     errorMessage = getErrorMessage(locale, 'login_failed', { errCode });
                 }

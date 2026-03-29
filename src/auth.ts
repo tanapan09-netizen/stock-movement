@@ -1,4 +1,4 @@
-import NextAuth, { CredentialsSignin, AuthError } from 'next-auth';
+import NextAuth, { CredentialsSignin } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import LineProvider from "next-auth/providers/line";
 import { prisma } from '@/lib/prisma';
@@ -26,12 +26,25 @@ class AccountLocked extends CredentialsSignin {
     }
 }
 
+class DatabaseUnavailable extends CredentialsSignin {
+    code = "db_unavailable";
+}
+
+const lineClientId = process.env.AUTH_LINE_ID?.trim();
+const lineClientSecret = process.env.AUTH_LINE_SECRET?.trim();
+
+if (!lineClientId || !lineClientSecret) {
+    console.warn('[Auth] LINE Login is disabled: missing AUTH_LINE_ID or AUTH_LINE_SECRET');
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
     providers: [
-        LineProvider({
-            clientId: process.env.AUTH_LINE_ID,
-            clientSecret: process.env.AUTH_LINE_SECRET,
-        }),
+        ...(lineClientId && lineClientSecret
+            ? [LineProvider({
+                clientId: lineClientId,
+                clientSecret: lineClientSecret,
+            })]
+            : []),
         CredentialsProvider({
             name: 'Credentials',
             credentials: {
@@ -48,9 +61,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
 
 
-                const user = await prisma.tbl_users.findUnique({
-                    where: { username }
-                });
+                try {
+                    const user = await prisma.tbl_users.findUnique({
+                        where: { username }
+                    });
 
                 if (!user) {
                     // Fire-and-forget: log failed login (user not found)
@@ -148,6 +162,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                     role: user.role, // Custom property
                     is_approver: (user as any).is_approver || false,
                 };
+                } catch (error) {
+                    if (error instanceof CredentialsSignin) {
+                        throw error;
+                    }
+
+                    console.error('[Auth] Credentials authorize failed:', error);
+                    throw new DatabaseUnavailable();
+                }
             },
         }),
     ],

@@ -40,6 +40,9 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
         '/assets/[id]',
         { isApprover: permissionContext.isApprover, level: 'edit' },
     );
+    const printedBy = typeof session?.user?.name === 'string' && session.user.name.trim()
+        ? session.user.name
+        : 'Admin';
 
     const asset = await prisma.tbl_assets.findUnique({
         where: { asset_id: parseInt(id) },
@@ -61,7 +64,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
             if (Array.isArray(parsed) && parsed.length > 0) {
                 return parsed[0]; // Assume first string is the main url
             }
-        } catch (e) {
+        } catch {
             // Not a JSON string, fallback to standard handling
         }
         if (url.startsWith('http') || url.startsWith('/uploads/')) return url;
@@ -76,8 +79,6 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
     const annualDepreciation = cost / life; // ฐานทุนเต็ม
     const purchaseDate = new Date(asset.purchase_date);
     const purchaseYear = purchaseDate.getFullYear();
-    const purchaseMonth = purchaseDate.getMonth(); // 0-11
-
     // Calculate based on exact days
     const msPerDay = 1000 * 60 * 60 * 24;
     const currentYear = new Date().getFullYear();
@@ -199,6 +200,10 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                                     <span className="font-medium text-gray-900">{asset.location || '-'}</span>
                                 </div>
                                 <div className="flex justify-between border-b pb-2">
+                                    <span>ส่วนของห้องพัก</span>
+                                    <span className="font-medium text-gray-900">{asset.room_section || '-'}</span>
+                                </div>
+                                <div className="flex justify-between border-b pb-2">
                                     <span>วันที่ซื้อ</span>
                                     <span className="font-medium text-gray-900">{new Date(asset.purchase_date).toLocaleDateString('th-TH')}</span>
                                 </div>
@@ -244,7 +249,13 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                             <input
                                 type="text"
                                 name="new_location"
-                                placeholder='New location (required for "Move")'
+                                placeholder='New location (optional if moving inside same room)'
+                                className="w-full text-sm border rounded p-2"
+                            />
+                            <input
+                                type="text"
+                                name="new_room_section"
+                                placeholder='New room section (e.g. Bed zone, Bathroom, Balcony)'
                                 className="w-full text-sm border rounded p-2"
                             />
                             <input
@@ -310,7 +321,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                                 cost={cost}
                                 salvage={salvage}
                                 life={life}
-                                printedBy={(session?.user as any)?.name || 'Admin'}
+                                printedBy={printedBy}
                             />
                         </div>
                         <div className="overflow-x-auto">
