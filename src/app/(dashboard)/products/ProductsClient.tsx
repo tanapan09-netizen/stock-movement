@@ -2,7 +2,7 @@
 
 /**
  * Products Page Client Components
- * Export, Scanner, เนเธฅเธฐ View Mode integration
+ * Export, Scanner, และ View Mode integration
  */
 
 import { useState, useEffect } from 'react';
@@ -57,7 +57,7 @@ export function ProductsToolbar({ products }: ProductsToolbarProps) {
         category_name: p.main_category || p.tbl_categories?.cat_name || '-',
         main_category_code: p.main_category_code ?? '',
         sub_category_code: p.sub_category_code ?? '',
-        is_asset: p.is_asset ? 'เนเธเน' : 'เนเธกเนเนเธเน',
+        is_asset: p.is_asset ? 'ใช่' : 'ไม่ใช่',
         asset_current_location: p.asset_current_location ?? '',
         p_count: p.p_count,
         p_unit: p.p_unit,
@@ -83,7 +83,7 @@ export function ProductsToolbar({ products }: ProductsToolbarProps) {
         setExporting('pdf');
         try {
             await new Promise(r => setTimeout(r, 200));
-            exportToPDF(exportData, EXPORT_COLUMNS.products, 'เธฃเธฒเธขเธเธฒเธฃเธชเธดเธเธเนเธฒเธ—เธฑเนเธเธซเธกเธ”', 'products');
+            exportToPDF(exportData, EXPORT_COLUMNS.products, 'รายการสินค้าทั้งหมด', 'products');
         } finally {
             setExporting(null);
         }
@@ -100,20 +100,20 @@ export function ProductsToolbar({ products }: ProductsToolbarProps) {
             <button
                 onClick={() => setShowScanner(true)}
                 className="flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors"
-                title="เธชเนเธเธ Barcode"
+                title="สแกน Barcode"
             >
                 <QrCode className="w-4 h-4" />
-                <span className="hidden sm:inline">เธชเนเธเธ</span>
+                <span className="hidden sm:inline">สแกน</span>
             </button>
 
             {/* Import Button */}
             <Link
                 href="/products/import"
                 className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
-                title="เธเธณเน€เธเนเธฒเธชเธดเธเธเนเธฒ (Excel)"
+                title="นำเข้าสินค้า (Excel)"
             >
                 <Upload className="w-4 h-4" />
-                <span className="hidden sm:inline">เธเธณเน€เธเนเธฒ</span>
+                <span className="hidden sm:inline">นำเข้า</span>
             </Link>
 
             {/* Export Excel */}
@@ -254,7 +254,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
 
     // Avoid hydration mismatch
     if (!mounted) {
-        return <div className="p-8 text-center text-gray-400">เธเธณเธฅเธฑเธเนเธซเธฅเธ”...</div>;
+        return <div className="p-8 text-center text-gray-400">กำลังโหลด...</div>;
     }
 
     return (
@@ -278,10 +278,10 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                             ? 'bg-red-50 border-red-200 text-red-600 ring-2 ring-red-100'
                             : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
                         }`}
-                    title={showLowStock ? 'เนเธชเธ”เธเธ—เธฑเนเธเธซเธกเธ”' : 'เนเธชเธ”เธเน€เธเธเธฒเธฐเธชเธดเธเธเนเธฒเนเธเธฅเนเธซเธกเธ”'}
+                    title={showLowStock ? 'แสดงทั้งหมด' : 'แสดงเฉพาะสินค้าใกล้หมด'}
                 >
                     <AlertTriangle className={`w-4 h-4 ${showLowStock ? 'fill-current' : ''}`} />
-                    <span className="text-sm font-medium hidden sm:inline">เธชเธดเธเธเนเธฒเนเธเธฅเนเธซเธกเธ” ({products.filter(p => p.p_count <= p.safety_stock).length})</span>
+                    <span className="text-sm font-medium hidden sm:inline">สินค้าใกล้หมด ({products.filter(p => p.p_count <= p.safety_stock).length})</span>
                 </button>
 
                 {/* View Toggle */}
@@ -289,14 +289,14 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                     <button
                         onClick={() => setViewMode('list')}
                         className={`p-2 ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                        title="เนเธเธเธ•เธฒเธฃเธฒเธ"
+                        title="แบบตาราง"
                     >
                         <List className="w-5 h-5" />
                     </button>
                     <button
                         onClick={() => setViewMode('grid')}
                         className={`p-2 ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                        title="เนเธเธเธเธฒเธฃเนเธ”"
+                        title="แบบการ์ด"
                     >
                         <LayoutGrid className="w-5 h-5" />
                     </button>
@@ -309,13 +309,13 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                     <table className="w-full text-left text-sm text-gray-600">
                         <thead className="bg-gray-50 text-xs uppercase text-gray-700">
                             <tr>
-                                <th className="px-6 py-3">เธฃเธนเธเธ เธฒเธ</th>
+                                <th className="px-6 py-3">รูปภาพ</th>
                                 <th
                                     className="px-6 py-3 cursor-pointer hover:bg-gray-100 transition-colors group"
                                     onClick={() => handleSort('p_id')}
                                 >
                                     <div className="flex items-center gap-1">
-                                        เธฃเธซเธฑเธชเธชเธดเธเธเนเธฒ
+                                        รหัสสินค้า
                                         <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'p_id' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
                                     </div>
                                 </th>
@@ -324,7 +324,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     onClick={() => handleSort('p_name')}
                                 >
                                     <div className="flex items-center gap-1">
-                                        เธเธทเนเธญเธชเธดเธเธเนเธฒ
+                                        ชื่อสินค้า
                                         <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'p_name' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
                                     </div>
                                 </th>
@@ -333,7 +333,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     onClick={() => handleSort('model_name')}
                                 >
                                     <div className="flex items-center gap-1">
-                                        เธเธทเนเธญเธฃเธธเนเธ
+                                        ชื่อรุ่น
                                         <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'model_name' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
                                     </div>
                                 </th>
@@ -342,7 +342,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     onClick={() => handleSort('brand_name')}
                                 >
                                     <div className="flex items-center gap-1">
-                                        เธเธทเนเธญเนเธเธฃเธ
+                                        ชื่อแบรนด์
                                         <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'brand_name' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
                                     </div>
                                 </th>
@@ -351,7 +351,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     onClick={() => handleSort('brand_code')}
                                 >
                                     <div className="flex items-center gap-1">
-                                        เธฃเธซเธฑเธชเนเธเธฃเธ
+                                        รหัสแบรนด์
                                         <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'brand_code' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
                                     </div>
                                 </th>
@@ -360,7 +360,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     onClick={() => handleSort('size')}
                                 >
                                     <div className="flex items-center gap-1">
-                                        เธเธเธฒเธ”
+                                        ขนาด
                                         <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'size' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
                                     </div>
                                 </th>
@@ -369,7 +369,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     onClick={() => handleSort('category')}
                                 >
                                     <div className="flex items-center gap-1">
-                                        เธซเธกเธงเธ”เธซเธกเธนเน
+                                        หมวดหมู่
                                         <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'category' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
                                     </div>
                                 </th>
@@ -414,7 +414,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     onClick={() => handleSort('price_unit')}
                                 >
                                     <div className="flex items-center justify-end gap-1">
-                                        เธฃเธฒเธเธฒ/เธซเธเนเธงเธข
+                                        ราคา/หน่วย
                                         <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'price_unit' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
                                     </div>
                                 </th>
@@ -423,7 +423,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     onClick={() => handleSort('p_count')}
                                 >
                                     <div className="flex items-center justify-end gap-1">
-                                        เธเธเน€เธซเธฅเธทเธญ
+                                        คงเหลือ
                                         <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'p_count' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
                                     </div>
                                 </th>
@@ -432,18 +432,18 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     onClick={() => handleSort('status')}
                                 >
                                     <div className="flex items-center justify-center gap-1">
-                                        เธชเธ–เธฒเธเธฐ
+                                        สถานะ
                                         <ArrowUpDown className={`w-3 h-3 ${sortColumn === 'status' ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
                                     </div>
                                 </th>
-                                {isAdmin && <th className="px-6 py-3 text-right">เธเธฑเธ”เธเธฒเธฃ</th>}
+                                {isAdmin && <th className="px-6 py-3 text-right">จัดการ</th>}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
                             {sortedProducts.length === 0 ? (
                                 <tr>
                                     <td colSpan={isAdmin ? 16 : 15} className="px-6 py-12 text-center text-gray-400">
-                                        เนเธกเนเธเธเธเนเธญเธกเธนเธฅเธชเธดเธเธเนเธฒ
+                                        ไม่พบข้อมูลสินค้า
                                     </td>
                                 </tr>
                             ) : (
@@ -467,7 +467,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                             <div className="flex items-center gap-2">
                                                 {product.p_name}
                                                 {product.is_luxury && (
-                                                    <span title="เธชเธดเธเธเนเธฒเธเธธเนเธกเน€เธเธทเธญเธข">
+                                                    <span title="สินค้าฟุ่มเฟือย">
                                                         <Gem className="w-4 h-4 text-purple-600" />
                                                     </span>
                                                 )}
@@ -505,11 +505,11 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                         <td className="px-6 py-4 text-center">
                                             {product.p_count > 0 ? (
                                                 <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
-                                                    เธเธฃเนเธญเธกเธเธฒเธข
+                                                    พร้อมขาย
                                                 </span>
                                             ) : (
                                                 <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
-                                                    เธชเธดเธเธเนเธฒเธซเธกเธ”
+                                                    สินค้าหมด
                                                 </span>
                                             )}
                                         </td>
@@ -519,13 +519,13 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                                     <Link
                                                         href={`/products/${product.p_id}/edit`}
                                                         className="rounded p-1 text-blue-600 hover:bg-blue-50"
-                                                        title="เนเธเนเนเธ"
+                                                        title="แก้ไข"
                                                     >
                                                         <Edit className="h-4 w-4" />
                                                     </Link>
                                                     <button
                                                         className="rounded p-1 text-red-600 hover:bg-red-50"
-                                                        title="เธฅเธ"
+                                                        title="ลบ"
                                                     >
                                                         <Trash2 className="h-4 w-4" />
                                                     </button>
@@ -543,7 +543,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                 <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                     {sortedProducts.length === 0 ? (
                         <div className="col-span-full text-center text-gray-400 py-12">
-                            เนเธกเนเธเธเธเนเธญเธกเธนเธฅเธชเธดเธเธเนเธฒ
+                            ไม่พบข้อมูลสินค้า
                         </div>
                     ) : (
                         sortedProducts.map((product) => (
@@ -567,7 +567,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     <h3 className="font-semibold text-gray-800 text-sm line-clamp-2 mb-2" title={product.p_name}>
                                         {product.p_name}
                                         {product.is_luxury && (
-                                            <span title="เธชเธดเธเธเนเธฒเธเธธเนเธกเน€เธเธทเธญเธข" className="inline-block ml-1 align-text-bottom">
+                                            <span title="สินค้าฟุ่มเฟือย" className="inline-block ml-1 align-text-bottom">
                                                 <Gem className="w-3.5 h-3.5 text-purple-600" />
                                             </span>
                                         )}
@@ -591,20 +591,20 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     )}
                                     <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-gray-500">
                                         <span className="truncate" title={product.model_name ?? ''}>
-                                            เธฃเธธเนเธ: {product.model_name || '-'}
+                                            รุ่น: {product.model_name || '-'}
                                         </span>
                                         <span className="truncate" title={product.size ?? ''}>
-                                            เธเธเธฒเธ”: {product.size || '-'}
+                                            ขนาด: {product.size || '-'}
                                         </span>
                                         <span className="truncate" title={product.brand_name ?? ''}>
-                                            เนเธเธฃเธเธ”เน: {product.brand_name || '-'}
+                                            แบรนด์: {product.brand_name || '-'}
                                         </span>
                                         <span className="truncate" title={product.brand_code ?? ''}>
-                                            เธฃเธซเธฑเธช: {product.brand_code || '-'}
+                                            รหัส: {product.brand_code || '-'}
                                         </span>
                                     </div>
                                     <div className="mt-2 text-right font-bold text-blue-600">
-                                        เธฟ{Number(product.price_unit).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                                        ฿{Number(product.price_unit).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
                                     </div>
 
                                     {/* Admin Actions */}
@@ -613,13 +613,13 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                             <Link
                                                 href={`/products/${product.p_id}/edit`}
                                                 className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
-                                                title="เนเธเนเนเธ"
+                                                title="แก้ไข"
                                             >
                                                 <Edit className="h-4 w-4" />
                                             </Link>
                                             <button
                                                 className="p-1.5 text-red-600 hover:bg-red-50 rounded"
-                                                title="เธฅเธ"
+                                                title="ลบ"
                                             >
                                                 <Trash2 className="h-4 w-4" />
                                             </button>
@@ -634,7 +634,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
 
             {/* Pagination Placeholder */}
             <div className="border-t p-4 flex justify-between items-center text-sm text-gray-500">
-                <span>เนเธชเธ”เธ {filteredProducts.length} เธเธฒเธ {products.length} เธฃเธฒเธขเธเธฒเธฃ</span>
+                <span>แสดง {filteredProducts.length} จาก {products.length} รายการ</span>
             </div>
         </div>
     );
