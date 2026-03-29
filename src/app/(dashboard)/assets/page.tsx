@@ -156,6 +156,12 @@ export default async function AssetsPage({
                 </div>
                 <div className="flex items-center gap-2">
                     <Link
+                        href="/assets/rooms"
+                        className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                        <MapPin className="mr-2 h-4 w-4" /> รายละเอียดตามห้อง
+                    </Link>
+                    <Link
                         href={exportHref}
                         className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                     >

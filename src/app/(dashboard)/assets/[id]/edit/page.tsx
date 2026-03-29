@@ -20,9 +20,25 @@ export default async function EditAssetPage({ params }: { params: Promise<{ id: 
     }
 
     const { id } = await params;
-    const asset = await prisma.tbl_assets.findUnique({
-        where: { asset_id: parseInt(id, 10) },
-    });
+    const [asset, roomReferences] = await Promise.all([
+        prisma.tbl_assets.findUnique({
+            where: { asset_id: parseInt(id, 10) },
+        }),
+        prisma.tbl_rooms.findMany({
+            where: { active: true },
+            select: {
+                room_id: true,
+                room_code: true,
+                room_name: true,
+                room_type: true,
+                building: true,
+                floor: true,
+                zone: true,
+                active: true,
+            },
+            orderBy: [{ room_code: 'asc' }],
+        }),
+    ]);
 
     if (!asset) {
         return notFound();
@@ -38,7 +54,7 @@ export default async function EditAssetPage({ params }: { params: Promise<{ id: 
     return (
         <div className="max-w-4xl mx-auto">
             <h1 className="text-2xl font-bold text-gray-800 mb-6">แก้ไขข้อมูลทรัพย์สิน</h1>
-            <AssetForm asset={formattedAsset} />
+            <AssetForm asset={formattedAsset} roomReferences={roomReferences} />
         </div>
     );
 }

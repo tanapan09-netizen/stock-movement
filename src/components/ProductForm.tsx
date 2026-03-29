@@ -1,8 +1,9 @@
-﻿'use client';
+'use client';
 
-import { useState } from 'react';
-import { createProduct, updateProduct } from '@/actions/productActions';
+import { useEffect, useRef, useState } from 'react';
+import { createProduct, generateNextProductId, updateProduct } from '@/actions/productActions';
 import { Save, X } from 'lucide-react';
+import Image from 'next/image';
 
 type Category = {
     cat_id: number;
@@ -32,16 +33,66 @@ type Product = {
 
 export default function ProductForm({
     product,
+    prefill,
     categories,
 }: {
     product?: Product;
+    prefill?: Partial<Product>;
     categories: Category[];
 }) {
     const [isPending, setIsPending] = useState(false);
-    const [isAsset, setIsAsset] = useState(product?.is_asset === true);
+    const [isAsset, setIsAsset] = useState(product?.is_asset === true || prefill?.is_asset === true);
+    const [mainCategoryCode, setMainCategoryCode] = useState(
+        product?.main_category_code || prefill?.main_category_code || '',
+    );
+    const [subCategoryCode, setSubCategoryCode] = useState(
+        product?.sub_category_code || prefill?.sub_category_code || '',
+    );
+    const [autoProductId, setAutoProductId] = useState(product?.p_id || prefill?.p_id || '');
+    const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+    const [codeError, setCodeError] = useState<string | null>(null);
+    const formRef = useRef<HTMLFormElement>(null);
     const [preview, setPreview] = useState<string | null>(
         product?.p_image ? `/uploads/${product.p_image}` : null,
     );
+
+    useEffect(() => {
+        if (product) return;
+
+        const normalizedMain = mainCategoryCode.trim().replace(/\s+/g, '').toUpperCase();
+        const normalizedSub = subCategoryCode.trim().replace(/\s+/g, '').toUpperCase();
+
+        let isStale = false;
+        const timer = setTimeout(async () => {
+            if (!normalizedMain || !normalizedSub) {
+                setAutoProductId('');
+                setCodeError(null);
+                setIsGeneratingCode(false);
+                return;
+            }
+
+            setIsGeneratingCode(true);
+            setCodeError(null);
+
+            const result = await generateNextProductId(normalizedMain, normalizedSub);
+            if (isStale) return;
+
+            if (result?.error) {
+                setAutoProductId('');
+                setCodeError('ไม่สามารถสร้างรหัสสินค้าอัตโนมัติได้');
+            } else {
+                setAutoProductId(result?.productId || '');
+                setCodeError(null);
+            }
+
+            setIsGeneratingCode(false);
+        }, 250);
+
+        return () => {
+            isStale = true;
+            clearTimeout(timer);
+        };
+    }, [product, mainCategoryCode, subCategoryCode]);
 
     const handleSubmit = async (formData: FormData) => {
         setIsPending(true);
@@ -58,24 +109,78 @@ export default function ProductForm({
         setPreview(URL.createObjectURL(file));
     };
 
+    const handleOpenAssetNew = () => {
+        if (!formRef.current) return;
+        const fd = new FormData(formRef.current);
+        const getText = (name: string) => String(fd.get(name) || '').trim();
+
+        const params = new URLSearchParams();
+        params.set('source', 'product');
+
+        const pName = getText('p_name');
+        const pDesc = getText('p_desc');
+        const supplier = getText('supplier');
+        const brandName = getText('brand_name');
+        const modelName = getText('model_name');
+        const rawLocation = getText('asset_current_location');
+
+        if (pName) params.set('p_name', pName);
+        if (pDesc) params.set('p_desc', pDesc);
+        if (supplier) params.set('supplier', supplier);
+        if (brandName) params.set('brand_name', brandName);
+        if (modelName) params.set('model_name', modelName);
+
+        if (rawLocation) {
+            const segments = rawLocation
+                .split('/')
+                .map((segment) => segment.trim())
+                .filter(Boolean);
+
+            if (segments.length > 0) {
+                params.set('location', segments[0]);
+            }
+            if (segments.length > 1) {
+                params.set('room_section', segments.slice(1).join(' / '));
+            }
+            params.set('asset_current_location', rawLocation);
+        }
+
+        params.set('status', 'Active');
+        window.location.href = `/assets/new?${params.toString()}`;
+    };
+
     return (
-        <form action={handleSubmit} className="space-y-6 rounded-lg bg-white p-6 shadow">
+        <form ref={formRef} action={handleSubmit} className="space-y-6 rounded-lg bg-white p-6 shadow">
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">รหัสสินค้า *</label>
+                        <label className="block text-sm font-medium text-gray-700">รหัสสินค้า SKU (อัตโนมัติ) *</label>
                         <input
                             type="text"
                             name="p_id"
-                            defaultValue={product?.p_id}
-                            readOnly={Boolean(product)}
+                            value={product ? product.p_id : autoProductId}
+                            readOnly
+                            placeholder={
+                                product
+                                    ? ''
+                                    : ' '
+                            }
                             className={`mt-1 block w-full rounded-md border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none ${
                                 product
                                     ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-500'
-                                    : 'border-gray-300'
+                                    : 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-700'
                             }`}
                             required={!product}
                         />
+                        {!product && (
+                            <p className="mt-1 text-xs text-gray-500">
+                                {codeError
+                                    ? codeError
+                                    : isGeneratingCode
+                                        ? 'กำลังสร้างรหัสสินค้าอัตโนมัติ...'
+                                        : ' '}
+                            </p>
+                        )}
                     </div>
 
                     <div>
@@ -83,7 +188,7 @@ export default function ProductForm({
                         <input
                             type="text"
                             name="p_name"
-                            defaultValue={product?.p_name}
+                            defaultValue={product?.p_name || prefill?.p_name || ''}
                             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                             required
                         />
@@ -93,7 +198,7 @@ export default function ProductForm({
                         <label className="block text-sm font-medium text-gray-700">หมวดหมู่</label>
                         <select
                             name="cat_id"
-                            defaultValue={product?.cat_id || ''}
+                            defaultValue={product?.cat_id || prefill?.cat_id || ''}
                             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                         >
                             <option value="">-- เลือกหมวดหมู่ --</option>
@@ -107,23 +212,27 @@ export default function ProductForm({
 
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">Code หมวดหลัก</label>
+                            <label className="block text-sm font-medium text-gray-700">Code หลัก *</label>
                             <input
                                 type="text"
                                 name="main_category_code"
-                                defaultValue={product?.main_category_code || ''}
-                                placeholder="เช่น MC-01"
+                                value={mainCategoryCode}
+                                onChange={(event) => setMainCategoryCode(event.target.value)}
+                                placeholder=" "
                                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                required={!product}
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">Code หมวดรอง</label>
+                            <label className="block text-sm font-medium text-gray-700">Code รอง *</label>
                             <input
                                 type="text"
                                 name="sub_category_code"
-                                defaultValue={product?.sub_category_code || ''}
-                                placeholder="เช่น SC-001"
+                                value={subCategoryCode}
+                                onChange={(event) => setSubCategoryCode(event.target.value)}
+                                placeholder=" "
                                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                required={!product}
                             />
                         </div>
                     </div>
@@ -133,7 +242,7 @@ export default function ProductForm({
                         <input
                             type="text"
                             name="supplier"
-                            defaultValue={product?.supplier || ''}
+                            defaultValue={product?.supplier || prefill?.supplier || ''}
                             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                         />
                     </div>
@@ -145,7 +254,7 @@ export default function ProductForm({
                                 id="is_asset"
                                 name="is_asset"
                                 value="true"
-                                defaultChecked={product?.is_asset === true}
+                                defaultChecked={product?.is_asset === true || prefill?.is_asset === true}
                                 onChange={(event) => setIsAsset(event.target.checked)}
                                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
@@ -153,21 +262,18 @@ export default function ProductForm({
                                 เป็นทรัพย์สินหรือไม่
                             </label>
                         </div>
-                        <div className="mt-3">
-                            <label className="block text-sm font-medium text-gray-700">ที่อยู่ปัจจุบันของทรัพย์สิน</label>
-                            <input
-                                type="text"
-                                name="asset_current_location"
-                                defaultValue={product?.asset_current_location || ''}
-                                placeholder="เช่น อาคาร A / ห้อง 1202"
-                                disabled={!isAsset}
-                                className={`mt-1 block w-full rounded-md border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none ${
-                                    isAsset
-                                        ? 'border-gray-300 bg-white'
-                                        : 'border-gray-200 bg-gray-100 text-gray-500'
-                                }`}
-                            />
-                        </div>
+                        {isAsset && (
+                            <div className="mt-3">
+                                <label className="block text-sm font-medium text-gray-700">ที่อยู่ปัจจุบันของทรัพย์สิน</label>
+                                <input
+                                    type="text"
+                                    name="asset_current_location"
+                                    defaultValue={product?.asset_current_location || prefill?.asset_current_location || ''}
+                                    placeholder="เช่น อาคาร A / ห้อง 1202"
+                                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -176,7 +282,7 @@ export default function ProductForm({
                         <label className="block text-sm font-medium text-gray-700">รายละเอียด</label>
                         <textarea
                             name="p_desc"
-                            defaultValue={product?.p_desc || ''}
+                            defaultValue={product?.p_desc || prefill?.p_desc || ''}
                             rows={3}
                             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                         />
@@ -188,7 +294,7 @@ export default function ProductForm({
                             <input
                                 type="text"
                                 name="model_name"
-                                defaultValue={product?.model_name || ''}
+                                defaultValue={product?.model_name || prefill?.model_name || ''}
                                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                             />
                         </div>
@@ -197,7 +303,7 @@ export default function ProductForm({
                             <input
                                 type="text"
                                 name="size"
-                                defaultValue={product?.size || ''}
+                                defaultValue={product?.size || prefill?.size || ''}
                                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                             />
                         </div>
@@ -206,7 +312,7 @@ export default function ProductForm({
                             <input
                                 type="text"
                                 name="brand_name"
-                                defaultValue={product?.brand_name || ''}
+                                defaultValue={product?.brand_name || prefill?.brand_name || ''}
                                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                             />
                         </div>
@@ -215,7 +321,7 @@ export default function ProductForm({
                             <input
                                 type="text"
                                 name="brand_code"
-                                defaultValue={product?.brand_code || ''}
+                                defaultValue={product?.brand_code || prefill?.brand_code || ''}
                                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                             />
                         </div>
@@ -225,7 +331,13 @@ export default function ProductForm({
                                 type="number"
                                 step="0.01"
                                 name="price_unit"
-                                defaultValue={product?.price_unit ? Number(product.price_unit) : 0}
+                                defaultValue={
+                                    product?.price_unit
+                                        ? Number(product.price_unit)
+                                        : prefill?.price_unit
+                                            ? Number(prefill.price_unit)
+                                            : 0
+                                }
                                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                             />
                         </div>
@@ -234,7 +346,7 @@ export default function ProductForm({
                             <input
                                 type="text"
                                 name="p_unit"
-                                defaultValue={product?.p_unit || 'ชิ้น'}
+                                defaultValue={product?.p_unit || prefill?.p_unit || 'ชิ้น'}
                                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                             />
                         </div>
@@ -245,7 +357,7 @@ export default function ProductForm({
                         <input
                             type="number"
                             name="safety_stock"
-                            defaultValue={product?.safety_stock || 0}
+                            defaultValue={product?.safety_stock || prefill?.safety_stock || 0}
                             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                         />
                     </div>
@@ -256,7 +368,7 @@ export default function ProductForm({
                             id="is_luxury"
                             name="is_luxury"
                             value="true"
-                            defaultChecked={product?.is_luxury === true}
+                            defaultChecked={product?.is_luxury === true || prefill?.is_luxury === true}
                             className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
                         <label htmlFor="is_luxury" className="text-sm font-medium text-gray-700">
@@ -267,9 +379,15 @@ export default function ProductForm({
                     <div>
                         <label className="mb-2 block text-sm font-medium text-gray-700">รูปภาพสินค้า</label>
                         <div className="flex items-center space-x-4">
-                            <div className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+                            <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
                                 {preview ? (
-                                    <img src={preview} alt="Preview" className="h-full w-full object-cover" />
+                                    <Image
+                                        src={preview}
+                                        alt="Preview"
+                                        fill
+                                        unoptimized
+                                        className="object-cover"
+                                    />
                                 ) : (
                                     <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">No Image</div>
                                 )}
@@ -287,6 +405,15 @@ export default function ProductForm({
             </div>
 
             <div className="flex justify-end space-x-3 border-t pt-4">
+                {!product && isAsset && (
+                    <button
+                        type="button"
+                        onClick={handleOpenAssetNew}
+                        className="flex items-center rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-violet-700 hover:bg-violet-100"
+                    >
+                        ไปลงทะเบียนทรัพย์สินจากข้อมูลนี้
+                    </button>
+                )}
                 <button
                     type="button"
                     onClick={() => window.history.back()}
@@ -296,7 +423,7 @@ export default function ProductForm({
                 </button>
                 <button
                     type="submit"
-                    disabled={isPending}
+                    disabled={isPending || (!product && (isGeneratingCode || !autoProductId))}
                     className="flex items-center rounded-lg border border-transparent bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                     <Save className="mr-2 h-4 w-4" /> {isPending ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}

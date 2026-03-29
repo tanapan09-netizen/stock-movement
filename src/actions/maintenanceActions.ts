@@ -22,9 +22,7 @@ import {
     canCreateMaintenanceRequest,
     canDirectManageMaintenanceStock,
     canManageMaintenanceEdit,
-    canManageMaintenanceParts,
     canReassignMaintenanceRequest,
-    canReopenMaintenanceRequest,
     canSubmitMaintenanceCompletion,
     canVerifyMaintenanceParts,
 } from '@/lib/rbac';
@@ -163,6 +161,129 @@ export async function getAllRooms() {
     } catch (error) {
         console.error('Error fetching all rooms:', error);
         return { success: false, error: 'Failed to fetch rooms' };
+    }
+}
+
+function normalizeRoomMatchValue(value?: string | null) {
+    return (value || '').trim().toLowerCase();
+}
+
+function assetBelongsToRoomLocation(
+    location: string | null,
+    roomSection: string | null,
+    roomCode: string,
+    roomName: string
+) {
+    const normalizedLocation = normalizeRoomMatchValue(location);
+    const normalizedRoomSection = normalizeRoomMatchValue(roomSection);
+    const normalizedRoomCode = normalizeRoomMatchValue(roomCode);
+    const normalizedRoomName = normalizeRoomMatchValue(roomName);
+
+    if (!normalizedRoomCode && !normalizedRoomName) return false;
+
+    return (
+        (normalizedRoomCode && (normalizedLocation.includes(normalizedRoomCode) || normalizedRoomSection.includes(normalizedRoomCode))) ||
+        (normalizedRoomName && (normalizedLocation.includes(normalizedRoomName) || normalizedRoomSection.includes(normalizedRoomName)))
+    );
+}
+
+export async function getRoomServiceSummary() {
+    try {
+        const [rooms, maintenanceRequests, assets] = await Promise.all([
+            prisma.tbl_rooms.findMany({
+                select: {
+                    room_id: true,
+                    room_code: true,
+                    room_name: true,
+                    active: true,
+                },
+                orderBy: { room_code: 'asc' },
+            }),
+            prisma.tbl_maintenance_requests.findMany({
+                select: {
+                    room_id: true,
+                    status: true,
+                    created_at: true,
+                },
+            }),
+            prisma.tbl_assets.findMany({
+                select: {
+                    location: true,
+                    room_section: true,
+                },
+            }),
+        ]);
+
+        const summaryMap = new Map<number, {
+            room_id: number;
+            room_code: string;
+            room_name: string;
+            active: boolean;
+            maintenance_total: number;
+            maintenance_open: number;
+            asset_count: number;
+            last_maintenance_at: Date | null;
+        }>();
+
+        for (const room of rooms) {
+            summaryMap.set(room.room_id, {
+                room_id: room.room_id,
+                room_code: room.room_code,
+                room_name: room.room_name,
+                active: room.active,
+                maintenance_total: 0,
+                maintenance_open: 0,
+                asset_count: 0,
+                last_maintenance_at: null,
+            });
+        }
+
+        for (const request of maintenanceRequests) {
+            const roomSummary = summaryMap.get(request.room_id);
+            if (!roomSummary) continue;
+
+            roomSummary.maintenance_total += 1;
+
+            const normalizedStatus = (request.status || '').trim().toLowerCase();
+            const isClosedStatus = ['completed', 'cancelled', 'closed', 'resolved'].includes(normalizedStatus);
+            if (!isClosedStatus) {
+                roomSummary.maintenance_open += 1;
+            }
+
+            if (request.created_at && (!roomSummary.last_maintenance_at || request.created_at > roomSummary.last_maintenance_at)) {
+                roomSummary.last_maintenance_at = request.created_at;
+            }
+        }
+
+        for (const asset of assets) {
+            for (const roomSummary of summaryMap.values()) {
+                if (
+                    assetBelongsToRoomLocation(
+                        asset.location,
+                        asset.room_section,
+                        roomSummary.room_code,
+                        roomSummary.room_name
+                    )
+                ) {
+                    roomSummary.asset_count += 1;
+                }
+            }
+        }
+
+        const data = Array.from(summaryMap.values());
+
+        const totals = {
+            total_rooms: data.length,
+            active_rooms: data.filter((room) => room.active).length,
+            maintenance_total: data.reduce((sum, room) => sum + room.maintenance_total, 0),
+            maintenance_open: data.reduce((sum, room) => sum + room.maintenance_open, 0),
+            asset_total: data.reduce((sum, room) => sum + room.asset_count, 0),
+        };
+
+        return { success: true, data, totals };
+    } catch (error) {
+        console.error('Error fetching room service summary:', error);
+        return { success: false, error: 'Failed to fetch room service summary' };
     }
 }
 
@@ -413,7 +534,7 @@ export async function getMaintenanceRequestById(request_id: number) {
             }
         });
         return { success: true, data: request };
-    } catch (error) {
+    } catch {
         return { success: false, error: 'Failed' };
     }
 }
@@ -1516,7 +1637,7 @@ export async function getMaintenanceStats() {
                 chartData
             }
         };
-    } catch (error) {
+    } catch {
         return { success: false, error: 'Failed to fetch stats' };
     }
 }
@@ -1554,7 +1675,7 @@ export async function getProducts() {
         }));
 
         return { success: true, data };
-    } catch (error) {
+    } catch {
         return { success: false, error: 'Failed to fetch products' };
     }
 }

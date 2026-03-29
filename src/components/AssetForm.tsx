@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { createAsset, updateAsset } from '@/actions/assetActions';
 import { Save, X } from 'lucide-react';
 import { useToast } from './ToastProvider';
@@ -28,6 +28,30 @@ type Asset = {
     serial_number: string | null;
 };
 
+type AssetRoomReference = {
+    room_id: number;
+    room_code: string;
+    room_name: string;
+    room_type: string | null;
+    building: string | null;
+    floor: string | null;
+    zone: string | null;
+    active?: boolean;
+};
+
+type RoomOption = {
+    roomCode: string;
+    roomName: string;
+    roomLabel: string;
+};
+
+type ZoneOption = {
+    roomCode: string;
+    zoneCode: string;
+    zoneName: string;
+    zoneLabel: string;
+};
+
 const ROOM_SECTION_PRESETS = [
     'ประตูทางเข้า',
     'พื้นที่นั่งเล่น',
@@ -43,15 +67,21 @@ const ROOM_SECTION_PRESETS = [
     'ครัว/แพนทรี',
 ];
 
+const normalizeText = (value?: string | null) => (value || '').trim().toLowerCase();
+
 export default function AssetForm({
     asset,
+    prefill,
     suggestedAssetCode,
+    roomReferences = [],
 }: {
     asset?: Asset;
+    prefill?: Partial<Asset>;
     suggestedAssetCode?: string;
+    roomReferences?: AssetRoomReference[];
 }) {
     const [isPending, setIsPending] = useState(false);
-    const [selectedStatus, setSelectedStatus] = useState(asset?.status || 'Active');
+    const [selectedStatus, setSelectedStatus] = useState(asset?.status || prefill?.status || 'Active');
 
     // Auto-detect image URL format
     const getInitialPreview = (url: string | null | undefined) => {
@@ -64,8 +94,134 @@ export default function AssetForm({
     const formRef = useRef<HTMLFormElement>(null);
     const { showConfirm, showToast } = useToast();
     const router = useRouter();
-    const initialAssetCode = asset?.asset_code || suggestedAssetCode || '';
+    const initialAssetCode = asset?.asset_code || prefill?.asset_code || suggestedAssetCode || '';
     const isAssetCodeReadOnly = Boolean(asset) || Boolean(suggestedAssetCode);
+    const initialLocationText = (asset?.location || prefill?.location || '').trim();
+    const initialRoomSectionText = (asset?.room_section || prefill?.room_section || '').trim();
+
+    const { roomOptions, zoneOptionsByRoom } = useMemo(() => {
+        const activeReferences = roomReferences
+            .filter((room) => room.active !== false)
+            .filter((room) => !room.room_code.startsWith('T-') && !room.room_code.startsWith('F-'));
+
+        const roomMap = new Map<string, RoomOption>();
+        const zoneMap = new Map<string, ZoneOption[]>();
+
+        for (const room of activeReferences) {
+            if (room.zone) {
+                const parentRoomCode = room.building && room.building !== room.room_code
+                    ? room.building
+                    : room.room_code;
+
+                if (!zoneMap.has(parentRoomCode)) {
+                    zoneMap.set(parentRoomCode, []);
+                }
+                zoneMap.get(parentRoomCode)!.push({
+                    roomCode: parentRoomCode,
+                    zoneCode: room.room_code,
+                    zoneName: room.room_name,
+                    zoneLabel: `${room.room_code} - ${room.room_name}`,
+                });
+            } else if (!roomMap.has(room.room_code)) {
+                roomMap.set(room.room_code, {
+                    roomCode: room.room_code,
+                    roomName: room.room_name,
+                    roomLabel: `${room.room_code} - ${room.room_name}`,
+                });
+            }
+        }
+
+        const sortedRoomOptions = Array.from(roomMap.values()).sort((left, right) =>
+            left.roomCode.localeCompare(right.roomCode),
+        );
+
+        const sortedZoneMap = new Map<string, ZoneOption[]>();
+        for (const [roomCode, zones] of zoneMap.entries()) {
+            sortedZoneMap.set(
+                roomCode,
+                [...zones].sort((left, right) => left.zoneCode.localeCompare(right.zoneCode)),
+            );
+        }
+
+        return { roomOptions: sortedRoomOptions, zoneOptionsByRoom: sortedZoneMap };
+    }, [roomReferences]);
+
+    const hasRoomReferenceData = roomOptions.length > 0;
+
+    const initialRoomCode = useMemo(() => {
+        if (!hasRoomReferenceData) return '';
+        const normalizedLocation = normalizeText(initialLocationText);
+        const normalizedRoomSection = normalizeText(initialRoomSectionText);
+
+        const matchFromRooms = roomOptions.find((room) => {
+            const roomCode = normalizeText(room.roomCode);
+            const roomName = normalizeText(room.roomName);
+            return (
+                normalizedLocation === roomCode ||
+                (roomCode && normalizedLocation.includes(roomCode)) ||
+                (roomName && normalizedLocation.includes(roomName)) ||
+                (roomCode && normalizedRoomSection.includes(roomCode))
+            );
+        });
+        if (matchFromRooms) return matchFromRooms.roomCode;
+
+        for (const [roomCode, zones] of zoneOptionsByRoom.entries()) {
+            const zoneMatch = zones.find((zone) => {
+                const zoneCode = normalizeText(zone.zoneCode);
+                const zoneName = normalizeText(zone.zoneName);
+                return (
+                    (zoneCode && normalizedLocation.includes(zoneCode)) ||
+                    (zoneName && normalizedLocation.includes(zoneName)) ||
+                    (zoneCode && normalizedRoomSection.includes(zoneCode)) ||
+                    (zoneName && normalizedRoomSection.includes(zoneName))
+                );
+            });
+            if (zoneMatch) return roomCode;
+        }
+
+        return '';
+    }, [hasRoomReferenceData, initialLocationText, initialRoomSectionText, roomOptions, zoneOptionsByRoom]);
+
+    const [selectedRoomCode, setSelectedRoomCode] = useState(initialRoomCode);
+    const availableZoneOptions = useMemo(
+        () => zoneOptionsByRoom.get(selectedRoomCode) || [],
+        [zoneOptionsByRoom, selectedRoomCode],
+    );
+
+    const initialZoneCode = useMemo(() => {
+        if (!selectedRoomCode) return '';
+        const normalizedRoomSection = normalizeText(initialRoomSectionText);
+        const normalizedLocation = normalizeText(initialLocationText);
+        const matchedZone = availableZoneOptions.find((zone) => {
+            const zoneCode = normalizeText(zone.zoneCode);
+            const zoneName = normalizeText(zone.zoneName);
+            return (
+                normalizedRoomSection === zoneCode ||
+                (zoneCode && normalizedRoomSection.includes(zoneCode)) ||
+                (zoneName && normalizedRoomSection.includes(zoneName)) ||
+                (zoneCode && normalizedLocation.includes(zoneCode))
+            );
+        });
+        return matchedZone?.zoneCode || '';
+    }, [availableZoneOptions, initialLocationText, initialRoomSectionText, selectedRoomCode]);
+
+    const [selectedZoneCode, setSelectedZoneCode] = useState(initialZoneCode);
+
+    const selectedRoomOption = useMemo(
+        () => roomOptions.find((room) => room.roomCode === selectedRoomCode) || null,
+        [roomOptions, selectedRoomCode],
+    );
+    const selectedZoneOption = useMemo(
+        () => availableZoneOptions.find((zone) => zone.zoneCode === selectedZoneCode) || null,
+        [availableZoneOptions, selectedZoneCode],
+    );
+
+    const resolvedLocationValue = hasRoomReferenceData
+        ? (selectedRoomOption?.roomCode || '')
+        : initialLocationText;
+    const resolvedRoomSectionValue = hasRoomReferenceData
+        ? (selectedZoneOption?.zoneCode || '')
+        : initialRoomSectionText;
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -115,6 +271,37 @@ export default function AssetForm({
         }
     };
 
+    const handleOpenProductNew = () => {
+        if (!formRef.current) return;
+        const fd = new FormData(formRef.current);
+        const getText = (name: string) => String(fd.get(name) || '').trim();
+
+        const params = new URLSearchParams();
+        params.set('source', 'asset');
+
+        const assetName = getText('asset_name');
+        const description = getText('description');
+        const vendor = getText('vendor');
+        const brand = getText('brand');
+        const model = getText('model');
+        const location = getText('location');
+        const roomSection = getText('room_section');
+
+        if (assetName) params.set('asset_name', assetName);
+        if (description) params.set('description', description);
+        if (vendor) params.set('vendor', vendor);
+        if (brand) params.set('brand', brand);
+        if (model) params.set('model', model);
+        if (location) params.set('location', location);
+        if (roomSection) params.set('room_section', roomSection);
+
+        const mergedLocation = [location, roomSection].filter(Boolean).join(' / ');
+        if (mergedLocation) params.set('asset_current_location', mergedLocation);
+
+        params.set('is_asset', 'true');
+        window.location.href = `/products/new?${params.toString()}`;
+    };
+
     return (
         <form ref={formRef} onSubmit={handleSubmit} className="bg-white rounded-lg shadow-lg overflow-hidden">
             <div className="p-6 border-b bg-gray-50">
@@ -140,11 +327,11 @@ export default function AssetForm({
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">ชื่อทรัพย์สิน *</label>
-                        <input type="text" name="asset_name" defaultValue={asset?.asset_name} required className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
+                        <input type="text" name="asset_name" defaultValue={asset?.asset_name || prefill?.asset_name || ''} required className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">หมวดหมู่ *</label>
-                        <select name="category" defaultValue={asset?.category} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3">
+                        <select name="category" defaultValue={asset?.category || prefill?.category || 'Other'} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3">
                             <option value="Furniture">Furniture (เฟอร์นิเจอร์)</option>
                             <option value="Electronics">Electronics (อิเล็กทรอนิกส์)</option>
                             <option value="Vehicle">Vehicle (ยานพาหนะ)</option>
@@ -152,26 +339,77 @@ export default function AssetForm({
                             <option value="Other">Other (อื่นๆ)</option>
                         </select>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">สถานที่ตั้ง</label>
-                        <input type="text" name="location" defaultValue={asset?.location || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">ส่วนของห้องพัก / จุดติดตั้ง</label>
-                        <input
-                            type="text"
-                            name="room_section"
-                            list="room-section-presets"
-                            defaultValue={asset?.room_section || ''}
-                            placeholder="เช่น โซนเตียงนอน, ห้องน้ำ, ระเบียง"
-                            className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
-                        />
-                        <datalist id="room-section-presets">
-                            {ROOM_SECTION_PRESETS.map((section) => (
-                                <option key={section} value={section} />
-                            ))}
-                        </datalist>
-                    </div>
+                    {hasRoomReferenceData ? (
+                        <>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">สถานที่ตั้ง (อ้างอิงห้อง) *</label>
+                                <select
+                                    value={selectedRoomCode}
+                                    onChange={(event) => {
+                                        setSelectedRoomCode(event.target.value);
+                                        setSelectedZoneCode('');
+                                    }}
+                                    className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                                    required
+                                >
+                                    <option value="">-- เลือกห้อง --</option>
+                                    {roomOptions.map((room) => (
+                                        <option key={room.roomCode} value={room.roomCode}>
+                                            {room.roomLabel}
+                                        </option>
+                                    ))}
+                                </select>
+                                <input type="hidden" name="location" value={resolvedLocationValue} />
+                                <p className="mt-1 text-xs text-gray-500">
+                                    บันทึกค่า Location จากรหัสห้อง: {resolvedLocationValue || '-'}
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">ส่วนของห้องพัก / จุดติดตั้ง (อ้างอิงโซน)</label>
+                                <select
+                                    value={selectedZoneCode}
+                                    onChange={(event) => setSelectedZoneCode(event.target.value)}
+                                    className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                                    disabled={!selectedRoomCode}
+                                >
+                                    <option value="">{selectedRoomCode ? '-- เลือกโซน (ถ้ามี) --' : '-- กรุณาเลือกห้องก่อน --'}</option>
+                                    {availableZoneOptions.map((zone) => (
+                                        <option key={zone.zoneCode} value={zone.zoneCode}>
+                                            {zone.zoneLabel}
+                                        </option>
+                                    ))}
+                                </select>
+                                <input type="hidden" name="room_section" value={resolvedRoomSectionValue} />
+                                <p className="mt-1 text-xs text-gray-500">
+                                    บันทึกค่า Room section จากโซน: {resolvedRoomSectionValue || '-'}
+                                </p>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">สถานที่ตั้ง</label>
+                                <input type="text" name="location" defaultValue={asset?.location || prefill?.location || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">ส่วนของห้องพัก / จุดติดตั้ง</label>
+                                <input
+                                    type="text"
+                                    name="room_section"
+                                    list="room-section-presets"
+                                    defaultValue={asset?.room_section || prefill?.room_section || ''}
+                                    placeholder="เช่น โซนเตียงนอน, ห้องน้ำ, ระเบียง"
+                                    className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                                />
+                                <datalist id="room-section-presets">
+                                    {ROOM_SECTION_PRESETS.map((section) => (
+                                        <option key={section} value={section} />
+                                    ))}
+                                </datalist>
+                            </div>
+                        </>
+                    )}
                     {asset?.asset_id && (
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Transfer Approval Ref</label>
@@ -222,23 +460,23 @@ export default function AssetForm({
                     )}
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Serial Number (S/N)</label>
-                        <input type="text" name="serial_number" defaultValue={asset?.serial_number || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
+                        <input type="text" name="serial_number" defaultValue={asset?.serial_number || prefill?.serial_number || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">ยี่ห้อ (Brand)</label>
-                        <input type="text" name="brand" defaultValue={asset?.brand || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
+                        <input type="text" name="brand" defaultValue={asset?.brand || prefill?.brand || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">รุ่น (Model)</label>
-                        <input type="text" name="model" defaultValue={asset?.model || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
+                        <input type="text" name="model" defaultValue={asset?.model || prefill?.model || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">ร้านค้า/ตัวแทนจำหน่าย (Vendor)</label>
-                        <input type="text" name="vendor" defaultValue={asset?.vendor || ''} placeholder="ระบุชื่อร้านค้าหรือบริษัทที่ซื้อมา" className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
+                        <input type="text" name="vendor" defaultValue={asset?.vendor || prefill?.vendor || ''} placeholder="ระบุชื่อร้านค้าหรือบริษัทที่ซื้อมา" className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">รายละเอียดเพิ่มเติม</label>
-                        <textarea name="description" rows={3} defaultValue={asset?.description || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"></textarea>
+                        <textarea name="description" rows={3} defaultValue={asset?.description || prefill?.description || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"></textarea>
                     </div>
                 </div>
 
@@ -294,6 +532,15 @@ export default function AssetForm({
             </div>
 
             <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
+                {!asset?.asset_id && (
+                    <button
+                        type="button"
+                        onClick={handleOpenProductNew}
+                        className="px-4 py-2 border border-violet-200 bg-violet-50 rounded-lg hover:bg-violet-100 transition text-violet-700"
+                    >
+                        ไปเพิ่มสินค้าโดยใช้ข้อมูลนี้
+                    </button>
+                )}
                 <button type="button" onClick={() => window.history.back()} className="px-4 py-2 border rounded-lg hover:bg-white transition text-gray-700 flex items-center">
                     <X className="w-4 h-4 mr-2" /> ยกเลิก
                 </button>

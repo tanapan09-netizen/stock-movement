@@ -27,13 +27,12 @@ import {
     Users,
     ChevronLeft,
     ChevronRight,
-    ScrollText
+    ScrollText,
+    MapPin
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import { PERMISSIONS, RolePermissions } from '@/lib/permissions';
 import { useSidebar } from '@/contexts/SidebarContext';
-import QrScannerModal from './QrScannerModal';
-import { QrCode } from 'lucide-react';
 import { getRoleDisplayName, isAdminRole, isDepartmentRole, isManagerRole } from '@/lib/roles';
 import { canAccessDashboardPage } from '@/lib/rbac';
 
@@ -59,7 +58,6 @@ export default function Sidebar(props: SidebarProps) {
     const permissions = props.permissions || {};
 
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-    const [showQrScanner, setShowQrScanner] = useState(false);
     const { collapsed, setCollapsed } = useSidebar();
     const [expandedSubMenu, setExpandedSubMenu] = useState<string | null>(
         pathname.startsWith('/admin') || pathname === '/roles' || pathname.startsWith('/settings') ? 'admin' : null
@@ -114,13 +112,13 @@ export default function Sidebar(props: SidebarProps) {
         can(PERMISSIONS.ADMIN_PO) ||
         can(PERMISSIONS.ADMIN_SUPPLIERS);
     const baseNavItemClass = `group relative flex items-center rounded-2xl ${
-        collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'
-    } text-sm font-medium transition-all duration-200 ease-out select-none border`;
+        collapsed ? 'h-11 justify-center px-2' : 'px-3 py-2.5'
+    } text-sm font-medium select-none border backdrop-blur-[1px] transition-[transform,background-color,border-color,color,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]`;
     const getNavItemClass = (active: boolean) =>
         `${baseNavItemClass} ${
             active
-                ? 'border-slate-400/30 bg-slate-700/80 text-white before:absolute before:-right-3 before:top-[-12px] before:h-7 before:w-7 before:rounded-full before:bg-[#0b1222] after:absolute after:-right-3 after:bottom-[-12px] after:h-7 after:w-7 after:rounded-full after:bg-[#0b1222] md:hover:translate-x-0.5 active:scale-[0.99]'
-                : 'border-transparent text-slate-300 hover:border-slate-500/30 hover:bg-slate-800/70 hover:text-white hover:translate-x-0.5 active:scale-[0.98]'
+                ? 'border-slate-400/45 bg-gradient-to-r from-slate-700/95 to-slate-800/80 text-white shadow-[0_14px_30px_-20px_rgba(15,23,42,1)]'
+                : 'border-transparent text-slate-300 hover:border-slate-500/30 hover:bg-slate-800/75 hover:text-white hover:shadow-[0_10px_20px_-16px_rgba(15,23,42,1)]'
         }`;
 
     const handleLogout = () => {
@@ -149,40 +147,26 @@ export default function Sidebar(props: SidebarProps) {
 
     return (
         <>
-            <div className={`relative flex flex-col h-full min-h-screen justify-between border-r border-slate-700/70 bg-[#0b1222] text-white transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] ${collapsed ? 'w-20' : 'w-72 sm:w-64 md:w-72'}`}>
+            <div id="app-sidebar" className={`relative flex h-full min-h-screen flex-col justify-between overflow-visible border-r border-slate-700/70 bg-[#0b1222] text-white transition-[width] duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${collapsed ? 'w-20' : 'w-72 sm:w-64 md:w-72'}`}>
                 <div className="absolute inset-y-0 right-0 w-px bg-slate-700/60"></div>
 
                 <div className="overflow-y-auto relative z-10 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {/* Logo + Toggle */}
-                    <div className="flex h-20 items-center justify-between border-b border-slate-700/70 bg-slate-900/40 px-4">
-                        {!collapsed && (
-                            <div className="flex items-center gap-3 animate-in fade-in zoom-in duration-500">
-                                <div className="w-10 h-10 rounded-xl bg-slate-700 flex items-center justify-center ring-1 ring-slate-500/40">
-                                    <Package className="w-6 h-6 text-white drop-shadow-md" />
-                                </div>
-                                <div>
-                                    <h1 className="text-xl font-bold text-slate-100">
-                                        Stock Pro
-                                    </h1>
-                                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-medium mt-0.5">Management System</p>
-                                </div>
+                    <div className="relative flex h-20 items-center border-b border-slate-700/70 bg-slate-900/40 px-4">
+                        <div className={`flex w-full items-center overflow-hidden transition-all duration-500 ${collapsed ? 'justify-center' : ''}`}>
+                            <div className="h-10 w-10 rounded-xl bg-slate-700 flex items-center justify-center ring-1 ring-slate-500/40 shadow-[0_10px_24px_-16px_rgba(15,23,42,1)] transition-transform duration-300">
+                                <Package className="w-6 h-6 text-white drop-shadow-md" />
                             </div>
-                        )}
-                        {collapsed && (
-                            <div className="w-10 h-10 mx-auto rounded-xl bg-slate-700 flex items-center justify-center ring-1 ring-slate-500/40 animate-in zoom-in duration-300">
-                                <Package className="w-6 h-6 text-white" />
+                            <div className={`min-w-0 overflow-hidden transition-all duration-300 ease-out ${collapsed ? 'ml-0 max-w-0 -translate-x-2 opacity-0' : 'ml-3 max-w-[180px] translate-x-0 opacity-100 delay-100'}`}>
+                                <h1 className="truncate text-xl font-bold text-slate-100">
+                                    Stock Pro
+                                </h1>
+                                <p className="mt-0.5 truncate text-[10px] font-medium uppercase tracking-widest text-slate-400">Management System</p>
                             </div>
-                        )}
-                        <button
-                            onClick={() => setCollapsed(!collapsed)}
-                            className={`group p-2 rounded-xl bg-slate-800/80 border border-slate-600/40 hover:bg-slate-700 hover:border-slate-500 transition-all duration-200 active:scale-95 z-20 ${collapsed ? 'mx-auto mt-3' : ''}`}
-                            title={collapsed ? 'ขยาย' : 'ย่อ'}
-                        >
-                            {collapsed ? <ChevronRight className="w-4 h-4 text-blue-400 group-hover:text-white transition-colors" /> : <ChevronLeft className="w-4 h-4 text-blue-400 group-hover:text-white transition-colors" />}
-                        </button>
+                        </div>
                     </div>
 
-                    <nav className={`space-y-1 overflow-visible ${collapsed ? 'p-3' : 'p-4'}`}>
+                    <nav className={`space-y-1.5 overflow-visible transition-[padding] duration-300 ${collapsed ? 'p-2.5' : 'p-4'}`}>
 
                         {/* ─── หน้าหลัก ─── */}
                         {can(PERMISSIONS.DASHBOARD) && (
@@ -220,16 +204,6 @@ export default function Sidebar(props: SidebarProps) {
                                 {!collapsed && <span className="truncate">Accounting Dashboard</span>}
                             </Link>
                         )}
-
-                        {/* ─── เครื่องมือ ─── */}
-                        <button
-                            onClick={() => setShowQrScanner(true)}
-                            className={`w-full group flex items-center rounded-2xl border border-transparent ${collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5'} text-sm font-medium transition-all duration-200 ease-out text-slate-300 hover:border-slate-500/30 hover:bg-slate-800/70 hover:text-white`}
-                            title={collapsed ? 'สแกน QR' : undefined}
-                        >
-                            <QrCode className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 group-hover:scale-110`} />
-                            {!collapsed && <span className="truncate text-left">สแกน QR ค้นหา</span>}
-                        </button>
 
                         {/* ─── คลังสินค้า ─── */}
                         {false && (can(PERMISSIONS.PRODUCTS) || can(PERMISSIONS.MOVEMENTS) || can(PERMISSIONS.STOCK_ADJUST) || can(PERMISSIONS.BORROW)) && !collapsed && (
@@ -318,6 +292,18 @@ export default function Sidebar(props: SidebarProps) {
                         )}
 
                         {/* ─── งานซ่อมบำรุง ─── */}
+                        {can(PERMISSIONS.ASSETS) && (
+                            <Link
+                                href="/assets/rooms"
+                                onClick={handleLinkClick}
+                                className={getNavItemClass(isActive('/assets/rooms'))}
+                                title={collapsed ? 'สินทรัพย์ตามห้อง' : undefined}
+                            >
+                                <MapPin className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/assets/rooms') && 'group-hover:scale-110 group-hover:text-teal-400'}`} />
+                                {!collapsed && <span className="truncate">สินทรัพย์ตามห้อง</span>}
+                            </Link>
+                        )}
+
                         {(canGeneralRequestPage || canMaintenancePage || can(PERMISSIONS.MAINTENANCE_DASHBOARD)) && !collapsed && (
                             <div className="pt-5 pb-2 px-3 flex items-center gap-2">
                                 <div className="h-px bg-gray-700 flex-1"></div>
@@ -733,6 +719,21 @@ export default function Sidebar(props: SidebarProps) {
                     </nav>
                 </div>
 
+                <button
+                    type="button"
+                    onClick={() => setCollapsed(!collapsed)}
+                    className="group absolute left-full top-1/2 z-40 hidden h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-500/70 bg-slate-800/95 text-blue-200 shadow-[0_16px_34px_-18px_rgba(2,6,23,1)] transition-all duration-300 hover:scale-105 hover:border-blue-300/80 hover:bg-slate-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300/70 active:scale-95 lg:flex"
+                    title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                    aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                    aria-expanded={!collapsed}
+                    aria-controls="app-sidebar"
+                >
+                    <ChevronLeft className={`h-5 w-5 transition-transform duration-300 ${collapsed ? 'rotate-180' : 'rotate-0'}`} />
+                    <span className="pointer-events-none absolute left-full ml-3 rounded-md border border-slate-600/70 bg-slate-900/95 px-2 py-1 text-xs font-medium text-slate-100 opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
+                        {collapsed ? 'ขยายเมนู' : 'ย่อเมนู'}
+                    </span>
+                </button>
+
                 <div className={`border-t border-slate-700/70 relative z-10 bg-slate-900/40 ${collapsed ? 'p-3' : 'p-5'}`}>
                     <div className={`flex items-center rounded-2xl border border-slate-600/40 bg-slate-800/40 ${collapsed ? 'justify-center p-2' : 'p-3'} mb-4 animate-in fade-in duration-500 delay-150`}>
                         <div className="h-10 w-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-lg ring-1 ring-slate-500/40" title={collapsed ? (user?.name ?? undefined) : undefined}>
@@ -794,14 +795,10 @@ export default function Sidebar(props: SidebarProps) {
                 document.body
             )}
 
-            {/* QR Scanner Modal */}
-            <QrScannerModal
-                isOpen={showQrScanner}
-                onClose={() => setShowQrScanner(false)}
-            />
         </>
     );
 }
+
 
 
 

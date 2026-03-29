@@ -1,4 +1,4 @@
-﻿﻿'use client';
+﻿'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -14,18 +14,16 @@ import {
     Wrench,
     CheckCircle2,
     Clock,
-    AlertCircle,
     XCircle,
     Download,
-    Calendar,
     MapPin,
-    Smartphone,
     LayoutGrid,
     Table as TableIcon,
-    History as HistoryIcon, User, DollarSign, Printer, Image as ImageIcon, ShoppingCart, Package, AlertTriangle, Bell, X, Hash,
-    Activity, Loader2, ShieldCheck, ChevronDown, Check, ArrowRight, MessageSquare, RotateCcw
+    History as HistoryIcon, User, DollarSign, Printer, ShoppingCart, Package, AlertTriangle, X,
+    Activity, Loader2, ShieldCheck, ArrowRight, RotateCcw
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import Image from 'next/image';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import MaintenanceRequestCard from '@/components/maintenance/MaintenanceRequestCard';
 import VehicleLicensePlateSelector from '@/components/VehicleLicensePlateSelector';
@@ -33,10 +31,8 @@ import HierarchicalRoomSelector from '@/components/HierarchicalRoomSelector';
 import { useSession } from 'next-auth/react';
 import {
     getMaintenanceRequests,
-    getGeneralRequests,
     createMaintenanceRequest,
     updateMaintenanceRequest,
-    deleteMaintenanceRequest,
     getRooms,
     createRoom,
     getMaintenanceSummary,
@@ -52,14 +48,12 @@ import {
 } from '@/actions/maintenanceActions';
 import { getAllVehicles } from '@/actions/vehicleActions';
 import SignaturePad from '@/components/SignaturePad';
-import SearchableSelect from '@/components/SearchableSelect';
 import { searchAssets } from '@/actions/assetActions';
 import { createPartRequest } from '@/actions/partRequestActions';
 import { getActiveTechnicians } from '@/actions/technicianActions';
 import { getLineUsers } from '@/actions/lineUserActions';
 import { format } from 'date-fns';
 import {
-    canAdjustMaintenancePriority,
     canApproveMaintenanceCompletion,
     canConfirmMaintenancePartUsage,
     canReassignMaintenanceRequest,
@@ -210,32 +204,6 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: Lucide
     verified: { label: 'ตรวจสอบแล้ว', color: 'bg-cyan-100 text-cyan-700 border-cyan-200', icon: ShieldCheck },
 };
 
-const formatAcceptedTime = (req: MaintenanceRequestItem): Date | null => {
-    if (!req.tbl_maintenance_history || req.tbl_maintenance_history.length === 0) {
-        return null;
-    }
-    // Find the latest history item where status was changed to 'in_progress'
-    const acceptedEvent = req.tbl_maintenance_history.find(h =>
-        (h.action === 'เปลี่ยนสถานะ' || h.action === 'status_change') &&
-        h.new_value === 'in_progress'
-    );
-    return acceptedEvent ? new Date(acceptedEvent.changed_at) : null;
-};
-
-const getElapsedTime = (startDate: Date, now: Date): string => {
-    const diffMs = now.getTime() - startDate.getTime();
-    if (diffMs < 0) return 'เพิ่งรับงาน';
-
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffDays > 0) return `${diffDays} วัน ${diffHours % 24} ชม.`;
-    if (diffHours > 0) return `${diffHours} ชม. ${diffMins % 60} นาที`;
-    if (diffMins === 0) return `ไม่ถึง 1 นาที`;
-    return `${diffMins} นาที`;
-};
-
 const getHistoryActionLabel = (action: string): string => {
     switch (action) {
         case 'HEAD_TECH_APPROVED':
@@ -334,7 +302,6 @@ interface MaintenanceClientProps {
 }
 
 const resolveDepartmentFromRole = (role: string) => role.trim().toLowerCase();
-const ROOM_SUBMENU_CLOSE_DELAY_MS = 2500;
 const ALLOWED_NEW_MAINTENANCE_ROLES = new Set([
     'admin',
     'manager',
@@ -353,12 +320,14 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const canEditActualCost = isManagerRole(loggedInRole);
     const derivedDepartment = resolveDepartmentFromRole(loggedInRole);
     const sessionIsApprover = Boolean(sessionUser?.is_approver || userPermissions.can_approve);
-    const canPrioritizeMaintenance = canAdjustMaintenancePriority(loggedInRole, userPermissions, sessionIsApprover);
     const canAssignMaintenance = canReassignMaintenanceRequest(loggedInRole, userPermissions, sessionIsApprover);
     const canVerifyParts = canVerifyMaintenanceParts(loggedInRole, userPermissions);
     const canApproveCompletion = canApproveMaintenanceCompletion(loggedInRole, userPermissions, sessionIsApprover);
     const searchParams = useSearchParams();
     const reqQueryParam = searchParams.get('req');
+    const roomIdQueryParam = searchParams.get('room_id');
+    const openFormQueryParam = searchParams.get('open_form');
+    const roomLocationQueryParam = searchParams.get('location');
     const [hasOpenedFromUrl, setHasOpenedFromUrl] = useState(false);
     const { showToast, showConfirm } = useToast();
     const ensureCanEditPage = () => {
@@ -400,7 +369,6 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const [assetSearchQuery, setAssetSearchQuery] = useState('');
     const [assetResults, setAssetResults] = useState<AssetSearchItem[]>([]);
     const [showAssetDropdown, setShowAssetDropdown] = useState(false);
-    const [selectedAsset, setSelectedAsset] = useState<AssetSearchItem | null>(null);
     const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
     const [searchTerm, setSearchTerm] = useState('');
     const [summary, setSummary] = useState({
@@ -436,7 +404,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         customerSignature: null,
         partsUsed: []
     });
-    const [partRequestsForSummary, setPartRequestsForSummary] = useState<PartRequestSummaryItem[]>([]);
+    const [partRequestsForSummary] = useState<PartRequestSummaryItem[]>([]);
 
     // Dynamic technicians list from database
     const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -479,11 +447,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         ? generalRequests.find((request) => request.request_id === selectedGeneralRequestId) ?? null
         : null;
     const selectedPulledRequestImageUrls = parseMaintenanceImageUrls(selectedPulledRequest?.image_url);
-    const [roomSearch, setRoomSearch] = useState('');
     const [showReworkModal, setShowReworkModal] = useState(false);
     const [reworkRequest, setReworkRequest] = useState<MaintenanceRequestItem | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const roomPanelCloseTimeoutRef = useRef<number | null>(null);
+    const hasAppliedRoomQueryRef = useRef(false);
 
     const [roomFormData, setRoomFormData] = useState({
         room_code: '',
@@ -504,7 +471,6 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         notes: ''
     });
 
-    const [currentTime, setCurrentTime] = useState(new Date());
     const [newPartsUsed, setNewPartsUsed] = useState<{ p_id: string; quantity: number }[]>([]);
     const [modalPartSearch, setModalPartSearch] = useState('');
     const [isWithdrawingParts, setIsWithdrawingParts] = useState(false);
@@ -516,33 +482,6 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             .filter((product) => !newPartsUsed.some((selectedPart) => selectedPart.p_id === product.p_id))
             .slice(0, 10)
         : [];
-
-    // Auto-update time every minute for real-time elapsed time display
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setCurrentTime(new Date());
-        }, 60000);
-        return () => clearInterval(timer);
-    }, []);
-
-    useEffect(() => {
-        return () => {
-            if (roomPanelCloseTimeoutRef.current) {
-                window.clearTimeout(roomPanelCloseTimeoutRef.current);
-            }
-        };
-    }, []);
-
-    const scheduleCloseRoomSelectorPanel = () => {
-        if (roomPanelCloseTimeoutRef.current) {
-            window.clearTimeout(roomPanelCloseTimeoutRef.current);
-        }
-        roomPanelCloseTimeoutRef.current = window.setTimeout(() => {
-            const panel = document.getElementById('room-selector-panel');
-            if (panel) panel.style.display = 'none';
-            roomPanelCloseTimeoutRef.current = null;
-        }, ROOM_SUBMENU_CLOSE_DELAY_MS);
-    };
 
     const fetchGeneralRequests = async () => {
         setFetchingGeneral(true);
@@ -696,6 +635,38 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 : { ...prev, department: derivedDepartment }
         ));
     }, [derivedDepartment]);
+
+    useEffect(() => {
+        if (hasAppliedRoomQueryRef.current) return;
+        if (!roomIdQueryParam) return;
+
+        const parsedRoomId = Number.parseInt(roomIdQueryParam, 10);
+        if (!Number.isFinite(parsedRoomId) || parsedRoomId <= 0) {
+            hasAppliedRoomQueryRef.current = true;
+            return;
+        }
+
+        const selectedRoom = rooms.find((room) => room.room_id === parsedRoomId);
+        const inferredLocation = selectedRoom
+            ? [selectedRoom.building, selectedRoom.floor, selectedRoom.zone, selectedRoom.room_code]
+                .filter(Boolean)
+                .join(' / ')
+            : '';
+
+        setFilterRoom(parsedRoomId);
+        setFormData((prev) => ({
+            ...prev,
+            room_id: parsedRoomId,
+            location: prev.location || roomLocationQueryParam || inferredLocation,
+        }));
+
+        const shouldOpenForm = openFormQueryParam === '1' || openFormQueryParam?.toLowerCase() === 'true';
+        if (shouldOpenForm && canCreateNewMaintenanceRequest) {
+            setShowForm(true);
+        }
+
+        hasAppliedRoomQueryRef.current = true;
+    }, [roomIdQueryParam, openFormQueryParam, roomLocationQueryParam, rooms, canCreateNewMaintenanceRequest]);
 
     useEffect(() => {
         if (reqQueryParam && requests.length > 0 && !hasOpenedFromUrl) {
@@ -866,7 +837,6 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 setPullFromGeneral(false);
                 setSelectedGeneralRequestId(null);
                 setSelectedFile(null);
-                setSelectedAsset(null);
                 setAssetSearchQuery('');
                 setAssetResults([]);
                 loadData();
@@ -910,7 +880,6 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     }
 
     function handleAssetSelect(asset: AssetSearchItem) {
-        setSelectedAsset(asset);
         setAssetSearchQuery(`${asset.asset_code} - ${asset.asset_name}`);
         setFormData({ ...formData, image_url: `${asset.asset_code} [SN: ${asset.serial_number || 'N/A'}]` });
         setShowAssetDropdown(false);
@@ -933,26 +902,6 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             alert('เกิดข้อผิดพลาด: ' + result.error);
         }
     }
-
-    // Open status change modal with context
-    function openStatusChangeModal(request: MaintenanceRequestItem, newStatus: string) {
-        setStatusChangeData({
-            request,
-            newStatus,
-            technician: request.assigned_to || '',
-            scheduledDate: request.scheduled_date
-                ? new Date(request.scheduled_date).toISOString().split('T')[0]
-                : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default 7 days
-            completionNotes: '',
-            completionPhoto: null,
-            technicianSignature: null,
-            customerSignature: null,
-            partsUsed: []
-        });
-        setPartRequestsForSummary([]); // Reset parts (would fetch from API if available)
-        setShowStatusModal(true);
-    }
-
     async function confirmStatusChange() {
         if (!statusChangeData.request) return;
         if (!ensureCanEditPage()) return;
@@ -1061,43 +1010,6 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             showToast('เกิดข้อผิดพลาด: ' + result.error, 'error');
         }
     }
-
-    // Simple cancel status change
-    async function handleSimpleStatusChange(request_id: number, newStatus: string) {
-        if (!ensureCanEditPage()) return;
-        const result = await updateMaintenanceRequest(request_id, { status: newStatus }, 'System');
-        if (result.success) {
-            loadData();
-            showToast('เปลี่ยนสถานะสำเร็จ', 'success');
-        }
-    }
-
-    async function handleDelete(request_id: number) {
-        if (!ensureCanEditPage()) return;
-        const result = await Swal.fire({
-            title: '<div style="font-size: 22px; font-weight: 800; margin-bottom: 8px;">ยืนยันการลบรายการ?</div>',
-            html: '<div style="font-size: 15px; opacity: 0.8; line-height: 1.6;">ข้อมูลรายการแจ้งซ่อมนี้จะถูกลบออกจากระบบ<br/><span style="color: #ef4444; font-weight: 600;">และไม่สามารถกู้คืนได้ในภายหลัง</span></div>',
-            icon: 'warning',
-            iconColor: '#fbbf24',
-            showCancelButton: true,
-            confirmButtonText: 'ใช่, ฉันต้องการลบ',
-            cancelButtonText: 'ยกเลิก',
-            confirmButtonColor: '#ef4444',
-            cancelButtonColor: 'transparent',
-            background: '#111827',
-            color: '#f3f4f6',
-            padding: '2.5rem',
-            buttonsStyling: false,
-            customClass: { confirmButton: 'premium-swal-confirm', cancelButton: 'premium-swal-cancel', popup: 'premium-swal-popup' }
-        });
-
-        if (!result.isConfirmed) return;
-        const res = await deleteMaintenanceRequest(request_id);
-        if (res.success) {
-            loadData();
-        }
-    }
-
     async function openDetailModal(request: MaintenanceRequestItem) {
         setSelectedRequest(request);
         setEditData({
@@ -2247,9 +2159,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                                             rel="noopener noreferrer"
                                                             className="block overflow-hidden rounded-lg border border-blue-100"
                                                         >
-                                                            <img
+                                                            <Image
                                                                 src={imageUrl}
                                                                 alt={`รูปแนบจากเคสด่วน ${index + 1}`}
+                                                                width={320}
+                                                                height={96}
+                                                                unoptimized
                                                                 className="h-24 w-full object-cover"
                                                             />
                                                         </a>
@@ -2798,9 +2713,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                         </span>
                       )}
 
-                      <img
+                      <Image
                         src={imageUrl}
                         alt={`รูปภาพปัญหา ${index + 1}`}
+                        width={960}
+                        height={384}
+                        unoptimized
                         className="h-48 w-full object-cover transition duration-200 group-hover:scale-[1.02] group-hover:opacity-95"
                       />
                     </a>
@@ -3522,9 +3440,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    <img
+                    <Image
                       src={selectedRequest.completion_image_url}
                       alt="Completion"
+                      width={960}
+                      height={384}
+                      unoptimized
                       className="max-h-48 w-full rounded-2xl border border-slate-200 object-cover transition hover:opacity-90"
                     />
                   </a>
@@ -3536,9 +3457,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                   <div>
                     <div className="mb-2 text-sm text-slate-500">ลายเซ็นช่างผู้ซ่อม</div>
                     <div className="flex min-h-[100px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-2">
-                      <img
+                      <Image
                         src={selectedRequest.technician_signature}
                         alt="Technician Signature"
+                        width={320}
+                        height={96}
+                        unoptimized
                         className="max-h-24 object-contain"
                       />
                     </div>
@@ -3549,9 +3473,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                   <div>
                     <div className="mb-2 text-sm text-slate-500">ลายเซ็นลูกค้ารับงาน</div>
                     <div className="flex min-h-[100px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-2">
-                      <img
+                      <Image
                         src={selectedRequest.customer_signature}
                         alt="Customer Signature"
+                        width={320}
+                        height={96}
+                        unoptimized
                         className="max-h-24 object-contain"
                       />
                     </div>

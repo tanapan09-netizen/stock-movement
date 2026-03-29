@@ -53,7 +53,7 @@ export default async function DashboardLayout({
     return (
         <SidebarProvider>
             <OfflineQueueProvider>
-                <div className="flex min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-300">
+                <div className="flex min-h-screen overflow-x-hidden bg-gray-50 dark:bg-slate-900 transition-colors duration-300">
                     {/* Auto backup on dashboard load */}
                     <AutoBackup />
 

@@ -1,7 +1,15 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { getAllRooms, createRoom, createRoomsBulk, updateRoom, deleteRoom, toggleRoomActive } from '@/actions/maintenanceActions';
+import {
+    getAllRooms,
+    createRoom,
+    createRoomsBulk,
+    updateRoom,
+    deleteRoom,
+    toggleRoomActive,
+    getRoomServiceSummary,
+} from '@/actions/maintenanceActions';
 import { getAllVehicles, createVehicle, updateVehicle, deleteVehicle, toggleVehicleActive } from '@/actions/vehicleActions';
 import Swal from 'sweetalert2';
 
@@ -41,6 +49,68 @@ interface ZoneNode { id: string; code: string; name: string; originalId?: number
 interface RoomNode { id: string; code: string; name: string; originalId?: number; active?: boolean; zones: ZoneNode[] }
 interface FloorNode { id: string; code: string; name: string; originalId?: number; active?: boolean; rooms: RoomNode[] }
 interface TypeNode { id: string; code: string; name: string; originalId?: number; active?: boolean; floors: FloorNode[] }
+type HierarchyDetailNode = Pick<ZoneNode, "id" | "code" | "name">;
+interface RoomServiceSummary {
+    room_id: number;
+    room_code: string;
+    room_name: string;
+    active: boolean;
+    maintenance_total: number;
+    maintenance_open: number;
+    asset_count: number;
+    last_maintenance_at: Date | null;
+}
+interface ServiceTotals {
+    total_rooms: number;
+    active_rooms: number;
+    maintenance_total: number;
+    maintenance_open: number;
+    asset_total: number;
+}
+interface NodeServiceSummary {
+    maintenanceTotal: number;
+    maintenanceOpen: number;
+    assetCount: number;
+    latestMaintenanceAt: Date | null;
+}
+interface VehicleFormValues {
+    vehicle_id?: number;
+    license_plate: string;
+    province: string;
+    brand: string;
+    model_name: string;
+    color: string;
+    vehicle_type: string;
+    owner_name: string;
+    owner_room: string;
+    owner_phone: string;
+    parking_slot: string;
+    notes: string;
+    active?: boolean;
+}
+interface QuickActionPermissions {
+    canCreateMaintenance: boolean;
+    canViewRoomAssets: boolean;
+    canCreateAsset: boolean;
+}
+
+function toVehicleFormValues(data?: Vehicle): VehicleFormValues {
+    return {
+        vehicle_id: data?.vehicle_id,
+        license_plate: data?.license_plate || "",
+        province: data?.province || "",
+        vehicle_type: data?.vehicle_type || "รถยนต์",
+        brand: data?.brand || "",
+        model_name: data?.model_name || "",
+        color: data?.color || "",
+        owner_name: data?.owner_name || "",
+        owner_room: data?.owner_room || "",
+        owner_phone: data?.owner_phone || "",
+        parking_slot: data?.parking_slot || "",
+        notes: data?.notes || "",
+        active: data?.active,
+    };
+}
 
 // <-- UPDATED: Toast includes exiting flag -->
 type Toast = { type: 'success' | 'error'; text: string; id: number; exiting?: boolean };
@@ -74,6 +144,47 @@ const iconBtnStyle = (color: string): React.CSSProperties => ({
 });
 
 const safeLower = (value: unknown) => (typeof value === "string" ? value.toLowerCase() : "");
+
+const EMPTY_NODE_SERVICE_SUMMARY: NodeServiceSummary = {
+    maintenanceTotal: 0,
+    maintenanceOpen: 0,
+    assetCount: 0,
+    latestMaintenanceAt: null,
+};
+const EMPTY_SERVICE_TOTALS: ServiceTotals = {
+    total_rooms: 0,
+    active_rooms: 0,
+    maintenance_total: 0,
+    maintenance_open: 0,
+    asset_total: 0,
+};
+
+function formatSummaryDate(value?: Date | string | null) {
+    if (!value) return "-";
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleDateString('th-TH', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    });
+}
+
+function mergeNodeSummaries(summaries: Array<RoomServiceSummary | undefined>): NodeServiceSummary {
+    return summaries.reduce<NodeServiceSummary>((acc, current) => {
+        if (!current) return acc;
+        const nextLatest = current.last_maintenance_at
+            ? new Date(current.last_maintenance_at)
+            : null;
+        if (nextLatest && (!acc.latestMaintenanceAt || nextLatest > acc.latestMaintenanceAt)) {
+            acc.latestMaintenanceAt = nextLatest;
+        }
+        acc.maintenanceTotal += current.maintenance_total || 0;
+        acc.maintenanceOpen += current.maintenance_open || 0;
+        acc.assetCount += current.asset_count || 0;
+        return acc;
+    }, { ...EMPTY_NODE_SERVICE_SUMMARY });
+}
 
 const UI = {
     pageBg: "#f0f4f8",
@@ -445,119 +556,25 @@ function AddModal({
     );
 }
 
-// ---- EditModal ----
-function EditModal({ level, initialCode, initialName, onSave, onClose, loading }: {
-    level: string; initialCode: string; initialName: string;
-    onSave: (newCode: string, newName: string) => void; onClose: () => void; loading?: boolean;
-}) {
-    const [code, setCode] = useState(initialCode);
-    const [name, setName] = useState(initialName);
-    const col = LEVEL_COLORS[level as keyof typeof LEVEL_COLORS];
-    return (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, backdropFilter: "blur(4px)" }}>
-            <div style={{ background: "#fff", borderRadius: 16, padding: "32px 36px", minWidth: 380, boxShadow: "0 24px 64px rgba(0,0,0,0.2)", border: `2px solid ${col.accent}22` }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                    <span style={{ fontSize: 26 }}>✏️</span>
-                    <div>
-                        <div style={{ fontFamily: "'Sarabun', sans-serif", fontWeight: 700, fontSize: 18, color: col.bg }}>
-                            แก้ไข{LEVEL_LABELS[level as keyof typeof LEVEL_LABELS]}
-                        </div>
-                        <div style={{ fontSize: 12, color: "#94a3b8" }}>รหัสเดิม: {initialCode}</div>
-                    </div>
-                </div>
-                <hr style={{ border: "none", borderTop: `2px solid ${col.light}`, margin: "16px 0" }} />
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                    <div>
-                        <label style={{ fontSize: 13, fontWeight: 600, color: "#475569", display: "block", marginBottom: 6 }}>
-                            รหัส{LEVEL_LABELS[level as keyof typeof LEVEL_LABELS]}
-                        </label>
-                        <input value={code} onChange={e => setCode(e.target.value)} disabled={loading}
-                            style={{ width: "100%", padding: "10px 14px", borderRadius: 10, boxSizing: "border-box", border: `1.5px solid ${col.accent}`, fontSize: 14, outline: "none", fontFamily: "'Sarabun', sans-serif" }}
-                        />
-                    </div>
-                    <div>
-                        <label style={{ fontSize: 13, fontWeight: 600, color: "#475569", display: "block", marginBottom: 6 }}>
-                            ชื่อ{LEVEL_LABELS[level as keyof typeof LEVEL_LABELS]}
-                        </label>
-                        <input value={name} onChange={e => setName(e.target.value)} disabled={loading}
-                            style={{ width: "100%", padding: "10px 14px", borderRadius: 10, boxSizing: "border-box", border: `1.5px solid ${col.accent}`, fontSize: 14, outline: "none", fontFamily: "'Sarabun', sans-serif" }}
-                        />
-                    </div>
-                </div>
-                <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
-                    <button onClick={onClose} style={{ padding: "9px 22px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#64748b", cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 600, fontSize: 14 }}>ยกเลิก</button>
-                    <button onClick={() => { if (code && name) onSave(code.trim(), name.trim()); }} disabled={!code || !name || loading}
-                        style={{ padding: "9px 22px", borderRadius: 10, border: "none", background: col.accent, color: "#fff", cursor: code && name && !loading ? "pointer" : "not-allowed", fontFamily: "'Sarabun', sans-serif", fontWeight: 700, fontSize: 14 }}
-                    >{loading ? 'กำลังบันทึก...' : '💾 บันทึก'}</button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// ---- DetailModal ----
-function DetailModal({ level, code, name, originalId, active, rooms, onClose }: {
-    level: string; code: string; name: string; originalId?: number; active?: boolean; rooms?: Array<{ code?: string | null; name?: string | null }>; onClose: () => void;
-}) {
-    const col = LEVEL_COLORS[level as keyof typeof LEVEL_COLORS];
-    const lbl = LEVEL_LABELS[level as keyof typeof LEVEL_LABELS];
-    return (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, backdropFilter: "blur(4px)" }}>
-            <div style={{ background: "#fff", borderRadius: 16, padding: "32px 36px", minWidth: 400, maxWidth: 500, boxShadow: "0 24px 64px rgba(0,0,0,0.2)", border: `2px solid ${col.accent}22` }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                    <span style={{ fontSize: 26 }}>{ICONS[level as keyof typeof ICONS]}</span>
-                    <div>
-                        <div style={{ fontFamily: "'Sarabun', sans-serif", fontWeight: 700, fontSize: 18, color: col.bg }}>
-                            รายละเอียด{lbl}
-                        </div>
-                    </div>
-                </div>
-                <hr style={{ border: "none", borderTop: `2px solid ${col.light}`, margin: "16px 0" }} />
-                <table style={{ width: "100%", fontFamily: "'Sarabun', sans-serif", fontSize: 14, borderCollapse: "collapse" }}>
-                    <tbody>
-                        {[
-                            ["รหัส", code],
-                            ["ชื่อ", name],
-                            ...(originalId ? [["DB ID", String(originalId)]] : []),
-                            ...(active !== undefined ? [["สถานะ", active ? "✅ เปิดใช้งาน" : "❌ ปิดใช้งาน"]] : []),
-                        ].map(([k, v], i) => (
-                            <tr key={i}>
-                                <td style={{ padding: "8px 12px", fontWeight: 600, color: "#475569", borderBottom: "1px solid #f1f5f9", width: 100 }}>{k}</td>
-                                <td style={{ padding: "8px 12px", color: "#1e293b", borderBottom: "1px solid #f1f5f9" }}>{v}</td>
-                            </tr>
-                        ))}
-                        {rooms && rooms.length > 0 && (
-                            <tr>
-                                <td style={{ padding: "8px 12px", fontWeight: 600, color: "#475569", verticalAlign: "top" }}>รายการย่อย</td>
-                                <td style={{ padding: "8px 12px" }}>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                                        {rooms.map((r, i) => (
-                                            <span key={i} style={{ fontSize: 13, background: "#f1f5f9", borderRadius: 6, padding: "3px 10px", display: "inline-block" }}>
-                                                {r.code || r.name}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
-                    <button onClick={onClose} style={{ padding: "9px 22px", borderRadius: 10, border: "none", background: col.accent, color: "#fff", cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 700, fontSize: 14 }}>ปิด</button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
 // ---- ZoneRow ----
-function ZoneRow({ zone, onDelete, onEdit, onDetail }: {
-    zone: ZoneNode; onDelete: (zid: number) => void; onEdit: (id: number, level: string, code: string, name: string) => void; onDetail: (level: string, code: string, name: string, originalId?: number, active?: boolean) => void;
+function ZoneRow({ zone, summary, quickActionPermissions, onDelete, onEdit, onDetail }: {
+    zone: ZoneNode;
+    summary: NodeServiceSummary;
+    quickActionPermissions: QuickActionPermissions;
+    onDelete: (zid: number) => void;
+    onEdit: (id: number, level: string, code: string, name: string) => void;
+    onDetail: (level: string, code: string, name: string, originalId?: number, active?: boolean) => void;
 }) {
     const col = LEVEL_COLORS.zone;
+    const maintenanceHref = zone.originalId
+        ? `/maintenance?room_id=${zone.originalId}&open_form=1&location=${encodeURIComponent(zone.code)}`
+        : null;
+    const roomAssetsHref = `/assets/rooms?room=${encodeURIComponent(zone.code)}`;
+    const newAssetHref = `/assets/new?location=${encodeURIComponent(zone.code)}&room_section=${encodeURIComponent(zone.name || zone.code)}`;
+
     return (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 14px 9px 48px", background: col.light, borderRadius: 8, marginBottom: 4, border: `1px solid ${col.accent}33` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 14 }}> {ICONS.zone} </span>
                 <span style={{ fontFamily: "'Sarabun', sans-serif", fontSize: 13, color: "#374151" }}>
                     <span style={{ fontWeight: 700, color: col.accent }}> {zone.code} </span>
@@ -565,9 +582,48 @@ function ZoneRow({ zone, onDelete, onEdit, onDetail }: {
                 </span>
                 <span style={{ fontSize: 11, background: col.accent, color: "#fff", borderRadius: 6, padding: "1px 8px", fontWeight: 600 }}> โซน </span>
                 {!zone.active && <span style={{ fontSize: 11, background: '#fee2e2', color: '#ef4444', borderRadius: 6, padding: "1px 8px", fontWeight: 600 }}>ปิด</span>}
+                <span style={{ fontSize: 11, background: "#fef3c7", color: "#92400e", borderRadius: 6, padding: "1px 8px", fontWeight: 700 }}>
+                    Open {summary.maintenanceOpen}
+                </span>
+                <span style={{ fontSize: 11, background: "#dbeafe", color: "#1d4ed8", borderRadius: 6, padding: "1px 8px", fontWeight: 700 }}>
+                    Asset {summary.assetCount}
+                </span>
+                <span style={{ fontSize: 11, color: "#64748b" }}>
+                    Last {formatSummaryDate(summary.latestMaintenanceAt)}
+                </span>
             </div>
-            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                <button onClick={() => onDetail("zone", zone.code, zone.name, zone.originalId, zone.active)} style={iconBtnStyle("#3b82f6")} title="ดูรายละเอียด">👁️</button>
+            <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {quickActionPermissions.canCreateMaintenance && maintenanceHref ? (
+                    <a
+                        href={maintenanceHref}
+                        onClick={(event) => event.stopPropagation()}
+                        style={{ ...iconBtnStyle("#0f766e"), textDecoration: "none" }}
+                        title="Create maintenance request"
+                    >
+                        Repair
+                    </a>
+                ) : null}
+                {quickActionPermissions.canViewRoomAssets ? (
+                    <a
+                        href={roomAssetsHref}
+                        onClick={(event) => event.stopPropagation()}
+                        style={{ ...iconBtnStyle("#0369a1"), textDecoration: "none" }}
+                        title="View assets for this room"
+                    >
+                        Assets
+                    </a>
+                ) : null}
+                {quickActionPermissions.canCreateAsset ? (
+                    <a
+                        href={newAssetHref}
+                        onClick={(event) => event.stopPropagation()}
+                        style={{ ...iconBtnStyle("#4f46e5"), textDecoration: "none" }}
+                        title="Register new asset for this room"
+                    >
+                        +Asset
+                    </a>
+                ) : null}
+                <button onClick={() => onDetail("zone", zone.code, zone.name, zone.originalId, zone.active)} style={iconBtnStyle("#3b82f6")} title="รายละเอียด">👁️</button>
                 <button onClick={() => zone.originalId && onEdit(zone.originalId, "zone", zone.code, zone.name)} style={iconBtnStyle("#f59e0b")} title="แก้ไข">✏️</button>
                 <button onClick={() => zone.originalId && onDelete(zone.originalId)} style={iconBtnStyle("#ef4444")} title="ลบ">🗑️</button>
             </div>
@@ -576,22 +632,35 @@ function ZoneRow({ zone, onDelete, onEdit, onDetail }: {
 }
 
 // ---- RoomRow ----
-function RoomRow({ room, onDelete, onAddZone, onAddZonesBulk, onEdit, onDetail, expandAll }: {
-    room: RoomNode; onDelete: (rid: number) => void; onAddZone: (room: RoomNode, code: string, name: string) => void;
+function RoomRow({ room, roomSummaryMap, quickActionPermissions, onDelete, onAddZone, onAddZonesBulk, onEdit, onDetail, expandAll }: {
+    room: RoomNode;
+    roomSummaryMap: Record<number, RoomServiceSummary>;
+    quickActionPermissions: QuickActionPermissions;
+    onDelete: (rid: number) => void;
+    onAddZone: (room: RoomNode, code: string, name: string) => void;
     onAddZonesBulk: (room: RoomNode, text: string) => void;
-    onEdit: (id: number, level: string, code: string, name: string) => void; onDetail: (level: string, code: string, name: string, originalId?: number, active?: boolean, children?: any) => void;
+    onEdit: (id: number, level: string, code: string, name: string) => void;
+    onDetail: (level: string, code: string, name: string, originalId?: number, active?: boolean, children?: HierarchyDetailNode[]) => void;
     expandAll: boolean;
 }) {
     const [open, setOpen] = useState(false);
     const [modal, setModal] = useState(false);
+    const isOpen = expandAll || open;
     const col = LEVEL_COLORS.room;
-
-    useEffect(() => { if (expandAll) setOpen(true); }, [expandAll]);
+    const roomSummary = room.originalId ? roomSummaryMap[room.originalId] : undefined;
+    const zoneSummaries = room.zones.map((zone) => (zone.originalId ? roomSummaryMap[zone.originalId] : undefined));
+    const nodeSummary = mergeNodeSummaries([roomSummary, ...zoneSummaries]);
+    const roomIdForActions = room.originalId || room.zones.find((zone) => Boolean(zone.originalId))?.originalId;
+    const maintenanceHref = roomIdForActions
+        ? `/maintenance?room_id=${roomIdForActions}&open_form=1&location=${encodeURIComponent(room.code)}`
+        : null;
+    const roomAssetsHref = `/assets/rooms?room=${encodeURIComponent(room.code)}`;
+    const newAssetHref = `/assets/new?location=${encodeURIComponent(room.code)}&room_section=${encodeURIComponent(room.name || room.code)}`;
 
     return (
         <div style={{ marginBottom: 6 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px 10px 32px", background: open ? col.light : "#fff", border: `1.5px solid ${open ? col.accent : "#e2e8f0"}`, borderRadius: open && room.zones.length ? "10px 10px 0 0" : 10, cursor: "pointer", transition: "all 0.15s" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }} onClick={() => setOpen(v => !v)}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px 10px 32px", background: isOpen ? col.light : "#fff", border: `1.5px solid ${isOpen ? col.accent : "#e2e8f0"}`, borderRadius: isOpen && room.zones.length ? "10px 10px 0 0" : 10, cursor: "pointer", transition: "all 0.15s" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }} onClick={() => setOpen(v => !v)}>
                     <span style={{ fontSize: 15 }}> {ICONS.room} </span>
                     <span style={{ fontFamily: "'Sarabun', sans-serif", fontSize: 13, color: "#374151" }}>
                         <span style={{ fontWeight: 700, color: col.accent }}> {room.code} </span>
@@ -600,9 +669,48 @@ function RoomRow({ room, onDelete, onAddZone, onAddZonesBulk, onEdit, onDetail, 
                     <span style={{ fontSize: 11, background: col.accent + "22", color: col.accent, borderRadius: 6, padding: "1px 8px", fontWeight: 700 }}> ห้อง </span>
                     {!room.active && <span style={{ fontSize: 11, background: '#fee2e2', color: '#ef4444', borderRadius: 6, padding: "1px 8px", fontWeight: 600 }}>ปิด</span>}
                     {room.zones.length > 0 && (<span style={{ fontSize: 11, background: "#f1f5f9", color: "#64748b", borderRadius: 6, padding: "1px 8px" }}>{room.zones.length} โซน</span>)}
+                    <span style={{ fontSize: 11, background: "#fef3c7", color: "#92400e", borderRadius: 6, padding: "1px 8px", fontWeight: 700 }}>
+                        Open {nodeSummary.maintenanceOpen}
+                    </span>
+                    <span style={{ fontSize: 11, background: "#dbeafe", color: "#1d4ed8", borderRadius: 6, padding: "1px 8px", fontWeight: 700 }}>
+                        Asset {nodeSummary.assetCount}
+                    </span>
+                    <span style={{ fontSize: 11, color: "#64748b" }}>
+                        Last {formatSummaryDate(nodeSummary.latestMaintenanceAt)}
+                    </span>
                 </div>
-                <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                    <button onClick={e => { e.stopPropagation(); onDetail("room", room.code, room.name, room.originalId, room.active, room.zones); }} style={iconBtnStyle("#3b82f6")} title="ดูรายละเอียด">👁️</button>
+                <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {quickActionPermissions.canCreateMaintenance && maintenanceHref ? (
+                        <a
+                            href={maintenanceHref}
+                            onClick={(event) => event.stopPropagation()}
+                            style={{ ...iconBtnStyle("#0f766e"), textDecoration: "none" }}
+                            title="Create maintenance request"
+                        >
+                            Repair
+                        </a>
+                    ) : null}
+                    {quickActionPermissions.canViewRoomAssets ? (
+                        <a
+                            href={roomAssetsHref}
+                            onClick={(event) => event.stopPropagation()}
+                            style={{ ...iconBtnStyle("#0369a1"), textDecoration: "none" }}
+                            title="View assets for this room"
+                        >
+                            Assets
+                        </a>
+                    ) : null}
+                    {quickActionPermissions.canCreateAsset ? (
+                        <a
+                            href={newAssetHref}
+                            onClick={(event) => event.stopPropagation()}
+                            style={{ ...iconBtnStyle("#4f46e5"), textDecoration: "none" }}
+                            title="Register new asset for this room"
+                        >
+                            +Asset
+                        </a>
+                    ) : null}
+                    <button onClick={e => { e.stopPropagation(); onDetail("room", room.code, room.name, room.originalId, room.active, room.zones); }} style={iconBtnStyle("#3b82f6")} title="รายละเอียด">👁️</button>
                     <button onClick={e => { e.stopPropagation(); if (room.originalId) onEdit(room.originalId, "room", room.code, room.name); }} style={iconBtnStyle("#f59e0b")} title="แก้ไข">✏️</button>
                     <button onClick={e => { e.stopPropagation(); setModal(true); }} style={{ padding: "4px 10px", borderRadius: 7, border: `1.5px solid ${col.accent}`, background: col.light, color: col.accent, cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 600, fontSize: 11 }}> + โซน </button>
                     <button onClick={e => {
@@ -622,12 +730,22 @@ function RoomRow({ room, onDelete, onAddZone, onAddZonesBulk, onEdit, onDetail, 
                         });
                     }} style={{ padding: "4px 10px", borderRadius: 7, border: `1.5px solid ${col.accent}`, background: "#fff", color: col.accent, cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 600, fontSize: 11, marginLeft: 4 }}> Bulk </button>
                     <button onClick={e => { e.stopPropagation(); if (room.originalId) { onDelete(room.originalId) } }} style={iconBtnStyle("#ef4444")} title="ลบห้องนี้">🗑️</button>
-                    <span onClick={() => setOpen(v => !v)} style={{ color: "#94a3b8", fontSize: 16, userSelect: "none", cursor: "pointer" }}>{open ? "▴" : "▾"}</span>
+                    <span onClick={() => setOpen(v => !v)} style={{ color: "#94a3b8", fontSize: 16, userSelect: "none", cursor: "pointer" }}>{open ? "▼" : "▶"}</span>
                 </div>
             </div>
-            {open && room.zones.length > 0 && (
+            {isOpen && room.zones.length > 0 && (
                 <div style={{ background: "#fafbfc", border: `1.5px solid ${col.accent}`, borderTop: "none", borderRadius: "0 0 10px 10px", padding: "8px 8px 4px" }}>
-                    {room.zones.map(z => (<ZoneRow key={z.id} zone={z} onDelete={onDelete} onEdit={onEdit} onDetail={onDetail} />))}
+                    {room.zones.map((zone) => (
+                        <ZoneRow
+                            key={zone.id}
+                            zone={zone}
+                            summary={mergeNodeSummaries([zone.originalId ? roomSummaryMap[zone.originalId] : undefined])}
+                            quickActionPermissions={quickActionPermissions}
+                            onDelete={onDelete}
+                            onEdit={onEdit}
+                            onDetail={onDetail}
+                        />
+                    ))}
                 </div>
             )}
             {modal && (<AddModal level="zone" parentName={`${room.code} ${room.name}`} onAdd={(c, n) => { onAddZone(room, c, n); setModal(false); setOpen(true); }} onClose={() => setModal(false)} />)}
@@ -636,22 +754,26 @@ function RoomRow({ room, onDelete, onAddZone, onAddZonesBulk, onEdit, onDetail, 
 }
 
 // ---- FloorRow ----
-function FloorRow({ floor, onDelete, onAddRoom, onAddZone, onAddZonesBulk, onEdit, onDetail, expandAll }: {
-    floor: FloorNode; onDelete: (id: number) => void; onAddRoom: (floor: FloorNode, c: string, n: string) => void;
+function FloorRow({ floor, roomSummaryMap, quickActionPermissions, onDelete, onAddRoom, onAddZone, onAddZonesBulk, onEdit, onDetail, expandAll }: {
+    floor: FloorNode;
+    roomSummaryMap: Record<number, RoomServiceSummary>;
+    quickActionPermissions: QuickActionPermissions;
+    onDelete: (id: number) => void;
+    onAddRoom: (floor: FloorNode, c: string, n: string) => void;
     onAddZone: (room: RoomNode, c: string, n: string) => void;
     onAddZonesBulk: (room: RoomNode, text: string) => void;
-    onEdit: (id: number, level: string, code: string, name: string) => void; onDetail: (level: string, code: string, name: string, originalId?: number, active?: boolean, children?: any) => void;
+    onEdit: (id: number, level: string, code: string, name: string) => void;
+    onDetail: (level: string, code: string, name: string, originalId?: number, active?: boolean, children?: HierarchyDetailNode[]) => void;
     expandAll: boolean;
 }) {
     const [open, setOpen] = useState(false);
     const [modal, setModal] = useState(false);
+    const isOpen = expandAll || open;
     const col = LEVEL_COLORS.floor;
-
-    useEffect(() => { if (expandAll) setOpen(true); }, [expandAll]);
 
     return (
         <div style={{ marginBottom: 6 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px 11px 18px", background: open ? col.light : "#f8fafc", border: `1.5px solid ${open ? col.accent : "#e2e8f0"}`, borderRadius: open && floor.rooms.length ? "10px 10px 0 0" : 10, cursor: "pointer", transition: "all 0.15s" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px 11px 18px", background: isOpen ? col.light : "#f8fafc", border: `1.5px solid ${isOpen ? col.accent : "#e2e8f0"}`, borderRadius: isOpen && floor.rooms.length ? "10px 10px 0 0" : 10, cursor: "pointer", transition: "all 0.15s" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }} onClick={() => setOpen(v => !v)}>
                     <span style={{ fontSize: 16 }}> {ICONS.floor} </span>
                     <span style={{ fontFamily: "'Sarabun', sans-serif", fontSize: 14, color: "#374151" }}>
@@ -662,7 +784,7 @@ function FloorRow({ floor, onDelete, onAddRoom, onAddZone, onAddZonesBulk, onEdi
                     {floor.rooms.length > 0 && (<span style={{ fontSize: 11, background: "#f1f5f9", color: "#64748b", borderRadius: 6, padding: "1px 8px" }}>{floor.rooms.length} ห้อง</span>)}
                 </div>
                 <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                    <button onClick={e => { e.stopPropagation(); onDetail("floor", floor.code, floor.name, floor.originalId, floor.active, floor.rooms); }} style={iconBtnStyle("#3b82f6")} title="ดูรายละเอียด">👁️</button>
+                    <button onClick={e => { e.stopPropagation(); onDetail("floor", floor.code, floor.name, floor.originalId, floor.active, floor.rooms); }} style={iconBtnStyle("#3b82f6")} title="รายละเอียด">👁️</button>
                     {floor.originalId && (
                         <>
                             <button onClick={e => { e.stopPropagation(); onEdit(floor.originalId!, "floor", floor.code, floor.name); }} style={iconBtnStyle("#f59e0b")} title="แก้ไข">✏️</button>
@@ -670,12 +792,25 @@ function FloorRow({ floor, onDelete, onAddRoom, onAddZone, onAddZonesBulk, onEdi
                         </>
                     )}
                     <button onClick={e => { e.stopPropagation(); setModal(true); }} style={{ padding: "4px 10px", borderRadius: 7, border: `1.5px solid ${col.accent}`, background: col.light, color: col.accent, cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 600, fontSize: 11 }}> + ห้อง </button>
-                    <span onClick={() => setOpen(v => !v)} style={{ color: "#94a3b8", fontSize: 16, userSelect: "none", cursor: "pointer", marginLeft: 4 }}>{open ? "▴" : "▾"}</span>
+                    <span onClick={() => setOpen(v => !v)} style={{ color: "#94a3b8", fontSize: 16, userSelect: "none", cursor: "pointer", marginLeft: 4 }}>{open ? "▼" : "▶"}</span>
                 </div>
             </div>
-            {open && floor.rooms.length > 0 && (
+            {isOpen && floor.rooms.length > 0 && (
                 <div style={{ background: "#f8fafc", border: `1.5px solid ${col.accent}`, borderTop: "none", borderRadius: "0 0 10px 10px", padding: "8px 8px 4px" }}>
-                    {floor.rooms.map(r => (<RoomRow key={r.id} room={r} onDelete={onDelete} onAddZone={onAddZone} onAddZonesBulk={onAddZonesBulk} onEdit={onEdit} onDetail={onDetail} expandAll={expandAll} />))}
+                    {floor.rooms.map((room) => (
+                        <RoomRow
+                            key={room.id}
+                            room={room}
+                            roomSummaryMap={roomSummaryMap}
+                            quickActionPermissions={quickActionPermissions}
+                            onDelete={onDelete}
+                            onAddZone={onAddZone}
+                            onAddZonesBulk={onAddZonesBulk}
+                            onEdit={onEdit}
+                            onDetail={onDetail}
+                            expandAll={expandAll}
+                        />
+                    ))}
                 </div>
             )}
             {modal && (<AddModal level="room" parentName={`${floor.code} ${floor.name}`} onAdd={(c, n) => { onAddRoom(floor, c, n); setModal(false); setOpen(true); }} onClose={() => setModal(false)} />)}
@@ -684,23 +819,27 @@ function FloorRow({ floor, onDelete, onAddRoom, onAddZone, onAddZonesBulk, onEdi
 }
 
 // ---- TypeRow ----
-function TypeRow({ type, onDelete, onAddFloor, onAddRoom, onAddZone, onAddZonesBulk, onEdit, onDetail, expandAll }: {
-    type: TypeNode; onDelete: (id: number) => void; onAddFloor: (type: TypeNode, c: string, n: string) => void;
+function TypeRow({ type, roomSummaryMap, quickActionPermissions, onDelete, onAddFloor, onAddRoom, onAddZone, onAddZonesBulk, onEdit, onDetail, expandAll }: {
+    type: TypeNode;
+    roomSummaryMap: Record<number, RoomServiceSummary>;
+    quickActionPermissions: QuickActionPermissions;
+    onDelete: (id: number) => void;
+    onAddFloor: (type: TypeNode, c: string, n: string) => void;
     onAddRoom: (floor: FloorNode, c: string, n: string) => void;
     onAddZone: (room: RoomNode, c: string, n: string) => void;
     onAddZonesBulk: (room: RoomNode, text: string) => void;
-    onEdit: (id: number, level: string, code: string, name: string) => void; onDetail: (level: string, code: string, name: string, originalId?: number, active?: boolean, children?: any) => void;
+    onEdit: (id: number, level: string, code: string, name: string) => void;
+    onDetail: (level: string, code: string, name: string, originalId?: number, active?: boolean, children?: HierarchyDetailNode[]) => void;
     expandAll: boolean;
 }) {
     const [open, setOpen] = useState(true);
     const [modal, setModal] = useState(false);
+    const isOpen = expandAll || open;
     const col = LEVEL_COLORS.type;
-
-    useEffect(() => { if (expandAll) setOpen(true); }, [expandAll]);
 
     return (
         <div style={{ marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", background: `linear-gradient(135deg, ${col.bg}, #2d4a7a)`, borderRadius: open && type.floors.length > 0 ? "12px 12px 0 0" : 12, color: "#fff", cursor: "pointer", boxShadow: "0 4px 12px rgba(30,58,95,0.3)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", background: `linear-gradient(135deg, ${col.bg}, #2d4a7a)`, borderRadius: isOpen && type.floors.length > 0 ? "12px 12px 0 0" : 12, color: "#fff", cursor: "pointer", boxShadow: "0 4px 12px rgba(30,58,95,0.3)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }} onClick={() => setOpen(v => !v)}>
                     <span style={{ fontSize: 20 }}> {ICONS.type} </span>
                     <div>
@@ -711,7 +850,7 @@ function TypeRow({ type, onDelete, onAddFloor, onAddRoom, onAddZone, onAddZonesB
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     <button onClick={e => { e.stopPropagation(); onDetail("type", type.code, type.name, type.originalId, type.active, type.floors); }}
-                        style={{ background: "rgba(255,255,255,0.15)", border: "1.5px solid rgba(255,255,255,0.3)", borderRadius: 7, cursor: "pointer", padding: "4px 8px", fontSize: 13, color: "#fff" }} title="ดูรายละเอียด">👁️</button>
+                        style={{ background: "rgba(255,255,255,0.15)", border: "1.5px solid rgba(255,255,255,0.3)", borderRadius: 7, cursor: "pointer", padding: "4px 8px", fontSize: 13, color: "#fff" }} title="รายละเอียด">👁️</button>
                     {type.originalId && (
                         <>
                             <button onClick={e => { e.stopPropagation(); onEdit(type.originalId!, "type", type.code, type.name); }}
@@ -721,12 +860,26 @@ function TypeRow({ type, onDelete, onAddFloor, onAddRoom, onAddZone, onAddZonesB
                         </>
                     )}
                     <button onClick={e => { e.stopPropagation(); setModal(true); }} style={{ padding: "6px 14px", borderRadius: 8, border: "1.5px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 700, fontSize: 12 }}> + ชั้น </button>
-                    <span onClick={() => setOpen(v => !v)} style={{ color: "rgba(255,255,255,0.5)", fontSize: 18, userSelect: "none", cursor: "pointer", marginLeft: 4 }}>{open ? "▴" : "▾"}</span>
+                    <span onClick={() => setOpen(v => !v)} style={{ color: "rgba(255,255,255,0.5)", fontSize: 18, userSelect: "none", cursor: "pointer", marginLeft: 4 }}>{open ? "▼" : "▶"}</span>
                 </div>
             </div>
-            {open && type.floors.length > 0 && (
+            {isOpen && type.floors.length > 0 && (
                 <div style={{ background: "#fff", border: `1.5px solid ${col.accent}44`, borderTop: "none", borderRadius: "0 0 12px 12px", padding: "10px 10px 6px" }}>
-                    {type.floors.map(floor => (<FloorRow key={floor.id} floor={floor} onDelete={onDelete} onAddRoom={onAddRoom} onAddZone={onAddZone} onAddZonesBulk={onAddZonesBulk} onEdit={onEdit} onDetail={onDetail} expandAll={expandAll} />))}
+                    {type.floors.map((floor) => (
+                        <FloorRow
+                            key={floor.id}
+                            floor={floor}
+                            roomSummaryMap={roomSummaryMap}
+                            quickActionPermissions={quickActionPermissions}
+                            onDelete={onDelete}
+                            onAddRoom={onAddRoom}
+                            onAddZone={onAddZone}
+                            onAddZonesBulk={onAddZonesBulk}
+                            onEdit={onEdit}
+                            onDetail={onDetail}
+                            expandAll={expandAll}
+                        />
+                    ))}
                 </div>
             )}
             {modal && (<AddModal level="floor" parentName={`${type.code} ${type.name}`} onAdd={(c, n) => { onAddFloor(type, c, n); setModal(false); setOpen(true); }} onClose={() => setModal(false)} />)}
@@ -849,20 +1002,16 @@ function VehicleSection({
     );
 }
 
-function VehicleEditModal({ data, onClose, onSave }: any) {
-    const [form, setForm] = useState(data || {
-        license_plate: "",
-        province: "",
-        vehicle_type: "รถยนต์",
-        brand: "",
-        model_name: "",
-        color: "",
-        owner_name: "",
-        owner_room: "",
-        owner_phone: "",
-        parking_slot: "",
-        notes: ""
-    });
+function VehicleEditModal({
+    data,
+    onClose,
+    onSave,
+}: {
+    data?: Vehicle;
+    onClose: () => void;
+    onSave: (value: VehicleFormValues) => void;
+}) {
+    const [form, setForm] = useState<VehicleFormValues>(toVehicleFormValues(data));
 
     return (
         <div style={UI.modalOverlay}>
@@ -928,7 +1077,17 @@ function VehicleEditModal({ data, onClose, onSave }: any) {
 }
 
 // ==================== MAIN COMPONENT ====================
-export default function RoomManagement() {
+export default function RoomManagement({
+    quickActionPermissions,
+}: {
+    quickActionPermissions?: Partial<QuickActionPermissions>;
+}) {
+    const resolvedQuickActionPermissions: QuickActionPermissions = {
+        canCreateMaintenance: quickActionPermissions?.canCreateMaintenance ?? true,
+        canViewRoomAssets: quickActionPermissions?.canViewRoomAssets ?? true,
+        canCreateAsset: quickActionPermissions?.canCreateAsset ?? true,
+    };
+
     const [rooms, setRooms] = useState<Room[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<"rooms" | "vehicles">("rooms");
@@ -941,11 +1100,20 @@ export default function RoomManagement() {
     const [expandAll, setExpandAll] = useState(false);
     const [modal, setModal] = useState(false);
     const [toasts, setToasts] = useState<Toast[]>([]);
+    const [roomServiceSummaries, setRoomServiceSummaries] = useState<RoomServiceSummary[]>([]);
+    const [serviceTotals, setServiceTotals] = useState<ServiceTotals>(EMPTY_SERVICE_TOTALS);
 
     // Edit modal state
     const [editModal, setEditModal] = useState<{ roomId: number; level: string; code: string; name: string } | null>(null);
     // Detail modal state
-    const [detailModal, setDetailModal] = useState<{ level: string; code: string; name: string; originalId?: number; active?: boolean; children?: any } | null>(null);
+    const [detailModal, setDetailModal] = useState<{
+        level: string;
+        code: string;
+        name: string;
+        originalId?: number;
+        active?: boolean;
+        children?: HierarchyDetailNode[];
+    } | null>(null);
 
     // <-- UPDATED: showToast marks exiting and removes after animation -->
     const showToast = useCallback((type: 'success' | 'error', text: string) => {
@@ -977,9 +1145,10 @@ export default function RoomManagement() {
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
-            const [roomsRes, vehiclesRes] = await Promise.all([
+            const [roomsRes, vehiclesRes, summaryRes] = await Promise.all([
                 getAllRooms(),
-                getAllVehicles()
+                getAllVehicles(),
+                getRoomServiceSummary(),
             ]);
             
             if (roomsRes.success && roomsRes.data) {
@@ -987,6 +1156,13 @@ export default function RoomManagement() {
             }
             if (vehiclesRes) {
                 setVehicles(vehiclesRes as Vehicle[]);
+            }
+            if (summaryRes.success && summaryRes.data) {
+                setRoomServiceSummaries(summaryRes.data as RoomServiceSummary[]);
+                setServiceTotals(summaryRes.totals || EMPTY_SERVICE_TOTALS);
+            } else {
+                setRoomServiceSummaries([]);
+                setServiceTotals(EMPTY_SERVICE_TOTALS);
             }
         } catch (error) {
             console.error("Failed to load data:", error);
@@ -1068,6 +1244,12 @@ export default function RoomManagement() {
     };
 
     const types = useMemo(buildVirtualTree, [rooms]);
+    const roomSummaryLookup = useMemo(() => {
+        return roomServiceSummaries.reduce<Record<number, RoomServiceSummary>>((acc, summary) => {
+            acc[summary.room_id] = summary;
+            return acc;
+        }, {});
+    }, [roomServiceSummaries]);
     const totalRooms = types.reduce((a, t) => a + t.floors.reduce((b, f) => b + f.rooms.length, 0), 0);
 
     const filteredTypes = useMemo(() => {
@@ -1113,7 +1295,7 @@ export default function RoomManagement() {
                 cancelButton: 'premium-swal-cancel',
                 popup: 'premium-swal-popup'
             }
-        } as any);
+        });
 
         if (!result.isConfirmed) return;
         const res = await deleteRoom(roomId);
@@ -1242,13 +1424,19 @@ export default function RoomManagement() {
         }
     };
 
-    const openDetail = (level: string, code: string, name: string, originalId?: number, active?: boolean, children?: any) => {
+    const openDetail = (
+        level: string,
+        code: string,
+        name: string,
+        originalId?: number,
+        active?: boolean,
+        children?: HierarchyDetailNode[]
+    ) => {
         setDetailModal({ level, code, name, originalId, active, children });
     };
 
     return (
         <div style={{ minHeight: "100vh", background: UI.pageBg, fontFamily: "'Sarabun', sans-serif" }}>
-            <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
             {/* Premium Toast */}
             <div className="toast-container" aria-live="polite">
@@ -1278,9 +1466,16 @@ export default function RoomManagement() {
                         <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800, letterSpacing: "-0.02em" }}> Admin Dashboard </h1>
                         <p style={{ margin: "4px 0 0", opacity: 0.7, fontSize: 15 }}> จัดการโครงสร้างห้องพักและข้อมูลทะเบียนรถยนต์ </p>
                     </div>
-                    <div style={{ textAlign: "right", opacity: 0.9 }}>
-                        <div style={{ fontSize: 24, fontWeight: 800, color: "#10b981" }}> {totalRooms} </div>
-                        <div style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.6 }}> Total Rooms </div>
+                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "flex-end", opacity: 0.95 }}>
+                        <span style={{ ...UI.pill, background: "#dcfce7", color: "#166534" }}>
+                            ใช้งาน {serviceTotals.active_rooms}
+                        </span>
+                        <span style={{ ...UI.pill, background: "#fef3c7", color: "#92400e" }}>
+                            งานซ่อมเปิด {serviceTotals.maintenance_open}
+                        </span>
+                        <span style={{ ...UI.pill, background: "#dbeafe", color: "#1d4ed8" }}>
+                            ทรัพย์สิน {serviceTotals.asset_total}
+                        </span>
                     </div>
                 </div>
                 
@@ -1330,6 +1525,12 @@ export default function RoomManagement() {
                         headerRight={
                             <>
                                 <span style={UI.pill}>{totalRooms} ห้อง</span>
+                                <span style={{ ...UI.pill, background: "#fef3c7", color: "#92400e" }}>
+                                    งานซ่อมเปิด {serviceTotals.maintenance_open}
+                                </span>
+                                <span style={{ ...UI.pill, background: "#dbeafe", color: "#1d4ed8" }}>
+                                    ทรัพย์สิน {serviceTotals.asset_total}
+                                </span>
                                 <button onClick={() => setModal(true)} style={UI.btnPrimary}>
                                     + เพิ่มประเภทใหม่
                                 </button>
@@ -1382,6 +1583,8 @@ export default function RoomManagement() {
                                 filteredTypes.map(type => (
                                     <TypeRow
                                         key={type.id} type={type}
+                                        roomSummaryMap={roomSummaryLookup}
+                                        quickActionPermissions={resolvedQuickActionPermissions}
                                         onDelete={deleteNode}
                                         onAddFloor={handleCreateFloor}
                                         onAddRoom={handleCreateRoom}
@@ -1500,7 +1703,7 @@ export default function RoomManagement() {
                                         📍 โซนย่อยในห้องนี้ ({detailModal.children.length})
                                     </h4>
                                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
-                                        {detailModal.children.map((z: any) => (
+                                        {detailModal.children.map((z) => (
                                             <div key={z.id} style={{ background: "#fff", border: "1.5px solid #e2e8f0", padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600 }}>
                                                 {z.code} - {z.name}
                                             </div>
@@ -1537,7 +1740,7 @@ export default function RoomManagement() {
                 <VehicleEditModal 
                     data={vehicleModal.data} 
                     onClose={() => setVehicleModal(null)} 
-                    onSave={async (v: any) => {
+                    onSave={async (v: VehicleFormValues) => {
                         const res = v.vehicle_id 
                             ? await updateVehicle(v.vehicle_id, v)
                             : await createVehicle(v);
@@ -1700,3 +1903,4 @@ export default function RoomManagement() {
         </div>
     );
 }
+
