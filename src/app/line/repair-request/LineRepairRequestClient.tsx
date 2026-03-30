@@ -743,7 +743,7 @@ export default function LineRepairRequestClient() {
     const lineUserIdFromQuery = (searchParams.get('line_user_id') || '').trim();
     const debugLiffEnabled = searchParams.get('debug_liff') === '1';
     const resolvedLiffId =
-        process.env.NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID || '';
+        process.env.NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID?.trim() || '';
     const liffUrl = resolvedLiffId ? `https://liff.line.me/${resolvedLiffId}` : '';
     const safeRedirectUri = buildSafeLiffRedirectUri() || '';
 
@@ -839,30 +839,58 @@ export default function LineRepairRequestClient() {
         }
     };
 
+    const triggerLineLogin = useCallback(() => {
+        const redirectUri = buildSafeLiffRedirectUri();
+        if (window.liff) {
+            window.liff.login(redirectUri ? { redirectUri } : undefined);
+            return;
+        }
+        if (resolvedLiffId) {
+            window.location.href = `https://liff.line.me/${resolvedLiffId}`;
+        }
+    }, [resolvedLiffId]);
+
     // LIFF
     useEffect(() => {
         let cancelled = false;
         async function run() {
-            if (lineUserIdFromQuery) { if (!cancelled) { setLineUserId(lineUserIdFromQuery); setDetectingLineId(false); } return; }
-            const liffId =
-                process.env.NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID;
-            if (!liffId) { if (!cancelled) { setDetectingLineId(false); setAlert({ kind:'info', text:t('errNoLiffId') }); } return; }
+            if (!resolvedLiffId) {
+                if (!cancelled) {
+                    if (lineUserIdFromQuery) {
+                        setLineUserId(lineUserIdFromQuery);
+                    } else {
+                        setAlert({ kind:'info', text:t('errNoLiffId') });
+                    }
+                    setDetectingLineId(false);
+                }
+                return;
+            }
             try {
                 await loadLiffSdk();
                 if (!window.liff) throw new Error('LIFF unavailable');
-                await window.liff.init({ liffId });
+                await window.liff.init({ liffId: resolvedLiffId });
                 if (!window.liff.isLoggedIn()) {
-                    window.liff.login();
+                    const redirectUri = buildSafeLiffRedirectUri();
+                    window.liff.login(redirectUri ? { redirectUri } : undefined);
                     return;
                 }
                 const p = await window.liff.getProfile();
                 if (!cancelled && p?.userId) setLineUserId(p.userId);
-            } catch (e) { console.error(e); if (!cancelled) setAlert({ kind:'error', text:t('errLineId') }); }
+                else if (!cancelled && lineUserIdFromQuery) setLineUserId(lineUserIdFromQuery);
+            } catch (e) {
+                console.error(e);
+                if (!cancelled) {
+                    if (lineUserIdFromQuery) {
+                        setLineUserId(lineUserIdFromQuery);
+                    }
+                    setAlert({ kind:'error', text:t('errLineId') });
+                }
+            }
             finally { if (!cancelled) setDetectingLineId(false); }
         }
         void run(); return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [lineUserIdFromQuery]);
+    }, [lineUserIdFromQuery, resolvedLiffId]);
 
     // Hydrate
     useEffect(() => {
@@ -976,6 +1004,16 @@ export default function LineRepairRequestClient() {
                                 </div>
                             </>)}
                         </div>
+                        {!detectingLineId && !lineUserId && !!resolvedLiffId && (
+                            <button
+                                type="button"
+                                onClick={triggerLineLogin}
+                                className="sb"
+                                style={{ marginTop: -2 }}
+                            >
+                                LINE Login
+                            </button>
+                        )}
 
                         {/* Location */}
                         <div className="fg">

@@ -172,6 +172,8 @@ function LangSwitcher({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => voi
 export default function LineCustomerRegisterClient() {
     const searchParams = useSearchParams();
     const lineUserIdFromQuery = (searchParams.get('line_user_id') || '').trim();
+    const customerRegisterLiffId =
+        process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID?.trim() || '';
 
     // Language state — default from query param or 'th'
     const initialLang = (['th'].includes(searchParams.get('lang') ?? '') 
@@ -196,20 +198,14 @@ export default function LineCustomerRegisterClient() {
         let cancelled = false;
 
         async function resolveLineUserId() {
-            if (lineUserIdFromQuery) {
+            if (!customerRegisterLiffId) {
                 if (!cancelled) {
-                    setLineUserId(lineUserIdFromQuery);
+                    if (lineUserIdFromQuery) {
+                        setLineUserId(lineUserIdFromQuery);
+                    } else {
+                        setAlert({ kind: 'info', text: translations.th.liffEnvMissing });
+                    }
                     setDetectingLineId(false);
-                }
-                return;
-            }
-
-            const liffId =
-                process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID;
-            if (!liffId) {
-                if (!cancelled) {
-                    setDetectingLineId(false);
-                    setAlert({ kind: 'info', text: translations.th.liffEnvMissing });
                 }
                 return;
             }
@@ -218,10 +214,11 @@ export default function LineCustomerRegisterClient() {
                 await loadLiffSdk();
                 if (!window.liff) throw new Error('LIFF SDK unavailable');
 
-                await window.liff.init({ liffId });
+                await window.liff.init({ liffId: customerRegisterLiffId });
 
                 if (!window.liff.isLoggedIn()) {
-                    window.liff.login();
+                    const redirectUri = buildSafeLiffRedirectUri();
+                    window.liff.login(redirectUri ? { redirectUri } : undefined);
                     return;
                 }
 
@@ -229,10 +226,17 @@ export default function LineCustomerRegisterClient() {
                 if (!cancelled && profile?.userId) {
                     setLineUserId(profile.userId);
                     if (profile.displayName) setFullName((prev) => prev || profile.displayName || '');
+                } else if (!cancelled && lineUserIdFromQuery) {
+                    setLineUserId(lineUserIdFromQuery);
                 }
             } catch (error) {
                 console.error('Failed to detect LINE user id:', error);
-                if (!cancelled) setAlert({ kind: 'error', text: translations.th.liffFetchError });
+                if (!cancelled) {
+                    if (lineUserIdFromQuery) {
+                        setLineUserId(lineUserIdFromQuery);
+                    }
+                    setAlert({ kind: 'error', text: translations.th.liffFetchError });
+                }
             } finally {
                 if (!cancelled) setDetectingLineId(false);
             }
@@ -240,7 +244,7 @@ export default function LineCustomerRegisterClient() {
 
         void resolveLineUserId();
         return () => { cancelled = true; };
-    }, [lineUserIdFromQuery]);
+    }, [customerRegisterLiffId, lineUserIdFromQuery]);
 
     useEffect(() => {
         let cancelled = false;
@@ -390,6 +394,22 @@ export default function LineCustomerRegisterClient() {
                         </p>
                         {!detectingLineId && !lineUserId && (
                             <div className="mt-2 flex items-center gap-2">
+                                {!!customerRegisterLiffId && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const redirectUri = buildSafeLiffRedirectUri();
+                                            if (window.liff) {
+                                                window.liff.login(redirectUri ? { redirectUri } : undefined);
+                                                return;
+                                            }
+                                            window.location.href = `https://liff.line.me/${customerRegisterLiffId}`;
+                                        }}
+                                        className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
+                                    >
+                                        <span className="text-sm">เข้าสู่ระบบ LINE</span>
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={async () => {

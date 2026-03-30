@@ -402,11 +402,11 @@ export default function LoginPage() {
                     </form>
 
                     <div className="mt-8 pt-6 border-t border-gray-100 text-center relative group">
-                        <p className="text-gray-400 text-xs">Stock Movement System v1.0</p>
+                        <p className="text-gray-400 text-xs">Stock Movement System v4.0</p>
                     </div>
                 </div>
 
-                <p className="text-center text-gray-400 text-xs mt-4">Powered by Next.js & Prisma</p>
+             
             </div>
         </div>
     );
