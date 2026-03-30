@@ -10,9 +10,12 @@ export const metadata = {
 };
 
 export default function LineCustomerRegisterPage() {
+    const customerRegisterLiffId =
+        process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID?.trim() || '2008227129-YilYRFJv';
+
     return (
         <Suspense fallback={<div className="min-h-screen p-6">Loading...</div>}>
-            <LineCustomerRegisterClient />
+            <LineCustomerRegisterClient customerRegisterLiffId={customerRegisterLiffId} />
         </Suspense>
     );
 }

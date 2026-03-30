@@ -1,6 +1,8 @@
 services:
   app:
     container_name: stock-app
+    env_file:
+      - ./.env
     build:
       context: .
       dockerfile: Dockerfile

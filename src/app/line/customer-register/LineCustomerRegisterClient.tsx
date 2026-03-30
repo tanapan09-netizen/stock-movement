@@ -169,11 +169,17 @@ function LangSwitcher({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => voi
     );
 }
 
-export default function LineCustomerRegisterClient() {
+type LineCustomerRegisterClientProps = {
+    customerRegisterLiffId?: string;
+};
+
+export default function LineCustomerRegisterClient({
+    customerRegisterLiffId: customerRegisterLiffIdProp = '',
+}: LineCustomerRegisterClientProps) {
     const searchParams = useSearchParams();
     const lineUserIdFromQuery = (searchParams.get('line_user_id') || '').trim();
     const customerRegisterLiffId =
-        process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID?.trim() || '';
+        customerRegisterLiffIdProp.trim() || '2008227129-YilYRFJv';
 
     // Language state — default from query param or 'th'
     const initialLang = (['th'].includes(searchParams.get('lang') ?? '') 

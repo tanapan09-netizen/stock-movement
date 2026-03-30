@@ -738,12 +738,17 @@ function SuccessDialog({
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
-export default function LineRepairRequestClient() {
+type LineRepairRequestClientProps = {
+    repairRequestLiffId?: string;
+};
+
+export default function LineRepairRequestClient({
+    repairRequestLiffId = '',
+}: LineRepairRequestClientProps) {
     const searchParams = useSearchParams();
     const lineUserIdFromQuery = (searchParams.get('line_user_id') || '').trim();
     const debugLiffEnabled = searchParams.get('debug_liff') === '1';
-    const resolvedLiffId =
-        process.env.NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID?.trim() || '';
+    const resolvedLiffId = repairRequestLiffId.trim() || '2008227129-RRioS2SM';
     const liffUrl = resolvedLiffId ? `https://liff.line.me/${resolvedLiffId}` : '';
     const safeRedirectUri = buildSafeLiffRedirectUri() || '';
 
