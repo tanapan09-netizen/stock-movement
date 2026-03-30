@@ -126,6 +126,7 @@ export default function ProductForm({
         const params = new URLSearchParams();
         params.set('source', 'product');
 
+        const productSku = getText('p_id');
         const pName = getText('p_name');
         const pDesc = getText('p_desc');
         const supplier = getText('supplier');
@@ -133,6 +134,10 @@ export default function ProductForm({
         const modelName = getText('model_name');
         const rawLocation = getText('asset_current_location');
 
+        if (productSku) {
+            params.set('p_id', productSku);
+            params.set('asset_code', productSku);
+        }
         if (pName) params.set('p_name', pName);
         if (pDesc) params.set('p_desc', pDesc);
         if (supplier) params.set('supplier', supplier);

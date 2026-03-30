@@ -42,6 +42,7 @@ export default async function NewAssetPage({
 
     const params = (await searchParams) || {};
     const prefill = {
+        asset_code: getSingleParam(params.asset_code).trim() || getSingleParam(params.p_id).trim(),
         asset_name: getSingleParam(params.asset_name).trim() || getSingleParam(params.p_name).trim(),
         description: getSingleParam(params.description).trim() || getSingleParam(params.p_desc).trim(),
         category: getSingleParam(params.category).trim(),
