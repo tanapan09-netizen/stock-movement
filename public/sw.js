@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stock-pro-v2';
+const CACHE_NAME = 'stock-pro-v3';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache on install
@@ -51,7 +51,7 @@ self.addEventListener('fetch', (event) => {
                 .then((response) => {
                     const responseToCache = response.clone();
                     if (response.status === 200) {
-                        caches.open('stock-pro-api-v2').then((cache) => {
+                        caches.open('stock-pro-api-v3').then((cache) => {
                             cache.put(event.request, responseToCache);
                         });
                     }
