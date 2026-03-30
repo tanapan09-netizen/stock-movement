@@ -745,6 +745,8 @@ type LineRepairRequestClientProps = {
 export default function LineRepairRequestClient({
     repairRequestLiffId = '',
 }: LineRepairRequestClientProps) {
+    const LOGIN_REDIRECT_URL = 'https://mpstock.sugoidev.com/login';
+
     const searchParams = useSearchParams();
     const lineUserIdFromQuery = (searchParams.get('line_user_id') || '').trim();
     const debugLiffEnabled = searchParams.get('debug_liff') === '1';
@@ -787,20 +789,8 @@ export default function LineRepairRequestClient({
 
     const returnToPreviousPage = useCallback(() => {
         if (typeof window === 'undefined') return;
-        if (window.history.length > 1) {
-            window.history.back();
-            return;
-        }
-        if (document.referrer) {
-            window.location.href = document.referrer;
-            return;
-        }
-        if (window.liff?.closeWindow) {
-            window.liff.closeWindow();
-            return;
-        }
-        window.close();
-    }, []);
+        window.location.replace(LOGIN_REDIRECT_URL);
+    }, [LOGIN_REDIRECT_URL]);
 
     useEffect(() => {
         if (!successRequestNumber) return;

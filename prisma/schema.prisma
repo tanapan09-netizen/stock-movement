@@ -436,6 +436,7 @@ model tbl_products {
   main_category         String?                 @db.VarChar(50)
   main_category_code    String?                 @db.VarChar(50)
   sub_category_code     String?                 @db.VarChar(50)
+  sub_sub_category_code String?                 @db.VarChar(50)
   p_name                String                  @unique(map: "p_name") @db.VarChar(255)
   p_desc                String?                 @db.Text
   supplier              String?                 @db.VarChar(255)
@@ -467,6 +468,7 @@ model tbl_products {
   @@index([cat_id], map: "fk_products_category")
   @@index([p_id], map: "idx_p_p_id")
   @@index([p_name], map: "idx_p_p_name")
+  @@index([sub_sub_category_code], map: "idx_products_sub_sub_category_code")
 }
 
 model tbl_purchase_orders {

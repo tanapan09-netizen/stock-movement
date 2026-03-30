@@ -27,7 +27,10 @@ export async function GET(request: NextRequest) {
         if (search) {
             where.OR = [
                 { p_name: { contains: search } },
-                { p_id: { contains: search } }
+                { p_id: { contains: search } },
+                { main_category_code: { contains: search } },
+                { sub_category_code: { contains: search } },
+                { sub_sub_category_code: { contains: search } },
             ];
         }
 
@@ -53,6 +56,7 @@ export async function GET(request: NextRequest) {
             active: p.active,
             main_category_code: p.main_category_code,
             sub_category_code: p.sub_category_code,
+            sub_sub_category_code: p.sub_sub_category_code,
             is_asset: p.is_asset,
             asset_current_location: p.asset_current_location,
             category_id: p.cat_id,

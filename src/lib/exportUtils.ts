@@ -2,7 +2,7 @@
 
 /**
  * Export Utilities - Excel & PDF
- * เธเธฑเธเธเนเธเธฑเธเธชเธณเธซเธฃเธฑเธ Export เธเนเธญเธกเธนเธฅเน€เธเนเธ Excel เนเธฅเธฐ PDF
+ * ฟังก์ชันสำหรับ Export ข้อมูลเป็น Excel และ PDF
  */
 
 import * as XLSX from 'xlsx';
@@ -138,32 +138,34 @@ function formatDate(date: Date): string {
  */
 export const EXPORT_COLUMNS = {
     products: [
-        { header: 'เธฃเธซเธฑเธชเธชเธดเธเธเนเธฒ', key: 'p_code', width: 15 },
-        { header: 'เธเธทเนเธญเธชเธดเธเธเนเธฒ', key: 'p_name', width: 30 },
-        { header: 'เธเธทเนเธญเธฃเธธเนเธ', key: 'model_name', width: 20 },
-        { header: 'เธเธทเนเธญเนเธเธฃเธเธ”เน', key: 'brand_name', width: 20 },
-        { header: 'เธฃเธซเธฑเธชเนเธเธฃเธเธ”เน', key: 'brand_code', width: 14 },
-        { header: 'เธเธเธฒเธ”', key: 'size', width: 14 },
-        { header: 'เธซเธกเธงเธ”เธซเธกเธนเน', key: 'category_name', width: 20 },
-        { header: 'เธเธณเธเธงเธเธเธเน€เธซเธฅเธทเธญ', key: 'p_count', width: 12 },
-        { header: 'เธซเธเนเธงเธข', key: 'p_unit', width: 10 },
-        { header: 'เธฃเธฒเธเธฒ', key: 'p_price', width: 12 },
+        { header: 'รหัสสินค้า', key: 'p_code', width: 15 },
+        { header: 'ชื่อสินค้า', key: 'p_name', width: 30 },
+        { header: 'ชื่อรุ่น', key: 'model_name', width: 20 },
+        { header: 'ชื่อแบรนด์', key: 'brand_name', width: 20 },
+        { header: 'รหัสแบรนด์', key: 'brand_code', width: 14 },
+        { header: 'ขนาด', key: 'size', width: 14 },
+        { header: 'หมวดหมู่', key: 'category_name', width: 20 },
+        { header: 'Code หมวดหลัก', key: 'main_category_code', width: 14 },
+        { header: 'Code หมวดรอง', key: 'sub_category_code', width: 14 },
+        { header: 'Code ย่อย', key: 'sub_sub_category_code', width: 14 },
+        { header: 'จำนวนคงเหลือ', key: 'p_count', width: 12 },
+        { header: 'หน่วย', key: 'p_unit', width: 10 },
+        { header: 'ราคา', key: 'p_price', width: 12 },
         { header: 'Safety Stock', key: 'safety_stock', width: 12 },
     ],
     movements: [
-        { header: 'เธงเธฑเธเธ—เธตเน', key: 'date', width: 15 },
-        { header: 'เธชเธดเธเธเนเธฒ', key: 'product_name', width: 25 },
-        { header: 'เธเธฃเธฐเน€เธ เธ—', key: 'type', width: 10 },
-        { header: 'เธเธณเธเธงเธ', key: 'quantity', width: 10 },
-        { header: 'เธซเธกเธฒเธขเน€เธซเธ•เธธ', key: 'note', width: 30 },
-        { header: 'เธเธนเนเธ”เธณเน€เธเธดเธเธเธฒเธฃ', key: 'user', width: 15 },
+        { header: 'วันที่', key: 'date', width: 15 },
+        { header: 'สินค้า', key: 'product_name', width: 25 },
+        { header: 'ประเภท', key: 'type', width: 10 },
+        { header: 'จำนวน', key: 'quantity', width: 10 },
+        { header: 'หมายเหตุ', key: 'note', width: 30 },
+        { header: 'ผู้ดำเนินการ', key: 'user', width: 15 },
     ],
     lowStock: [
-        { header: 'เธฃเธซเธฑเธชเธชเธดเธเธเนเธฒ', key: 'p_code', width: 15 },
-        { header: 'เธเธทเนเธญเธชเธดเธเธเนเธฒ', key: 'p_name', width: 30 },
-        { header: 'เธเธเน€เธซเธฅเธทเธญ', key: 'p_count', width: 12 },
+        { header: 'รหัสสินค้า', key: 'p_code', width: 15 },
+        { header: 'ชื่อสินค้า', key: 'p_name', width: 30 },
+        { header: 'คงเหลือ', key: 'p_count', width: 12 },
         { header: 'Safety Stock', key: 'safety_stock', width: 12 },
-        { header: 'เธ•เนเธญเธเน€เธ•เธดเธก', key: 'need_reorder', width: 12 },
+        { header: 'ต้องเติม', key: 'need_reorder', width: 12 },
     ],
 };
-

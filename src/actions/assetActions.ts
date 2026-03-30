@@ -169,7 +169,7 @@ export async function createAsset(formData: FormData) {
                 data: {
                     asset_id: asset.asset_id,
                     action_type: 'Create',
-                    description: `เธฅเธเธ—เธฐเน€เธเธตเธขเธเธ—เธฃเธฑเธเธขเนเธชเธดเธเนเธซเธกเน: ${asset_name} (${asset_code})${placement ? ` | Location: ${placement}` : ''}`,
+                    description: `ลงทะเบียนทรัพย์สินใหม่: ${asset_name} (${asset_code})${placement ? ` | Location: ${placement}` : ''}`,
                     performed_by: userName,
                 }
             });
@@ -317,18 +317,18 @@ export async function updateAsset(formData: FormData) {
         const changes: string[] = [];
         if (currentAsset) {
             const fieldLabels: Record<string, string> = {
-                asset_name: 'เธเธทเนเธญเธ—เธฃเธฑเธเธขเนเธชเธดเธ',
-                description: 'เธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”',
-                category: 'เธซเธกเธงเธ”เธซเธกเธนเน',
-                location: 'เธชเธ–เธฒเธเธ—เธตเน',
+                asset_name: 'ชื่อทรัพย์สิน',
+                description: 'รายละเอียด',
+                category: 'หมวดหมู่',
+                location: 'สถานที่',
                 room_section: 'Room Section',
-                status: 'เธชเธ–เธฒเธเธฐ',
-                purchase_price: 'เธฃเธฒเธเธฒเธเธทเนเธญ',
-                useful_life_years: 'เธญเธฒเธขเธธเนเธเนเธเธฒเธ',
-                salvage_value: 'เธฃเธฒเธเธฒเธเธฒเธ',
-                vendor: 'เธฃเนเธฒเธเธเนเธฒ',
-                brand: 'เธขเธตเนเธซเนเธญ',
-                model: 'เธฃเธธเนเธ',
+                status: 'สถานะ',
+                purchase_price: 'ราคาซื้อ',
+                useful_life_years: 'อายุใช้งาน',
+                salvage_value: 'ราคาซาก',
+                vendor: 'ร้านค้า',
+                brand: 'ยี่ห้อ',
+                model: 'รุ่น',
                 serial_number: 'S/N',
             };
             const currentAssetRecord = currentAsset as Record<string, unknown>;
@@ -343,13 +343,13 @@ export async function updateAsset(formData: FormData) {
                 const newStr = newVal === null || newVal === undefined ? '' : String(newVal);
 
                 if (oldStr !== newStr) {
-                    changes.push(`${label}: "${oldStr || '-'}" โ’ "${newStr || '-'}"`);
+                    changes.push(`${label}: "${oldStr || '-'}" -> "${newStr || '-'}"`);
                 }
             }
 
             // Check image change
             if (data.image_url) {
-                changes.push('เธญเธฑเธเนเธซเธฅเธ”เธฃเธนเธเธ เธฒเธเนเธซเธกเน');
+                changes.push('อัปโหลดรูปภาพใหม่');
             }
 
             if (!wasDisposed && willBeDisposed) {
@@ -367,8 +367,8 @@ export async function updateAsset(formData: FormData) {
         }
 
         const changeDescription = changes.length > 0
-            ? `เนเธเนเนเธ: ${changes.join(', ')}`
-            : 'เธญเธฑเธเน€เธ”เธ•เธเนเธญเธกเธนเธฅ (เนเธกเนเธกเธตเธเธฒเธฃเน€เธเธฅเธตเนเธขเธเนเธเธฅเธ)';
+            ? `แก้ไข: ${changes.join(', ')}`
+            : 'อัปเดตข้อมูล (ไม่มีการเปลี่ยนแปลง)';
 
         // Log Update with details
         await prisma.tbl_asset_history.create({
@@ -388,7 +388,7 @@ export async function updateAsset(formData: FormData) {
                 data: {
                     asset_id,
                     action_type: 'Move',
-                    description: `เธขเนเธฒเธขเธเธฒเธ "${previousPlacement || '-'}" เนเธ "${newPlacement || '-'}"${transfer_approval_ref ? ` | Approval: ${transfer_approval_ref}` : ''}`,
+                    description: `ย้ายจาก "${previousPlacement || '-'}" ไป "${newPlacement || '-'}"${transfer_approval_ref ? ` | Approval: ${transfer_approval_ref}` : ''}`,
                     performed_by: userName,
                 }
             });

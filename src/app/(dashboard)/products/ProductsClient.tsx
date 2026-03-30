@@ -26,6 +26,7 @@ interface Product {
     main_category?: string | null;
     main_category_code?: string | null;
     sub_category_code?: string | null;
+    sub_sub_category_code?: string | null;
     is_asset?: boolean | null;
     asset_current_location?: string | null;
     p_image?: string | null;
@@ -44,6 +45,7 @@ type ProductColumnId =
     | 'category'
     | 'main_category_code'
     | 'sub_category_code'
+    | 'sub_sub_category_code'
     | 'is_asset'
     | 'asset_current_location'
     | 'price_unit'
@@ -62,6 +64,7 @@ const BASE_PRODUCT_COLUMN_ORDER: ProductColumnId[] = [
     'category',
     'main_category_code',
     'sub_category_code',
+    'sub_sub_category_code',
     'is_asset',
     'asset_current_location',
     'price_unit',
@@ -82,6 +85,7 @@ const COLUMN_LABELS: Record<ProductColumnId, string> = {
     category: 'หมวดหมู่',
     main_category_code: 'Code หมวดหลัก',
     sub_category_code: 'Code หมวดรอง',
+    sub_sub_category_code: 'Code ย่อย',
     is_asset: 'เป็นทรัพย์สิน',
     asset_current_location: 'ที่อยู่ปัจจุบันของทรัพย์สิน',
     price_unit: 'ราคา/หน่วย',
@@ -100,6 +104,7 @@ const SORTABLE_COLUMNS = new Set<ProductColumnId>([
     'category',
     'main_category_code',
     'sub_category_code',
+    'sub_sub_category_code',
     'is_asset',
     'asset_current_location',
     'price_unit',
@@ -155,6 +160,7 @@ export function ProductsToolbar({ products }: ProductsToolbarProps) {
         category_name: p.main_category || p.tbl_categories?.cat_name || '-',
         main_category_code: p.main_category_code ?? '',
         sub_category_code: p.sub_category_code ?? '',
+        sub_sub_category_code: p.sub_sub_category_code ?? '',
         is_asset: p.is_asset ? 'ใช่' : 'ไม่ใช่',
         asset_current_location: p.asset_current_location ?? '',
         p_count: p.p_count,
@@ -312,6 +318,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
             p.p_id.toLowerCase().includes(normalizedSearch) ||
             (p.main_category_code || '').toLowerCase().includes(normalizedSearch) ||
             (p.sub_category_code || '').toLowerCase().includes(normalizedSearch) ||
+            (p.sub_sub_category_code || '').toLowerCase().includes(normalizedSearch) ||
             (p.asset_current_location || '').toLowerCase().includes(normalizedSearch);
         const matchesLowStock = showLowStock ? p.p_count <= p.safety_stock : true;
 
@@ -454,6 +461,8 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                 return product.main_category_code || '-';
             case 'sub_category_code':
                 return product.sub_category_code || '-';
+            case 'sub_sub_category_code':
+                return product.sub_sub_category_code || '-';
             case 'is_asset':
                 return product.is_asset ? (
                     <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800">
@@ -529,7 +538,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                 <div className="flex-1 min-w-[200px]">
                     <input
                         type="text"
-                        placeholder="ค้นหารหัส, ชื่อ, code หมวด, ที่อยู่ทรัพย์สิน..."
+                        placeholder="ค้นหารหัส, ชื่อ, code หลัก/รอง/ย่อย, ที่อยู่ทรัพย์สิน..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:border-blue-500 focus:outline-none"
@@ -763,7 +772,8 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     </div>
                                     <div className="mt-1 text-[11px] text-gray-500">
                                         <span className="mr-2">หลัก: {product.main_category_code || '-'}</span>
-                                        <span>รอง: {product.sub_category_code || '-'}</span>
+                                        <span className="mr-2">รอง: {product.sub_category_code || '-'}</span>
+                                        <span>ย่อย: {product.sub_sub_category_code || '-'}</span>
                                     </div>
                                     {product.is_asset && (
                                         <div className="mt-1 rounded bg-indigo-50 px-2 py-1 text-[11px] text-indigo-700">

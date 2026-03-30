@@ -1,4 +1,4 @@
-'use server';
+﻿'use server';
 
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
@@ -45,8 +45,12 @@ function isProductIdUniqueConflict(error: unknown): boolean {
     return message.includes('p_id') || message.includes('primary');
 }
 
-async function buildNextProductId(mainCategoryCode: string, subCategoryCode: string): Promise<string> {
-    const prefix = `${mainCategoryCode}${subCategoryCode}`;
+async function buildNextProductId(
+    mainCategoryCode: string,
+    subCategoryCode: string,
+    subSubCategoryCode: string,
+): Promise<string> {
+    const prefix = `${mainCategoryCode}${subCategoryCode}${subSubCategoryCode}`;
     if (!prefix) throw new Error('Product code prefix is required');
 
     const matchedProducts = await prisma.tbl_products.findMany({
@@ -71,18 +75,24 @@ async function buildNextProductId(mainCategoryCode: string, subCategoryCode: str
     return `${prefix}${String(nextSequence).padStart(PRODUCT_ID_SEQUENCE_WIDTH, '0')}`;
 }
 
-export async function generateNextProductId(mainCategoryCode: string, subCategoryCode: string) {
+export async function generateNextProductId(
+    mainCategoryCode: string,
+    subCategoryCode: string,
+    subSubCategoryCode: string,
+) {
     const normalizedMainCategoryCode = normalizeCodePart(mainCategoryCode);
     const normalizedSubCategoryCode = normalizeCodePart(subCategoryCode);
+    const normalizedSubSubCategoryCode = normalizeCodePart(subSubCategoryCode);
 
-    if (!normalizedMainCategoryCode || !normalizedSubCategoryCode) {
+    if (!normalizedMainCategoryCode || !normalizedSubCategoryCode || !normalizedSubSubCategoryCode) {
         return { productId: '' };
     }
 
     try {
         const productId = await buildNextProductId(
             normalizedMainCategoryCode,
-            normalizedSubCategoryCode
+            normalizedSubCategoryCode,
+            normalizedSubSubCategoryCode,
         );
         return { productId };
     } catch (error) {
@@ -106,6 +116,7 @@ export async function createProduct(formData: FormData) {
         size: formData.get('size') as string,
         main_category_code: formData.get('main_category_code') as string,
         sub_category_code: formData.get('sub_category_code') as string,
+        sub_sub_category_code: formData.get('sub_sub_category_code') as string,
         asset_current_location: formData.get('asset_current_location') as string,
         p_count: parseInt(formData.get('p_count') as string) || 0,
     };
@@ -128,14 +139,16 @@ export async function createProduct(formData: FormData) {
     const size = normalizeOptionalText(validData.size);
     const normalizedMainCategoryCode = normalizeCodePart(validData.main_category_code);
     const normalizedSubCategoryCode = normalizeCodePart(validData.sub_category_code);
+    const normalizedSubSubCategoryCode = normalizeCodePart(validData.sub_sub_category_code);
     const main_category_code = normalizedMainCategoryCode || null;
     const sub_category_code = normalizedSubCategoryCode || null;
+    const sub_sub_category_code = normalizedSubSubCategoryCode || null;
     const asset_current_location = is_asset
         ? normalizeOptionalText(validData.asset_current_location)
         : null;
 
-    if (!normalizedMainCategoryCode || !normalizedSubCategoryCode) {
-        return { error: 'กรุณากรอก Code หมวดหลัก และ Code หมวดรอง เพื่อสร้างรหัสสินค้าอัตโนมัติ' };
+    if (!normalizedMainCategoryCode || !normalizedSubCategoryCode || !normalizedSubSubCategoryCode) {
+        return { error: 'กรุณากรอก Code หมวดหลัก, Code หมวดรอง และ Code ย่อย เพื่อสร้างรหัสสินค้าอัตโนมัติ' };
     }
 
     let imageName = '';
@@ -156,7 +169,8 @@ export async function createProduct(formData: FormData) {
         for (let attempt = 0; attempt < MAX_PRODUCT_ID_RETRY; attempt++) {
             const nextProductId = await buildNextProductId(
                 normalizedMainCategoryCode,
-                normalizedSubCategoryCode
+                normalizedSubCategoryCode,
+                normalizedSubSubCategoryCode,
             );
 
             try {
@@ -188,6 +202,7 @@ export async function createProduct(formData: FormData) {
                             size = ${size},
                             main_category_code = ${main_category_code},
                             sub_category_code = ${sub_category_code},
+                            sub_sub_category_code = ${sub_sub_category_code},
                             is_asset = ${is_asset ? 1 : 0},
                             asset_current_location = ${asset_current_location}
                         WHERE p_id = ${nextProductId}
@@ -244,6 +259,7 @@ export async function updateProduct(formData: FormData) {
     const size = formData.get('size') as string;
     const main_category_code = formData.get('main_category_code') as string;
     const sub_category_code = formData.get('sub_category_code') as string;
+    const sub_sub_category_code = formData.get('sub_sub_category_code') as string;
     const asset_current_location = formData.get('asset_current_location') as string;
     const is_luxury = formData.get('is_luxury') === 'true';
     const is_asset = formData.get('is_asset') === 'true';
@@ -285,6 +301,7 @@ export async function updateProduct(formData: FormData) {
                 size = ${normalizeOptionalText(size)},
                 main_category_code = ${normalizeOptionalText(main_category_code)},
                 sub_category_code = ${normalizeOptionalText(sub_category_code)},
+                sub_sub_category_code = ${normalizeOptionalText(sub_sub_category_code)},
                 is_asset = ${is_asset ? 1 : 0},
                 asset_current_location = ${is_asset ? normalizeOptionalText(asset_current_location) : null}
             WHERE p_id = ${p_id}
@@ -349,4 +366,3 @@ export async function getLowStockItems() {
         return { success: false, error: 'Failed to fetch low stock items' };
     }
 }
-

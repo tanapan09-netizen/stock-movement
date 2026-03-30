@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { createProduct, generateNextProductId, updateProduct } from '@/actions/productActions';
@@ -16,6 +16,7 @@ type Product = {
     p_desc: string | null;
     main_category_code?: string | null;
     sub_category_code?: string | null;
+    sub_sub_category_code?: string | null;
     model_name?: string | null;
     brand_name?: string | null;
     brand_code?: string | null;
@@ -48,6 +49,9 @@ export default function ProductForm({
     const [subCategoryCode, setSubCategoryCode] = useState(
         product?.sub_category_code || prefill?.sub_category_code || '',
     );
+    const [subSubCategoryCode, setSubSubCategoryCode] = useState(
+        product?.sub_sub_category_code || prefill?.sub_sub_category_code || '',
+    );
     const [autoProductId, setAutoProductId] = useState(product?.p_id || prefill?.p_id || '');
     const [isGeneratingCode, setIsGeneratingCode] = useState(false);
     const [codeError, setCodeError] = useState<string | null>(null);
@@ -61,10 +65,11 @@ export default function ProductForm({
 
         const normalizedMain = mainCategoryCode.trim().replace(/\s+/g, '').toUpperCase();
         const normalizedSub = subCategoryCode.trim().replace(/\s+/g, '').toUpperCase();
+        const normalizedSubSub = subSubCategoryCode.trim().replace(/\s+/g, '').toUpperCase();
 
         let isStale = false;
         const timer = setTimeout(async () => {
-            if (!normalizedMain || !normalizedSub) {
+            if (!normalizedMain || !normalizedSub || !normalizedSubSub) {
                 setAutoProductId('');
                 setCodeError(null);
                 setIsGeneratingCode(false);
@@ -74,7 +79,11 @@ export default function ProductForm({
             setIsGeneratingCode(true);
             setCodeError(null);
 
-            const result = await generateNextProductId(normalizedMain, normalizedSub);
+            const result = await generateNextProductId(
+                normalizedMain,
+                normalizedSub,
+                normalizedSubSub,
+            );
             if (isStale) return;
 
             if (result?.error) {
@@ -92,7 +101,7 @@ export default function ProductForm({
             isStale = true;
             clearTimeout(timer);
         };
-    }, [product, mainCategoryCode, subCategoryCode]);
+    }, [product, mainCategoryCode, subCategoryCode, subSubCategoryCode]);
 
     const handleSubmit = async (formData: FormData) => {
         setIsPending(true);
@@ -210,9 +219,9 @@ export default function ProductForm({
                         </select>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">Code หลัก     *</label>
+                            <label className="block text-sm font-medium text-gray-700">Code หลัก *</label>
                             <input
                                 type="text"
                                 name="main_category_code"
@@ -230,6 +239,18 @@ export default function ProductForm({
                                 name="sub_category_code"
                                 value={subCategoryCode}
                                 onChange={(event) => setSubCategoryCode(event.target.value)}
+                                placeholder=" "
+                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                required={!product}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Code ย่อย *</label>
+                            <input
+                                type="text"
+                                name="sub_sub_category_code"
+                                value={subSubCategoryCode}
+                                onChange={(event) => setSubSubCategoryCode(event.target.value)}
                                 placeholder=" "
                                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                                 required={!product}

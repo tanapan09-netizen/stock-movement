@@ -8,6 +8,7 @@ export const createProductSchema = z.object({
     p_sku: z.string().optional(),
     main_category_code: z.string().optional(),
     sub_category_code: z.string().optional(),
+    sub_sub_category_code: z.string().optional(),
     asset_current_location: z.string().optional(),
     model_name: z.string().optional(),
     brand_name: z.string().optional(),

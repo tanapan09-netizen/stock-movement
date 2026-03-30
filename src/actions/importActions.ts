@@ -4,92 +4,179 @@ import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import * as XLSX from 'xlsx';
 
+const HEADER_KEYWORDS = [
+    'code',
+    'product code',
+    'name',
+    'product name',
+    'price',
+    'price/unit',
+    'stock',
+    'qty',
+    'quantity',
+    'category',
+    'main_category',
+    'รหัส',
+    'รหัสสินค้า',
+    'ชื่อ',
+    'ชื่อสินค้า',
+    'ราคา',
+    'ราคาขาย',
+    'จำนวน',
+    'คงเหลือ',
+    'หมวด',
+    'หมวดหมู่',
+    'หมวดสินค้า',
+    'กลุ่มสินค้า',
+    'ประเภท',
+    'หน่วย',
+    'หน่วยนับ',
+    'จุดสั่งซื้อ',
+    'รุ่น',
+    'ชื่อรุ่น',
+    'แบรนด์',
+    'ชื่อแบรนด์',
+    'รหัสแบรนด์',
+    'ขนาด',
+];
 
-// Debugging helper removed for production
+const CATEGORY_HEADER_HINTS = [
+    'หมวด',
+    'หมวดหมู่',
+    'หมวดสินค้า',
+    'กลุ่มสินค้า',
+    'category',
+    'main_category',
+];
+
+const MOJIBAKE_PATTERNS = [
+    /[\u00C2\u00C3]/,
+    /\u00E2\u20AC/,
+    /(?:เธ[\u0E00-\u0E7F]?){2,}/,
+    /(?:เน[\u0E00-\u0E7F]?){2,}/,
+];
+
+const ENCODING_ERROR_MESSAGE =
+    'พบปัญหาการอ่านภาษาไทย (Encoding) กรุณาบันทึกไฟล์เป็น .xlsx หรือ CSV (UTF-8) แล้วลองใหม่';
+
+function normalizeKey(value: string): string {
+    return value.toLowerCase().replace(/[\s\uFEFF]/g, '');
+}
+
+function getValue(rowData: Record<string, unknown>, targetKeys: string[]): unknown {
+    const normalizedTargetKeys = targetKeys.map((key) => normalizeKey(key));
+    const rowKey = Object.keys(rowData).find((key) => {
+        return normalizedTargetKeys.includes(normalizeKey(key));
+    });
+    if (!rowKey) return undefined;
+    return rowData[rowKey];
+}
+
+function containsMojibake(cell: unknown): boolean {
+    if (typeof cell !== 'string') return false;
+    return MOJIBAKE_PATTERNS.some((pattern) => pattern.test(cell));
+}
+
+function findHeaderRowIndex(rows: unknown[][]): { index: number; error?: string } {
+    for (let i = 0; i < Math.min(rows.length, 10); i += 1) {
+        const row = rows[i] ?? [];
+        const rowStr = row.join(' ').toLowerCase();
+
+        const matchCount = HEADER_KEYWORDS.filter((keyword) =>
+            rowStr.includes(keyword),
+        ).length;
+        if (matchCount >= 2) {
+            return { index: i };
+        }
+
+        const hasMojibake = row.some((cell) => containsMojibake(cell));
+        if (hasMojibake) {
+            return { index: -1, error: ENCODING_ERROR_MESSAGE };
+        }
+    }
+
+    return { index: 0 };
+}
+
+function buildRowObject(headerRow: string[], rowArr: unknown[]): Record<string, unknown> {
+    const rowData: Record<string, unknown> = {};
+    headerRow.forEach((key, idx) => {
+        rowData[key] = rowArr[idx];
+    });
+    return rowData;
+}
+
+function optionalText(value: unknown): string | null {
+    if (value === undefined || value === null) return null;
+    const trimmed = String(value).trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
+function parseWorkbookRows(fileBuffer: ArrayBuffer): unknown[][] {
+    const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+    const worksheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[worksheetName];
+    return XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][];
+}
+
+async function resolveCategory(categoryInput: unknown): Promise<{ categoryName: string; categoryId: number | null }> {
+    let categoryName = 'General';
+    let categoryId: number | null = null;
+
+    if (categoryInput) {
+        categoryName = String(categoryInput).trim();
+        let catRecord = await prisma.tbl_categories.findFirst({
+            where: { cat_name: categoryName },
+        });
+
+        if (!catRecord) {
+            catRecord = await prisma.tbl_categories.create({
+                data: { cat_name: categoryName },
+            });
+        }
+
+        categoryId = catRecord.cat_id;
+        return { categoryName, categoryId };
+    }
+
+    const generalCat = await prisma.tbl_categories.findFirst({
+        where: { cat_name: 'General' },
+    });
+    if (generalCat) categoryId = generalCat.cat_id;
+    return { categoryName, categoryId };
+}
 
 export async function importProducts(formData: FormData) {
     try {
-
         const file = formData.get('file') as File;
         if (!file) {
             return { success: false, error: 'No file uploaded' };
         }
 
         const buffer = await file.arrayBuffer();
-        // Try to read with default settings first. If mojibake is detected later, we can't easily retry without cpexcel, 
-        // so we will warn the user.
-        const workbook = XLSX.read(buffer, { type: 'buffer' });
-        const worksheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[worksheetName];
-
-        // Read as array of arrays to find header row
-        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+        const rows = parseWorkbookRows(buffer);
 
         if (rows.length === 0) {
             return { success: false, error: 'File is empty' };
         }
 
-        let headerRowIndex = -1;
-
-        // Keywords to identify header row (Thai & English)
-        const headerKeywords = ['code', 'name', 'price', 'stock', 'qty', 'รหัส', 'ชื่อ', 'ราคา', 'จำนวน', 'คงเหลือ', 'หมวด', 'หมวดหมู่', 'กลุ่ม', 'ประเภท', 'category'];
-        // Mojibake checks (TIS-620 interpreted as Latin1)
-        const mojibakeKeywords = ['ÃËÑÊ', 'ª×èÍ', 'ÊÔ¹¤éÒ', 'ÃÒ¤Ò', '¨Ó¹Ç¹'];
-
-        for (let i = 0; i < Math.min(rows.length, 10); i++) {
-            const row = rows[i];
-            const rowStr = row.join(' ').toLowerCase();
-
-            // Check for valid keywords
-            const matchCount = headerKeywords.filter(k => rowStr.includes(k)).length;
-            if (matchCount >= 2) {
-                headerRowIndex = i;
-                break;
-            }
-
-            // Check for Mojibake (Encoding issue)
-            const mojibakeCount = mojibakeKeywords.filter(k => {
-                return row.some(cell => typeof cell === 'string' && cell.includes(k));
-            }).length;
-
-            if (mojibakeCount >= 1) {
-                return { success: false, error: 'พบปัญหาการอ่านภาษาไทย (Encoding) กรุณาบันทึกไฟล์เป็น .xlsx หรือ CSV (UTF-8) แล้วลองใหม่' };
-            }
+        const headerLookup = findHeaderRowIndex(rows);
+        if (headerLookup.error) {
+            return { success: false, error: headerLookup.error };
         }
 
-        if (headerRowIndex === -1) {
-            // Fallback: assume row 0 if we can't find anything better
-            headerRowIndex = 0;
-        }
-
-        const headerRow = rows[headerRowIndex].map(h => String(h).trim());
+        const headerRowIndex = headerLookup.index;
+        const headerRow = (rows[headerRowIndex] ?? []).map((h) => String(h).trim());
         const dataRows = rows.slice(headerRowIndex + 1);
 
         let successCount = 0;
         let errorCount = 0;
         const errors: string[] = [];
 
-
-
-        for (const [index, rowArr] of dataRows.entries()) {
-            const rowNum = headerRowIndex + 2 + index; // 1-based index (Header is +1, Row is +index+1)
-
-            // Convert Array Row to Object based on Header
-            const rowData: Record<string, any> = {};
-            headerRow.forEach((key, idx) => {
-                rowData[key] = rowArr[idx];
-            });
-
-            // Helper to find value case-insensitive and robust
-            const getValue = (rowData: Record<string, any>, targetKeys: string[]) => {
-                const normalizedTargetKeys = targetKeys.map(k => k.toLowerCase().replace(/[\s\uFEFF]/g, ''));
-                const rowKey = Object.keys(rowData).find(k => {
-                    const normalizedKey = k.toLowerCase().replace(/[\s\uFEFF]/g, '');
-                    return normalizedTargetKeys.includes(normalizedKey);
-                });
-                if (rowKey && rowData[rowKey] !== undefined) return rowData[rowKey];
-                return undefined;
-            };
+        for (const [index, rawRow] of dataRows.entries()) {
+            const rowArr = rawRow as unknown[];
+            const rowNum = headerRowIndex + 2 + index;
+            const rowData = buildRowObject(headerRow, rowArr);
 
             const p_id = getValue(rowData, ['Code', 'Product Code', 'รหัส', 'รหัสสินค้า', 'p_id']);
             const p_name = getValue(rowData, ['Name', 'Product Name', 'ชื่อ', 'ชื่อสินค้า', 'p_name']);
@@ -103,27 +190,28 @@ export async function importProducts(formData: FormData) {
             const brand_code = getValue(rowData, ['Brand Code', 'รหัสแบรนด์', 'brand_code']);
             const size = getValue(rowData, ['Size', 'ขนาด', 'size']);
 
-            // Trim values
             const p_id_val = p_id ? String(p_id).trim() : '';
             const p_name_val = p_name ? String(p_name).trim() : '';
 
             if (!p_id_val || !p_name_val) {
-                // Check if row is just empty
-                const hasData = Object.values(rowData).some(v => v !== undefined && v !== '' && v !== null);
+                const hasData = Object.values(rowData).some(
+                    (value) => value !== undefined && value !== '' && value !== null,
+                );
                 if (hasData) {
-                    errorCount++;
+                    errorCount += 1;
                     const foundKeys = headerRow.join(', ');
                     errors.push(`Row ${rowNum}: Missing Code or Name. Header used: [${foundKeys}]`);
                 }
                 continue;
             }
 
-            // Fallback: If Category is undefined, try to find it by index manually
             let categoryFinal = category;
             if (!categoryFinal) {
-                const catHeaderIdx = headerRow.findIndex(h => {
-                    const hNorm = String(h).toLowerCase().replace(/[\s\uFEFF]/g, '');
-                    return ['หมวด', 'หมวดหมู่', 'หมวดสินค้า', 'กลุ่มสินค้า', 'category', 'main_category'].some(k => hNorm.includes(k));
+                const catHeaderIdx = headerRow.findIndex((headerKey) => {
+                    const normalizedKey = normalizeKey(String(headerKey));
+                    return CATEGORY_HEADER_HINTS.some((keyword) =>
+                        normalizedKey.includes(normalizeKey(keyword)),
+                    );
                 });
                 if (catHeaderIdx !== -1) {
                     categoryFinal = rowArr[catHeaderIdx];
@@ -131,70 +219,36 @@ export async function importProducts(formData: FormData) {
             }
 
             try {
-                // Determine Category
-                let categoryName = 'General';
-                let categoryId: number | null = null;
-                const catToUse = categoryFinal;
+                const { categoryName, categoryId } = await resolveCategory(categoryFinal);
 
-                if (catToUse) {
-                    categoryName = String(catToUse).trim();
-
-                    // Upsert Category if needed
-                    let catRecord = await prisma.tbl_categories.findFirst({
-                        where: { cat_name: categoryName }
-                    });
-
-                    if (!catRecord) {
-                        catRecord = await prisma.tbl_categories.create({
-                            data: { cat_name: categoryName }
-                        });
-                    }
-                    categoryId = catRecord.cat_id;
-                } else {
-                    // Default to General if not provided, try to find ID for General
-                    const generalCat = await prisma.tbl_categories.findFirst({ where: { cat_name: 'General' } });
-                    if (generalCat) categoryId = generalCat.cat_id;
-                }
-
-                // Parse values
-                const stockVal = stock ? parseInt(String(stock)) : 0;
+                const stockVal = stock ? parseInt(String(stock), 10) : 0;
                 const priceVal = price ? parseFloat(String(price)) : 0;
-                const safetyVal = safety ? parseInt(String(safety)) : 0;
+                const safetyVal = safety ? parseInt(String(safety), 10) : 0;
                 const unitVal = unit ? String(unit).trim() : 'ชิ้น';
-
-                const optionalText = (value: unknown): string | null => {
-                    if (value === undefined || value === null) return null;
-                    const trimmed = String(value).trim();
-                    return trimmed.length > 0 ? trimmed : null;
-                };
 
                 const modelVal = optionalText(model_name);
                 const brandNameVal = optionalText(brand_name);
                 const brandCodeVal = optionalText(brand_code);
                 const sizeVal = optionalText(size);
 
-                // LOGIC: Check ID first, then Name
                 const existingById = await prisma.tbl_products.findUnique({
-                    where: { p_id: p_id_val }
+                    where: { p_id: p_id_val },
                 });
 
                 if (existingById) {
-                    // Scenario 1: ID Exists -> Update fields
-                    // Safe Update: Only update fields, do NOT touch p_id
                     await prisma.tbl_products.update({
                         where: { p_id: p_id_val },
                         data: {
                             p_name: p_name_val,
                             main_category: categoryName,
-                            cat_id: categoryId, // Link to Category Table
+                            cat_id: categoryId,
                             price_unit: priceVal,
                             p_count: stockVal,
                             safety_stock: safetyVal,
                             p_unit: unitVal,
-                        }
+                        },
                     });
 
-                    // Raw SQL so this works even if Prisma Client wasn't regenerated yet
                     await prisma.$executeRaw`
                         UPDATE tbl_products
                         SET model_name = ${modelVal},
@@ -203,91 +257,72 @@ export async function importProducts(formData: FormData) {
                             size = ${sizeVal}
                         WHERE p_id = ${p_id_val}
                     `;
-                    successCount++;
-
-                } else {
-                    // Scenario 2: ID New -> Check Name
-                    const existingByName = await prisma.tbl_products.findUnique({
-                        where: { p_name: p_name_val }
-                    });
-
-                    if (existingByName) {
-                        // Scenario 3: Name Exists (Different ID) -> UNSAFE TO RENAME ID
-                        // Instead of renaming ID (which crashes DB due to FK constraints), 
-                        // we will update the existing product with new details but KEEP the old ID.
-                        // We will also warn the user in the logs/errors that ID was not changed.
-
-                        await prisma.tbl_products.update({
-                            where: { p_name: p_name_val },
-                            data: {
-                                // p_id: p_id_val, // DO NOT UPDATE ID
-                                main_category: categoryName,
-                                cat_id: categoryId, // Link to Category Table
-                                price_unit: priceVal,
-                                p_count: stockVal,
-                                safety_stock: safetyVal,
-                                p_unit: unitVal,
-                            }
-                        });
-
-                        // Raw SQL so this works even if Prisma Client wasn't regenerated yet
-                        await prisma.$executeRaw`
-                            UPDATE tbl_products
-                            SET model_name = ${modelVal},
-                                brand_name = ${brandNameVal},
-                                brand_code = ${brandCodeVal},
-                                size = ${sizeVal}
-                            WHERE p_id = ${existingByName.p_id}
-                        `;
-
-                        // Treat as success but maybe append a note? For now just count as success to avoid cluttering error log
-                        // But if strict, we could log it.
-                        // For user friendliness: 
-                        // errors.push(`Row ${rowNum}: Product Name "${p_name_val}" exists. Updated data but kept System ID "${existingByName.p_id}" (Input ID "${p_id_val}" ignored).`);
-                        successCount++;
-
-                    } else {
-                        // Scenario 4: Brand New Product -> Create
-                        await prisma.tbl_products.create({
-                            data: {
-                                p_id: p_id_val,
-                                p_name: p_name_val,
-                                main_category: categoryName,
-                                cat_id: categoryId, // Link to Category Table
-                                price_unit: priceVal,
-                                p_count: stockVal,
-                                safety_stock: safetyVal,
-                                p_unit: unitVal,
-                                active: true,
-                                p_image: '',
-                            }
-                        });
-
-                        // Raw SQL so this works even if Prisma Client wasn't regenerated yet
-                        await prisma.$executeRaw`
-                            UPDATE tbl_products
-                            SET model_name = ${modelVal},
-                                brand_name = ${brandNameVal},
-                                brand_code = ${brandCodeVal},
-                                size = ${sizeVal}
-                            WHERE p_id = ${p_id_val}
-                        `;
-                        successCount++;
-                    }
+                    successCount += 1;
+                    continue;
                 }
 
+                const existingByName = await prisma.tbl_products.findUnique({
+                    where: { p_name: p_name_val },
+                });
+
+                if (existingByName) {
+                    await prisma.tbl_products.update({
+                        where: { p_name: p_name_val },
+                        data: {
+                            main_category: categoryName,
+                            cat_id: categoryId,
+                            price_unit: priceVal,
+                            p_count: stockVal,
+                            safety_stock: safetyVal,
+                            p_unit: unitVal,
+                        },
+                    });
+
+                    await prisma.$executeRaw`
+                        UPDATE tbl_products
+                        SET model_name = ${modelVal},
+                            brand_name = ${brandNameVal},
+                            brand_code = ${brandCodeVal},
+                            size = ${sizeVal}
+                        WHERE p_id = ${existingByName.p_id}
+                    `;
+                    successCount += 1;
+                    continue;
+                }
+
+                await prisma.tbl_products.create({
+                    data: {
+                        p_id: p_id_val,
+                        p_name: p_name_val,
+                        main_category: categoryName,
+                        cat_id: categoryId,
+                        price_unit: priceVal,
+                        p_count: stockVal,
+                        safety_stock: safetyVal,
+                        p_unit: unitVal,
+                        active: true,
+                        p_image: '',
+                    },
+                });
+
+                await prisma.$executeRaw`
+                    UPDATE tbl_products
+                    SET model_name = ${modelVal},
+                        brand_name = ${brandNameVal},
+                        brand_code = ${brandCodeVal},
+                        size = ${sizeVal}
+                    WHERE p_id = ${p_id_val}
+                `;
+                successCount += 1;
             } catch (err: any) {
                 console.error(`Error importing row ${rowNum}:`, err);
-                errorCount++;
+                errorCount += 1;
                 errors.push(`Row ${rowNum}: ${err.message}`);
             }
-
-
         }
 
         revalidatePath('/products');
         return { success: true, count: successCount, errorCount, errors };
-
     } catch (error: any) {
         console.error('Import error:', error);
         return { success: false, error: 'Failed to process file: ' + error.message };
@@ -302,58 +337,24 @@ export async function checkDuplicateProducts(formData: FormData) {
         }
 
         const buffer = await file.arrayBuffer();
-        const workbook = XLSX.read(buffer, { type: 'buffer' });
-        const worksheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[worksheetName];
-
-        // Read as array of arrays to find header row
-        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+        const rows = parseWorkbookRows(buffer);
 
         if (rows.length === 0) {
             return { success: false, error: 'File is empty' };
         }
 
-        let headerRowIndex = -1;
-        // Keywords to identify header row (Thai & English)
-        const headerKeywords = ['code', 'name', 'price', 'stock', 'qty', 'รหัส', 'ชื่อ', 'ราคา', 'จำนวน', 'คงเหลือ', 'หมวด'];
-
-        for (let i = 0; i < Math.min(rows.length, 10); i++) {
-            const row = rows[i];
-            const rowStr = row.join(' ').toLowerCase();
-            // Check for valid keywords
-            const matchCount = headerKeywords.filter(k => rowStr.includes(k)).length;
-            if (matchCount >= 2) {
-                headerRowIndex = i;
-                break;
-            }
+        const headerLookup = findHeaderRowIndex(rows);
+        if (headerLookup.error) {
+            return { success: false, error: headerLookup.error };
         }
 
-        if (headerRowIndex === -1) {
-            headerRowIndex = 0;
-        }
-
-        const headerRow = rows[headerRowIndex].map(h => String(h).trim());
-        const dataRows = rows.slice(headerRowIndex + 1);
-
+        const headerRow = (rows[headerLookup.index] ?? []).map((h) => String(h).trim());
+        const dataRows = rows.slice(headerLookup.index + 1);
         const duplicates: { p_id: string; p_name: string; conflict: string }[] = [];
 
-        for (const [index, rowArr] of dataRows.entries()) {
-            // Convert Array Row to Object based on Header
-            const rowData: Record<string, any> = {};
-            headerRow.forEach((key, idx) => {
-                rowData[key] = rowArr[idx];
-            });
-
-            // Helper to find value case-insensitive and robust against BOM/Spaces
-            const getValue = (rowData: Record<string, any>, targetKeys: string[]) => {
-                const normalizedTargetKeys = targetKeys.map(k => k.toLowerCase().replace(/[\s\uFEFF]/g, ''));
-                const rowKey = Object.keys(rowData).find(k => {
-                    const normalizedKey = k.toLowerCase().replace(/[\s\uFEFF]/g, '');
-                    return normalizedTargetKeys.includes(normalizedKey);
-                });
-                if (rowKey && rowData[rowKey] !== undefined) return rowData[rowKey];
-                return undefined;
-            };
+        for (const rawRow of dataRows) {
+            const rowArr = rawRow as unknown[];
+            const rowData = buildRowObject(headerRow, rowArr);
 
             const p_id = getValue(rowData, ['Code', 'Product Code', 'รหัส', 'รหัสสินค้า', 'p_id']);
             const p_name = getValue(rowData, ['Name', 'Product Name', 'ชื่อ', 'ชื่อสินค้า', 'p_name']);
@@ -361,39 +362,39 @@ export async function checkDuplicateProducts(formData: FormData) {
             const p_id_val = p_id ? String(p_id).trim() : '';
             const p_name_val = p_name ? String(p_name).trim() : '';
 
-            if (p_id_val) {
-                const existing = await prisma.tbl_products.findUnique({
-                    where: { p_id: p_id_val },
-                    select: { p_id: true, p_name: true }
-                });
+            if (!p_id_val) continue;
 
-                if (existing) {
-                    duplicates.push({
-                        p_id: existing.p_id,
-                        p_name: existing.p_name,
-                        conflict: `รหัสซ้ำ: ${existing.p_id}`
-                    });
-                } else if (p_name_val) {
-                    const existingName = await prisma.tbl_products.findUnique({
-                        where: { p_name: p_name_val },
-                        select: { p_id: true, p_name: true }
-                    });
-                    if (existingName && existingName.p_id !== p_id_val) {
-                        duplicates.push({
-                            p_id: existingName.p_id,
-                            p_name: existingName.p_name,
-                            conflict: `ชื่อซ้ำ: ${existingName.p_name}`
-                        });
-                    }
-                }
+            const existing = await prisma.tbl_products.findUnique({
+                where: { p_id: p_id_val },
+                select: { p_id: true, p_name: true },
+            });
+
+            if (existing) {
+                duplicates.push({
+                    p_id: existing.p_id,
+                    p_name: existing.p_name,
+                    conflict: `รหัสซ้ำ: ${existing.p_id}`,
+                });
+                continue;
+            }
+
+            if (!p_name_val) continue;
+
+            const existingName = await prisma.tbl_products.findUnique({
+                where: { p_name: p_name_val },
+                select: { p_id: true, p_name: true },
+            });
+
+            if (existingName && existingName.p_id !== p_id_val) {
+                duplicates.push({
+                    p_id: existingName.p_id,
+                    p_name: existingName.p_name,
+                    conflict: `ชื่อซ้ำ: ${existingName.p_name}`,
+                });
             }
         }
 
-        // Remove duplicates from the list itself (if file has multiple rows same ID)
-        // For now, simpler to just return what we found in DB.
-
         return { success: true, duplicates };
-
     } catch (error: any) {
         console.error('Check duplicate error:', error);
         return { success: false, error: 'Failed to check file: ' + error.message };
