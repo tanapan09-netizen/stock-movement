@@ -212,7 +212,7 @@ export default function ProductForm({
 
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">Code หลัก *</label>
+                            <label className="block text-sm font-medium text-gray-700">Code หลัก     *</label>
                             <input
                                 type="text"
                                 name="main_category_code"

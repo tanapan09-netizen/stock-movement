@@ -27,7 +27,6 @@ import Image from 'next/image';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import MaintenanceRequestCard from '@/components/maintenance/MaintenanceRequestCard';
 import VehicleLicensePlateSelector from '@/components/VehicleLicensePlateSelector';
-import HierarchicalRoomSelector from '@/components/HierarchicalRoomSelector';
 import { useSession } from 'next-auth/react';
 import {
     getMaintenanceRequests,
@@ -97,6 +96,21 @@ interface Vehicle {
     owner_room: string | null;
     active: boolean;
 }
+
+type MaintenanceRoomOption = {
+    roomId: number;
+    roomCode: string;
+    roomName: string;
+    roomLabel: string;
+};
+
+type MaintenanceZoneOption = {
+    roomId: number;
+    roomCode: string;
+    zoneCode: string;
+    zoneName: string;
+    zoneLabel: string;
+};
 
 interface HistoryItem {
     history_id: number;
@@ -313,6 +327,13 @@ const FALLBACK_TECHNICIAN_TARGET_ROLE_OPTION = {
     label: 'Technician (ช่างซ่อมบำรุง)',
 } as const;
 
+const resolveParentRoomCode = (room: Room): string => {
+    if (!room.zone) return room.room_code;
+    const parentCode = room.building?.trim();
+    if (parentCode && parentCode !== room.room_code) return parentCode;
+    return room.room_code;
+};
+
 export default function MaintenanceClient({ userPermissions = {}, canEditPage = false }: MaintenanceClientProps) {
     const { data: session } = useSession();
     const sessionUser = session?.user as SessionUserLike | undefined;
@@ -458,6 +479,65 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         building: '',
         floor: ''
     });
+
+    const activeLocationRooms = rooms
+        .filter((room) => room.active)
+        .filter((room) => !room.room_code.startsWith('T-') && !room.room_code.startsWith('F-'));
+    const roomOptionMap = new Map<string, MaintenanceRoomOption>();
+    const zoneOptionMap = new Map<string, MaintenanceZoneOption[]>();
+
+    for (const room of activeLocationRooms) {
+        if (room.zone) {
+            const parentRoomCode = resolveParentRoomCode(room);
+            if (!zoneOptionMap.has(parentRoomCode)) {
+                zoneOptionMap.set(parentRoomCode, []);
+            }
+            zoneOptionMap.get(parentRoomCode)!.push({
+                roomId: room.room_id,
+                roomCode: parentRoomCode,
+                zoneCode: room.room_code,
+                zoneName: room.room_name,
+                zoneLabel: `${room.room_code} - ${room.room_name}`,
+            });
+            continue;
+        }
+
+        if (roomOptionMap.has(room.room_code)) continue;
+        roomOptionMap.set(room.room_code, {
+            roomId: room.room_id,
+            roomCode: room.room_code,
+            roomName: room.room_name,
+            roomLabel: `${room.room_code} - ${room.room_name}`,
+        });
+    }
+
+    const locationRoomOptions = Array.from(roomOptionMap.values()).sort((left, right) =>
+        left.roomCode.localeCompare(right.roomCode),
+    );
+    const locationZoneOptionsByRoom = new Map<string, MaintenanceZoneOption[]>();
+    for (const [roomCode, zones] of zoneOptionMap.entries()) {
+        locationZoneOptionsByRoom.set(
+            roomCode,
+            [...zones].sort((left, right) => left.zoneCode.localeCompare(right.zoneCode)),
+        );
+    }
+
+    const selectedLocationRoomRecord = formData.room_id
+        ? rooms.find((room) => room.room_id === formData.room_id) || null
+        : null;
+    const selectedLocationRoomCode = selectedLocationRoomRecord
+        ? resolveParentRoomCode(selectedLocationRoomRecord)
+        : '';
+    const selectedLocationRoomOption = selectedLocationRoomCode
+        ? locationRoomOptions.find((room) => room.roomCode === selectedLocationRoomCode) || null
+        : null;
+    const availableLocationZones = selectedLocationRoomCode
+        ? locationZoneOptionsByRoom.get(selectedLocationRoomCode) || []
+        : [];
+    const selectedLocationZoneId = selectedLocationRoomRecord?.zone
+        && availableLocationZones.some((zone) => zone.roomId === selectedLocationRoomRecord.room_id)
+        ? selectedLocationRoomRecord.room_id
+        : 0;
 
     // Edit form
     const [editData, setEditData] = useState({
@@ -2369,12 +2449,52 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                     </div>
 
                                     {locationMode === 'location' ? (
-                                        <HierarchicalRoomSelector
-                                            rooms={rooms}
-                                            value={formData.room_id}
-                                            onChange={(roomId) => setFormData(prev => ({ ...prev, room_id: roomId }))}
-                                            closeDelayMs={2500}
-                                        />
+                                        <div className="space-y-2">
+                                            <div>
+                                                <label className="block text-xs font-medium mb-1 text-gray-600">ห้อง</label>
+                                                <select
+                                                    value={selectedLocationRoomCode}
+                                                    onChange={(event) => {
+                                                        const nextRoomCode = event.target.value;
+                                                        const nextRoomOption = locationRoomOptions.find((room) => room.roomCode === nextRoomCode) || null;
+                                                        setFormData((prev) => ({ ...prev, room_id: nextRoomOption?.roomId || 0 }));
+                                                    }}
+                                                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                                    required
+                                                >
+                                                    <option value="">-- เลือกห้อง --</option>
+                                                    {locationRoomOptions.map((room) => (
+                                                        <option key={room.roomCode} value={room.roomCode}>
+                                                            {room.roomLabel}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium mb-1 text-gray-600">สถานที่ / โซน (ถ้ามี)</label>
+                                                <select
+                                                    value={selectedLocationZoneId ? String(selectedLocationZoneId) : ''}
+                                                    onChange={(event) => {
+                                                        const nextZoneRoomId = Number.parseInt(event.target.value, 10);
+                                                        setFormData((prev) => {
+                                                            if (Number.isFinite(nextZoneRoomId) && nextZoneRoomId > 0) {
+                                                                return { ...prev, room_id: nextZoneRoomId };
+                                                            }
+                                                            return { ...prev, room_id: selectedLocationRoomOption?.roomId || 0 };
+                                                        });
+                                                    }}
+                                                    disabled={!selectedLocationRoomCode}
+                                                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-500"
+                                                >
+                                                    <option value="">{selectedLocationRoomCode ? '-- เลือกโซน (ถ้ามี) --' : '-- กรุณาเลือกห้องก่อน --'}</option>
+                                                    {availableLocationZones.map((zone) => (
+                                                        <option key={zone.roomId} value={zone.roomId}>
+                                                            {zone.zoneLabel}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
                                     ) : (
                                         <>
                                             <VehicleLicensePlateSelector

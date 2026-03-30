@@ -153,7 +153,7 @@ export async function updateAssetPolicySettings(payload: AssetPolicy) {
         if (authContext.session.user) {
             const { logSystemAction } = await import('@/lib/logger');
             logSystemAction(
-                'อัปเดตนโยบายทรัพย์สิน',
+                'ASSET_POLICY_UPDATE',
                 'Settings',
                 'asset_policy',
                 `Updated asset policy keys: ${changedKeys.join(', ')}`,

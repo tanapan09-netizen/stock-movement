@@ -63,7 +63,7 @@ export async function updateSystemSetting(key: string, value: string, descriptio
         if (session?.user) {
             const { logSystemAction } = await import('@/lib/logger');
             logSystemAction(
-                'เปลี่ยนค่าระบบ',
+                'SETTINGS_UPDATE',
                 'Settings',
                 key,
                 `เปลี่ยนค่า "${key}" | เดิม: ${oldValue} → ใหม่: ${value} | โดย: ${session.user.name}${description ? ' | คำอธิบาย: ' + description : ''}`,

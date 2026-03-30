@@ -609,6 +609,7 @@ model tbl_system_logs {
   @@index([entity])
   @@index([username])
   @@index([user_id])
+  @@index([created_at], map: "idx_tbl_system_logs_created_at")
 }
 
 

@@ -20,11 +20,18 @@ export async function getSystemLogs(page = 1, limit = 20, filters?: any) {
         const where: any = {};
         if (filters?.action && filters.action !== 'all') where.action = filters.action;
         if (filters?.username) where.username = { contains: filters.username };
-        if (filters?.startDate && filters?.endDate) {
-            where.created_at = {
-                gte: new Date(filters.startDate),
-                lte: new Date(new Date(filters.endDate).setHours(23, 59, 59))
-            };
+        if (filters?.startDate || filters?.endDate) {
+            const createdAtWhere: { gte?: Date; lte?: Date } = {};
+
+            if (filters?.startDate) {
+                createdAtWhere.gte = new Date(`${filters.startDate}T00:00:00`);
+            }
+
+            if (filters?.endDate) {
+                createdAtWhere.lte = new Date(`${filters.endDate}T23:59:59.999`);
+            }
+
+            where.created_at = createdAtWhere;
         }
 
         const skip = (page - 1) * limit;

@@ -141,7 +141,7 @@ export async function createPettyCashRequest(formData: FormData) {
         }
 
         await logSystemAction(
-            'สร้างคำขอเบิกเงินสดย่อย',
+            'PETTY_CASH_CREATE',
             'PettyCash',
             request.id,
             `เลขที่: ${request_number} | จำนวนเงิน: ${requested_amount.toLocaleString()} บาท | วัตถุประสงค์: ${purpose} | ผู้ขอ: ${authContext.session.user.name} | สถานะ: รออนุมัติ`,
@@ -191,7 +191,7 @@ export async function approvePettyCash(id: number) {
         }
 
         await logSystemAction(
-            'อนุมัติคำขอเงินสดย่อย',
+            'PETTY_CASH_APPROVE',
             'PettyCash',
             id,
             `อนุมัติคำขอเลขที่: ${request.request_number} | จำนวนเงิน: ${Number(request.requested_amount).toLocaleString()} บาท | วัตถุประสงค์: ${request.purpose} | ผู้ขอ: ${request.requested_by} | อนุมัติโดย: ${authContext.session.user.name}`,
@@ -249,7 +249,7 @@ export async function dispensePettyCash(id: number, dispensed_amount: number, no
         }
 
         await logSystemAction(
-            'จ่ายเงินสดย่อย',
+            'PETTY_CASH_DISPENSE',
             'PettyCash',
             id,
             `จ่ายเงินสดย่อยเลขที่: ${request.request_number} | จำนวนที่จ่าย: ${dispensed_amount.toLocaleString()} บาท | ผู้รับ: ${request.requested_by} | วัตถุประสงค์: ${request.purpose} | จ่ายโดย: ${authContext.session.user.name}${notes ? ' | หมายเหตุ: ' + notes : ''}`,
@@ -331,7 +331,7 @@ export async function submitClearance(id: number, formData: FormData) {
         }
 
         await logSystemAction(
-            'ส่งเอกสารเคลียร์เงินสดย่อย',
+            'PETTY_CASH_CLEARANCE_SUBMIT',
             'PettyCash',
             id,
             `ส่งเคลียร์เงินสดย่อยเลขที่: ${updated.request_number} | ยอดใช้จริง: ${actual_spent.toLocaleString()} บาท | เงินทอนคืน: ${change_returned.toLocaleString()} บาท | ใบเสร็จ: ${receipt_urls.length} ไฟล์ | ผู้ส่ง: ${authContext.session.user.name}${notes ? ' | หมายเหตุ: ' + notes : ''}`,
@@ -392,7 +392,7 @@ export async function reconcilePettyCash(id: number, notes?: string) {
         }
 
         await logSystemAction(
-            'ปิดยอดเงินสดย่อย',
+            'PETTY_CASH_RECONCILE',
             'PettyCash',
             id,
             `ปิดยอด (Reconcile) เลขที่: ${updated.request_number} | ยอดใช้จริง: ${Number(updated.actual_spent).toLocaleString()} บาท | เงินทอน: ${Number(updated.change_returned).toLocaleString()} บาท | ผู้ปิดยอด: ${authContext.session.user.name}`,
@@ -447,7 +447,7 @@ export async function rejectPettyCash(id: number, notes?: string) {
         }
 
         await logSystemAction(
-            'ปฏิเสธคำขอเงินสดย่อย',
+            'PETTY_CASH_REJECT',
             'PettyCash',
             id,
             `ปฏิเสธคำขอเลขที่: ${currentRequest?.request_number || id} | จำนวนเงิน: ${Number(currentRequest?.requested_amount).toLocaleString()} บาท | ผู้ขอ: ${currentRequest?.requested_by} | ปฏิเสธโดย: ${authContext.session.user.name}${notes ? ' | เหตุผล: ' + notes : ''}`,
@@ -496,7 +496,7 @@ export async function deletePettyCashRequest(id: number) {
         revalidatePath('/petty-cash');
 
         await logSystemAction(
-            'ลบคำขอเงินสดย่อย',
+            'PETTY_CASH_DELETE',
             'PettyCash',
             id,
             `ลบใบเบิกเงินสดย่อย ${request.request_number} | ลบโดย: ${authContext.session.user.name} (สิทธิ์: ${(authContext.session.user as any).role || 'N/A'})`,
@@ -528,7 +528,7 @@ export async function verifyOriginalReceipt(id: number, hasReceived: boolean) {
         revalidatePath('/petty-cash');
 
         await logSystemAction(
-            'ตรวจสอบเอกสารต้นฉบับ',
+            'PETTY_CASH_RECEIPT_VERIFY',
             'PettyCash',
             id,
             `เปลี่ยนสถานะรับเอกสารต้นฉบับเป็น: ${hasReceived ? 'ได้รับ' : 'ยังไม่ได้รับ'} (PC: ${updated.request_number})`,
@@ -623,7 +623,7 @@ export async function savePettyCashSignatures(id: number, payeeSignature?: strin
         revalidatePath(`/petty-cash/${id}/print`);
 
         await logSystemAction(
-            'บันทึกลายเซ็น',
+            'PETTY_CASH_SIGNATURE_SAVE',
             'PettyCash',
             id,
             `บันทึกลายเซ็น ${payeeSignature ? '[ผู้รับเงิน]' : ''} ${payerSignature ? '[ผู้จ่ายเงิน]' : ''} (PC: ${request.request_number})`,

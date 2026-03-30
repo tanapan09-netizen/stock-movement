@@ -84,7 +84,7 @@ export async function logPageView(
         ].filter(Boolean).join(' | ');
 
         await logSystemAction(
-            'เข้าชมหน้าจอ',
+            'PAGE_VIEW',
             `Page #${pathname}`,
             pathname,
             details,

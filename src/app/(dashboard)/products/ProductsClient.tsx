@@ -668,7 +668,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
 
             {/* List/Table View */}
             {viewMode === 'list' ? (
-                <div className="relative w-full overflow-x-auto overflow-y-visible overscroll-x-contain">
+                <div className="w-full overflow-x-auto">
                     <table className="relative min-w-[1500px] w-full text-left text-sm text-gray-600">
                         <thead className="bg-gray-50 text-xs uppercase text-gray-700">
                             <tr>
@@ -679,7 +679,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                         : columnId === 'is_asset' || columnId === 'status'
                                             ? 'text-center'
                                             : 'text-left';
-                                    const thClass = `sticky top-16 z-20 whitespace-nowrap border-b border-gray-200 bg-gray-50 px-4 py-3 ${alignClass} ${sortable ? 'group cursor-pointer hover:bg-gray-100 transition-colors' : ''}`;
+                                    const thClass = `sticky <top-14></top-14> z-20 whitespace-nowrap border-b border-gray-200 bg-gray-50 px-4 py-3 ${alignClass} ${sortable ? 'group cursor-pointer hover:bg-gray-100 transition-colors' : ''}`;
 
                                     return (
                                         <th
@@ -820,5 +820,3 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
         </div>
     );
 }
-
-

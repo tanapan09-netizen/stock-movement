@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { useSidebar } from '@/contexts/SidebarContext';
 
@@ -10,19 +11,46 @@ interface MobileSidebarToggleProps {
 
 export default function MobileSidebarWrapper({ children }: MobileSidebarToggleProps) {
     const { isOpen, setIsOpen, isMobile } = useSidebar();
+    const pathname = usePathname();
 
-    // Close sidebar when clicking outside on mobile
+    // Close drawer after route changes on mobile
     useEffect(() => {
-        const handleClickOutside = (e: MouseEvent) => {
-            const target = e.target as HTMLElement;
-            if (isOpen && !target.closest('.mobile-sidebar') && !target.closest('.mobile-menu-btn')) {
+        if (isMobile) {
+            setIsOpen(false);
+        }
+    }, [pathname, isMobile, setIsOpen]);
+
+    // Prevent background scroll when mobile drawer is open
+    useEffect(() => {
+        if (!isMobile) return;
+
+        if (isOpen) {
+            document.body.style.overflow = 'hidden';
+            document.body.style.touchAction = 'none';
+        } else {
+            document.body.style.overflow = '';
+            document.body.style.touchAction = '';
+        }
+
+        return () => {
+            document.body.style.overflow = '';
+            document.body.style.touchAction = '';
+        };
+    }, [isOpen, isMobile]);
+
+    // Allow closing with Escape
+    useEffect(() => {
+        if (!isMobile || !isOpen) return;
+
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
                 setIsOpen(false);
             }
         };
 
-        document.addEventListener('click', handleClickOutside);
-        return () => document.removeEventListener('click', handleClickOutside);
-    }, [isOpen]);
+        window.addEventListener('keydown', handleEscape);
+        return () => window.removeEventListener('keydown', handleEscape);
+    }, [isOpen, isMobile, setIsOpen]);
 
     return (
         <>
@@ -30,8 +58,9 @@ export default function MobileSidebarWrapper({ children }: MobileSidebarTogglePr
             {isMobile && (
                 <button
                     onClick={() => setIsOpen(!isOpen)}
-                    className="mobile-menu-btn fixed top-4 left-4 z-[60] p-2 bg-gray-900 text-white rounded-lg shadow-lg lg:hidden"
+                    className="mobile-menu-btn fixed top-4 left-4 z-[60] p-2.5 bg-slate-900/95 text-white rounded-xl shadow-lg border border-slate-700/80 transition-colors active:scale-95 lg:hidden"
                     aria-label="Toggle menu"
+                    aria-expanded={isOpen}
                 >
                     {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
                 </button>
@@ -47,7 +76,7 @@ export default function MobileSidebarWrapper({ children }: MobileSidebarTogglePr
 
             {/* Sidebar Container */}
             <div
-                className={`mobile-sidebar fixed inset-y-0 z-50 transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${isMobile
+                className={`mobile-sidebar fixed inset-y-0 z-50 will-change-transform shadow-2xl transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${isMobile
                     ? isOpen
                         ? 'translate-x-0'
                         : '-translate-x-full'

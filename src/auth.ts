@@ -69,7 +69,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 if (!user) {
                     // Fire-and-forget: log failed login (user not found)
                     import('@/lib/logger').then(({ logSystemAction }) =>
-                        logSystemAction('เข้าสู่ระบบล้มเหลว', 'User', username, `ล็อกอินล้มเหลว: ไม่พบผู้ใช้ "${username}"`, null, username, 'unknown')
+                        logSystemAction('LOGIN_FAILED', 'User', username, `ล็อกอินล้มเหลว: ไม่พบผู้ใช้ "${username}"`, null, username, 'unknown')
                     ).catch(() => { });
                     throw new UserNotFound();
                 }
@@ -133,14 +133,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                         const unlockTime = lockedUntil?.getTime() || Date.now();
                         // Fire-and-forget: log account locked
                         import('@/lib/logger').then(({ logSystemAction }) =>
-                            logSystemAction('บัญชีถูกล็อค', 'User', user.p_id, `บัญชี "${username}" ถูกล็อค | พยายามล็อกอินผิด ${newFailed} ครั้ง | ล็อคจนถึง: ${lockedUntil?.toLocaleString('th-TH')}`, user.p_id, username, 'unknown')
+                            logSystemAction('ACCOUNT_LOCKED', 'User', user.p_id, `บัญชี "${username}" ถูกล็อค | พยายามล็อกอินผิด ${newFailed} ครั้ง | ล็อคจนถึง: ${lockedUntil?.toLocaleString('th-TH')}`, user.p_id, username, 'unknown')
                         ).catch(() => { });
                         throw new AccountLocked(unlockTime);
                     }
 
                     // Fire-and-forget: log failed attempt
                     import('@/lib/logger').then(({ logSystemAction }) =>
-                        logSystemAction('เข้าสู่ระบบล้มเหลว', 'User', user.p_id, `"${username}" ใส่รหัสผ่านผิด | ครั้งที่ ${newFailed}/${maxAttempts} | เหลือ ${attemptsLeft} ครั้ง`, user.p_id, username, 'unknown')
+                        logSystemAction('LOGIN_FAILED', 'User', user.p_id, `"${username}" ใส่รหัสผ่านผิด | ครั้งที่ ${newFailed}/${maxAttempts} | เหลือ ${attemptsLeft} ครั้ง`, user.p_id, username, 'unknown')
                     ).catch(() => { });
                     throw new InvalidPassword(attemptsLeft);
                 }
@@ -258,7 +258,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                     const loginMethod = account?.provider === 'line' ? 'LINE Login' : 'Username/Password';
 
                     await logSystemAction(
-                        'เข้าสู่ระบบ',
+                        'LOGIN',
                         'User',
                         user.id,
                         `${user.name || 'Unknown'} เข้าสู่ระบบสำเร็จ | วิธี: ${loginMethod} | สิทธิ์: ${(user as any).role || 'N/A'} | อุปกรณ์: ${device} | IP: ${ip}`,
@@ -277,7 +277,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 const token = message?.token;
                 if (token) {
                     await logSystemAction(
-                        'ออกจากระบบ',
+                        'LOGOUT',
                         'User',
                         token.id?.toString() || '0',
                         `${token.name || 'Unknown'} ออกจากระบบ | สิทธิ์: ${token.role || 'N/A'}`,

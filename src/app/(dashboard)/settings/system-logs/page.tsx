@@ -10,7 +10,7 @@ interface SystemLog {
     action: string;
     entity: string;
     entity_id: string;
-    details: string;
+    details: string | null;
     username: string;
     created_at: string;
     tbl_users?: { role: string };
@@ -23,11 +23,15 @@ export default function SystemLogsPage() {
     const [totalPages, setTotalPages] = useState(1);
     const [filterAction, setFilterAction] = useState('all');
     const [searchUser, setSearchUser] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [selectedLog, setSelectedLog] = useState<SystemLog | null>(null);
+    const [copiedLogId, setCopiedLogId] = useState<number | null>(null);
 
     useEffect(() => {
         loadLogs();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, filterAction]);
+    }, [page, filterAction, startDate, endDate]);
 
     // Debounce search
     useEffect(() => {
@@ -43,7 +47,9 @@ export default function SystemLogsPage() {
         setLoading(true);
         const result = await getSystemLogs(page, 20, {
             action: filterAction,
-            username: searchUser
+            username: searchUser,
+            startDate: startDate || undefined,
+            endDate: endDate || undefined,
         });
 
         if (result.success && result.data) {
@@ -58,14 +64,89 @@ export default function SystemLogsPage() {
             case 'CREATE': return 'bg-green-100 text-green-800';
             case 'UPDATE': return 'bg-blue-100 text-blue-800';
             case 'DELETE': return 'bg-red-100 text-red-800';
+            case 'BORROW': return 'bg-orange-100 text-orange-800';
+            case 'RETURN': return 'bg-lime-100 text-lime-800';
             case 'LOGIN': return 'bg-purple-100 text-purple-800';
+            case 'LOGOUT': return 'bg-slate-100 text-slate-700';
+            case 'LOGIN_FAILED': return 'bg-amber-100 text-amber-800';
+            case 'ACCOUNT_LOCKED': return 'bg-rose-100 text-rose-800';
+            case 'PAGE_VIEW': return 'bg-indigo-100 text-indigo-800';
+            case 'SETTINGS_UPDATE': return 'bg-cyan-100 text-cyan-800';
+            case 'ASSET_POLICY_UPDATE': return 'bg-teal-100 text-teal-800';
+            case 'UPDATE_ROLE_PERMISSIONS': return 'bg-violet-100 text-violet-800';
+            case 'UPDATE_USER_PERMISSIONS': return 'bg-fuchsia-100 text-fuchsia-800';
+            case 'PETTY_CASH_CREATE':
+            case 'PETTY_CASH_APPROVE':
+            case 'PETTY_CASH_DISPENSE':
+            case 'PETTY_CASH_CLEARANCE_SUBMIT':
+            case 'PETTY_CASH_RECONCILE':
+            case 'PETTY_CASH_REJECT':
+            case 'PETTY_CASH_DELETE':
+            case 'PETTY_CASH_RECEIPT_VERIFY':
+            case 'PETTY_CASH_SIGNATURE_SAVE':
+                return 'bg-emerald-100 text-emerald-800';
             default: return 'bg-gray-100 text-gray-800';
+        }
+    }
+
+    function formatLogDetails(details: string | null) {
+        if (!details) return '-';
+
+        try {
+            const parsed = JSON.parse(details);
+            if (typeof parsed === 'string') return parsed;
+            return JSON.stringify(parsed, null, 2);
+        } catch {
+            return details;
+        }
+    }
+
+    function getDetailPreview(details: string | null) {
+        const normalized = formatLogDetails(details).replace(/\s+/g, ' ').trim();
+        if (normalized.length <= 100) return normalized;
+        return `${normalized.slice(0, 100)}...`;
+    }
+
+    async function handleCopyDetails(log: SystemLog) {
+        const text = formatLogDetails(log.details);
+
+        try {
+            if (navigator?.clipboard?.writeText) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+            }
+
+            setCopiedLogId(log.id);
+            setTimeout(() => {
+                setCopiedLogId((current) => (current === log.id ? null : current));
+            }, 1200);
+        } catch (error) {
+            console.error('Failed to copy log details:', error);
         }
     }
 
     return (
         <div className="space-y-6 p-6">
             <h1 className="text-2xl font-bold text-gray-800">System Logs</h1>
+
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                   <h2 className="text-sm font-semibold text-blue-800">Log Retention Policy</h2>             
+                <p className="mt-3 text-xs text-blue-700">
+                    ตั้งค่าระยะเวลาเก็บและล้าง log {' '}
+                    <a href="/admin/security" className="font-semibold underline underline-offset-2 hover:text-blue-900">
+                        Security Management
+                    </a>
+                </p>
+            </div>
 
             {/* Filters */}
             <div className="flex flex-wrap gap-4 bg-white p-4 rounded-lg shadow-sm border">
@@ -83,15 +164,76 @@ export default function SystemLogsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Action Type</label>
                     <select
                         value={filterAction}
-                        onChange={(e) => setFilterAction(e.target.value)}
+                        onChange={(e) => {
+                            setPage(1);
+                            setFilterAction(e.target.value);
+                        }}
                         className="w-full border rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
                     >
                         <option value="all">All Actions</option>
                         <option value="CREATE">Create</option>
                         <option value="UPDATE">Update</option>
                         <option value="DELETE">Delete</option>
+                        <option value="BORROW">Borrow</option>
+                        <option value="RETURN">Return</option>
                         <option value="LOGIN">Login</option>
+                        <option value="LOGOUT">Logout</option>
+                        <option value="LOGIN_FAILED">Login Failed</option>
+                        <option value="ACCOUNT_LOCKED">Account Locked</option>
+                        <option value="PAGE_VIEW">Page View</option>
+                        <option value="SETTINGS_UPDATE">Settings Update</option>
+                        <option value="ASSET_POLICY_UPDATE">Asset Policy Update</option>
+                        <option value="UPDATE_ROLE_PERMISSIONS">Update Role Permissions</option>
+                        <option value="UPDATE_USER_PERMISSIONS">Update User Permissions</option>
+                        <option value="PETTY_CASH_CREATE">Petty Cash Create</option>
+                        <option value="PETTY_CASH_APPROVE">Petty Cash Approve</option>
+                        <option value="PETTY_CASH_DISPENSE">Petty Cash Dispense</option>
+                        <option value="PETTY_CASH_CLEARANCE_SUBMIT">Petty Cash Clearance Submit</option>
+                        <option value="PETTY_CASH_RECONCILE">Petty Cash Reconcile</option>
+                        <option value="PETTY_CASH_REJECT">Petty Cash Reject</option>
+                        <option value="PETTY_CASH_DELETE">Petty Cash Delete</option>
+                        <option value="PETTY_CASH_RECEIPT_VERIFY">Petty Cash Receipt Verify</option>
+                        <option value="PETTY_CASH_SIGNATURE_SAVE">Petty Cash Signature Save</option>
                     </select>
+                </div>
+                <div className="w-[200px]">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                    <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => {
+                            setPage(1);
+                            setStartDate(e.target.value);
+                        }}
+                        className="w-full border rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                    />
+                </div>
+                <div className="w-[200px]">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                    <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => {
+                            setPage(1);
+                            setEndDate(e.target.value);
+                        }}
+                        className="w-full border rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+                    />
+                </div>
+                <div className="flex items-end">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setPage(1);
+                            setFilterAction('all');
+                            setSearchUser('');
+                            setStartDate('');
+                            setEndDate('');
+                        }}
+                        className="h-[38px] px-4 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                    >
+                        Reset
+                    </button>
                 </div>
             </div>
 
@@ -135,8 +277,28 @@ export default function SystemLogsPage() {
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                             {log.entity} <span className="text-xs text-gray-400">#{log.entity_id}</span>
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-500 max-w-md truncate" title={log.details}>
-                                            {log.details}
+                                        <td className="px-6 py-4 text-sm text-gray-500 max-w-md">
+                                            <div className="space-y-2">
+                                                <p className="truncate" title={formatLogDetails(log.details)}>
+                                                    {getDetailPreview(log.details)}
+                                                </p>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedLog(log)}
+                                                        className="px-2 py-1 text-xs font-medium rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                                                    >
+                                                        View
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void handleCopyDetails(log)}
+                                                        className="px-2 py-1 text-xs font-medium rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                                                    >
+                                                        {copiedLogId === log.id ? 'Copied' : 'Copy'}
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -190,6 +352,42 @@ export default function SystemLogsPage() {
                     </div>
                 </div>
             </div>
+
+            {selectedLog && (
+                <div className="fixed inset-0 z-50 bg-black/40 p-4 flex items-center justify-center">
+                    <div className="w-full max-w-3xl max-h-[85vh] bg-white rounded-lg shadow-xl border flex flex-col">
+                        <div className="px-4 py-3 border-b flex items-center justify-between">
+                            <div>
+                                <h3 className="text-sm font-semibold text-gray-900">Log Details</h3>
+                                <p className="text-xs text-gray-500">
+                                    {selectedLog.action} - {selectedLog.entity} #{selectedLog.entity_id}
+                                </p>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => void handleCopyDetails(selectedLog)}
+                                    className="px-3 py-1.5 text-xs font-medium rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                                >
+                                    {copiedLogId === selectedLog.id ? 'Copied' : 'Copy'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedLog(null)}
+                                    className="px-3 py-1.5 text-xs font-medium rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                        <div className="p-4 overflow-auto">
+                            <pre className="text-xs text-gray-800 whitespace-pre-wrap break-words bg-gray-50 border rounded p-3">
+                                {formatLogDetails(selectedLog.details)}
+                            </pre>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

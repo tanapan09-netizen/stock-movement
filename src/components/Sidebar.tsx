@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
     Home,
@@ -58,29 +58,13 @@ export default function Sidebar(props: SidebarProps) {
     const permissions = props.permissions || {};
 
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-    const { collapsed, setCollapsed } = useSidebar();
+    const { collapsed, setCollapsed, isMobile, setIsOpen, sidebarMode } = useSidebar();
     const [expandedSubMenu, setExpandedSubMenu] = useState<string | null>(
         pathname.startsWith('/admin') || pathname === '/roles' || pathname.startsWith('/settings') ? 'admin' : null
     );
-
-
-    // Auto collapse on soft resize or link click on mobile
-    const [isMobile, setIsMobile] = useState(false);
-
-    useEffect(() => {
-        const handleResize = () => {
-            setIsMobile(window.innerWidth < 768);
-        };
-
-        // Initial check
-        handleResize();
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
-
     const handleLinkClick = () => {
-        if (isMobile && !collapsed) {
-            setCollapsed(true);
+        if (isMobile) {
+            setIsOpen(false);
         }
     };
 
@@ -147,7 +131,7 @@ export default function Sidebar(props: SidebarProps) {
 
     return (
         <>
-            <div id="app-sidebar" className={`relative flex h-full min-h-screen flex-col justify-between overflow-visible border-r border-slate-700/70 bg-[#0b1222] text-white transition-[width] duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${collapsed ? 'w-20' : 'w-72 sm:w-64 md:w-72'}`}>
+            <div id="app-sidebar" className={`relative flex h-full min-h-screen flex-col justify-between overflow-visible border-r border-slate-700/70 bg-[#0b1222] text-white transition-[width] duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${isMobile ? 'w-72 sm:w-80' : (collapsed ? 'w-20' : 'w-72 sm:w-64 md:w-72')}`}>
                 <div className="absolute inset-y-0 right-0 w-px bg-slate-700/60"></div>
 
                 <div className="overflow-y-auto relative z-10 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -722,7 +706,7 @@ export default function Sidebar(props: SidebarProps) {
                 <button
                     type="button"
                     onClick={() => setCollapsed(!collapsed)}
-                    className="group absolute left-full top-1/2 z-40 hidden h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-500/70 bg-slate-800/95 text-blue-200 shadow-[0_16px_34px_-18px_rgba(2,6,23,1)] transition-all duration-300 hover:scale-105 hover:border-blue-300/80 hover:bg-slate-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300/70 active:scale-95 lg:flex"
+                    className={`group absolute left-full top-1/2 z-40 hidden h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-500/70 bg-slate-800/95 text-blue-200 shadow-[0_16px_34px_-18px_rgba(2,6,23,1)] transition-all duration-300 hover:scale-105 hover:border-blue-300/80 hover:bg-slate-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300/70 active:scale-95 ${sidebarMode === 'desktop' ? 'lg:flex' : 'lg:hidden'}`}
                     title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                     aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                     aria-expanded={!collapsed}
