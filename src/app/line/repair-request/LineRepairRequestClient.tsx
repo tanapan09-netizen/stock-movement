@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState, useRef, useCallback } from 'react';
+import { FormEvent, useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getLineCustomerByLineId } from '@/actions/lineCustomerActions';
@@ -570,7 +570,37 @@ function genCaptcha(): string {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type AlertKind = 'success' | 'error' | 'info';
-type RoomOption = { room_id: number; room_code: string; room_name: string };
+type RoomOption = {
+    room_id: number;
+    room_code: string;
+    room_name: string;
+    building?: string | null;
+    floor?: string | null;
+    zone?: string | null;
+    active?: boolean;
+};
+
+type LocationRoomOption = {
+    roomId: number;
+    roomCode: string;
+    roomName: string;
+    roomLabel: string;
+};
+
+type LocationZoneOption = {
+    roomId: number;
+    roomCode: string;
+    zoneCode: string;
+    zoneName: string;
+    zoneLabel: string;
+};
+
+const resolveParentRoomCode = (room: RoomOption): string => {
+    if (!room.zone) return room.room_code;
+    const parentCode = room.building?.trim();
+    if (parentCode && parentCode !== room.room_code) return parentCode;
+    return room.room_code;
+};
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 function Dots() {
@@ -766,11 +796,93 @@ export default function LineRepairRequestClient({
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [roomId, setRoomId] = useState<number>(0);
+    const [rooms, setRooms] = useState<RoomOption[]>([]);
     const [category] = useState('general');
     const [priority] = useState('normal');
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [previews, setPreviews] = useState<string[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const activeLocationRooms = useMemo(
+        () => rooms.filter((room) => room.active !== false),
+        [rooms],
+    );
+
+    const { locationRoomOptions, locationZoneOptionsByRoom } = useMemo(() => {
+        const zoneOptionMap = new Map<string, LocationZoneOption[]>();
+        const locationRoomMap = new Map<string, LocationRoomOption>();
+
+        for (const room of activeLocationRooms) {
+            if (room.zone) {
+                const parentRoomCode = resolveParentRoomCode(room);
+                if (!zoneOptionMap.has(parentRoomCode)) {
+                    zoneOptionMap.set(parentRoomCode, []);
+                }
+                zoneOptionMap.get(parentRoomCode)!.push({
+                    roomId: room.room_id,
+                    roomCode: parentRoomCode,
+                    zoneCode: room.room_code,
+                    zoneName: room.room_name,
+                    zoneLabel: `${room.room_code} - ${room.room_name}`,
+                });
+                continue;
+            }
+
+            locationRoomMap.set(room.room_code, {
+                roomId: room.room_id,
+                roomCode: room.room_code,
+                roomName: room.room_name,
+                roomLabel: `${room.room_code} - ${room.room_name}`,
+            });
+        }
+
+        for (const [roomCode, zones] of zoneOptionMap.entries()) {
+            if (!locationRoomMap.has(roomCode)) {
+                locationRoomMap.set(roomCode, {
+                    roomId: zones[0]?.roomId || 0,
+                    roomCode,
+                    roomName: roomCode,
+                    roomLabel: roomCode,
+                });
+            }
+        }
+
+        const sortedRoomOptions = [...locationRoomMap.values()].sort((left, right) =>
+            left.roomCode.localeCompare(right.roomCode),
+        );
+        const sortedZoneMap = new Map<string, LocationZoneOption[]>();
+        for (const [roomCode, zones] of zoneOptionMap.entries()) {
+            sortedZoneMap.set(
+                roomCode,
+                [...zones].sort((left, right) => left.zoneCode.localeCompare(right.zoneCode)),
+            );
+        }
+
+        return {
+            locationRoomOptions: sortedRoomOptions,
+            locationZoneOptionsByRoom: sortedZoneMap,
+        };
+    }, [activeLocationRooms]);
+
+    const selectedLocationRoomRecord = roomId
+        ? rooms.find((room) => room.room_id === roomId) || null
+        : null;
+    const selectedLocationRoomCode = selectedLocationRoomRecord
+        ? resolveParentRoomCode(selectedLocationRoomRecord)
+        : '';
+    const selectedLocationRoomOption = selectedLocationRoomCode
+        ? locationRoomOptions.find((room) => room.roomCode === selectedLocationRoomCode) || null
+        : null;
+    const availableLocationZones = selectedLocationRoomCode
+        ? locationZoneOptionsByRoom.get(selectedLocationRoomCode) || []
+        : [];
+    const selectedLocationZoneId = selectedLocationRoomRecord?.zone
+        && availableLocationZones.some((zone) => zone.roomId === selectedLocationRoomRecord.room_id)
+        ? selectedLocationRoomRecord.room_id
+        : 0;
+    const selectedRoomDisplay = selectedLocationRoomRecord
+        ? `${selectedLocationRoomRecord.room_code} - ${selectedLocationRoomRecord.room_name}`
+        : (customerInfo?.room_number || t('noLocation'));
 
     // Captcha
     const [captchaCode, setCaptchaCode] = useState(() => genCaptcha());
@@ -785,6 +897,7 @@ export default function LineRepairRequestClient({
     const [alert, setAlert] = useState<{ kind: AlertKind; text: string } | null>(null);
     const [showConfirm, setShowConfirm] = useState(false);
     const [successRequestNumber, setSuccessRequestNumber] = useState<string | null>(null);
+    const [successRoomDisplay, setSuccessRoomDisplay] = useState<string | null>(null);
     const [successCountdown, setSuccessCountdown] = useState(3);
 
     const returnToPreviousPage = useCallback(() => {
@@ -895,11 +1008,17 @@ export default function LineRepairRequestClient({
             try {
                 const [cr, rr] = await Promise.all([getLineCustomerByLineId(lineUserId), getRooms()]);
                 if (cancelled) return;
+                const nextRooms = rr.success && Array.isArray(rr.data) ? (rr.data as RoomOption[]) : [];
+                setRooms(nextRooms);
                 if (cr.success && cr.data) {
                     setCustomerInfo({ full_name:cr.data.full_name||'', phone_number:cr.data.phone_number||'', room_number:cr.data.room_number||'' });
-                    if (rr.success && rr.data && cr.data.room_number) {
+                    if (nextRooms.length > 0 && cr.data.room_number) {
                         const saved = cr.data.room_number.trim().toLowerCase();
-                        const match = (rr.data as RoomOption[]).find(r => r.room_code?.toLowerCase()===saved || r.room_name?.toLowerCase()===saved);
+                        const match = nextRooms.find((room) =>
+                            room.room_code?.toLowerCase() === saved
+                            || room.room_name?.toLowerCase() === saved
+                            || resolveParentRoomCode(room).toLowerCase() === saved
+                        );
                         if (match) setRoomId(match.room_id);
                     }
                 } else if (!cr.success) setAlert({ kind:'error', text:t('errNoCustomer') });
@@ -942,6 +1061,7 @@ export default function LineRepairRequestClient({
             if (result.success) {
                 setShowConfirm(false);
                 setAlert(null);
+                setSuccessRoomDisplay(selectedRoomDisplay);
                 setSuccessRequestNumber(result.data?.request_number ?? null);
                 setTitle(''); setDescription(''); setRoomId(0); setSelectedFiles([]); setPreviews([]);
                 setCaptchaInput(''); setCaptchaStatus('idle'); refreshCaptcha();
@@ -1013,7 +1133,48 @@ export default function LineRepairRequestClient({
                         {/* Location */}
                         <div className="fg">
                             <label className="fl"><MapPin size={13}/>{t('locationRequired')}</label>
-                            <input type="text" value={customerInfo?.room_number||t('noLocation')} disabled className="fi ro"/>
+                            {customerInfo?.room_number && (
+                                <p className="ic" style={{ textAlign: 'left', marginTop: 0 }}>
+                                    ห้องจากโปรไฟล์: {customerInfo.room_number}
+                                </p>
+                            )}
+                            <select
+                                value={selectedLocationRoomCode}
+                                onChange={(e) => {
+                                    const nextRoomOption = locationRoomOptions.find((room) => room.roomCode === e.target.value) || null;
+                                    setRoomId(nextRoomOption?.roomId || 0);
+                                }}
+                                className="fi"
+                                disabled={!customerInfo}
+                            >
+                                <option value="">-- เลือกห้อง --</option>
+                                {locationRoomOptions.map((room) => (
+                                    <option key={room.roomCode} value={room.roomCode}>
+                                        {room.roomLabel}
+                                    </option>
+                                ))}
+                            </select>
+                            <select
+                                value={selectedLocationZoneId ? String(selectedLocationZoneId) : ''}
+                                onChange={(e) => {
+                                    const nextZoneRoomId = Number.parseInt(e.target.value, 10);
+                                    if (Number.isFinite(nextZoneRoomId) && nextZoneRoomId > 0) {
+                                        setRoomId(nextZoneRoomId);
+                                        return;
+                                    }
+                                    setRoomId(selectedLocationRoomOption?.roomId || 0);
+                                }}
+                                className="fi"
+                                style={{ marginTop: 8 }}
+                                disabled={!customerInfo || !selectedLocationRoomCode}
+                            >
+                                <option value="">{selectedLocationRoomCode ? '-- เลือกโซน (ถ้ามี) --' : '-- กรุณาเลือกห้องก่อน --'}</option>
+                                {availableLocationZones.map((zone) => (
+                                    <option key={zone.roomId} value={zone.roomId}>
+                                        {zone.zoneLabel}
+                                    </option>
+                                ))}
+                            </select>
                             {roomId===0&&customerInfo?.room_number&&<p className="fhint"><AlertCircle size={11}/>{t('locationNotFound')}</p>}
                         </div>
 
@@ -1139,7 +1300,7 @@ export default function LineRepairRequestClient({
                     lang={lang}
                     t={t}
                     customerInfo={customerInfo}
-                    roomDisplay={customerInfo?.room_number||t('noLocation')}
+                    roomDisplay={selectedRoomDisplay}
                     title={title}
                     description={description}
                     imageCount={selectedFiles.length}
@@ -1153,7 +1314,7 @@ export default function LineRepairRequestClient({
                 <SuccessDialog
                     t={t}
                     requestNumber={successRequestNumber}
-                    roomDisplay={customerInfo?.room_number || t('noLocation')}
+                    roomDisplay={successRoomDisplay || selectedRoomDisplay}
                     issueTitle={title || '-'}
                     countdown={successCountdown}
                     onBack={returnToPreviousPage}
@@ -1162,4 +1323,3 @@ export default function LineRepairRequestClient({
         </div>
     );
 }
-

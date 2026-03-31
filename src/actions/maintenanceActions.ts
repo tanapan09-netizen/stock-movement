@@ -579,6 +579,7 @@ export async function createMaintenanceRequest(formData: FormData) {
             .getAll('source_image_urls')
             .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
             .flatMap((value) => parseMaintenanceImageUrls(value));
+        const requestNumber = generateRequestNumber();
 
         const imageFiles = [
             ...(formData.getAll('images') as File[]),
@@ -587,9 +588,12 @@ export async function createMaintenanceRequest(formData: FormData) {
         const uploadedImageUrls: string[] = [];
 
         if (imageFiles.length > 0) {
-            for (const file of imageFiles) {
+            for (let index = 0; index < imageFiles.length; index += 1) {
+                const file = imageFiles[index];
                 try {
-                    const url = await uploadFile(file, 'maintenance');
+                    const url = await uploadFile(file, 'maintenance', {
+                        baseName: `${requestNumber}-img${index + 1}`,
+                    });
                     uploadedImageUrls.push(url);
                 } catch (error) {
                     console.error('Failed upload:', error);
@@ -606,24 +610,45 @@ export async function createMaintenanceRequest(formData: FormData) {
 
         const initialStatus = target_role ? 'approved' : 'pending';
 
-        const request = await prisma.tbl_maintenance_requests.create({
-            data: {
-                request_number: generateRequestNumber(),
-                room_id: validData.room_id,
-                title: validData.title,
-                description: validData.description || null,
-                image_url: finalImageUrls.length > 0 ? JSON.stringify(finalImageUrls) : null,
-                priority: validData.priority,
-                status: initialStatus,
-                reported_by,
-                assigned_to: assigned_to || null,
-                scheduled_date: scheduled_date ? new Date(scheduled_date) : null,
-                estimated_cost: new Decimal(estimated_cost),
-                category: category || 'general',
-                department: department || null,
-                contact_info: contact_info || null,
-                tags: finalTags
+        const request = await prisma.$transaction(async (tx) => {
+            const createdRequest = await tx.tbl_maintenance_requests.create({
+                data: {
+                    request_number: requestNumber,
+                    room_id: validData.room_id,
+                    title: validData.title,
+                    description: validData.description || null,
+                    image_url: finalImageUrls.length > 0 ? JSON.stringify(finalImageUrls) : null,
+                    priority: validData.priority,
+                    status: initialStatus,
+                    reported_by,
+                    assigned_to: assigned_to || null,
+                    scheduled_date: scheduled_date ? new Date(scheduled_date) : null,
+                    estimated_cost: new Decimal(estimated_cost),
+                    category: category || 'general',
+                    department: department || null,
+                    contact_info: contact_info || null,
+                    tags: finalTags
+                }
+            });
+
+            const shouldDeleteSourceRequest =
+                typeof sourceRequestId === 'number'
+                && Number.isFinite(sourceRequestId)
+                && sourceRequestId > 0
+                && sourceRequestId !== createdRequest.request_id;
+
+            if (shouldDeleteSourceRequest) {
+                await tx.tbl_part_requests.updateMany({
+                    where: { maintenance_id: sourceRequestId },
+                    data: { maintenance_id: null },
+                });
+
+                await tx.tbl_maintenance_requests.delete({
+                    where: { request_id: sourceRequestId },
+                });
             }
+
+            return createdRequest;
         });
 
         try {
@@ -666,6 +691,7 @@ export async function createMaintenanceRequest(formData: FormData) {
         }
 
         revalidatePath('/maintenance');
+        revalidatePath('/general-request');
         return { success: true, data: request };
     } catch (error: unknown) {
         console.error('Error createMaintenanceRequest:', error);
@@ -709,6 +735,7 @@ export async function submitCustomerRepairRequest(formData: FormData) {
            tagsArray.push('ลูกค้า');
         }
         const tags = tagsArray.join(',');
+        const requestNumber = generateRequestNumber();
 
         const imageFiles = [
             ...(formData.getAll('images') as File[]),
@@ -717,9 +744,12 @@ export async function submitCustomerRepairRequest(formData: FormData) {
         const uploadedImageUrls: string[] = [];
 
         if (imageFiles.length > 0) {
-            for (const file of imageFiles) {
+            for (let index = 0; index < imageFiles.length; index += 1) {
+                const file = imageFiles[index];
                 try {
-                    const url = await uploadFile(file, 'maintenance');
+                    const url = await uploadFile(file, 'maintenance', {
+                        baseName: `${requestNumber}-img${index + 1}`,
+                    });
                     uploadedImageUrls.push(url);
                 } catch (error) {
                     console.error('Failed upload:', error);
@@ -729,7 +759,7 @@ export async function submitCustomerRepairRequest(formData: FormData) {
 
         const request = await prisma.tbl_maintenance_requests.create({
             data: {
-                request_number: generateRequestNumber(),
+                request_number: requestNumber,
                 room_id: validData.room_id,
                 title: validData.title,
                 description: validData.description || null,

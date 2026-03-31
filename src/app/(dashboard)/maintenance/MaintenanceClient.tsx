@@ -867,10 +867,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             data.append('vehicle_plate', vehiclePlate);
         }
         data.append('target_role', formData.target_role);
-        if (pullFromGeneral && selectedPulledRequestImageUrls.length > 0) {
-            data.append('source_request_id', String(selectedPulledRequest?.request_id || ''));
+        if (pullFromGeneral && selectedGeneralRequestId) {
+            data.append('source_request_id', String(selectedGeneralRequestId));
             data.append('source_image_count', String(selectedPulledRequestImageUrls.length));
-            selectedPulledRequestImageUrls.forEach((imageUrl) => data.append('source_image_urls', imageUrl));
+            if (selectedPulledRequestImageUrls.length > 0) {
+                selectedPulledRequestImageUrls.forEach((imageUrl) => data.append('source_image_urls', imageUrl));
+            }
         }
 
         if (selectedFile) {
@@ -880,18 +882,6 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         try {
             const result = await createMaintenanceRequest(data);
             if (result.success) {
-                // Update general request status if pulled
-                if (pullFromGeneral && selectedGeneralRequestId) {
-                    await updateMaintenanceRequest(
-                        selectedGeneralRequestId,
-                        {
-                            status: 'completed',
-                            notes: `ใบงานถูกสร้างใหม่เลขที่: ${(result.data as { request_number?: string } | undefined)?.request_number || ''}`
-                        },
-                        formData.reported_by
-                    );
-                }
-
                 setShowForm(false);
                 setLocationMode('location');
                 setFormData({
@@ -1686,11 +1676,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         ? selectedRequestExecutionTechnician
         : (editData.assigned_to || '');
     const isSelectedRequestAwaitingHeadApproval = selectedWorkflowStatus === 'confirmed';
-    const canManagerEditClosedRequest =
-        isManagerRole(loggedInRole) && isMaintenanceWorkflowClosed(selectedWorkflowStatus);
-    const isSelectedRequestReadOnly =
-        isSelectedRequestAwaitingHeadApproval
-        || (isMaintenanceWorkflowClosed(selectedWorkflowStatus) && !canManagerEditClosedRequest);
+    const canManagerEditClosedRequest = false;
+    const isSelectedRequestReadOnly = true;
     const isDetailReadOnly = !canEditPage || isSelectedRequestReadOnly;
     const managerClosedReopenStatusOptions: MaintenanceWorkflowStatus[] = ['pending', 'approved', 'in_progress'];
     const allowedDetailStatusTransitions = selectedRequest && !isSelectedRequestReadOnly
@@ -1715,8 +1702,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         ]
         : [];
     const canEditDetailStatus = !isDetailReadOnly && detailStatusOptions.length > 1;
-    const canShowDetailSaveButton = !isSelectedRequestReadOnly;
-    const canShowHeadTechnicianActions = canApproveCompletion && isSelectedRequestAwaitingHeadApproval;
+    const canShowDetailSaveButton = false;
+    const canShowHeadTechnicianActions = false;
     const canShowPartsAddSection = !isSelectedRequestReadOnly && editData.status === 'confirmed';
     const isAssignedTechnicianInputDisabled =
         isDetailReadOnly

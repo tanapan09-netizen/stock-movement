@@ -18,9 +18,14 @@ const bucketName = process.env.GCP_BUCKET_NAME;
  * Uploads a file to Google Cloud Storage or Local Disk (fallback)
  * @param file The File object to upload
  * @param folder The folder path (e.g., 'products', 'assets')
+ * @param options Optional upload options
  * @returns The public URL of the uploaded file
  */
-export async function uploadFile(file: File, folder: string): Promise<string> {
+export async function uploadFile(
+    file: File,
+    folder: string,
+    options?: { baseName?: string }
+): Promise<string> {
     const shouldUseGCS = !!(process.env.GCP_PROJECT_ID && process.env.GCP_CLIENT_EMAIL && process.env.GCP_PRIVATE_KEY && process.env.GCP_BUCKET_NAME);
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -29,7 +34,7 @@ export async function uploadFile(file: File, folder: string): Promise<string> {
     // Sanitize filename: remove spaces, special chars, keep only alphanumerics and hyphens
     const originalExt = path.extname(file.name);
     // Remove extension from original name before sanitizing
-    const baseName = path.basename(file.name, originalExt);
+    const baseName = (options?.baseName || path.basename(file.name, originalExt)).trim();
     const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 30) || 'file'; // Fallback to 'file' if empty after sanitize
 
     // Ensure extension only has one dot
