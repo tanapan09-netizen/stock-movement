@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -14,11 +14,6 @@ import {
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { useToast } from './ToastProvider';
-import {
-  getReadNotificationsKey,
-  getStoredReadNotificationIds,
-  storeReadNotificationIds,
-} from '@/lib/notifications/clientReadState';
 
 type NotificationModule =
   | 'all'
@@ -48,6 +43,11 @@ type AppNotification = {
   read: boolean;
 };
 
+type NotificationsApiResponse = {
+  items: AppNotification[];
+  unreadCount: number;
+};
+
 type SessionUserLike = {
   id?: string | null;
   name?: string | null;
@@ -55,14 +55,41 @@ type SessionUserLike = {
   is_approver?: boolean | null;
 };
 
+function parseNotificationsResponse(payload: unknown): NotificationsApiResponse {
+  if (Array.isArray(payload)) {
+    const items = payload as AppNotification[];
+    return {
+      items,
+      unreadCount: items.filter(item => !item.read).length,
+    };
+  }
+
+  if (payload && typeof payload === 'object') {
+    const candidate = payload as Partial<NotificationsApiResponse>;
+    const items = Array.isArray(candidate.items) ? (candidate.items as AppNotification[]) : [];
+    const unreadCount = Number.isFinite(candidate.unreadCount)
+      ? Number(candidate.unreadCount)
+      : items.filter(item => !item.read).length;
+
+    return {
+      items,
+      unreadCount,
+    };
+  }
+
+  return { items: [], unreadCount: 0 };
+}
+
 export default function NotificationBell() {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session } = useSession();
   const sessionUser = session?.user as SessionUserLike | undefined;
+  const sessionUserKey = `${sessionUser?.id || sessionUser?.name || 'anonymous'}`;
   const { showToast } = useToast();
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(() => {
@@ -81,6 +108,7 @@ export default function NotificationBell() {
   const knownIdsRef = useRef<Set<string>>(new Set());
   const toastedIdsRef = useRef<Set<string>>(new Set());
   const hasInitializedRef = useRef(false);
+  const tabBaseTitleRef = useRef('');
 
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -89,7 +117,6 @@ export default function NotificationBell() {
     return 'default';
   });
 
-  const readNotificationsKey = getReadNotificationsKey(sessionUser?.id, sessionUser?.name);
   const normalizedRole = (sessionUser?.role || '').trim().toLowerCase();
   const isApprover = Boolean(sessionUser?.is_approver);
 
@@ -218,34 +245,31 @@ export default function NotificationBell() {
 
     try {
       const context = new AudioContextClass();
-      
-      // Resume context if suspended (common browser behavior)
+
       if (context.state === 'suspended') {
         void context.resume();
       }
 
-      // Create a nice "Ding" sound with two oscillators
       const playDing = (freq: number, volume: number, duration: number) => {
         const osc = context.createOscillator();
         const g = context.createGain();
-        
+
         osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, context.currentTime);
-        
+
         g.gain.setValueAtTime(0, context.currentTime);
         g.gain.linearRampToValueAtTime(volume, context.currentTime + 0.01);
         g.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
-        
+
         osc.connect(g);
         g.connect(context.destination);
-        
+
         osc.start();
         osc.stop(context.currentTime + duration);
       };
 
-      // Play fundamental and a clear harmonic for a "metallic" chime
-      playDing(1046.50, 0.1, 0.8); // C6
-      playDing(2093.00, 0.05, 0.5); // C7 (Harmonic)
+      playDing(1046.5, 0.1, 0.8);
+      playDing(2093, 0.05, 0.5);
 
       setTimeout(() => {
         void context.close();
@@ -255,23 +279,25 @@ export default function NotificationBell() {
     }
   }, [isSoundEnabled]);
 
-  const markAsRead = useCallback(
-    async (id: string) => {
-      setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
-      storeReadNotificationIds(readNotificationsKey, [id]);
-
-      try {
-        await fetch('/api/notifications/mark-read', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id }),
-        });
-      } catch (error) {
-        console.error('Failed to mark notification as read', error);
+  const markAsRead = useCallback(async (id: string) => {
+    setNotifications(prev => {
+      const target = prev.find(item => item.id === id);
+      if (target && !target.read) {
+        setUnreadCount(count => Math.max(0, count - 1));
       }
-    },
-    [readNotificationsKey],
-  );
+      return prev.map(n => (n.id === id ? { ...n, read: true } : n));
+    });
+
+    try {
+      await fetch('/api/notifications/mark-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+    } catch (error) {
+      console.error('Failed to mark notification as read', error);
+    }
+  }, []);
 
   const openNotificationTarget = useCallback(
     (notification: AppNotification) => {
@@ -308,90 +334,128 @@ export default function NotificationBell() {
 
   const lastReminderTimeRef = useRef<number>(0);
 
-  useEffect(() => {
-    const fetchNotifications = async () => {
-      try {
-        const query =
-          effectiveSelectedModule === 'all'
-            ? ''
-            : `?module=${encodeURIComponent(effectiveSelectedModule)}`;
-        const res = await fetch(`/api/notifications${query}`, { cache: 'no-store' });
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const query =
+        effectiveSelectedModule === 'all'
+          ? ''
+          : `?module=${encodeURIComponent(effectiveSelectedModule)}`;
+      const res = await fetch(`/api/notifications${query}`, { cache: 'no-store' });
 
-        if (res.ok) {
-          const storedReadIds = getStoredReadNotificationIds(readNotificationsKey);
+      if (!res.ok) return;
 
-          const data: AppNotification[] = (await res.json()).map((notification: AppNotification) => ({
-            ...notification,
-            read: notification.read || storedReadIds.has(notification.id),
-          }));
+      const payload = parseNotificationsResponse(await res.json());
+      const data = payload.items;
+      const latestIds = new Set(data.map(notification => notification.id));
 
-          const latestIds = new Set(data.map(notification => notification.id));
+      let notificationsToAnnounce: AppNotification[] = [];
 
-          let notificationsToAnnounce: AppNotification[] = [];
-
-          if (!hasInitializedRef.current) {
-            notificationsToAnnounce = data.filter(
-              notification =>
-                !notification.read && !toastedIdsRef.current.has(notification.id),
-            );
-            hasInitializedRef.current = true;
-          } else {
-            notificationsToAnnounce = data.filter(
-              notification =>
-                !knownIdsRef.current.has(notification.id) &&
-                !storedReadIds.has(notification.id) &&
-                !toastedIdsRef.current.has(notification.id),
-            );
-          }
-
-          if (notificationsToAnnounce.length > 0) {
-            notificationsToAnnounce.slice(0, 3).forEach(notification => {
-              showToast(notification.title, 'info');
-              showBrowserNotification(notification);
-              toastedIdsRef.current.add(notification.id);
-            });
-
-            playNotificationSound();
-            lastReminderTimeRef.current = Date.now(); // Reset reminder timer
-          } else {
-            // Persistent Alert: Every 1 minute if there are unread notifications
-            const unreadCount = data.filter(n => !n.read).length;
-            if (unreadCount > 0 && Date.now() - lastReminderTimeRef.current >= 60000) {
-              playNotificationSound();
-              showToast(`แจ้งเตือน: คุณมีการแจ้งเตือนที่ยังไม่ได้อ่าน ${unreadCount} รายการ`, 'info');
-              lastReminderTimeRef.current = Date.now();
-            }
-          }
-
-          knownIdsRef.current = latestIds;
-          setNotifications(data);
-        }
-      } catch (error) {
-        console.error('Failed to fetch notifications', error);
-      } finally {
-        setLoading(false);
+      if (!hasInitializedRef.current) {
+        notificationsToAnnounce = data.filter(
+          notification =>
+            !notification.read && !toastedIdsRef.current.has(notification.id),
+        );
+        hasInitializedRef.current = true;
+      } else {
+        notificationsToAnnounce = data.filter(
+          notification =>
+            !knownIdsRef.current.has(notification.id) &&
+            !notification.read &&
+            !toastedIdsRef.current.has(notification.id),
+        );
       }
-    };
 
-    void fetchNotifications();
-    const interval = setInterval(() => {
-      void fetchNotifications();
-    }, 30000);
+      if (notificationsToAnnounce.length > 0) {
+        notificationsToAnnounce.slice(0, 3).forEach(notification => {
+          showToast(notification.title, 'info');
+          showBrowserNotification(notification);
+          toastedIdsRef.current.add(notification.id);
+        });
 
-    return () => clearInterval(interval);
+        playNotificationSound();
+        lastReminderTimeRef.current = Date.now();
+      } else if (payload.unreadCount > 0 && Date.now() - lastReminderTimeRef.current >= 60000) {
+        playNotificationSound();
+        showToast(`แจ้งเตือน: คุณมีการแจ้งเตือนที่ยังไม่ได้อ่าน ${payload.unreadCount} รายการ`, 'info');
+        lastReminderTimeRef.current = Date.now();
+      }
+
+      knownIdsRef.current = latestIds;
+      setNotifications(data);
+      setUnreadCount(payload.unreadCount);
+    } catch (error) {
+      console.error('Failed to fetch notifications', error);
+    } finally {
+      setLoading(false);
+    }
   }, [
-    playNotificationSound,
     effectiveSelectedModule,
-    readNotificationsKey,
+    playNotificationSound,
     showBrowserNotification,
     showToast,
   ]);
 
   useEffect(() => {
+    void fetchNotifications();
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+
+      const visible = typeof document === 'undefined' || document.visibilityState === 'visible';
+      const pollMs = visible ? 30000 : 120000;
+      intervalId = setInterval(() => {
+        void fetchNotifications();
+      }, pollMs);
+    };
+
+    const handleVisibilityChange = () => {
+      void fetchNotifications();
+      startPolling();
+    };
+
+    startPolling();
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+    };
+  }, [fetchNotifications]);
+
+  useEffect(() => {
     knownIdsRef.current = new Set();
     toastedIdsRef.current = new Set();
     hasInitializedRef.current = false;
-  }, [readNotificationsKey]);
+  }, [sessionUserKey]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    if (!tabBaseTitleRef.current) {
+      tabBaseTitleRef.current = document.title.replace(/^\(\d+\)\s*/, '');
+    }
+
+    const baseTitle = tabBaseTitleRef.current;
+    document.title = unreadCount > 0 ? `(${unreadCount}) ${baseTitle}` : baseTitle;
+  }, [unreadCount]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof document !== 'undefined' && tabBaseTitleRef.current) {
+        document.title = tabBaseTitleRef.current;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -404,13 +468,12 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-
   const markAllAsRead = async () => {
     const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
+    if (unreadIds.length === 0) return;
 
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    storeReadNotificationIds(readNotificationsKey, unreadIds);
+    setUnreadCount(0);
 
     try {
       await fetch('/api/notifications/mark-read', {
@@ -576,3 +639,4 @@ export default function NotificationBell() {
     </div>
   );
 }
+

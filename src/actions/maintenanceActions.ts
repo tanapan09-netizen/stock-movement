@@ -700,7 +700,8 @@ export async function submitCustomerRepairRequest(formData: FormData) {
         const category = formData.get('category') as string;
         const department = formData.get('department') as string;
         const contact_info = (formData.get('contact_info') as string) || customer.phone_number;
-        const target_role = 'general';
+        // Route first customer repair notification to employee role.
+        const target_role = 'employee';
         const reported_by = customer.full_name;
         
         const tagsArray = formData.get('tags') ? (formData.get('tags') as string).split(',').map(t=>t.trim()).filter(Boolean) : [];

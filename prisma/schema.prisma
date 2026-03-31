@@ -664,9 +664,24 @@ model tbl_users {
   custom_permissions String?         @db.Text
   deleted_at       DateTime?         @db.DateTime(0)
   tbl_system_logs  tbl_system_logs[]
+  tbl_notification_reads tbl_notification_reads[]
   approval_requests_made  tbl_approval_requests[] @relation("Requester")
   approval_requests_approved tbl_approval_requests[] @relation("Approver")
   step_logs_acted  tbl_approval_step_logs[] 
+}
+
+model tbl_notification_reads {
+  id              Int      @id @default(autoincrement())
+  user_id         Int
+  notification_id String   @db.VarChar(191)
+  read_at         DateTime @default(now()) @db.Timestamp(0)
+  created_at      DateTime @default(now()) @db.Timestamp(0)
+
+  tbl_users       tbl_users @relation(fields: [user_id], references: [p_id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@unique([user_id, notification_id], map: "uniq_notification_reads_user_notification")
+  @@index([user_id], map: "idx_notification_reads_user")
+  @@index([read_at], map: "idx_notification_reads_read_at")
 }
 
 

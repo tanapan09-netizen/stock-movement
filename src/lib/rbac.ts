@@ -1,12 +1,11 @@
 import {
   PERMISSIONS,
   getPagePermissionKey,
-  getPagePermissionKeyForPathname,
   getRequiredPageAccessLevelForPathname,
   resolveDashboardRoutePattern,
   type PageAccessLevel,
 } from '@/lib/permissions';
-import { isAdminRole, isDepartmentRole, isManagerRole, normalizeRole } from '@/lib/roles';
+import { normalizeRole } from '@/lib/roles';
 
 export type AppRole =
   | 'owner'
@@ -47,23 +46,7 @@ export type Action =
   | 'approve';
 
 export type PagePermissionMap = Record<string, boolean>;
-export type InventoryAuditRole = 'auditor' | 'supervisor' | 'admin' | 'viewer';
-export type DashboardHomeView =
-  | 'admin'
-  | 'manager'
-  | 'accounting'
-  | 'purchasing'
-  | 'technician'
-  | 'store'
-  | 'general';
-
-export interface DashboardPageAccess {
-  routePattern: string | null;
-  requiredAccessLevel: PageAccessLevel | null;
-  canReadPage: boolean;
-  canEditPage: boolean;
-  hasPageAccess: boolean;
-}
+export type DashboardHomeView = 'admin' | 'manager' | 'accounting' | 'purchasing' | 'technician' | 'store' | 'general';
 
 type PermissionMatrix = {
   [role in AppRole]?: Partial<{
@@ -71,42 +54,58 @@ type PermissionMatrix = {
   }>;
 };
 
+type DashboardAccessOptions = {
+  isApprover?: boolean;
+  level?: 'view' | PageAccessLevel;
+};
+
+type DashboardPageAccess = {
+  routePattern: string | null;
+  requiredAccessLevel: PageAccessLevel | null;
+  hasPageAccess: boolean;
+  canReadPage: boolean;
+  canEditPage: boolean;
+};
+
 const normalizeAction = (action: Action): Exclude<Action, 'view'> | 'read' => {
   if (action === 'view') return 'read';
   return action;
 };
 
-export function mergePermissionMaps<T extends Record<string, boolean>>(
-  ...permissionMaps: Array<Partial<T> | null | undefined>
-): T {
-  return Object.assign({}, ...permissionMaps.filter(Boolean)) as T;
+const MANAGER_ROLES = new Set(['owner', 'admin', 'manager']);
+const TECHNICIAN_ROLES = new Set(['technician', 'leader_technician', 'head_technician']);
+const OPERATION_ROLES = new Set(['operation', 'leader_operation']);
+const PURCHASING_ROLES = new Set(['purchasing', 'leader_purchasing']);
+const ACCOUNTING_ROLES = new Set(['accounting', 'leader_accounting']);
+const STORE_ROLES = new Set(['store', 'leader_store']);
+const GENERAL_ROLES = new Set(['general', 'leader_general', 'employee', 'leader_employee']);
+
+const isManagerLike = (role?: string | null) => MANAGER_ROLES.has(normalizeRole(role));
+const isAccountingRole = (role?: string | null) => ACCOUNTING_ROLES.has(normalizeRole(role));
+const isPurchasingRole = (role?: string | null) => PURCHASING_ROLES.has(normalizeRole(role));
+const isStoreRole = (role?: string | null) => STORE_ROLES.has(normalizeRole(role));
+
+const hasPermissionKey = (permissions: PagePermissionMap = {}, key: string) => Boolean(permissions[key]);
+
+function hasAnyPermission(permissions: PagePermissionMap = {}, keys: string[]) {
+  return keys.some(key => hasPermissionKey(permissions, key));
 }
 
-export function hasMergedPermission(
-  userPermissions: PagePermissionMap,
-  permissionKey: string,
+function resolveRoleAndPermissions(
+  roleOrPermissions: string | PagePermissionMap | null | undefined,
+  permissions: PagePermissionMap = {},
 ) {
-  return Boolean(userPermissions[permissionKey]);
-}
+  if (typeof roleOrPermissions === 'object' && roleOrPermissions !== null) {
+    return {
+      role: undefined,
+      permissions: roleOrPermissions,
+    };
+  }
 
-export function canAccessPettyCashModule(userPermissions: PagePermissionMap) {
-  return hasMergedPermission(userPermissions, PERMISSIONS.PETTY_CASH);
-}
-
-export function canViewPurchaseOrders(userPermissions: PagePermissionMap) {
-  return hasMergedPermission(userPermissions, PERMISSIONS.PO_VIEW);
-}
-
-export function canEditPurchaseOrders(userPermissions: PagePermissionMap) {
-  return hasMergedPermission(userPermissions, PERMISSIONS.PO_EDIT);
-}
-
-export function canPrintPurchaseOrders(userPermissions: PagePermissionMap) {
-  return hasMergedPermission(userPermissions, PERMISSIONS.PO_PRINT);
-}
-
-export function canReceivePurchaseOrders(userPermissions: PagePermissionMap) {
-  return hasMergedPermission(userPermissions, PERMISSIONS.PO_RECEIVE);
+  return {
+    role: roleOrPermissions,
+    permissions,
+  };
 }
 
 export const RBAC_MATRIX: PermissionMatrix = {
@@ -158,6 +157,19 @@ export const RBAC_MATRIX: PermissionMatrix = {
   },
 };
 
+export function mergePermissionMaps<T extends PagePermissionMap>(...maps: Array<T | null | undefined>): T {
+  const merged: PagePermissionMap = {};
+  for (const map of maps) {
+    if (!map) continue;
+    Object.entries(map).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        merged[key] = Boolean(value);
+      }
+    });
+  }
+  return merged as T;
+}
+
 export function hasPermission(
   role: string | null | undefined,
   resource: Resource,
@@ -165,7 +177,7 @@ export function hasPermission(
 ) {
   if (!role) return false;
 
-  const normalizedRole = role.toLowerCase() as AppRole;
+  const normalizedRole = normalizeRole(role) as AppRole;
   const normalizedAction = normalizeAction(action);
 
   return RBAC_MATRIX[normalizedRole]?.[resource]?.includes(normalizedAction) ?? false;
@@ -181,9 +193,6 @@ export function getGeneralRequestPermissions(role: string | null | undefined) {
   };
 }
 
-/**
- * รองรับทั้ง 'view' และ 'read'
- */
 export function getSafePagePermissionKey(
   route: string,
   level: 'view' | 'read' | 'edit',
@@ -192,934 +201,659 @@ export function getSafePagePermissionKey(
   return getPagePermissionKey(route, normalizedLevel);
 }
 
-export function resolveExplicitPageAccess(
-  userPermissions: PagePermissionMap,
-  pathname: string,
-): DashboardPageAccess {
-  const requiredAccessLevel = getRequiredPageAccessLevelForPathname(pathname);
-  const readPermissionKey = getPagePermissionKeyForPathname(pathname, 'read');
-  const editPermissionKey = getPagePermissionKeyForPathname(pathname, 'edit');
-  const canReadPage = readPermissionKey ? Boolean(userPermissions[readPermissionKey]) : true;
-  const canEditPage = editPermissionKey ? Boolean(userPermissions[editPermissionKey]) : true;
-  const hasPageAccess = requiredAccessLevel === 'edit'
-    ? canEditPage
-    : (canReadPage || canEditPage);
-
-  return {
-    routePattern: resolveDashboardRoutePattern(pathname),
-    requiredAccessLevel,
-    canReadPage,
-    canEditPage,
-    hasPageAccess,
-  };
-}
-
-type BaselineAccessResolver = (context: {
-  role: string;
-  isApprover: boolean;
-}) => Pick<DashboardPageAccess, 'canReadPage' | 'canEditPage'>;
-
-const SPECIAL_ROUTE_BASELINE_ACCESS: Record<string, BaselineAccessResolver> = {
-  '/approvals/manage': ({ role, isApprover }) => {
-    const allowed = isManagerRole(role) || isApprover;
-    return { canReadPage: allowed, canEditPage: allowed };
-  },
-  '/approvals/purchasing': ({ role, isApprover }) => {
-    const allowed = isManagerRole(role) || isDepartmentRole(role, 'purchasing') || isApprover;
-    return { canReadPage: allowed, canEditPage: allowed };
-  },
-  '/accounting-dashboard': ({ role }) => {
-    const allowed = isManagerRole(role) || isDepartmentRole(role, 'accounting');
-    return { canReadPage: allowed, canEditPage: allowed };
-  },
-  '/manager-dashboard': ({ role }) => {
-    const allowed = isManagerRole(role);
-    return { canReadPage: allowed, canEditPage: allowed };
-  },
-  '/purchasing-dashboard': ({ role }) => {
-    const allowed = isManagerRole(role) || isDepartmentRole(role, 'purchasing');
-    return { canReadPage: allowed, canEditPage: allowed };
-  },
-  '/purchase-request/manage': ({ role }) => {
-    const allowed =
-      isManagerRole(role) ||
-      isDepartmentRole(role, 'purchasing') ||
-      isDepartmentRole(role, 'accounting') ||
-      isDepartmentRole(role, 'store');
-    return { canReadPage: allowed, canEditPage: allowed };
-  },
-  '/store-dashboard': ({ role }) => {
-    const allowed =
-      isManagerRole(role) ||
-      isDepartmentRole(role, 'store') ||
-      isDepartmentRole(role, 'operation');
-    return { canReadPage: allowed, canEditPage: allowed };
-  },
-};
-
-export function resolveDashboardPageAccess(
+function getDashboardPageFlags(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
   pathname: string,
-  options?: { isApprover?: boolean },
+  options: DashboardAccessOptions = {},
 ): DashboardPageAccess {
-  const explicitAccess = resolveExplicitPageAccess(userPermissions, pathname);
-  const normalizedRole = normalizeRole(role);
-  const baselineAccess = explicitAccess.routePattern
-    ? SPECIAL_ROUTE_BASELINE_ACCESS[explicitAccess.routePattern]?.({
-      role: normalizedRole,
-      isApprover: Boolean(options?.isApprover),
-    })
-    : undefined;
+  const routePattern = resolveDashboardRoutePattern(pathname);
+  const requiredAccessLevel = (options.level === 'view' ? 'read' : options.level) || getRequiredPageAccessLevelForPathname(pathname);
 
-  const canReadPage = Boolean(
-    baselineAccess?.canReadPage || explicitAccess.canReadPage || explicitAccess.canEditPage,
-  );
-  const canEditPage = Boolean(
-    baselineAccess?.canEditPage || explicitAccess.canEditPage,
-  );
-  const hasPageAccess = explicitAccess.requiredAccessLevel === 'edit'
-    ? canEditPage
-    : (canReadPage || canEditPage);
+  if (!routePattern || !requiredAccessLevel) {
+    return {
+      routePattern,
+      requiredAccessLevel,
+      hasPageAccess: true,
+      canReadPage: true,
+      canEditPage: true,
+    };
+  }
 
+  if (isManagerLike(role)) {
+    return {
+      routePattern,
+      requiredAccessLevel,
+      hasPageAccess: true,
+      canReadPage: true,
+      canEditPage: true,
+    };
+  }
+
+  const readKey = getPagePermissionKey(routePattern, 'read');
+  const editKey = getPagePermissionKey(routePattern, 'edit');
+  const canReadPage = Boolean(permissions[readKey] || permissions[editKey]);
+  const canEditPage = Boolean(permissions[editKey]);
+
+  const hasPageAccess = requiredAccessLevel === 'edit' ? canEditPage : canReadPage;
   return {
-    ...explicitAccess,
+    routePattern,
+    requiredAccessLevel,
+    hasPageAccess,
     canReadPage,
     canEditPage,
-    hasPageAccess,
   };
 }
 
 export function canAccessDashboardPage(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
   pathname: string,
-  options?: { isApprover?: boolean; level?: PageAccessLevel },
+  options: DashboardAccessOptions = {},
 ) {
-  const pageAccess = resolveDashboardPageAccess(role, userPermissions, pathname, options);
-
-  if (options?.level === 'edit') {
-    return pageAccess.canEditPage;
-  }
-
-  return pageAccess.hasPageAccess;
+  return getDashboardPageFlags(role, permissions, pathname, options).hasPageAccess;
 }
 
-export function canAccessManagerDashboard(
+export function resolveDashboardPageAccess(
+  role: string | null | undefined,
+  permissions: PagePermissionMap = {},
+  pathname: string,
+  options: DashboardAccessOptions = {},
+) {
+  return getDashboardPageFlags(role, permissions, pathname, options);
+}
+
+export function resolveGeneralRequestAccess(
   role: string | null | undefined,
   userPermissions: PagePermissionMap,
 ) {
-  return canAccessDashboardPage(role, userPermissions, '/manager-dashboard');
+  const pageKey = '/general-request';
+
+  const pageRead = Boolean(userPermissions[getSafePagePermissionKey(pageKey, 'read')]);
+  const pageEdit = Boolean(userPermissions[getSafePagePermissionKey(pageKey, 'edit')]);
+
+  const rolePermissions = getGeneralRequestPermissions(role);
+
+  return {
+    canViewPage: rolePermissions.canView || pageRead || pageEdit,
+    canEditPage: rolePermissions.canEdit || pageEdit,
+    canCreate: rolePermissions.canCreate && (pageEdit || pageRead),
+    canApprove: rolePermissions.canApprove,
+    canDelete: rolePermissions.canDelete,
+  };
 }
 
-export function canAccessAccountingDashboard(
+export function resolveDashboardHomeView(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return canAccessDashboardPage(role, userPermissions, '/accounting-dashboard');
+  permissions: PagePermissionMap = {},
+  options: { isApprover?: boolean } = {},
+): DashboardHomeView {
+  const normalized = normalizeRole(role);
+  const isApprover = Boolean(options.isApprover);
+
+  if (isManagerLike(normalized)) return normalized === 'manager' ? 'manager' : 'admin';
+  if (isAccountingRole(normalized) || canAccessAccountingDashboard(role, permissions, isApprover)) return 'accounting';
+  if (isPurchasingRole(normalized) || canAccessPurchasingDashboard(role, permissions, isApprover)) return 'purchasing';
+  if (isMaintenanceTechnician(normalized)) return 'technician';
+  if (isStoreRole(normalized)) return 'store';
+  return 'general';
 }
 
-export function canViewAdminRoles(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return canAccessDashboardPage(role, userPermissions, '/roles');
+export function isMaintenanceTechnician(role?: string | null) {
+  return TECHNICIAN_ROLES.has(normalizeRole(role));
 }
 
-export function canManageAdminRoles(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return canAccessDashboardPage(role, userPermissions, '/roles', { level: 'edit' });
+export function canViewLowStockNotifications(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  const normalized = normalizeRole(role);
+  return isManagerLike(normalized)
+    || OPERATION_ROLES.has(normalized)
+    || PURCHASING_ROLES.has(normalized)
+    || STORE_ROLES.has(normalized)
+    || hasPermissionKey(permissions, PERMISSIONS.PRODUCTS);
 }
 
-export function canAccessPurchasingDashboard(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return canAccessDashboardPage(role, userPermissions, '/purchasing-dashboard');
-}
-
-export function canAccessInventoryAudit(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  level: PageAccessLevel = 'read',
-) {
-  return canAccessDashboardPage(role, userPermissions, '/inventory-audit', { level });
-}
-
-export function canApproveInventoryAudit(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  isApprover = false,
-) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isApprover ||
-    normalizedRole === 'supervisor' ||
-    isManagerRole(normalizedRole) ||
-    canAccessInventoryAudit(normalizedRole, userPermissions, 'edit')
-  );
-}
-
-export function resolveInventoryAuditUserRole(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  isApprover = false,
-): InventoryAuditRole {
-  const normalizedRole = normalizeRole(role);
-
-  if (isAdminRole(normalizedRole)) {
-    return 'admin';
-  }
-
-  if (normalizedRole === 'supervisor' || isManagerRole(normalizedRole)) {
-    return 'supervisor';
-  }
-
-  if (canAccessInventoryAudit(normalizedRole, userPermissions, 'edit') || isApprover) {
-    return 'auditor';
-  }
-
-  return 'viewer';
-}
-
-export function canReviewMaintenancePartRequests(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  isApprover = false,
-) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isApprover ||
-    normalizedRole === 'leader_technician' ||
-    isManagerRole(normalizedRole) ||
-    canAccessDashboardPage(normalizedRole, userPermissions, '/maintenance/part-requests', {
-      isApprover,
-      level: 'edit',
-    })
-  );
-}
-
-export function canViewLowStockNotifications(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isManagerRole(normalizedRole) ||
-    isDepartmentRole(normalizedRole, 'operation') ||
-    canAccessPurchasingDashboard(normalizedRole, userPermissions)
-  );
-}
-
-export function canViewPurchaseOrderNotifications(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isManagerRole(normalizedRole) ||
-    isDepartmentRole(normalizedRole, 'accounting') ||
-    canAccessPurchasingDashboard(normalizedRole, userPermissions) ||
-    canViewPurchaseOrders(userPermissions)
-  );
+export function canViewPurchaseOrderNotifications(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  const normalized = normalizeRole(role);
+  return isManagerLike(normalized)
+    || PURCHASING_ROLES.has(normalized)
+    || ACCOUNTING_ROLES.has(normalized)
+    || hasAnyPermission(permissions, [PERMISSIONS.PO_VIEW, PERMISSIONS.PURCHASING_APPROVALS, PERMISSIONS.APPROVALS]);
 }
 
 export function canViewBorrowNotifications(role: string | null | undefined) {
-  const normalizedRole = normalizeRole(role);
-  return isManagerRole(normalizedRole) || isDepartmentRole(normalizedRole, 'operation');
+  const normalized = normalizeRole(role);
+  return isManagerLike(normalized)
+    || OPERATION_ROLES.has(normalized)
+    || GENERAL_ROLES.has(normalized)
+    || normalized === 'maid'
+    || normalized === 'leader_maid'
+    || normalized === 'driver'
+    || normalized === 'leader_driver';
 }
 
 export function canViewOwnBorrowNotifications(role: string | null | undefined) {
-  return normalizeRole(role) === 'employee';
+  return GENERAL_ROLES.has(normalizeRole(role));
 }
 
 export function canViewMaintenanceNotifications(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isManagerRole(normalizedRole) ||
-    isDepartmentRole(normalizedRole, 'technician') ||
-    normalizedRole === 'leader_technician' ||
-    isApprover ||
-    canAccessDashboardPage(normalizedRole, userPermissions, '/maintenance/dashboard', { isApprover })
-  );
+  const normalized = normalizeRole(role);
+  return isManagerLike(normalized)
+    || isMaintenanceTechnician(normalized)
+    || Boolean(isApprover)
+    || hasAnyPermission(permissions, [PERMISSIONS.MAINTENANCE, PERMISSIONS.MAINTENANCE_DASHBOARD]);
 }
 
 export function canViewGeneralMaintenanceNotifications(role: string | null | undefined) {
-  const normalizedRole = normalizeRole(role);
-  return isManagerRole(normalizedRole) || normalizedRole === 'general';
+  const normalized = normalizeRole(role);
+  return isManagerLike(normalized) || GENERAL_ROLES.has(normalized);
 }
 
 export function canViewPurchaseApprovalNotifications(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  return canAccessPurchaseWorkflowQueue(role, userPermissions, isApprover);
+  const normalized = normalizeRole(role);
+  return Boolean(isApprover)
+    || isManagerLike(normalized)
+    || PURCHASING_ROLES.has(normalized)
+    || hasAnyPermission(permissions, [PERMISSIONS.APPROVALS, PERMISSIONS.PURCHASING_APPROVALS]);
 }
 
 export function canViewPartRequestNotifications(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  return (
-    canReviewMaintenancePartRequests(role, userPermissions, isApprover) ||
-    canAccessPurchasingDashboard(role, userPermissions)
-  );
+  const normalized = normalizeRole(role);
+  return Boolean(isApprover)
+    || isManagerLike(normalized)
+    || isMaintenanceTechnician(normalized)
+    || PURCHASING_ROLES.has(normalized)
+    || hasAnyPermission(permissions, [PERMISSIONS.MAINTENANCE_REQUESTS, PERMISSIONS.APPROVALS]);
 }
 
-export function canViewPettyCashNotifications(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isManagerRole(normalizedRole) ||
-    isDepartmentRole(normalizedRole, 'accounting') ||
-    canAccessPettyCashModule(userPermissions)
-  );
+export function canViewPettyCashNotifications(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  const normalized = normalizeRole(role);
+  return isManagerLike(normalized)
+    || isAccountingRole(normalized)
+    || hasPermissionKey(permissions, PERMISSIONS.PETTY_CASH);
 }
 
-export function canReceiveDailySummary(
+export function canViewApprovalQueue(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return isAdminRole(role) || canAccessManagerDashboard(role, userPermissions);
-}
-
-export function canViewLineCustomers(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return canAccessDashboardPage(role, userPermissions, '/settings/line-customers');
-}
-
-export function canManageLineCustomers(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return canAccessDashboardPage(role, userPermissions, '/settings/line-customers', { level: 'edit' });
-}
-
-export function canReceiveApprovalRequestNotification(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  requestType: string,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  if (requestType === 'expense' || requestType === 'purchase') {
-    return (
-      canManageGeneralApprovals(role, userPermissions, isApprover) ||
-      canAccessPurchaseWorkflowQueue(role, userPermissions, isApprover)
-    );
-  }
-
-  return canManageGeneralApprovals(role, userPermissions, isApprover);
+  return Boolean(isApprover)
+    || isManagerLike(role)
+    || hasAnyPermission(permissions, [PERMISSIONS.APPROVALS, PERMISSIONS.PURCHASING_APPROVALS]);
 }
 
-export function canReceiveApprovalStepNotification(
+export function canManageGeneralApprovals(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  approverRole: string,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  const normalizedRole = normalizeRole(role);
-  const normalizedApproverRole = normalizeRole(approverRole);
+  return Boolean(isApprover)
+    || isManagerLike(role)
+    || hasPermissionKey(permissions, PERMISSIONS.APPROVALS);
+}
 
-  if (!normalizedApproverRole) {
-    return false;
-  }
+export function canAccessPurchaseWorkflowQueue(
+  role: string | null | undefined,
+  permissions: PagePermissionMap = {},
+  isApprover = false,
+) {
+  return Boolean(isApprover)
+    || isManagerLike(role)
+    || isPurchasingRole(role)
+    || hasPermissionKey(permissions, PERMISSIONS.PURCHASING_APPROVALS);
+}
 
-  if (normalizedApproverRole === 'any_manager' || normalizedApproverRole === 'manager') {
-    return canAccessManagerDashboard(normalizedRole, userPermissions);
-  }
+export function canManagePurchaseRequests(
+  role: string | null | undefined,
+  permissions: PagePermissionMap = {},
+  isApprover = false,
+) {
+  return canAccessPurchaseWorkflowQueue(role, permissions, isApprover);
+}
 
-  if (normalizedApproverRole === 'purchasing') {
-    return canAccessPurchaseWorkflowQueue(normalizedRole, userPermissions, isApprover);
-  }
+export function canApproveApprovalRequest(
+  role: string | null | undefined,
+  permissions: PagePermissionMap = {},
+  context?: {
+    currentUserId?: number | null;
+    requestType?: string | null;
+    workflowStep?: { approver_role?: string | null } | null;
+    isApprover?: boolean;
+    [key: string]: unknown;
+  },
+) {
+  const normalized = normalizeRole(role);
+  const requestType = (context?.requestType || '').toLowerCase();
+  const workflowRole = (context?.workflowStep?.approver_role || '').toLowerCase();
 
-  if (normalizedApproverRole === 'admin') {
-    return isAdminRole(normalizedRole);
-  }
+  if (isManagerLike(normalized)) return true;
+  if (context?.isApprover) return true;
+  if (requestType === 'purchase' && isPurchasingRole(normalized)) return true;
+  if (requestType === 'purchase' && workflowRole.includes('accounting') && isAccountingRole(normalized)) return true;
+  if (requestType === 'purchase' && workflowRole.includes('store') && isStoreRole(normalized)) return true;
 
-  if (normalizedApproverRole === 'accounting') {
-    return isDepartmentRole(normalizedRole, 'accounting') || isApprover;
-  }
+  return hasAnyPermission(permissions, [PERMISSIONS.APPROVALS, PERMISSIONS.PURCHASING_APPROVALS]);
+}
 
-  return (
-    normalizedRole === normalizedApproverRole ||
-    isDepartmentRole(normalizedRole, normalizedApproverRole)
-  );
+export function canEditPurchaseRequestRecord(
+  role: string | null | undefined,
+  permissions: PagePermissionMap = {},
+  context?: { currentUserId?: number | null; requestedBy?: number | null },
+) {
+  if (isManagerLike(role) || isPurchasingRole(role)) return true;
+  if (hasAnyPermission(permissions, [PERMISSIONS.PURCHASING_APPROVALS, PERMISSIONS.APPROVALS])) return true;
+  if (context?.currentUserId && context?.requestedBy && context.currentUserId === context.requestedBy) return true;
+  return false;
+}
+
+export function canAccessManagerDashboard(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return isManagerLike(role) || hasPermissionKey(permissions, PERMISSIONS.DASHBOARD);
+}
+
+export function canAccessAccountingDashboard(
+  roleOrPermissions: string | PagePermissionMap | null | undefined,
+  permissions: PagePermissionMap = {},
+  isApprover = false,
+) {
+  const resolved = resolveRoleAndPermissions(roleOrPermissions, permissions);
+  return isManagerLike(resolved.role) || isAccountingRole(resolved.role) || Boolean(isApprover) || hasPermissionKey(resolved.permissions, PERMISSIONS.PETTY_CASH);
+}
+
+export function canAccessPurchasingDashboard(
+  roleOrPermissions: string | PagePermissionMap | null | undefined,
+  permissions: PagePermissionMap = {},
+  isApprover = false,
+) {
+  const resolved = resolveRoleAndPermissions(roleOrPermissions, permissions);
+  return isManagerLike(resolved.role)
+    || isPurchasingRole(resolved.role)
+    || Boolean(isApprover)
+    || hasAnyPermission(resolved.permissions, [PERMISSIONS.PURCHASING_APPROVALS, PERMISSIONS.PO_VIEW]);
+}
+
+export function canAccessPettyCashModule(
+  roleOrPermissions: string | PagePermissionMap | null | undefined,
+  permissions: PagePermissionMap = {},
+  isApprover = false,
+) {
+  const resolved = resolveRoleAndPermissions(roleOrPermissions, permissions);
+  return canViewPettyCashNotifications(resolved.role, resolved.permissions) || Boolean(isApprover);
+}
+
+export function canAccessPettyCashDashboard(
+  roleOrPermissions: string | PagePermissionMap | null | undefined,
+  permissions: PagePermissionMap = {},
+  isApprover = false,
+) {
+  const resolved = resolveRoleAndPermissions(roleOrPermissions, permissions);
+  return isManagerLike(resolved.role) || isAccountingRole(resolved.role) || Boolean(isApprover) || hasPermissionKey(resolved.permissions, PERMISSIONS.PETTY_CASH);
 }
 
 export function canCreatePettyCashRequest(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  return canAccessDashboardPage(role, userPermissions, '/petty-cash/new', {
-    isApprover,
-    level: 'edit',
-  });
-}
-
-export function canAccessPettyCashDashboard(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return canAccessDashboardPage(role, userPermissions, '/petty-cash/dashboard');
+  return canAccessPettyCashModule(role, permissions, isApprover);
 }
 
 export function canManagePettyCashApprovals(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isManagerRole(normalizedRole) ||
-    isDepartmentRole(normalizedRole, 'accounting') ||
-    isApprover ||
-    canAccessDashboardPage(normalizedRole, userPermissions, '/petty-cash', {
-      isApprover,
-      level: 'edit',
-    })
-  );
-}
-
-export function canManagePettyCashAccounting(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isManagerRole(normalizedRole) ||
-    isDepartmentRole(normalizedRole, 'accounting') ||
-    canAccessDashboardPage(normalizedRole, userPermissions, '/petty-cash', {
-      level: 'edit',
-    })
-  );
-}
-
-export function canViewPettyCashRequest(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  options: {
-    currentUserName?: string | null;
-    ownerName?: string | null;
-    isApprover?: boolean;
-  },
-) {
-  return (
-    Boolean(options.currentUserName && options.ownerName && options.currentUserName === options.ownerName) ||
-    canManagePettyCashApprovals(role, userPermissions, options.isApprover)
-  );
-}
-
-export function canSubmitPettyCashClearance(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  options: {
-    currentUserName?: string | null;
-    ownerName?: string | null;
-    isApprover?: boolean;
-  },
-) {
-  return (
-    canViewPettyCashRequest(role, userPermissions, options) ||
-    canManagePettyCashAccounting(role, userPermissions)
-  );
+  return isManagerLike(role) || isAccountingRole(role) || Boolean(isApprover) || hasPermissionKey(permissions, PERMISSIONS.PETTY_CASH);
 }
 
 export function canApprovePettyCashRequest(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  return canManagePettyCashApprovals(role, userPermissions, isApprover);
+  return canManagePettyCashApprovals(role, permissions, isApprover);
 }
 
-export function canDispensePettyCashRequest(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return canManagePettyCashAccounting(role, userPermissions);
+export function canDispensePettyCashRequest(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return isManagerLike(role) || isAccountingRole(role) || hasPermissionKey(permissions, PERMISSIONS.PETTY_CASH);
 }
 
-export function canReconcilePettyCashRequest(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return canManagePettyCashAccounting(role, userPermissions);
+export function canReconcilePettyCashRequest(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return isManagerLike(role) || isAccountingRole(role) || hasPermissionKey(permissions, PERMISSIONS.PETTY_CASH);
 }
 
-export function canVerifyPettyCashReceipt(
+export function canSubmitPettyCashClearance(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
+  context?: { currentUserName?: string | null; ownerName?: string | null; isApprover?: boolean },
 ) {
-  return canManagePettyCashAccounting(role, userPermissions);
+  if (isManagerLike(role) || isAccountingRole(role)) return true;
+  if (context?.isApprover) return true;
+  if (context?.currentUserName && context?.ownerName && context.currentUserName === context.ownerName) return true;
+  return hasPermissionKey(permissions, PERMISSIONS.PETTY_CASH);
+}
+
+export function canViewPettyCashRequest(
+  role: string | null | undefined,
+  permissions: PagePermissionMap = {},
+  context?: { currentUserName?: string | null; ownerName?: string | null; isApprover?: boolean },
+) {
+  if (isManagerLike(role) || isAccountingRole(role)) return true;
+  if (context?.isApprover) return true;
+  if (context?.currentUserName && context?.ownerName && context.currentUserName === context.ownerName) return true;
+  return hasPermissionKey(permissions, PERMISSIONS.PETTY_CASH);
 }
 
 export function canDeletePettyCashEntry(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  options: {
+  permissions: PagePermissionMap = {},
+  context?: {
     currentUserName?: string | null;
     ownerName?: string | null;
     status?: string | null;
     isApprover?: boolean;
   },
 ) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isAdminRole(normalizedRole) ||
-    canManagePettyCashApprovals(normalizedRole, userPermissions, options.isApprover) ||
-    (
-      options.status === 'pending' &&
-      Boolean(options.currentUserName && options.ownerName && options.currentUserName === options.ownerName)
-    )
-  );
+  if (isManagerLike(role) || isAccountingRole(role) || context?.isApprover) return true;
+  if (!context?.currentUserName || !context?.ownerName) return false;
+  const ownEntry = context.currentUserName === context.ownerName;
+  const deletableStatus = ['pending', 'rejected'].includes((context.status || '').toLowerCase());
+  return ownEntry && deletableStatus && hasPermissionKey(permissions, PERMISSIONS.PETTY_CASH);
 }
 
-export function canReplenishPettyCashFund(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return canManagePettyCashAccounting(role, userPermissions);
+export function canVerifyPettyCashReceipt(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return isManagerLike(role) || isAccountingRole(role) || hasPermissionKey(permissions, PERMISSIONS.PETTY_CASH);
 }
 
-export function canUpdatePettyCashFundLimit(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isAdminRole(normalizedRole) ||
-    canAccessDashboardPage(normalizedRole, userPermissions, '/petty-cash/dashboard', {
-      level: 'edit',
-    })
-  );
+export function canManagePettyCashAccounting(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return isManagerLike(role) || isAccountingRole(role) || hasPermissionKey(permissions, PERMISSIONS.PETTY_CASH);
 }
 
-export function isMaintenanceTechnician(role: string | null | undefined) {
-  return normalizeRole(role) === 'technician';
+export function canReplenishPettyCashFund(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return isManagerLike(role) || isAccountingRole(role) || hasPermissionKey(permissions, PERMISSIONS.PETTY_CASH);
 }
 
-export function canViewMaintenanceTechnicians(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  isApprover = false,
-) {
-  return (
-    canAccessDashboardPage(role, userPermissions, '/maintenance/technicians') ||
-    canAccessDashboardPage(role, userPermissions, '/maintenance', { isApprover }) ||
-    canAccessDashboardPage(role, userPermissions, '/reports/maintenance')
-  );
+export function canUpdatePettyCashFundLimit(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return isManagerLike(role) || hasPermissionKey(permissions, PERMISSIONS.PETTY_CASH);
 }
 
 export function canManageMaintenanceTechnicians(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
+  _isApprover = false,
 ) {
-  return canAccessDashboardPage(role, userPermissions, '/maintenance/technicians', { level: 'edit' });
+  return isManagerLike(role) || isMaintenanceTechnician(role) || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE_TECHNICIANS);
 }
 
-export function canManageMaintenanceEdit(
+export function canViewMaintenanceTechnicians(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    canAccessDashboardPage(normalizedRole, userPermissions, '/maintenance', { isApprover, level: 'edit' }) ||
-    normalizedRole === 'leader_technician' ||
-    isApprover
-  );
+  return canManageMaintenanceTechnicians(role, permissions, isApprover);
 }
 
 export function canCreateMaintenanceRequest(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  isApprover = false,
+  permissions: PagePermissionMap = {},
+  _isApprover = false,
 ) {
-  return canManageMaintenanceEdit(role, userPermissions, isApprover);
+  return isManagerLike(role)
+    || isMaintenanceTechnician(role)
+    || hasAnyPermission(permissions, [PERMISSIONS.MAINTENANCE, PERMISSIONS.GENERAL_REQUEST]);
 }
 
-export function canAdjustMaintenancePriority(
+export function canManageMaintenanceEdit(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  isApprover = false,
+  permissions: PagePermissionMap = {},
+  _isApprover = false,
 ) {
-  const normalizedRole = normalizeRole(role);
-
-  return isManagerRole(normalizedRole) || isApprover || canManageMaintenanceEdit(normalizedRole, userPermissions, isApprover);
+  return isManagerLike(role) || isMaintenanceTechnician(role) || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE);
 }
 
 export function canReassignMaintenanceRequest(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  isApprover = false,
+  permissions: PagePermissionMap = {},
+  _isApprover = false,
 ) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isManagerRole(normalizedRole) ||
-    isApprover ||
-    normalizedRole === 'employee' ||
-    normalizedRole === 'leader_technician' ||
-    canManageMaintenanceEdit(normalizedRole, userPermissions, isApprover)
-  );
-}
-
-export function canConfirmMaintenancePartUsage(role: string | null | undefined) {
-  const normalizedRole = normalizeRole(role);
-  return normalizedRole === 'technician' || normalizedRole === 'leader_technician';
-}
-
-export function canDirectManageMaintenanceStock(
-  role: string | null | undefined,
-  userPermissions?: PagePermissionMap,
-) {
-  const normalizedRole = normalizeRole(role);
-  void userPermissions;
-
-  return isAdminRole(normalizedRole) || isDepartmentRole(normalizedRole, 'store');
-}
-
-export function canManageMaintenanceParts(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isManagerRole(normalizedRole) ||
-    isDepartmentRole(normalizedRole, 'store') ||
-    canManageMaintenanceEdit(normalizedRole, userPermissions) ||
-    canAccessDashboardPage(normalizedRole, userPermissions, '/maintenance/parts', { level: 'edit' })
-  );
-}
-
-export function canVerifyMaintenanceParts(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return canDirectManageMaintenanceStock(role, userPermissions);
-}
-
-export function canReopenMaintenanceRequest(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  const normalizedRole = normalizeRole(role);
-  return normalizedRole === 'manager' || canAccessManagerDashboard(normalizedRole, userPermissions);
-}
-
-export function canApproveMaintenanceCompletion(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  isApprover = false,
-) {
-  const normalizedRole = normalizeRole(role);
-  void userPermissions;
-  void isApprover;
-
-  return normalizedRole === 'leader_technician';
+  return isManagerLike(role) || isMaintenanceTechnician(role) || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE_DASHBOARD);
 }
 
 export function canSubmitMaintenanceCompletion(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
+  _isApprover = false,
+) {
+  return isManagerLike(role) || isMaintenanceTechnician(role) || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE);
+}
+
+export function canApproveMaintenanceCompletion(
+  role: string | null | undefined,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    isMaintenanceTechnician(normalizedRole) ||
-    canApproveMaintenanceCompletion(normalizedRole, userPermissions, isApprover)
-  );
+  return isManagerLike(role) || Boolean(isApprover) || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE);
 }
 
-export function canViewHealthMetrics(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return isAdminRole(role) || hasMergedPermission(userPermissions, PERMISSIONS.ADMIN_SECURITY);
+export function canVerifyMaintenanceParts(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return isManagerLike(role) || isStoreRole(role) || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE_PARTS);
 }
 
-export function canManageAdminSecurity(
+export function canConfirmMaintenancePartUsage(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return canVerifyMaintenanceParts(role, permissions);
+}
+
+export function canDirectManageMaintenanceStock(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return isManagerLike(role) || isStoreRole(role) || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE_PARTS);
+}
+
+export function canReviewMaintenancePartRequests(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
+  _isApprover = false,
 ) {
-  return isAdminRole(role) || hasMergedPermission(userPermissions, PERMISSIONS.ADMIN_SECURITY);
+  return isManagerLike(role)
+    || isPurchasingRole(role)
+    || isAccountingRole(role)
+    || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE_REQUESTS);
+}
+
+export function canManageMaintenanceParts(
+  role: string | null | undefined,
+  permissions: PagePermissionMap = {},
+  isApprover = false,
+) {
+  return canReviewMaintenancePartRequests(role, permissions, isApprover) || isStoreRole(role);
 }
 
 export function canCreatePartRequest(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  return canManageMaintenanceEdit(role, userPermissions, isApprover);
+  return isManagerLike(role)
+    || isMaintenanceTechnician(role)
+    || Boolean(isApprover)
+    || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE_REQUESTS);
 }
 
 export function canUpdatePartRequestStatus(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  const normalizedRole = normalizeRole(role);
-
-  return (
-    canManageMaintenanceParts(normalizedRole, userPermissions) ||
-    canAccessPurchasingDashboard(normalizedRole, userPermissions) ||
-    isDepartmentRole(normalizedRole, 'accounting') ||
-    isApprover
-  );
+  return canReviewMaintenancePartRequests(role, permissions)
+    || Boolean(isApprover)
+    || isStoreRole(role);
 }
 
 export function canDeletePartRequest(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  return canManageMaintenanceEdit(role, userPermissions, isApprover);
+  return isManagerLike(role)
+    || isPurchasingRole(role)
+    || Boolean(isApprover)
+    || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE_REQUESTS);
 }
 
 export function canApprovePartRequestStage(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  currentStage = 0,
+  permissions: PagePermissionMap = {},
+  stage = 0,
   isApprover = false,
 ) {
-  const normalizedRole = normalizeRole(role);
+  const normalized = normalizeRole(role);
+  if (isManagerLike(normalized) || isApprover) return true;
 
-  if (currentStage <= 0) {
-    return canReviewMaintenancePartRequests(normalizedRole, userPermissions, isApprover);
+  if (stage <= 0) {
+    return isPurchasingRole(normalized) || isMaintenanceTechnician(normalized) || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE_REQUESTS);
   }
-
-  if (currentStage === 1) {
-    return (
-      isManagerRole(normalizedRole) ||
-      isDepartmentRole(normalizedRole, 'accounting') ||
-      isApprover
-    );
+  if (stage === 1) {
+    return isAccountingRole(normalized) || hasPermissionKey(permissions, PERMISSIONS.PETTY_CASH);
   }
-
-  if (currentStage === 2) {
-    return canAccessManagerDashboard(normalizedRole, userPermissions);
-  }
-
-  return false;
+  return isManagerLike(normalized) || hasPermissionKey(permissions, PERMISSIONS.APPROVALS);
 }
 
-export function resolveDashboardHomeView(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  options?: { isApprover?: boolean },
-): DashboardHomeView {
-  const normalizedRole = normalizeRole(role);
-
-  if (isAdminRole(normalizedRole)) {
-    return 'admin';
-  }
-
-  if (canAccessManagerDashboard(normalizedRole, userPermissions)) {
-    return 'manager';
-  }
-
-  if (canAccessAccountingDashboard(normalizedRole, userPermissions)) {
-    return 'accounting';
-  }
-
-  if (canAccessPurchasingDashboard(normalizedRole, userPermissions)) {
-    return 'purchasing';
-  }
-
-  if (normalizedRole === 'leader_technician' || isDepartmentRole(normalizedRole, 'technician')) {
-    return 'technician';
-  }
-
-  if (canAccessDashboardPage(normalizedRole, userPermissions, '/store-dashboard', options)) {
-    return 'store';
-  }
-
-  return 'general';
+export function canManageAdminRoles(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return isManagerLike(role) || hasPermissionKey(permissions, PERMISSIONS.ADMIN_ROLES);
 }
 
-export function canManagePurchaseRequests(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  return canAccessDashboardPage(role, userPermissions, '/purchase-request/manage');
+export function canViewAdminRoles(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return canManageAdminRoles(role, permissions);
+}
+
+export function canManageAdminSecurity(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return isManagerLike(role) || hasPermissionKey(permissions, PERMISSIONS.ADMIN_SECURITY) || hasPermissionKey(permissions, PERMISSIONS.ADMIN_SETTINGS);
+}
+
+export function canManageLineCustomers(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return isManagerLike(role) || hasPermissionKey(permissions, PERMISSIONS.ADMIN_SETTINGS);
+}
+
+export function canViewLineCustomers(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return canManageLineCustomers(role, permissions);
+}
+
+export function canViewPurchaseOrders(roleOrPermissions: string | PagePermissionMap | null | undefined, permissions: PagePermissionMap = {}) {
+  const resolved = resolveRoleAndPermissions(roleOrPermissions, permissions);
+  return isManagerLike(resolved.role) || hasAnyPermission(resolved.permissions, [PERMISSIONS.PO_VIEW, PERMISSIONS.PO_EDIT, PERMISSIONS.PO_PRINT, PERMISSIONS.PO_RECEIVE]);
+}
+
+export function canEditPurchaseOrders(roleOrPermissions: string | PagePermissionMap | null | undefined, permissions: PagePermissionMap = {}) {
+  const resolved = resolveRoleAndPermissions(roleOrPermissions, permissions);
+  return isManagerLike(resolved.role) || isPurchasingRole(resolved.role) || hasPermissionKey(resolved.permissions, PERMISSIONS.PO_EDIT);
+}
+
+export function canPrintPurchaseOrders(roleOrPermissions: string | PagePermissionMap | null | undefined, permissions: PagePermissionMap = {}) {
+  const resolved = resolveRoleAndPermissions(roleOrPermissions, permissions);
+  return canViewPurchaseOrders(resolved.role, resolved.permissions) || hasPermissionKey(resolved.permissions, PERMISSIONS.PO_PRINT);
+}
+
+export function canReceivePurchaseOrders(roleOrPermissions: string | PagePermissionMap | null | undefined, permissions: PagePermissionMap = {}) {
+  const resolved = resolveRoleAndPermissions(roleOrPermissions, permissions);
+  return isManagerLike(resolved.role)
+    || isPurchasingRole(resolved.role)
+    || isStoreRole(resolved.role)
+    || hasPermissionKey(resolved.permissions, PERMISSIONS.PO_RECEIVE);
 }
 
 export function canViewPurchaseRequestDocument(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  options: {
-    currentUserId: number;
-    ownerId: number;
-    isApprover?: boolean;
-  },
+  permissions: PagePermissionMap = {},
+  context?: boolean | { currentUserId?: number | null; ownerId?: number | null; isApprover?: boolean },
 ) {
-  return (
-    options.ownerId === options.currentUserId ||
-    canManagePurchaseRequests(role, userPermissions) ||
-    Boolean(options.isApprover)
-  );
+  const isApprover = typeof context === 'boolean' ? context : Boolean(context?.isApprover);
+  const isOwner = typeof context === 'object'
+    && context !== null
+    && Number.isFinite(context.currentUserId)
+    && Number.isFinite(context.ownerId)
+    && context.currentUserId === context.ownerId;
+
+  return canViewPurchaseOrders(role, permissions)
+    || Boolean(isApprover)
+    || Boolean(isOwner)
+    || hasPermissionKey(permissions, PERMISSIONS.PURCHASING_APPROVALS);
 }
 
-export function canViewApprovalQueue(
+export function canReceiveDailySummary(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  const normalized = normalizeRole(role);
+  return isManagerLike(normalized)
+    || isAccountingRole(normalized)
+    || isPurchasingRole(normalized)
+    || isStoreRole(normalized)
+    || hasAnyPermission(permissions, [PERMISSIONS.DASHBOARD, PERMISSIONS.APPROVALS, PERMISSIONS.PURCHASING_APPROVALS]);
+}
+
+export function canReceiveApprovalRequestNotification(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
+  requestType?: string,
+) {
+  if (requestType?.toLowerCase() === 'purchase') {
+    return canAccessPurchaseWorkflowQueue(role, permissions, false);
+  }
+  return canManageGeneralApprovals(role, permissions, false);
+}
+
+export function canReceiveApprovalStepNotification(
+  role: string | null | undefined,
+  permissions: PagePermissionMap = {},
+  approverRole?: string,
+) {
+  const normalized = normalizeRole(role);
+  const targetRole = (approverRole || '').toLowerCase();
+
+  if (targetRole.includes('accounting')) return isAccountingRole(normalized);
+  if (targetRole.includes('purchasing')) return isPurchasingRole(normalized);
+  if (targetRole.includes('store')) return isStoreRole(normalized);
+  if (targetRole.includes('technician')) return isMaintenanceTechnician(normalized);
+  if (targetRole.includes('manager')) return isManagerLike(normalized);
+  return canManageGeneralApprovals(role, permissions, false);
+}
+
+export function canViewHealthMetrics(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  return isManagerLike(role) || hasPermissionKey(permissions, PERMISSIONS.ADMIN_SECURITY);
+}
+
+export function canAccessInventoryAudit(
+  role: string | null | undefined,
+  permissions: PagePermissionMap = {},
+  level: 'read' | 'edit' = 'read',
+) {
+  return canAccessDashboardPage(role, permissions, '/inventory-audit', { level });
+}
+
+export function canApproveInventoryAudit(
+  role: string | null | undefined,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  return (
-    canManageGeneralApprovals(role, userPermissions, isApprover) ||
-    canAccessPurchaseWorkflowQueue(role, userPermissions, isApprover)
-  );
+  return isManagerLike(role) || Boolean(isApprover) || canAccessInventoryAudit(role, permissions, 'edit');
 }
 
-export function canViewApprovalRequest(
+export function resolveInventoryAuditUserRole(
   role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  options: {
-    currentUserId: number;
-    requestedBy?: number | null;
-    requestType?: string | null;
-    isApprover?: boolean;
-  },
-) {
-  return (
-    options.requestedBy === options.currentUserId ||
-    canManageGeneralApprovals(role, userPermissions, options.isApprover) ||
-    (
-      options.requestType === 'purchase' &&
-      canAccessPurchaseWorkflowQueue(role, userPermissions, options.isApprover)
-    )
-  );
-}
-
-export function canEditPurchaseRequestRecord(
-  role: string | null | undefined,
-  _userPermissions: PagePermissionMap,
-  options: {
-    currentUserId: number;
-    requestedBy?: number | null;
-  },
-) {
-  return (
-    options.requestedBy === options.currentUserId ||
-    isManagerRole(role) ||
-    isDepartmentRole(role, 'purchasing')
-  );
-}
-
-export function canApproveApprovalRequest(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  options: {
-    currentUserId: number;
-    requestType?: string | null;
-    workflowStep?: {
-      approver_id?: number | null;
-      approver_role?: string | null;
-    } | null;
-    isApprover?: boolean;
-  },
-) {
-  if (isAdminRole(role)) {
-    return true;
-  }
-
-  if (options.workflowStep?.approver_id) {
-    return options.currentUserId === options.workflowStep.approver_id;
-  }
-
-  if (options.workflowStep?.approver_role) {
-    const approverRole = normalizeRole(options.workflowStep.approver_role);
-
-    if (approverRole === 'manager' || approverRole === 'any_manager') {
-      return canManageGeneralApprovals(role, userPermissions, options.isApprover);
-    }
-
-    if (approverRole === 'admin') {
-      return isAdminRole(role);
-    }
-
-    if (['purchasing', 'accounting', 'store', 'technician', 'operation'].includes(approverRole)) {
-      return isDepartmentRole(role, approverRole);
-    }
-
-    return normalizeRole(role) === approverRole;
-  }
-
-  if (options.requestType === 'purchase') {
-    return canAccessPurchaseWorkflowQueue(role, userPermissions, options.isApprover);
-  }
-
-  return canManageGeneralApprovals(role, userPermissions, options.isApprover);
-}
-
-export function canManageGeneralApprovals(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
+  permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  return canAccessDashboardPage(role, userPermissions, '/approvals/manage', { isApprover });
-}
-
-export function canAccessPurchaseWorkflowQueue(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  isApprover = false,
-) {
-  return canAccessDashboardPage(role, userPermissions, '/approvals/purchasing', { isApprover });
-}
-
-// Legacy alias kept for existing imports while the procurement workflow moves to /purchase-request/manage.
-export function canAccessPurchasingApprovals(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-  isApprover = false,
-) {
-  return canAccessPurchaseWorkflowQueue(role, userPermissions, isApprover);
-}
-
-/**
- * merge RBAC + page permissions แบบ enterprise
- * - read/view: ใช้ OR เพื่อให้ DB/page override เปิดสิทธิ์เพิ่มได้
- * - edit/create/delete/approve: ยังยึด RBAC เป็นหลัก เว้นแต่คุณจะออกแบบ page-level เพิ่มเอง
- */
-export function resolveGeneralRequestAccess(
-  role: string | null | undefined,
-  userPermissions: PagePermissionMap,
-) {
-  const pageAccess = resolveDashboardPageAccess(role, userPermissions, '/general-request');
-  const rolePermissions = getGeneralRequestPermissions(role);
-
-  return {
-    canViewPage: pageAccess.canReadPage,
-    canEditPage: pageAccess.canEditPage,
-    canCreate: rolePermissions.canCreate && pageAccess.canEditPage,
-    canApprove: rolePermissions.canApprove,
-    canDelete: rolePermissions.canDelete,
-  };
+  if (canApproveInventoryAudit(role, permissions, isApprover)) {
+    return 'approver';
+  }
+  if (canAccessInventoryAudit(role, permissions, 'edit')) {
+    return 'auditor';
+  }
+  return 'viewer';
 }

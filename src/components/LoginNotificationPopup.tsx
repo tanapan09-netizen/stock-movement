@@ -1,16 +1,20 @@
-'use client';
+﻿'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Bell, Package, AlertTriangle, FileText, X, CheckCheck } from 'lucide-react';
-import { getReadNotificationsKey, getStoredReadNotificationIds, storeReadNotificationIds } from '@/lib/notifications/clientReadState';
 
 type Notification = {
     id: string;
-    type: 'low_stock' | 'po_update' | 'borrow' | 'info';
+    type: 'low_stock' | 'po_update' | 'borrow' | 'info' | 'maintenance' | 'part_request' | 'petty_cash';
     title: string;
     message: string;
-    time: Date;
+    time: Date | string;
     read: boolean;
+};
+
+type NotificationsApiResponse = {
+    items: Notification[];
+    unreadCount: number;
 };
 
 type LoginNotificationPopupUser = {
@@ -18,27 +22,49 @@ type LoginNotificationPopupUser = {
     name?: string | null;
 } | null;
 
+function parseNotificationsResponse(payload: unknown): NotificationsApiResponse {
+    if (Array.isArray(payload)) {
+        const items = payload as Notification[];
+        return {
+            items,
+            unreadCount: items.filter(item => !item.read).length,
+        };
+    }
+
+    if (payload && typeof payload === 'object') {
+        const candidate = payload as Partial<NotificationsApiResponse>;
+        const items = Array.isArray(candidate.items) ? (candidate.items as Notification[]) : [];
+        const unreadCount = Number.isFinite(candidate.unreadCount)
+            ? Number(candidate.unreadCount)
+            : items.filter(item => !item.read).length;
+
+        return {
+            items,
+            unreadCount,
+        };
+    }
+
+    return { items: [], unreadCount: 0 };
+}
+
 export default function LoginNotificationPopup({ user }: { user: LoginNotificationPopupUser }) {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isVisible, setIsVisible] = useState(false);
     const session = user ? { user } : null;
-    const readNotificationsKey = getReadNotificationsKey(user?.id, user?.name);
+    const sessionKey = useMemo(() => `notif_popup_shown_${user?.id || user?.name || 'anonymous'}`, [user?.id, user?.name]);
 
     useEffect(() => {
         if (!user?.id && !user?.name) return;
 
-        // Use sessionStorage so popup only shows once per browser session (login)
-        const sessionKey = `notif_popup_shown_${user.id || user.name}`;
         const alreadyShown = sessionStorage.getItem(sessionKey);
         if (alreadyShown) return;
 
         const fetchAndShow = async () => {
             try {
-                const res = await fetch('/api/notifications');
+                const res = await fetch('/api/notifications', { cache: 'no-store' });
                 if (res.ok) {
-                    const storedReadIds = getStoredReadNotificationIds(readNotificationsKey);
-                    const data: Notification[] = await res.json();
-                    const unread = data.filter(n => !n.read && !storedReadIds.has(n.id));
+                    const payload = parseNotificationsResponse(await res.json());
+                    const unread = payload.items.filter(item => !item.read);
                     if (unread.length > 0) {
                         setNotifications(unread);
                         setIsVisible(true);
@@ -50,14 +76,22 @@ export default function LoginNotificationPopup({ user }: { user: LoginNotificati
             }
         };
 
-        // Small delay so the page loads first
         const timer = setTimeout(fetchAndShow, 1000);
         return () => clearTimeout(timer);
-    }, [readNotificationsKey, user]);
+    }, [sessionKey, user]);
 
-    const handleClose = () => {
+    const handleClose = async () => {
         if (notifications.length > 0) {
-            storeReadNotificationIds(readNotificationsKey, notifications.map(notification => notification.id));
+            const unreadIds = notifications.map(notification => notification.id);
+            try {
+                await fetch('/api/notifications/mark-read', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: unreadIds }),
+                });
+            } catch (error) {
+                console.error('Failed to mark popup notifications as read', error);
+            }
         }
         setIsVisible(false);
     };
@@ -75,7 +109,7 @@ export default function LoginNotificationPopup({ user }: { user: LoginNotificati
         }
     };
 
-    const formatTime = (date: Date) => {
+    const formatTime = (date: Date | string) => {
         const now = new Date();
         const diff = now.getTime() - new Date(date).getTime();
         const minutes = Math.floor(diff / 60000);
@@ -92,16 +126,13 @@ export default function LoginNotificationPopup({ user }: { user: LoginNotificati
 
     return (
         <>
-            {/* Backdrop */}
             <div
                 className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 transition-opacity"
-                onClick={handleClose}
+                onClick={() => { void handleClose(); }}
             />
 
-            {/* Popup */}
             <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md mx-auto px-4">
                 <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
-                    {/* Header */}
                     <div className="px-5 py-4 bg-gradient-to-r from-blue-600 to-blue-500 flex items-center justify-between">
                         <div className="flex items-center gap-2 text-white">
                             <Bell className="w-5 h-5" />
@@ -111,7 +142,7 @@ export default function LoginNotificationPopup({ user }: { user: LoginNotificati
                             </span>
                         </div>
                         <button
-                            onClick={handleClose}
+                            onClick={() => { void handleClose(); }}
                             className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-1 transition"
                             title="ปิด"
                         >
@@ -119,14 +150,12 @@ export default function LoginNotificationPopup({ user }: { user: LoginNotificati
                         </button>
                     </div>
 
-                    {/* Welcome message */}
                     <div className="px-5 py-3 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800">
                         <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
                             ยินดีต้อนรับ, <strong>{session?.user?.name || 'ผู้ใช้'}</strong>! มีการแจ้งเตือนที่คุณยังไม่ได้อ่าน
                         </p>
                     </div>
 
-                    {/* Notification List */}
                     <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-slate-700">
                         {notifications.slice(0, 8).map(notification => (
                             <div
@@ -143,13 +172,12 @@ export default function LoginNotificationPopup({ user }: { user: LoginNotificati
                         ))}
                     </div>
 
-                    {/* Footer */}
                     <div className="px-5 py-3 bg-gray-50 dark:bg-slate-700/50 border-t border-gray-100 dark:border-slate-700 flex justify-between items-center">
                         <p className="text-xs text-gray-400">
                             {notifications.length > 8 ? `+${notifications.length - 8} รายการอื่นๆ` : ''}
                         </p>
                         <button
-                            onClick={handleClose}
+                            onClick={() => { void handleClose(); }}
                             className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium transition"
                         >
                             <CheckCheck className="w-4 h-4" />
@@ -161,3 +189,4 @@ export default function LoginNotificationPopup({ user }: { user: LoginNotificati
         </>
     );
 }
+

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
@@ -36,9 +36,37 @@ type NotificationItem = {
     read: boolean;
 };
 
+type NotificationsResponse = {
+    items: NotificationItem[];
+    unreadCount: number;
+};
+
+const ALLOWED_REQUESTED_MODULES = new Set<NotificationModule | 'all'>([
+    'products',
+    'purchase_orders',
+    'borrow',
+    'maintenance',
+    'part_requests',
+    'petty_cash',
+    'approvals',
+    'dashboard',
+    'all',
+]);
+
+function normalizeRequestedModule(rawValue: string | null): NotificationModule | 'all' {
+    if (!rawValue) return 'all';
+    return ALLOWED_REQUESTED_MODULES.has(rawValue as NotificationModule | 'all')
+        ? (rawValue as NotificationModule | 'all')
+        : 'all';
+}
+
+function shouldLoadModule(requestedModule: NotificationModule | 'all', currentModule: NotificationModule): boolean {
+    return requestedModule === 'all' || requestedModule === 'dashboard' || requestedModule === currentModule;
+}
+
 export async function GET(request: Request) {
     try {
-        const requestedModule = new URL(request.url).searchParams.get('module') as NotificationModule | 'all' | null;
+        const requestedModule = normalizeRequestedModule(new URL(request.url).searchParams.get('module'));
         const session = await auth();
         const permissionContext = await getUserPermissionContext(session?.user);
         const role = permissionContext.role || 'employee';
@@ -46,23 +74,16 @@ export async function GET(request: Request) {
         const isApprover = permissionContext.isApprover;
         const permissions = permissionContext.permissions;
         const userName = session?.user?.name || '';
+        const sessionUserId = Number(session?.user?.id);
+
         const isManagerView = ['owner', 'admin', 'manager'].includes(normalizedRole);
         const isTechnicianView = isMaintenanceTechnician(normalizedRole) || normalizedRole === 'leader_technician';
         const isGeneralRequesterView = ['general', 'leader_general', 'employee', 'leader_employee'].includes(normalizedRole);
+        const isEmployeeReceiverView = ['employee', 'leader_employee'].includes(normalizedRole);
 
         const notifications: NotificationItem[] = [];
 
-        // ===================================================
-        // Admin / Manager / Owner — see everything
-        // ===================================================
-
-        // ===================================================
-        // LOW STOCK — Admin, Manager, Operation, Purchasing
-        // ===================================================
-        if (canViewLowStockNotifications(role, permissions)) {
-            // Since Prisma doesn't support column comparison in where,
-            // we fetch all active products and filter in JS (assuming count is manageable)
-            // or fetch a larger batch to improve chances of finding low stock items.
+        if (shouldLoadModule(requestedModule, 'products') && canViewLowStockNotifications(role, permissions)) {
             const products = await prisma.tbl_products.findMany({
                 where: { active: true },
                 select: { p_id: true, p_name: true, p_count: true, safety_stock: true },
@@ -85,10 +106,7 @@ export async function GET(request: Request) {
             });
         }
 
-        // ===================================================
-        // PO UPDATES — Admin, Manager, Purchasing, Accounting
-        // ===================================================
-        if (canViewPurchaseOrderNotifications(role, permissions)) {
+        if (shouldLoadModule(requestedModule, 'purchase_orders') && canViewPurchaseOrderNotifications(role, permissions)) {
             const recentPOs = await prisma.tbl_purchase_orders.findMany({
                 where: { status: { in: ['approved', 'ordered', 'received'] } },
                 orderBy: { updated_at: 'desc' },
@@ -116,10 +134,7 @@ export async function GET(request: Request) {
             });
         }
 
-        // ===================================================
-        // BORROW RETURNS — Admin, Manager, Operation, Employee (own)
-        // ===================================================
-        if (canViewBorrowNotifications(role)) {
+        if (shouldLoadModule(requestedModule, 'borrow') && canViewBorrowNotifications(role)) {
             const pendingReturns = await prisma.tbl_borrow_requests.findMany({
                 where: { status: 'borrowed' },
                 orderBy: { borrow_date: 'desc' },
@@ -140,8 +155,7 @@ export async function GET(request: Request) {
             });
         }
 
-        // Employee — show their own borrow status only
-        if (canViewOwnBorrowNotifications(role) && userName) {
+        if (shouldLoadModule(requestedModule, 'borrow') && canViewOwnBorrowNotifications(role) && userName) {
             const myBorrows = await prisma.tbl_borrow_requests.findMany({
                 where: { status: 'borrowed', borrower_name: userName },
                 orderBy: { borrow_date: 'desc' },
@@ -155,17 +169,18 @@ export async function GET(request: Request) {
                     type: 'borrow',
                     module: 'borrow',
                     title: 'รอคืนสินค้า',
-                    message: `คุณยังไม่ได้คืนสินค้าที่ยืมไป`,
+                    message: 'คุณยังไม่ได้คืนสินค้าที่ยืมไป',
                     time: borrow.borrow_date,
                     read: false,
                 });
             });
         }
 
-        // ===================================================
-        // MAINTENANCE / PART REQUESTS — Technician, Head Tech, Approver
-        // ===================================================
-        if (canViewMaintenanceNotifications(role, permissions, isApprover) && (isManagerView || isTechnicianView || isApprover)) {
+        if (
+            shouldLoadModule(requestedModule, 'maintenance')
+            && canViewMaintenanceNotifications(role, permissions, isApprover)
+            && (isManagerView || isTechnicianView || isApprover)
+        ) {
             const maintenanceWhere: {
                 status: string;
                 category: { not: string };
@@ -175,7 +190,6 @@ export async function GET(request: Request) {
                 category: { not: 'general' },
             };
 
-            // Technician: show only unassigned or assigned-to-me (avoid mixing other tech jobs)
             if (!isManagerView && !isApprover && isTechnicianView) {
                 maintenanceWhere.OR = userName
                     ? [{ assigned_to: null }, { assigned_to: userName }]
@@ -183,9 +197,7 @@ export async function GET(request: Request) {
             }
 
             const pendingMaintenance = await prisma.tbl_maintenance_requests.findMany({
-                where: {
-                    ...maintenanceWhere,
-                },
+                where: maintenanceWhere,
                 orderBy: { created_at: 'desc' },
                 take: 10,
                 select: {
@@ -198,26 +210,26 @@ export async function GET(request: Request) {
                         select: {
                             room_code: true,
                             room_name: true,
-                        }
-                    }
-                }
+                        },
+                    },
+                },
             });
 
-            pendingMaintenance.forEach(request => {
+            pendingMaintenance.forEach(item => {
                 notifications.push({
-                    id: `maintenance_request_${request.request_id}`,
+                    id: `maintenance_request_${item.request_id}`,
                     type: 'maintenance',
                     module: 'maintenance',
-                    title: `งานแจ้งซ่อม ${request.request_number}`,
-                    message: `${request.title} - ${request.tbl_rooms?.room_code || '-'} ${request.tbl_rooms?.room_name || ''} โดย ${request.reported_by}`,
-                    time: request.created_at || new Date(),
+                    title: `งานแจ้งซ่อม ${item.request_number}`,
+                    message: `${item.title} - ${item.tbl_rooms?.room_code || '-'} ${item.tbl_rooms?.room_name || ''} โดย ${item.reported_by}`,
+                    time: item.created_at || new Date(),
                     read: false,
                 });
             });
 
             if (pendingMaintenance.length > 0) {
                 notifications.push({
-                    id: `maintenance_pending`,
+                    id: 'maintenance_pending',
                     type: 'maintenance',
                     module: 'maintenance',
                     title: 'งานซ่อมรอดำเนินการ',
@@ -228,8 +240,7 @@ export async function GET(request: Request) {
             }
         }
 
-        // Part requests — Approvers only
-        if (canViewGeneralMaintenanceNotifications(role) && (isManagerView || isGeneralRequesterView)) {
+        if (shouldLoadModule(requestedModule, 'maintenance') && canViewGeneralMaintenanceNotifications(role) && (isManagerView || isGeneralRequesterView)) {
             const generalWhere: {
                 category: string;
                 status: string;
@@ -239,8 +250,7 @@ export async function GET(request: Request) {
                 status: 'pending',
             };
 
-            // Non-manager users should only see their own general requests
-            if (!isManagerView) {
+            if (!isManagerView && !isEmployeeReceiverView) {
                 generalWhere.reported_by = userName || '__UNKNOWN_USER__';
             }
 
@@ -258,25 +268,25 @@ export async function GET(request: Request) {
                         select: {
                             room_code: true,
                             room_name: true,
-                        }
-                    }
-                }
+                        },
+                    },
+                },
             });
 
-            generalRequests.forEach(request => {
+            generalRequests.forEach(item => {
                 notifications.push({
-                    id: `general_request_${request.request_id}`,
+                    id: `general_request_${item.request_id}`,
                     type: 'maintenance',
                     module: 'maintenance',
-                    title: `งานแจ้งซ่อมทั่วไป ${request.request_number}`,
-                    message: `${request.title} - ${request.tbl_rooms?.room_code || '-'} ${request.tbl_rooms?.room_name || ''} โดย ${request.reported_by}`,
-                    time: request.created_at || new Date(),
+                    title: `งานแจ้งซ่อมทั่วไป ${item.request_number}`,
+                    message: `${item.title} - ${item.tbl_rooms?.room_code || '-'} ${item.tbl_rooms?.room_name || ''} โดย ${item.reported_by}`,
+                    time: item.created_at || new Date(),
                     read: false,
                 });
             });
         }
 
-        if (canViewPurchaseApprovalNotifications(role, permissions, isApprover)) {
+        if (shouldLoadModule(requestedModule, 'approvals') && canViewPurchaseApprovalNotifications(role, permissions, isApprover)) {
             const pendingPurchaseRequests = await prisma.tbl_approval_requests.count({
                 where: {
                     request_type: 'purchase',
@@ -297,14 +307,14 @@ export async function GET(request: Request) {
             }
         }
 
-        if (canViewPartRequestNotifications(role, permissions, isApprover)) {
+        if (shouldLoadModule(requestedModule, 'part_requests') && canViewPartRequestNotifications(role, permissions, isApprover)) {
             const pendingParts = await prisma.tbl_part_requests.count({
                 where: { status: 'pending' },
             });
 
             if (pendingParts > 0) {
                 notifications.push({
-                    id: `part_requests_pending`,
+                    id: 'part_requests_pending',
                     type: 'part_request',
                     module: 'part_requests',
                     title: 'ใบขออนุมัติซื้ออะไหล่',
@@ -315,17 +325,14 @@ export async function GET(request: Request) {
             }
         }
 
-        // ===================================================
-        // PETTY CASH — Accounting only
-        // ===================================================
-        if (canViewPettyCashNotifications(role, permissions)) {
+        if (shouldLoadModule(requestedModule, 'petty_cash') && canViewPettyCashNotifications(role, permissions)) {
             const pendingPettyCash = await prisma.tbl_petty_cash.count({
                 where: { status: 'pending' },
             }).catch(() => 0);
 
             if (pendingPettyCash > 0) {
                 notifications.push({
-                    id: `petty_cash_pending`,
+                    id: 'petty_cash_pending',
                     type: 'petty_cash',
                     module: 'petty_cash',
                     title: 'เบิกเงินสดย่อยรอดำเนินการ',
@@ -336,28 +343,39 @@ export async function GET(request: Request) {
             }
         }
 
-        const allowedModules: Set<string> = new Set([
-            'products',
-            'purchase_orders',
-            'borrow',
-            'maintenance',
-            'part_requests',
-            'petty_cash',
-            'approvals',
-            'dashboard',
-            'all',
-        ]);
+        const readIdSet = new Set<string>();
+        if (Number.isFinite(sessionUserId) && sessionUserId > 0 && notifications.length > 0) {
+            const readRows = await prisma.tbl_notification_reads.findMany({
+                where: {
+                    user_id: sessionUserId,
+                    notification_id: { in: notifications.map(notification => notification.id) },
+                },
+                select: { notification_id: true },
+            });
 
-        const filtered = requestedModule && requestedModule !== 'all' && requestedModule !== 'dashboard' && allowedModules.has(requestedModule)
-            ? notifications.filter(n => n.module === requestedModule)
-            : notifications;
+            readRows.forEach(row => {
+                readIdSet.add(row.notification_id);
+            });
+        }
 
-        // Sort by time descending
-        filtered.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+        const items = notifications
+            .map(notification => ({
+                ...notification,
+                read: readIdSet.has(notification.id),
+            }))
+            .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
-        return NextResponse.json(filtered);
+        const unreadCount = items.reduce((count, notification) => count + (notification.read ? 0 : 1), 0);
+
+        const response: NotificationsResponse = {
+            items,
+            unreadCount,
+        };
+
+        return NextResponse.json(response);
     } catch (error) {
         console.error('Notifications error:', error);
-        return NextResponse.json([]);
+        return NextResponse.json<NotificationsResponse>({ items: [], unreadCount: 0 });
     }
 }
+
