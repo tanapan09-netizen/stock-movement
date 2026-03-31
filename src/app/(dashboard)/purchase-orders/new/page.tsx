@@ -1,7 +1,10 @@
 import { prisma } from '@/lib/prisma';
 import POForm from '@/components/POForm';
-import { ArrowLeft, ClipboardList, FileCheck2 } from 'lucide-react';
+import { ArrowLeft, ClipboardList, FileCheck2, Lock } from 'lucide-react';
 import Link from 'next/link';
+import { auth } from '@/auth';
+import { canEditPurchaseOrders } from '@/lib/rbac';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
 export default async function NewPOPage(props: {
     searchParams?: Promise<{
@@ -12,6 +15,19 @@ export default async function NewPOPage(props: {
         reason?: string;
     }>;
 }) {
+    const session = await auth();
+    const { permissions: rolePermissions } = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
+
+    if (!canEditPurchaseOrders(rolePermissions)) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px] text-gray-500">
+                <Lock className="w-12 h-12 mb-4 text-gray-400" />
+                <h3 className="text-lg font-medium">Access Denied</h3>
+                <p>คุณไม่มีสิทธิ์เข้าถึงหน้าสร้างใบสั่งซื้อ</p>
+            </div>
+        );
+    }
+
     const searchParams = await props.searchParams;
     const [products, suppliers] = await Promise.all([
         prisma.tbl_products.findMany({ select: { p_id: true, p_name: true, price_unit: true }, where: { active: true } }),
