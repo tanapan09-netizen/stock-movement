@@ -55,6 +55,7 @@ import { format } from 'date-fns';
 import {
     canApproveMaintenanceCompletion,
     canConfirmMaintenancePartUsage,
+    canManageMaintenanceEdit,
     canReassignMaintenanceRequest,
     canVerifyMaintenanceParts,
     isMaintenanceTechnician,
@@ -343,6 +344,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const canAssignMaintenance = canReassignMaintenanceRequest(loggedInRole, userPermissions, sessionIsApprover);
     const canVerifyParts = canVerifyMaintenanceParts(loggedInRole, userPermissions);
     const canApproveCompletion = canApproveMaintenanceCompletion(loggedInRole, userPermissions, sessionIsApprover);
+    const canManageMaintenanceStatus = canManageMaintenanceEdit(loggedInRole, userPermissions, sessionIsApprover);
     const searchParams = useSearchParams();
     const reqQueryParam = searchParams.get('req');
     const roomIdQueryParam = searchParams.get('room_id');
@@ -1273,7 +1275,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
     async function handleUpdateRequest() {
         if (!selectedRequest) return;
-        if (!ensureCanEditPage()) return;
+        const isStatusChanged = editData.status !== selectedRequest.status;
+        if (!canEditPage && !(canEditDetailStatus && isStatusChanged)) {
+            showToast('คุณมีสิทธิ์อ่านอย่างเดียวในหน้านี้', 'warning');
+            return;
+        }
         const canManagerEditClosedRequest =
             isManagerRole(loggedInRole) && isMaintenanceWorkflowClosed(selectedRequest.status);
         if (isMaintenanceWorkflowLocked(selectedRequest.status) && !canManagerEditClosedRequest) {
@@ -1676,15 +1682,20 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         ? selectedRequestExecutionTechnician
         : (editData.assigned_to || '');
     const isSelectedRequestAwaitingHeadApproval = selectedWorkflowStatus === 'confirmed';
-    const canManagerEditClosedRequest = false;
-    const isSelectedRequestReadOnly = true;
-    const isDetailReadOnly = !canEditPage || isSelectedRequestReadOnly;
+    const canRoleEditMaintenanceStatus = new Set(['technician', 'leader_technician', 'manager', 'admin', 'owner']).has(loggedInRole);
+    const canEditDetailStatusByRole = canRoleEditMaintenanceStatus || canManageMaintenanceStatus || canApproveCompletion;
+    const canManagerEditClosedRequest =
+        Boolean(selectedRequest)
+        && isManagerRole(loggedInRole)
+        && isMaintenanceWorkflowClosed(selectedRequest?.status);
+    const isSelectedRequestReadOnly = !canEditPage;
+    const isDetailReadOnly = !canEditPage;
     const managerClosedReopenStatusOptions: MaintenanceWorkflowStatus[] = ['pending', 'approved', 'in_progress'];
-    const allowedDetailStatusTransitions = selectedRequest && !isSelectedRequestReadOnly
+    const allowedDetailStatusTransitions = selectedRequest && canEditDetailStatusByRole
         ? (
             canManagerEditClosedRequest
                 ? managerClosedReopenStatusOptions.filter((status) => status !== selectedRequest.status)
-                : getAllowedMaintenanceTransitions(selectedRequest.status)
+                : getAllowedMaintenanceTransitions(selectedRequest.status, { canApproveCompletion })
         )
         : [];
     const detailStatusOptions = selectedRequest
@@ -1701,10 +1712,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 })),
         ]
         : [];
-    const canEditDetailStatus = !isDetailReadOnly && detailStatusOptions.length > 1;
-    const canShowDetailSaveButton = false;
+    const canEditDetailStatus = canEditDetailStatusByRole && detailStatusOptions.length > 1;
+    const canShowDetailSaveButton = canEditDetailStatus;
     const canShowHeadTechnicianActions = false;
-    const canShowPartsAddSection = !isSelectedRequestReadOnly && editData.status === 'confirmed';
+    const canShowPartsAddSection = canEditPage && !isSelectedRequestReadOnly && editData.status === 'confirmed';
     const isAssignedTechnicianInputDisabled =
         isDetailReadOnly
         || shouldLockAssignedTechnician
@@ -3665,7 +3676,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             {canShowDetailSaveButton && !canShowHeadTechnicianActions && (
                 <button
                   onClick={handleUpdateRequest}
-                  disabled={!canEditPage}
+                  disabled={!canEditPage && !canEditDetailStatus}
                   className="inline-flex min-w-[280px] items-center justify-center rounded-2xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   บันทึกการเปลี่ยนแปลง
