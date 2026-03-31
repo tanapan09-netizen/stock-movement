@@ -667,7 +667,12 @@ export async function createMaintenanceRequest(formData: FormData) {
                     room.room_code,
                     room.room_name,
                     validData.priority,
-                    reported_by
+                    reported_by,
+                    {
+                        requestNumber: request.request_number,
+                        status: request.status,
+                        openUrl: `${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')}/maintenance?req=${request.request_number}`,
+                    },
                 );
 
                 const notificationPayload: MaintenanceNotificationRequest = {
@@ -788,7 +793,12 @@ export async function submitCustomerRepairRequest(formData: FormData) {
                     room.room_code,
                     room.room_name,
                     validData.priority,
-                    reported_by
+                    reported_by,
+                    {
+                        requestNumber: request.request_number,
+                        status: request.status,
+                        openUrl: `${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')}/maintenance?req=${request.request_number}`,
+                    },
                 );
 
                 const notificationPayload: MaintenanceNotificationRequest = {
