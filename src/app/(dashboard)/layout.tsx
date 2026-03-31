@@ -33,8 +33,19 @@ export default async function DashboardLayout({
     const pathname = requestHeaders.get('x-pathname') || '/';
     const pageAccess = resolveDashboardPageAccess(role, permissions, pathname, { isApprover });
     const requiredAccessLevel = pageAccess.requiredAccessLevel;
+    const roleScopedDashboardRoutes = new Set([
+        '/manager-dashboard',
+        '/accounting-dashboard',
+        '/purchasing-dashboard',
+        '/store-dashboard',
+        '/maintenance/dashboard',
+    ]);
 
     if (requiredAccessLevel && !pageAccess.hasPageAccess) {
+        if (pageAccess.routePattern && roleScopedDashboardRoutes.has(pageAccess.routePattern)) {
+            redirect('/');
+        }
+
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
                 <div className="max-w-md w-full bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">

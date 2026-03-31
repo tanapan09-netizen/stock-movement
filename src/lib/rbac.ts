@@ -79,6 +79,13 @@ const PURCHASING_ROLES = new Set(['purchasing', 'leader_purchasing']);
 const ACCOUNTING_ROLES = new Set(['accounting', 'leader_accounting']);
 const STORE_ROLES = new Set(['store', 'leader_store']);
 const GENERAL_ROLES = new Set(['general', 'leader_general', 'employee', 'leader_employee']);
+const ROLE_SCOPED_DASHBOARD_ROUTES = new Set([
+  '/manager-dashboard',
+  '/accounting-dashboard',
+  '/purchasing-dashboard',
+  '/store-dashboard',
+  '/maintenance/dashboard',
+]);
 
 const isManagerLike = (role?: string | null) => MANAGER_ROLES.has(normalizeRole(role));
 const isAccountingRole = (role?: string | null) => ACCOUNTING_ROLES.has(normalizeRole(role));
@@ -89,6 +96,25 @@ const hasPermissionKey = (permissions: PagePermissionMap = {}, key: string) => B
 
 function hasAnyPermission(permissions: PagePermissionMap = {}, keys: string[]) {
   return keys.some(key => hasPermissionKey(permissions, key));
+}
+
+function canAccessRoleScopedDashboardRoute(role: string | null | undefined, routePattern: string) {
+  const normalized = normalizeRole(role);
+
+  switch (routePattern) {
+    case '/manager-dashboard':
+      return normalized === 'manager';
+    case '/accounting-dashboard':
+      return isAccountingRole(normalized);
+    case '/purchasing-dashboard':
+      return isPurchasingRole(normalized);
+    case '/store-dashboard':
+      return isStoreRole(normalized);
+    case '/maintenance/dashboard':
+      return isMaintenanceTechnician(normalized);
+    default:
+      return true;
+  }
 }
 
 function resolveRoleAndPermissions(
@@ -220,6 +246,16 @@ function getDashboardPageFlags(
     };
   }
 
+  if (ROLE_SCOPED_DASHBOARD_ROUTES.has(routePattern) && !canAccessRoleScopedDashboardRoute(role, routePattern)) {
+    return {
+      routePattern,
+      requiredAccessLevel,
+      hasPageAccess: false,
+      canReadPage: false,
+      canEditPage: false,
+    };
+  }
+
   if (isManagerLike(role)) {
     return {
       routePattern,
@@ -285,15 +321,14 @@ export function resolveGeneralRequestAccess(
 
 export function resolveDashboardHomeView(
   role: string | null | undefined,
-  permissions: PagePermissionMap = {},
-  options: { isApprover?: boolean } = {},
+  _permissions: PagePermissionMap = {},
+  _options: { isApprover?: boolean } = {},
 ): DashboardHomeView {
   const normalized = normalizeRole(role);
-  const isApprover = Boolean(options.isApprover);
 
   if (isManagerLike(normalized)) return normalized === 'manager' ? 'manager' : 'admin';
-  if (isAccountingRole(normalized) || canAccessAccountingDashboard(role, permissions, isApprover)) return 'accounting';
-  if (isPurchasingRole(normalized) || canAccessPurchasingDashboard(role, permissions, isApprover)) return 'purchasing';
+  if (isAccountingRole(normalized)) return 'accounting';
+  if (isPurchasingRole(normalized)) return 'purchasing';
   if (isMaintenanceTechnician(normalized)) return 'technician';
   if (isStoreRole(normalized)) return 'store';
   return 'general';
@@ -458,29 +493,26 @@ export function canEditPurchaseRequestRecord(
   return false;
 }
 
-export function canAccessManagerDashboard(role: string | null | undefined, permissions: PagePermissionMap = {}) {
-  return isManagerLike(role) || hasPermissionKey(permissions, PERMISSIONS.DASHBOARD);
+export function canAccessManagerDashboard(role: string | null | undefined, _permissions: PagePermissionMap = {}) {
+  return normalizeRole(role) === 'manager';
 }
 
 export function canAccessAccountingDashboard(
   roleOrPermissions: string | PagePermissionMap | null | undefined,
   permissions: PagePermissionMap = {},
-  isApprover = false,
+  _isApprover = false,
 ) {
   const resolved = resolveRoleAndPermissions(roleOrPermissions, permissions);
-  return isManagerLike(resolved.role) || isAccountingRole(resolved.role) || Boolean(isApprover) || hasPermissionKey(resolved.permissions, PERMISSIONS.PETTY_CASH);
+  return isAccountingRole(resolved.role);
 }
 
 export function canAccessPurchasingDashboard(
   roleOrPermissions: string | PagePermissionMap | null | undefined,
   permissions: PagePermissionMap = {},
-  isApprover = false,
+  _isApprover = false,
 ) {
   const resolved = resolveRoleAndPermissions(roleOrPermissions, permissions);
-  return isManagerLike(resolved.role)
-    || isPurchasingRole(resolved.role)
-    || Boolean(isApprover)
-    || hasAnyPermission(resolved.permissions, [PERMISSIONS.PURCHASING_APPROVALS, PERMISSIONS.PO_VIEW]);
+  return isPurchasingRole(resolved.role);
 }
 
 export function canAccessPettyCashModule(

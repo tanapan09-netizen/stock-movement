@@ -441,7 +441,7 @@ export default function Sidebar(props: SidebarProps) {
                         )}
 
                         {/* Purchasing Dashboard Link */}
-                        {(isAdminTeam || isPurchasingTeam || isManagerTeam) && (
+                        {(isAdminTeam || isPurchasingTeam || isManagerTeam) && canPurchasingDashboardPage && (
                             <Link
                                 href="/purchasing-dashboard"
                                 onClick={handleLinkClick}

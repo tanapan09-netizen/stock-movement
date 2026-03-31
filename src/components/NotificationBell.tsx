@@ -109,6 +109,8 @@ export default function NotificationBell() {
   const toastedIdsRef = useRef<Set<string>>(new Set());
   const hasInitializedRef = useRef(false);
   const tabBaseTitleRef = useRef('');
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioCleanupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -119,6 +121,19 @@ export default function NotificationBell() {
 
   const normalizedRole = (sessionUser?.role || '').trim().toLowerCase();
   const isApprover = Boolean(sessionUser?.is_approver);
+
+  useEffect(() => {
+    return () => {
+      if (audioCleanupTimeoutRef.current) {
+        clearTimeout(audioCleanupTimeoutRef.current);
+      }
+
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        void audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+    };
+  }, []);
 
   const moduleFromPathname = useCallback((path: string): NotificationModule => {
     if (path.startsWith('/products')) return 'products';
@@ -244,36 +259,89 @@ export default function NotificationBell() {
     if (!AudioContextClass) return;
 
     try {
-      const context = new AudioContextClass();
+      let context = audioContextRef.current;
+      if (!context || context.state === 'closed') {
+        context = new AudioContextClass();
+        audioContextRef.current = context;
+      }
 
       if (context.state === 'suspended') {
         void context.resume();
       }
 
-      const playDing = (freq: number, volume: number, duration: number) => {
-        const osc = context.createOscillator();
-        const g = context.createGain();
+      const masterGain = context.createGain();
+      masterGain.gain.setValueAtTime(0.78, context.currentTime);
 
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, context.currentTime);
+      const toneHighPass = context.createBiquadFilter();
+      toneHighPass.type = 'highpass';
+      toneHighPass.frequency.setValueAtTime(340, context.currentTime);
+      toneHighPass.Q.setValueAtTime(0.6, context.currentTime);
 
-        g.gain.setValueAtTime(0, context.currentTime);
-        g.gain.linearRampToValueAtTime(volume, context.currentTime + 0.01);
-        g.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
+      const toneHighShelf = context.createBiquadFilter();
+      toneHighShelf.type = 'highshelf';
+      toneHighShelf.frequency.setValueAtTime(2600, context.currentTime);
+      toneHighShelf.gain.setValueAtTime(2.8, context.currentTime);
 
-        osc.connect(g);
-        g.connect(context.destination);
+      masterGain.connect(toneHighPass);
+      toneHighPass.connect(toneHighShelf);
+      toneHighShelf.connect(context.destination);
 
-        osc.start();
-        osc.stop(context.currentTime + duration);
+      const playChimeTone = (frequency: number, startOffset: number, duration: number, volume: number) => {
+        const oscMain = context.createOscillator();
+        const oscBody = context.createOscillator();
+        const oscSparkle = context.createOscillator();
+        const bodyEnvelope = context.createGain();
+        const sparkleEnvelope = context.createGain();
+        const startAt = context.currentTime + startOffset;
+        const endAt = startAt + duration;
+
+        oscMain.type = 'sine';
+        oscMain.frequency.setValueAtTime(frequency, startAt);
+
+        oscBody.type = 'triangle';
+        oscBody.frequency.setValueAtTime(frequency * 1.002, startAt);
+
+        oscSparkle.type = 'sine';
+        oscSparkle.frequency.setValueAtTime(frequency * 3.01, startAt);
+
+        bodyEnvelope.gain.setValueAtTime(0.0001, startAt);
+        bodyEnvelope.gain.exponentialRampToValueAtTime(volume, startAt + 0.008);
+        bodyEnvelope.gain.exponentialRampToValueAtTime(volume * 0.38, startAt + 0.075);
+        bodyEnvelope.gain.exponentialRampToValueAtTime(0.0001, endAt);
+
+        sparkleEnvelope.gain.setValueAtTime(0.0001, startAt);
+        sparkleEnvelope.gain.exponentialRampToValueAtTime(volume * 0.55, startAt + 0.006);
+        sparkleEnvelope.gain.exponentialRampToValueAtTime(0.0001, Math.min(endAt, startAt + 0.11));
+
+        oscMain.connect(bodyEnvelope);
+        oscBody.connect(bodyEnvelope);
+        oscSparkle.connect(sparkleEnvelope);
+        bodyEnvelope.connect(masterGain);
+        sparkleEnvelope.connect(masterGain);
+
+        oscMain.start(startAt);
+        oscBody.start(startAt);
+        oscSparkle.start(startAt);
+        oscMain.stop(endAt);
+        oscBody.stop(endAt);
+        oscSparkle.stop(endAt);
       };
 
-      playDing(1046.5, 0.1, 0.8);
-      playDing(2093, 0.05, 0.5);
+      // Crystal chime: C6 -> E6 -> G6
+      playChimeTone(1046.5, 0.00, 0.22, 0.07);
+      playChimeTone(1318.51, 0.08, 0.25, 0.063);
+      playChimeTone(1567.98, 0.16, 0.30, 0.058);
 
-      setTimeout(() => {
-        void context.close();
-      }, 1000);
+      if (audioCleanupTimeoutRef.current) {
+        clearTimeout(audioCleanupTimeoutRef.current);
+      }
+
+      audioCleanupTimeoutRef.current = setTimeout(() => {
+        if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+          void audioContextRef.current.close();
+          audioContextRef.current = null;
+        }
+      }, 2200);
     } catch (error) {
       console.error('Failed to play notification sound', error);
     }
