@@ -318,7 +318,6 @@ interface MaintenanceClientProps {
 const resolveDepartmentFromRole = (role: string) => role.trim().toLowerCase();
 const ALLOWED_NEW_MAINTENANCE_ROLES = new Set([
     'admin',
-    'manager',
     'employee',
 ]);
 const normalizePersonName = (value?: string | null) => (value || '').trim().toLowerCase();
