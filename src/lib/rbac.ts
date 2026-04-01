@@ -687,6 +687,7 @@ export function canConfirmMaintenancePartUsage(role: string | null | undefined, 
 }
 
 export function canDirectManageMaintenanceStock(role: string | null | undefined, permissions: PagePermissionMap = {}) {
+  if (isMaintenanceTechnician(role)) return false;
   return isManagerLike(role) || isStoreRole(role) || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE_PARTS);
 }
 
