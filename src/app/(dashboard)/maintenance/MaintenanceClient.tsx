@@ -334,6 +334,18 @@ const resolveParentRoomCode = (room: Room): string => {
     return room.room_code;
 };
 
+const ABSOLUTE_URL_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
+
+function resolveMaintenanceImageProxyUrl(imageUrl: string): string {
+    const trimmed = imageUrl.trim();
+    if (!trimmed) return '';
+    if (ABSOLUTE_URL_PATTERN.test(trimmed)) return trimmed;
+
+    const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+    if (!normalized.startsWith('/uploads/')) return normalized;
+    return `/api/maintenance/image-proxy?path=${encodeURIComponent(normalized)}`;
+}
+
 export default function MaintenanceClient({ userPermissions = {}, canEditPage = false }: MaintenanceClientProps) {
     const { data: session } = useSession();
     const sessionUser = session?.user as SessionUserLike | undefined;
@@ -2830,13 +2842,19 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                         </span>
                       )}
 
-                      <Image
+                      {/* Use native img for robust fallback to proxy when /uploads path is unavailable on this node */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
                         src={imageUrl}
                         alt={`รูปภาพปัญหา ${index + 1}`}
-                        width={960}
-                        height={384}
-                        unoptimized
+                        loading="lazy"
                         className="h-48 w-full object-cover transition duration-200 group-hover:scale-[1.02] group-hover:opacity-95"
+                        onError={(event) => {
+                            const target = event.currentTarget;
+                            if (target.dataset.fallbackApplied === '1') return;
+                            target.dataset.fallbackApplied = '1';
+                            target.src = resolveMaintenanceImageProxyUrl(imageUrl);
+                        }}
                       />
                     </a>
                   ))}
