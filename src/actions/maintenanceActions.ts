@@ -577,8 +577,21 @@ export async function createMaintenanceRequest(formData: FormData) {
         const target_role = ((formData.get('target_role') as string) || 'technician').trim();
         const sourceRequestIdRaw = formData.get('source_request_id');
         const sourceRequestId = typeof sourceRequestIdRaw === 'string' ? Number.parseInt(sourceRequestIdRaw, 10) : null;
-        if (Number.isFinite(sourceRequestId) && (sourceRequestId || 0) > 0) {
-            return { success: false, error: 'Auto create from general request is disabled. Employee must create manually.' };
+        const hasSourceRequestId = Number.isFinite(sourceRequestId) && (sourceRequestId || 0) > 0;
+        const sourceRequest = hasSourceRequestId
+            ? await prisma.tbl_maintenance_requests.findUnique({
+                where: { request_id: sourceRequestId as number },
+                select: {
+                    request_id: true,
+                    request_number: true,
+                    status: true,
+                    image_url: true,
+                    tags: true,
+                },
+            })
+            : null;
+        if (hasSourceRequestId && !sourceRequest) {
+            return { success: false, error: 'Source general request not found' };
         }
         const sourceImageCountRaw = formData.get('source_image_count');
         const sourceImageCount = typeof sourceImageCountRaw === 'string' ? Number.parseInt(sourceImageCountRaw, 10) : 0;
@@ -586,7 +599,7 @@ export async function createMaintenanceRequest(formData: FormData) {
             .getAll('source_image_urls')
             .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
             .flatMap((value) => parseMaintenanceImageUrls(value));
-        const requestNumber = generateRequestNumber();
+        const requestNumber = sourceRequest?.request_number || generateRequestNumber();
 
         const imageFiles = [
             ...(formData.getAll('images') as File[]),
@@ -608,17 +621,56 @@ export async function createMaintenanceRequest(formData: FormData) {
             }
         }
 
-        const finalImageUrls = Array.from(new Set([...sourceImageUrls, ...uploadedImageUrls]));
+        const existingSourceImageUrls = parseMaintenanceImageUrls(sourceRequest?.image_url);
+        const finalImageUrls = Array.from(new Set([...existingSourceImageUrls, ...sourceImageUrls, ...uploadedImageUrls]));
         const finalTags = appendCopiedImageMetadataTags(
-            tags || null,
+            tags || sourceRequest?.tags || null,
             Number.isFinite(sourceRequestId ?? NaN) ? sourceRequestId : null,
             Number.isFinite(sourceImageCount) ? sourceImageCount : 0,
         );
 
         const initialStatus = target_role ? 'approved' : 'pending';
+        const actorName = authContext.session.user.name || reported_by || 'System';
 
         const request = await prisma.$transaction(async (tx) => {
-            const createdRequest = await tx.tbl_maintenance_requests.create({
+            if (sourceRequest?.request_id) {
+                const updatedRequest = await tx.tbl_maintenance_requests.update({
+                    where: { request_id: sourceRequest.request_id },
+                    data: {
+                        room_id: validData.room_id,
+                        title: validData.title,
+                        description: validData.description || null,
+                        image_url: finalImageUrls.length > 0 ? JSON.stringify(finalImageUrls) : null,
+                        priority: validData.priority,
+                        status: initialStatus,
+                        reported_by,
+                        assigned_to: assigned_to || null,
+                        scheduled_date: scheduled_date ? new Date(scheduled_date) : null,
+                        estimated_cost: new Decimal(estimated_cost),
+                        category: category || 'general',
+                        department: department || null,
+                        contact_info: contact_info || null,
+                        tags: finalTags,
+                        completed_at: initialStatus === 'completed' ? new Date() : null,
+                    }
+                });
+
+                if (sourceRequest.status !== initialStatus) {
+                    await tx.tbl_maintenance_history.create({
+                        data: {
+                            request_id: sourceRequest.request_id,
+                            action: 'status_change',
+                            old_value: sourceRequest.status || '',
+                            new_value: initialStatus,
+                            changed_by: actorName,
+                        }
+                    });
+                }
+
+                return updatedRequest;
+            }
+
+            return await tx.tbl_maintenance_requests.create({
                 data: {
                     request_number: requestNumber,
                     room_id: validData.room_id,
@@ -637,25 +689,6 @@ export async function createMaintenanceRequest(formData: FormData) {
                     tags: finalTags
                 }
             });
-
-            const shouldDeleteSourceRequest =
-                typeof sourceRequestId === 'number'
-                && Number.isFinite(sourceRequestId)
-                && sourceRequestId > 0
-                && sourceRequestId !== createdRequest.request_id;
-
-            if (shouldDeleteSourceRequest) {
-                await tx.tbl_part_requests.updateMany({
-                    where: { maintenance_id: sourceRequestId },
-                    data: { maintenance_id: null },
-                });
-
-                await tx.tbl_maintenance_requests.delete({
-                    where: { request_id: sourceRequestId },
-                });
-            }
-
-            return createdRequest;
         });
 
         try {

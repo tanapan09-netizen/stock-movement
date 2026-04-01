@@ -883,6 +883,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         }
         data.append('target_role', formData.target_role);
         if (allowGeneralRequestPull && pullFromGeneral && selectedGeneralRequestId) {
+            data.append('source_request_id', String(selectedGeneralRequestId));
             data.append('source_image_count', String(selectedPulledRequestImageUrls.length));
             if (selectedPulledRequestImageUrls.length > 0) {
                 selectedPulledRequestImageUrls.forEach((imageUrl) => data.append('source_image_urls', imageUrl));
@@ -923,7 +924,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 setAssetSearchQuery('');
                 setAssetResults([]);
                 loadData();
-                showToast('สร้างรายการแจ้งซ่อมสำเร็จ', 'success');
+                showToast(
+                    allowGeneralRequestPull && pullFromGeneral && selectedGeneralRequestId
+                        ? 'อัปเดตสถานะใบงานจากการรับเรื่องเรียบร้อยแล้ว'
+                        : 'สร้างรายการแจ้งซ่อมสำเร็จ',
+                    'success',
+                );
             } else {
                 showToast('เกิดข้อผิดพลาด: ' + result.error, 'error');
             }
@@ -2231,7 +2237,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                     )}
                                 </div>
                                 <p className="mt-2 text-xs text-blue-700">
-                                    ดึงข้อมูลจากหน้า /general-request มาเติมฟอร์มแจ้งซ่อมใหม่ (ไม่สร้างใบงานอัตโนมัติ)
+                                    ดึงข้อมูลจากหน้า /general-request แล้วอัปเดตสถานะใบงานเดิม (ไม่สร้างใบงานใหม่)
                                 </p>
 
                                 {pullFromGeneral && (
@@ -2269,7 +2275,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         {selectedPulledRequestImageUrls.length > 0 && (
                                             <div className="mt-3 rounded-lg border border-blue-200 bg-white p-3">
                                                 <p className="mb-2 text-xs font-medium text-blue-800">
-                                                    รูปจากการรับเรื่องจะถูกคัดลอกไปแนบกับใบงานใหม่ ({selectedPulledRequestImageUrls.length} รูป)
+                                                    รูปจากการรับเรื่องจะถูกคัดลอกไปแนบกับใบงานเดิม ({selectedPulledRequestImageUrls.length} รูป)
                                                 </p>
                                                 <div className="grid grid-cols-2 gap-2">
                                                     {selectedPulledRequestImageUrls.map((imageUrl, index) => (
