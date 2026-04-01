@@ -78,6 +78,8 @@ export async function GET(request: Request) {
 
         const isManagerView = ['owner', 'admin', 'manager'].includes(normalizedRole);
         const isTechnicianView = isMaintenanceTechnician(normalizedRole) || normalizedRole === 'leader_technician';
+        const isStoreView = ['store', 'leader_store'].includes(normalizedRole);
+        const isPurchasingView = ['purchasing', 'leader_purchasing'].includes(normalizedRole);
         const isGeneralRequesterView = ['general', 'leader_general', 'employee', 'leader_employee'].includes(normalizedRole);
         const isEmployeeReceiverView = ['employee', 'leader_employee'].includes(normalizedRole);
 
@@ -308,17 +310,58 @@ export async function GET(request: Request) {
         }
 
         if (shouldLoadModule(requestedModule, 'part_requests') && canViewPartRequestNotifications(role, permissions, isApprover)) {
-            const pendingParts = await prisma.tbl_part_requests.count({
-                where: { status: 'pending' },
-            });
+            const canSeeMaintenanceWithdrawalNotifications = isManagerView || isStoreView || isTechnicianView || isApprover;
+            const canSeePurchasePartNotifications = isManagerView || isPurchasingView || isApprover;
 
-            if (pendingParts > 0) {
+            const maintenanceWithdrawalWhere: {
+                status: string;
+                request_type: string;
+                requested_by?: string;
+            } = {
+                status: 'pending',
+                request_type: 'maintenance_withdrawal',
+            };
+
+            if (isTechnicianView && !isManagerView && !isApprover) {
+                maintenanceWithdrawalWhere.requested_by = userName || '__UNKNOWN_USER__';
+            }
+
+            const [pendingMaintenanceWithdrawals, pendingPurchaseParts] = await Promise.all([
+                canSeeMaintenanceWithdrawalNotifications
+                    ? prisma.tbl_part_requests.count({ where: maintenanceWithdrawalWhere })
+                    : Promise.resolve(0),
+                canSeePurchasePartNotifications
+                    ? prisma.tbl_part_requests.count({
+                        where: {
+                            status: 'pending',
+                            OR: [
+                                { request_type: null },
+                                { request_type: { not: 'maintenance_withdrawal' } },
+                            ],
+                        },
+                    })
+                    : Promise.resolve(0),
+            ]);
+
+            if (pendingMaintenanceWithdrawals > 0) {
                 notifications.push({
-                    id: 'part_requests_pending',
+                    id: 'part_requests_maintenance_pending',
+                    type: 'part_request',
+                    module: 'part_requests',
+                    title: 'คำขอเบิกอะไหล่งานซ่อม',
+                    message: `มี ${pendingMaintenanceWithdrawals} รายการรอคลังยืนยัน`,
+                    time: new Date(),
+                    read: false,
+                });
+            }
+
+            if (pendingPurchaseParts > 0) {
+                notifications.push({
+                    id: 'part_requests_purchase_pending',
                     type: 'part_request',
                     module: 'part_requests',
                     title: 'ใบขออนุมัติซื้ออะไหล่',
-                    message: `มี ${pendingParts} รายการรออนุมัติ`,
+                    message: `มี ${pendingPurchaseParts} รายการรออนุมัติ`,
                     time: new Date(),
                     read: false,
                 });

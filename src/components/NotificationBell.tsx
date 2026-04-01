@@ -214,6 +214,12 @@ export default function NotificationBell() {
     if (notification.id.startsWith('maintenance_') || notification.type === 'maintenance') {
       return '/maintenance';
     }
+    if (notification.id.startsWith('part_requests_maintenance_')) {
+      return '/maintenance/parts';
+    }
+    if (notification.id.startsWith('part_requests_purchase_')) {
+      return '/maintenance/part-requests';
+    }
     if (notification.id.startsWith('part_requests_') || notification.type === 'part_request') {
       return '/maintenance/part-requests';
     }
