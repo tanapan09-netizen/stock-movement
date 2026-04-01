@@ -1214,7 +1214,7 @@ export default function PartsManagementClient({
                   {actionDialog.nextStatus === 'approved' ? (
                     <div>
                       <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        ยืนยันจำนวนที่จะจ่าย *
+                        ยืนยันจำนวน *
                       </label>
                       <input
                         type="number"

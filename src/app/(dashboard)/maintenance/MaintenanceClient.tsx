@@ -3456,7 +3456,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
                   {part.status === 'withdrawn' &&
                     !isSelectedRequestReadOnly &&
-                    canConfirmMaintenancePartUsage(loggedInRole) && (
+                    canConfirmMaintenancePartUsage(loggedInRole, userPermissions) && (
                       <div className="mt-3 border-t border-slate-200 pt-3">
                         {confirmingPartId === part.part_id ? (
                           <div className="flex flex-col gap-2">
@@ -3509,7 +3509,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                             }}
                             className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
                           >
-                            <Wrench size={12} /> รายงานการใช้
+                            <Wrench size={12} /> ยืนยันการใช้อะไหล่
                           </button>
                         )}
                       </div>

@@ -221,46 +221,61 @@ export async function notifyMaintenanceWithdrawalRequesterStatusChange(data: {
     status: 'approved' | 'rejected';
     decided_by: string;
     maintenance_request_number?: string | null;
+    fallback_technician_name?: string | null;
     room_code?: string | null;
     room_name?: string | null;
 }): Promise<void> {
     const { prisma } = await import('@/lib/prisma');
 
-    const [requesterUser, requesterTech, requesterLineUser] = await Promise.all([
-        data.requested_by
-            ? prisma.tbl_users.findUnique({
-                where: { username: data.requested_by },
-                select: { line_user_id: true, email: true }
+    const candidateNames = [...new Set([
+        data.requested_by?.trim(),
+        data.fallback_technician_name?.trim(),
+    ].filter((name): name is string => Boolean(name)))];
+
+    const userNameOr = candidateNames.map((name) => ({ username: name }));
+    const technicianNameOr = candidateNames.map((name) => ({ name, status: 'active' as const }));
+    const lineNameOr = candidateNames.flatMap((name) => ([
+        { display_name: name },
+        { full_name: name },
+    ]));
+
+    const [requesterUsers, requesterTechs, requesterLineUsers] = await Promise.all([
+        userNameOr.length > 0
+            ? prisma.tbl_users.findMany({
+                where: { OR: userNameOr },
+                select: { line_user_id: true, email: true },
             })
-            : Promise.resolve(null),
-        data.requested_by
-            ? prisma.tbl_technicians.findFirst({
-                where: { name: data.requested_by, status: 'active' },
-                select: { line_user_id: true, email: true }
+            : Promise.resolve([]),
+        technicianNameOr.length > 0
+            ? prisma.tbl_technicians.findMany({
+                where: { OR: technicianNameOr },
+                select: { line_user_id: true, email: true },
             })
-            : Promise.resolve(null),
-        data.requested_by
-            ? prisma.tbl_line_users.findFirst({
-                where: {
-                    OR: [
-                        { display_name: data.requested_by },
-                        { full_name: data.requested_by },
-                    ],
-                },
-                select: { line_user_id: true }
+            : Promise.resolve([]),
+        lineNameOr.length > 0
+            ? prisma.tbl_line_users.findMany({
+                where: { OR: lineNameOr },
+                select: { line_user_id: true },
             })
-            : Promise.resolve(null),
+            : Promise.resolve([]),
     ]);
 
     const lineRecipientIds = new Set<string>();
     const emailRecipients = new Set<string>();
 
-    if (requesterUser?.line_user_id) lineRecipientIds.add(requesterUser.line_user_id);
-    if (requesterTech?.line_user_id) lineRecipientIds.add(requesterTech.line_user_id);
-    if (requesterLineUser?.line_user_id) lineRecipientIds.add(requesterLineUser.line_user_id);
+    requesterUsers.forEach((user) => {
+        if (user.line_user_id) lineRecipientIds.add(user.line_user_id);
+        if (user.email) emailRecipients.add(user.email);
+    });
 
-    if (requesterUser?.email) emailRecipients.add(requesterUser.email);
-    if (requesterTech?.email) emailRecipients.add(requesterTech.email);
+    requesterTechs.forEach((tech) => {
+        if (tech.line_user_id) lineRecipientIds.add(tech.line_user_id);
+        if (tech.email) emailRecipients.add(tech.email);
+    });
+
+    requesterLineUsers.forEach((lineUser) => {
+        if (lineUser.line_user_id) lineRecipientIds.add(lineUser.line_user_id);
+    });
 
     const statusLabel = data.status === 'approved' ? 'พร้อมจ่ายแล้ว' : 'ไม่พร้อมจ่าย';
     const lines = [

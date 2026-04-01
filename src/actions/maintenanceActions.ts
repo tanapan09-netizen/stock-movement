@@ -1339,7 +1339,7 @@ export async function confirmPartsUsed(data: {
             return { success: false, error: 'Unauthorized' };
         }
 
-        if (!canConfirmMaintenancePartUsage(authContext.role)) {
+        if (!canConfirmMaintenancePartUsage(authContext.role, authContext.permissions)) {
             return { success: false, error: 'Permission denied' };
         }
 

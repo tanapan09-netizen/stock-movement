@@ -7,6 +7,7 @@ import { uploadFile } from '@/lib/gcs';
 import { logSystemAction } from '@/lib/logger';
 import { generatePurchaseRequestNumber } from '@/lib/requestUtils';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
+import type { Prisma } from '@prisma/client';
 import {
     canApprovePartRequestStage,
     canCreatePartRequest,
@@ -227,6 +228,7 @@ export async function updatePartRequestStatus(
                 tbl_maintenance_requests: {
                     select: {
                         request_number: true,
+                        assigned_to: true,
                         tbl_rooms: {
                             select: {
                                 room_code: true,
@@ -312,6 +314,7 @@ export async function updatePartRequestStatus(
                         status,
                         decided_by: authContext.session.user.name || 'System',
                         maintenance_request_number: currentRequest.tbl_maintenance_requests?.request_number || null,
+                        fallback_technician_name: currentRequest.tbl_maintenance_requests?.assigned_to || null,
                         room_code: currentRequest.tbl_maintenance_requests?.tbl_rooms?.room_code || null,
                         room_name: currentRequest.tbl_maintenance_requests?.tbl_rooms?.room_name || null,
                     });
@@ -417,7 +420,7 @@ export async function approvePartRequest(
             return { success: false, error: 'Permission denied' };
         }
 
-        const data: any = {};
+        const data: Prisma.tbl_part_requestsUpdateInput = {};
 
         if (action === 'reject') {
             data.status = 'rejected';

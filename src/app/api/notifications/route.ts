@@ -326,7 +326,18 @@ export async function GET(request: Request) {
                 maintenanceWithdrawalWhere.requested_by = userName || '__UNKNOWN_USER__';
             }
 
-            const [pendingMaintenanceWithdrawals, pendingPurchaseParts] = await Promise.all([
+            const maintenanceDecisionWhere = (isTechnicianView && userName)
+                ? {
+                    request_type: 'maintenance_withdrawal',
+                    requested_by: userName,
+                    status: { in: ['approved', 'rejected'] as string[] },
+                    updated_at: {
+                        gte: new Date(Date.now() - (7 * 24 * 60 * 60 * 1000)),
+                    },
+                }
+                : null;
+
+            const [pendingMaintenanceWithdrawals, pendingPurchaseParts, maintenanceWithdrawalDecisions] = await Promise.all([
                 canSeeMaintenanceWithdrawalNotifications
                     ? prisma.tbl_part_requests.count({ where: maintenanceWithdrawalWhere })
                     : Promise.resolve(0),
@@ -341,6 +352,31 @@ export async function GET(request: Request) {
                         },
                     })
                     : Promise.resolve(0),
+                maintenanceDecisionWhere
+                    ? prisma.tbl_part_requests.findMany({
+                        where: maintenanceDecisionWhere,
+                        orderBy: { updated_at: 'desc' },
+                        take: 8,
+                        select: {
+                            request_id: true,
+                            item_name: true,
+                            quantity: true,
+                            status: true,
+                            updated_at: true,
+                            tbl_maintenance_requests: {
+                                select: {
+                                    request_number: true,
+                                    tbl_rooms: {
+                                        select: {
+                                            room_code: true,
+                                            room_name: true,
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    })
+                    : Promise.resolve([]),
             ]);
 
             if (pendingMaintenanceWithdrawals > 0) {
@@ -366,6 +402,23 @@ export async function GET(request: Request) {
                     read: false,
                 });
             }
+
+            maintenanceWithdrawalDecisions.forEach((item) => {
+                const statusLabel = item.status === 'approved' ? 'พร้อมจ่ายแล้ว' : 'ไม่พร้อมจ่าย';
+                const maintenanceRequestNumber = item.tbl_maintenance_requests?.request_number || '-';
+                const roomCode = item.tbl_maintenance_requests?.tbl_rooms?.room_code || '-';
+                const roomName = item.tbl_maintenance_requests?.tbl_rooms?.room_name || '';
+
+                notifications.push({
+                    id: `part_requests_maintenance_decision_${item.request_id}_${item.status}_${new Date(item.updated_at || new Date()).getTime()}`,
+                    type: 'part_request',
+                    module: 'part_requests',
+                    title: `คลังตอบกลับคำขอเบิกอะไหล่ (${statusLabel})`,
+                    message: `${item.item_name} x${item.quantity} | ใบงาน ${maintenanceRequestNumber} | ห้อง ${roomCode}${roomName ? ` - ${roomName}` : ''}`,
+                    time: item.updated_at || new Date(),
+                    read: false,
+                });
+            });
         }
 
         if (shouldLoadModule(requestedModule, 'petty_cash') && canViewPettyCashNotifications(role, permissions)) {
