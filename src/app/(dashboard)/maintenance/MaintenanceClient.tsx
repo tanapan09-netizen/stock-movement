@@ -1146,6 +1146,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         const executedTechnician = getLatestExecutionTechnician(nextHistoryItems, request.assigned_to);
         if (executedTechnician) {
             setEditData((prev) => ({ ...prev, assigned_to: executedTechnician }));
+        } else {
+            const technicianName = session?.user?.name?.trim() || '';
+            if (isMaintenanceTechnician(loggedInRole) && technicianName && !request.assigned_to) {
+                setEditData((prev) => ({ ...prev, assigned_to: technicianName }));
+            }
         }
 
         const partsResult = await getMaintenanceParts(request.request_id);
