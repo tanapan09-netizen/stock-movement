@@ -517,6 +517,7 @@ export async function notifyMaintenanceStatusChange(
 
     const { prisma } = await import('@/lib/prisma');
     const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
+    const assignedName = request.assigned_to?.trim() || null;
     const statusLabelMap: Record<string, string> = {
         pending: 'Pending',
         approved: 'Forwarded',
@@ -563,7 +564,7 @@ export async function notifyMaintenanceStatusChange(
         summary: 'The maintenance request status has changed.',
     };
 
-    const [reporterUser, reporterCustomer, assignedUser, assignedTech] = await Promise.all([
+    const [reporterUser, reporterCustomer, assignedUser, assignedTech, assignedLineUser] = await Promise.all([
         request.reported_by
             ? prisma.tbl_users.findUnique({
                 where: { username: request.reported_by },
@@ -576,16 +577,27 @@ export async function notifyMaintenanceStatusChange(
                 select: { line_user_id: true }
             })
             : Promise.resolve(null),
-        request.assigned_to
+        assignedName
             ? prisma.tbl_users.findUnique({
-                where: { username: request.assigned_to },
+                where: { username: assignedName },
                 select: { line_user_id: true, email: true }
             })
             : Promise.resolve(null),
-        request.assigned_to
+        assignedName
             ? prisma.tbl_technicians.findFirst({
-                where: { name: request.assigned_to, status: 'active' },
+                where: { name: assignedName, status: 'active' },
                 select: { line_user_id: true, email: true }
+            })
+            : Promise.resolve(null),
+        assignedName
+            ? prisma.tbl_line_users.findFirst({
+                where: {
+                    OR: [
+                        { display_name: assignedName },
+                        { full_name: assignedName },
+                    ],
+                },
+                select: { line_user_id: true },
             })
             : Promise.resolve(null),
     ]);
@@ -602,8 +614,20 @@ export async function notifyMaintenanceStatusChange(
     if (shouldNotifyAssignee) {
         if (assignedUser?.line_user_id) lineRecipientIds.add(assignedUser.line_user_id);
         if (assignedTech?.line_user_id) lineRecipientIds.add(assignedTech.line_user_id);
+        if (assignedLineUser?.line_user_id) lineRecipientIds.add(assignedLineUser.line_user_id);
         if (assignedUser?.email) emailRecipients.add(assignedUser.email);
         if (assignedTech?.email) emailRecipients.add(assignedTech.email);
+
+        if (
+            assignedName &&
+            !assignedUser?.line_user_id &&
+            !assignedTech?.line_user_id &&
+            !assignedLineUser?.line_user_id &&
+            !assignedUser?.email &&
+            !assignedTech?.email
+        ) {
+            console.warn('[Notification] Assignee notification recipient not found for maintenance status update:', assignedName);
+        }
     }
 
     if (shouldNotifyApprovers) {
