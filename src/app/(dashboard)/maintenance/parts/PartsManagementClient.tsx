@@ -193,7 +193,8 @@ export default function PartsManagementClient({
   const withdrawDialogDescription = canDirectWithdraw
     ? 'เบิกอะไหล่จาก WH-01 เพื่อจ่ายให้ใบงานซ่อมโดยตรง'
     : 'ส่งคำขอไปที่ role store ก่อน เพื่อยืนยันการเบิกและพร้อมส่งมอบให้ช่าง';
-  const withdrawSubmitLabel = canDirectWithdraw ? 'ยืนยันเบิก' : 'ส่งคำขอ';
+  const withdrawSubmitLabel = canDirectWithdraw ? 'ยืนยันเบิก' : 'ส่งคำขอไปคลัง';
+  const withdrawHeaderButtonLabel = canDirectWithdraw ? 'เบิกอะไหล่' : 'ส่งคำขอเบิกไปคลัง';
   const normalizedSearchText = searchText.trim().toLowerCase();
 
   const matchesPartRequestSearch = (request: PartRequestItem) => {
@@ -499,7 +500,7 @@ export default function PartsManagementClient({
               className="flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-white hover:bg-orange-700"
             >
               <Plus size={18} />
-              {canDirectWithdraw ? 'เบิกอะไหล่' : 'ทำเรื่องเบิกอะไหล่'}
+              {withdrawHeaderButtonLabel}
             </button>
           ) : null}
           {canDirectStockActions ? (
@@ -515,14 +516,18 @@ export default function PartsManagementClient({
       </div>
 
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-900/20">
-        <div className="flex items-start gap-3 text-sm text-blue-700 dark:text-blue-300">
-          <AlertTriangle className="mt-0.5 text-blue-500" size={20} />
-          <div className="space-y-1">
-            <p>ช่างทำเรื่องเบิกอะไหล่ได้จากหน้านี้ และระบบจะแจ้งไปที่ store </p>
-            
+          <div className="flex items-start gap-3 text-sm text-blue-700 dark:text-blue-300">
+            <AlertTriangle className="mt-0.5 text-blue-500" size={20} />
+            <div className="space-y-1">
+              <p>
+                {canDirectWithdraw
+                  ? 'หน้านี้รองรับการเบิกอะไหล่จากคลังโดยตรงและคืนเข้าสต็อก'
+                  : 'ช่างทำเรื่องเบิกได้จากหน้านี้ โดยระบบจะส่งคำขอไปที่ store ก่อนทุกครั้ง'}
+              </p>
+              
+            </div>
           </div>
         </div>
-      </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[
@@ -590,7 +595,7 @@ export default function PartsManagementClient({
               คำขอเบิกอะไหล่รอคลังยืนยัน
             </h2>
             <p className="mt-1 text-sm text-gray-500">
-              ให้คลังตรวจสอบสต็อกและตอบกลับว่า "พร้อมจ่าย" หรือ "ไม่พร้อมจ่าย" ก่อนส่งมอบให้ช่าง
+              ให้คลังตรวจสอบสต็อกและตอบกลับว่า &quot;พร้อมจ่าย&quot; หรือ &quot;ไม่พร้อมจ่าย&quot; ก่อนส่งมอบให้ช่าง
             </p>
           </div>
           <span className="text-sm text-gray-500">{filteredPendingPartRequests.length} รายการ</span>

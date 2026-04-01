@@ -2,6 +2,7 @@ import { auth } from '@/auth';
 import {
     canDirectManageMaintenanceStock,
     canManageMaintenanceParts,
+    isMaintenanceTechnician,
 } from '@/lib/rbac';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
 import PartsManagementClient from './PartsManagementClient';
@@ -17,10 +18,12 @@ export default async function PartsManagementPage() {
 
     return (
         <PartsManagementClient
-            canManageParts={canManageMaintenanceParts(
-                permissionContext.role,
-                permissionContext.permissions,
-            )}
+            canManageParts={
+                canManageMaintenanceParts(
+                    permissionContext.role,
+                    permissionContext.permissions,
+                ) || isMaintenanceTechnician(permissionContext.role)
+            }
             canDirectStockActions={canDirectManageMaintenanceStock(
                 permissionContext.role,
                 permissionContext.permissions,
