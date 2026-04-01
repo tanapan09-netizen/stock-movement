@@ -370,7 +370,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     };
     const canCreateNewRequestByRole = ALLOWED_NEW_MAINTENANCE_ROLES.has(loggedInRole);
     const canCreateNewMaintenanceRequest = canEditPage && canCreateNewRequestByRole;
-    const allowGeneralRequestPull = false;
+    const allowGeneralRequestPull = canCreateNewMaintenanceRequest;
     const maintenanceTargetRoleOptions = MAINTENANCE_TARGET_ROLE_OPTIONS.some((option) => option.value === 'technician')
         ? MAINTENANCE_TARGET_ROLE_OPTIONS
         : [FALLBACK_TECHNICIAN_TARGET_ROLE_OPTION, ...MAINTENANCE_TARGET_ROLE_OPTIONS];
@@ -607,6 +607,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             const isCustomerRequest = tags.includes('ลูกค้า') || tags.includes('customer');
 
             setSelectedGeneralRequestId(requestId);
+            setLocationMode('location');
             setFormData(prev => ({
                 ...prev,
                 title: selected.title,
@@ -882,7 +883,6 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         }
         data.append('target_role', formData.target_role);
         if (allowGeneralRequestPull && pullFromGeneral && selectedGeneralRequestId) {
-            data.append('source_request_id', String(selectedGeneralRequestId));
             data.append('source_image_count', String(selectedPulledRequestImageUrls.length));
             if (selectedPulledRequestImageUrls.length > 0) {
                 selectedPulledRequestImageUrls.forEach((imageUrl) => data.append('source_image_urls', imageUrl));
@@ -2187,21 +2187,47 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                             {/* General Request Pull */}
                             {allowGeneralRequestPull && (
                             <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-4">
-                                <label className="flex items-center gap-3 cursor-pointer group">
-                                    <input
-                                        type="checkbox"
-                                        checked={pullFromGeneral}
-                                        onChange={(e) => {
-                                            setPullFromGeneral(e.target.checked);
-                                            if (e.target.checked) fetchGeneralRequests();
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const nextPullState = !pullFromGeneral;
+                                            setPullFromGeneral(nextPullState);
+                                            if (nextPullState) {
+                                                void fetchGeneralRequests();
+                                                return;
+                                            }
+                                            setSelectedGeneralRequestId(null);
                                         }}
-                                        className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 border-gray-300 transition-all cursor-pointer"
-                                    />
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-semibold text-blue-800">ดึงข้อมูลจากการแจ้งเหตุด่วน/ทั่วไป</span>
-                                        <span className="text-xs text-blue-600">กดที่นี่หากต้องการสร้างใบงานจากการแจ้งเคสด่วนออนไลน์</span>
-                                    </div>
-                                </label>
+                                        className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                                            pullFromGeneral
+                                                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                                : 'bg-white text-blue-700 border border-blue-300 hover:bg-blue-100'
+                                        }`}
+                                    >
+                                        {pullFromGeneral ? 'ซ่อนการดึงข้อมูล' : 'ดึงข้อมูลจากการรับเรื่อง'}
+                                    </button>
+                                    {pullFromGeneral && (
+                                        <button
+                                            type="button"
+                                            onClick={() => void fetchGeneralRequests()}
+                                            disabled={fetchingGeneral}
+                                            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium bg-white text-blue-700 border border-blue-200 hover:bg-blue-100 disabled:opacity-60"
+                                        >
+                                            {fetchingGeneral ? (
+                                                <>
+                                                    <Loader2 className="animate-spin" size={16} />
+                                                    กำลังโหลด...
+                                                </>
+                                            ) : (
+                                                'รีเฟรชรายการรับเรื่อง'
+                                            )}
+                                        </button>
+                                    )}
+                                </div>
+                                <p className="mt-2 text-xs text-blue-700">
+                                    ดึงข้อมูลจากหน้า /general-request มาเติมฟอร์มแจ้งซ่อมใหม่ (ไม่สร้างใบงานอัตโนมัติ)
+                                </p>
 
                                 {pullFromGeneral && (
                                     <div className="mt-4 pt-4 border-t border-blue-200">
@@ -2238,7 +2264,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         {selectedPulledRequestImageUrls.length > 0 && (
                                             <div className="mt-3 rounded-lg border border-blue-200 bg-white p-3">
                                                 <p className="mb-2 text-xs font-medium text-blue-800">
-                                                    รูปจากเคสด่วนออนไลน์จะถูกแนบไปกับใบงานใหม่อัตโนมัติ ({selectedPulledRequestImageUrls.length} รูป)
+                                                    รูปจากการรับเรื่องจะถูกคัดลอกไปแนบกับใบงานใหม่ ({selectedPulledRequestImageUrls.length} รูป)
                                                 </p>
                                                 <div className="grid grid-cols-2 gap-2">
                                                     {selectedPulledRequestImageUrls.map((imageUrl, index) => (
