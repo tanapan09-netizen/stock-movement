@@ -41,6 +41,10 @@ type MaintenancePart = {
   withdrawn_at: Date;
   returned_qty: number;
   withdrawn_by: string;
+  actual_used?: number | null;
+  verified_quantity?: number | null;
+  verification_notes?: string | null;
+  notes?: string | null;
   product?: { p_name: string; p_unit: string | null; p_count?: number };
   request?: { request_number: string; title: string; tbl_rooms: Room };
 };
@@ -435,6 +439,9 @@ export default function PartsManagementClient({
     setPartStatusFilter('all');
   };
 
+  const isDefectiveMarked = (part: MaintenancePart) =>
+    part.status === 'defective' || (part.notes || '').includes('MARKED AS DEFECTIVE');
+
   const filteredPartGroups = Object.values(
     filteredParts.reduce<
       Record<
@@ -796,8 +803,9 @@ export default function PartsManagementClient({
             {filteredPartGroups.map((group) => {
               const hasUsedParts = group.parts.some((part) => part.status === 'used');
               const hasBlockingParts = group.parts.some((part) =>
-                ['withdrawn', 'pending_verification'].includes(part.status),
+                ['withdrawn', 'pending_verification'].includes(part.status) || isDefectiveMarked(part),
               );
+              const defectiveCount = group.parts.filter((part) => isDefectiveMarked(part)).length;
 
               return (
                 <div
@@ -828,9 +836,14 @@ export default function PartsManagementClient({
                           ยืนยันตัดสต็อก
                         </button>
                       ) : null}
+                      {defectiveCount > 0 ? (
+                        <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-200">
+                          มีของเสีย {defectiveCount} รายการ รอคลังยืนยัน
+                        </span>
+                      ) : null}
                       {hasBlockingParts ? (
                         <span className="text-xs text-amber-600">
-                          ยังมีอะไหล่ค้างคืนหรือค้างตรวจนับในใบงานนี้
+                          ยังมีอะไหล่ค้างคืน/ค้างตรวจนับ หรือของเสียรอยืนยันในใบงานนี้
                         </span>
                       ) : null}
                     </div>
@@ -880,6 +893,11 @@ export default function PartsManagementClient({
                               >
                                 {STATUS_LABELS[part.status] || part.status}
                               </span>
+                              {isDefectiveMarked(part) ? (
+                                <div className="mt-1 text-xs font-semibold text-rose-700">
+                                  มีของเสีย (รอคลังยืนยัน)
+                                </div>
+                              ) : null}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">{part.withdrawn_by}</td>
                             <td className="px-4 py-3 text-right">

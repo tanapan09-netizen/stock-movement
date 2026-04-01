@@ -162,6 +162,7 @@ interface MaintenancePart {
     actual_used?: number;
     verified_quantity?: number;
     verification_notes?: string;
+    notes?: string | null;
     product?: {
         p_name: string;
         p_unit?: string | null;
@@ -326,6 +327,26 @@ const FALLBACK_TECHNICIAN_TARGET_ROLE_OPTION = {
     label: 'Technician (ช่างซ่อมบำรุง)',
 } as const;
 
+const VALID_MAINTENANCE_STATUS_FILTERS = new Set([
+    'all',
+    'pending',
+    'approved',
+    'in_progress',
+    'confirmed',
+    'completed',
+    'cancelled',
+    'verified',
+]);
+
+function normalizeMaintenanceStatusFilter(value: string | null): string {
+    const normalized = (value || '').trim().toLowerCase();
+    return VALID_MAINTENANCE_STATUS_FILTERS.has(normalized) ? normalized : 'all';
+}
+
+function isPartMarkedDefective(part: Pick<MaintenancePart, 'status' | 'notes'>): boolean {
+    return part.status === 'defective' || (part.notes || '').includes('MARKED AS DEFECTIVE');
+}
+
 const resolveParentRoomCode = (room: Room): string => {
     if (!room.zone) return room.room_code;
     const parentCode = room.building?.trim();
@@ -358,6 +379,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const canManageMaintenanceStatus = canManageMaintenanceEdit(loggedInRole, userPermissions, sessionIsApprover);
     const searchParams = useSearchParams();
     const reqQueryParam = searchParams.get('req');
+    const statusQueryParam = searchParams.get('status');
     const roomIdQueryParam = searchParams.get('room_id');
     const openFormQueryParam = searchParams.get('open_form');
     const roomLocationQueryParam = searchParams.get('location');
@@ -390,7 +412,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const [showPartRequestModal, setShowPartRequestModal] = useState(false);
     const [selectedRequest, setSelectedRequest] = useState<MaintenanceRequestItem | null>(null);
     const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
-    const [filterStatus, setFilterStatus] = useState('all');
+    const [filterStatus, setFilterStatus] = useState(() => normalizeMaintenanceStatusFilter(statusQueryParam));
     const [filterRoom, setFilterRoom] = useState<number | null>(null);
     const [filterStartDate, setFilterStartDate] = useState('');
     const [filterEndDate, setFilterEndDate] = useState('');
@@ -778,6 +800,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             }
         }
     }, [reqQueryParam, hasOpenedFromUrl, loading, requests]);
+
+    useEffect(() => {
+        const nextStatus = normalizeMaintenanceStatusFilter(statusQueryParam);
+        setFilterStatus((prev) => (prev === nextStatus ? prev : nextStatus));
+    }, [statusQueryParam]);
 
     async function handleResendNotification(requestId: number) {
         const result = await Swal.fire({
@@ -1734,6 +1761,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         ? selectedRequestExecutionTechnician
         : (editData.assigned_to || '');
     const isEmployeeRole = loggedInRole === 'employee';
+    const isHeadTechnicianRole = loggedInRole === 'leader_technician';
     const isSelectedRequestAwaitingHeadApproval = selectedWorkflowStatus === 'confirmed';
     const canRoleEditMaintenanceStatus = new Set(['technician', 'leader_technician', 'manager', 'admin', 'owner']).has(loggedInRole);
     const canEditDetailStatusByRole = canRoleEditMaintenanceStatus || canManageMaintenanceStatus || canApproveCompletion;
@@ -1767,7 +1795,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         : [];
     const canEditDetailStatus = !isEmployeeRole && canEditDetailStatusByRole && detailStatusOptions.length > 1;
     const canShowDetailSaveButton = !isEmployeeRole && canEditDetailStatus;
-    const canShowHeadTechnicianActions = false;
+    const canShowHeadTechnicianActions =
+        Boolean(selectedRequest)
+        && isHeadTechnicianRole
+        && isSelectedRequestAwaitingHeadApproval
+        && canApproveCompletion
+        && !isSelectedRequestReadOnly;
     const canShowPartsAddSection = canEditPage && !isSelectedRequestReadOnly && editData.status === 'confirmed';
     const isAssignedTechnicianInputDisabled =
         isDetailReadOnly
@@ -3446,6 +3479,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                     : part.status}
                       </span>
 
+                      {isPartMarkedDefective(part) && (
+                        <span className="mt-1 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200">
+                          มีของเสีย รอคลังยืนยัน
+                        </span>
+                      )}
+
                       {part.actual_used !== null && part.actual_used !== undefined && (
                         <span className="mt-1 text-xs text-slate-500">
                           ใช้จริง: {part.actual_used}
@@ -3515,7 +3554,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                       </div>
                     )}
 
-                  {part.status === 'pending_verification' && !isSelectedRequestReadOnly && canVerifyParts && (
+                  {['pending_verification', 'used', 'defective'].includes(part.status) && !isSelectedRequestReadOnly && canVerifyParts && (
                     <div className="mt-3 rounded-xl bg-yellow-50 px-3 pb-2 pt-3 ring-1 ring-yellow-200">
                       {verifyingPartId === part.part_id ? (
                         <div className="flex flex-col gap-2">
@@ -3554,7 +3593,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                           }}
                           className="flex items-center gap-1 text-xs font-medium text-yellow-700 hover:text-yellow-800"
                         >
-                          <CheckCircle2 size={12} /> ตรวจนับสินค้า
+                          <CheckCircle2 size={12} /> {isPartMarkedDefective(part) ? 'ยืนยันของเสีย' : 'ตรวจนับสินค้า'}
                         </button>
                       )}
                     </div>

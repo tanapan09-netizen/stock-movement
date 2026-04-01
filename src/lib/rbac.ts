@@ -91,6 +91,7 @@ const isManagerLike = (role?: string | null) => MANAGER_ROLES.has(normalizeRole(
 const isAccountingRole = (role?: string | null) => ACCOUNTING_ROLES.has(normalizeRole(role));
 const isPurchasingRole = (role?: string | null) => PURCHASING_ROLES.has(normalizeRole(role));
 const isStoreRole = (role?: string | null) => STORE_ROLES.has(normalizeRole(role));
+const isHeadTechnicianRole = (role?: string | null) => normalizeRole(role) === 'leader_technician';
 
 const hasPermissionKey = (permissions: PagePermissionMap = {}, key: string) => Boolean(permissions[key]);
 
@@ -675,7 +676,10 @@ export function canApproveMaintenanceCompletion(
   permissions: PagePermissionMap = {},
   isApprover = false,
 ) {
-  return isManagerLike(role) || Boolean(isApprover) || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE);
+  return isManagerLike(role)
+    || isHeadTechnicianRole(role)
+    || Boolean(isApprover)
+    || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE);
 }
 
 export function canVerifyMaintenanceParts(role: string | null | undefined, permissions: PagePermissionMap = {}) {

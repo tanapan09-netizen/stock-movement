@@ -1817,6 +1817,10 @@ export async function getWithdrawnPartsForMaintenance() {
             withdrawn_at: p.withdrawn_at,
             returned_qty: p.returned_qty,
             withdrawn_by: p.withdrawn_by,
+            actual_used: p.actual_used,
+            verified_quantity: p.verified_quantity,
+            verification_notes: p.verification_notes,
+            notes: p.notes,
             product: {
                 p_name: p.tbl_products.p_name,
                 p_unit: p.tbl_products.p_unit,

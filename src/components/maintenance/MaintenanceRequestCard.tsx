@@ -1,6 +1,6 @@
 'use client';
 
-import { Wrench, Clock, CheckCircle, XCircle, MapPin, User, Calendar, AlertTriangle, ArrowRight, BellRing, ShieldCheck, AlertCircle, Package, RotateCcw } from 'lucide-react';
+import { Wrench, Clock, CheckCircle, XCircle, MapPin, User, Calendar, AlertTriangle, ArrowRight, BellRing, ShieldCheck, AlertCircle, Package, RotateCcw, CheckCircle2, Circle } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import { getMaintenanceWorkflowStep, MAINTENANCE_WORKFLOW_LABELS } from '@/lib/maintenance-workflow';
@@ -27,6 +27,8 @@ type MaintenanceRequestCardRequest = {
     reported_by: string;
     created_at: Date | string;
     assigned_to?: string | null;
+    technician_signature?: string | null;
+    customer_signature?: string | null;
     tbl_rooms?: {
         room_code?: string | null;
         room_name?: string | null;
@@ -72,6 +74,14 @@ export default function MaintenanceRequestCard({ request, onClick, onResend, age
     const latestReopenReason = Array.isArray(request.tbl_maintenance_history)
         ? request.tbl_maintenance_history.find((item) => item.action === 'reopen_reason')?.new_value || null
         : null;
+    const confirmedDetailRows = request.status === 'confirmed'
+        ? [
+            { label: 'ช่างส่งงานเข้าตรวจรับแล้ว', done: true },
+            { label: 'ลงลายเซ็นช่างแล้ว', done: Boolean(request.technician_signature) },
+            { label: 'ลงลายเซ็นผู้รับงานแล้ว', done: Boolean(request.customer_signature) },
+            { label: 'คลังตัดสต็อกอะไหล่แล้ว', done: hasPartsStockPosted },
+        ]
+        : [];
 
     return (
         <div
@@ -178,6 +188,33 @@ export default function MaintenanceRequestCard({ request, onClick, onResend, age
                     <div className="flex flex-col">
                         <span className="text-[9px] text-blue-500 dark:text-blue-400 font-black uppercase tracking-widest leading-none mb-1">ช่างผู้รับผิดชอบ</span>
                         <span className="text-sm text-gray-900 dark:text-white font-black leading-tight">{request.assigned_to}</span>
+                    </div>
+                </div>
+            )}
+
+            {request.status === 'confirmed' && (
+                <div className="rounded-2xl border border-purple-200 bg-purple-50/80 p-3">
+                    <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-purple-700">
+                        สถานะขั้นตอนการทำงาน (ละเอียด)
+                    </div>
+                    <div className="space-y-1.5">
+                        {confirmedDetailRows.map((row) => (
+                            <div key={row.label} className="flex items-center gap-2 text-xs">
+                                {row.done ? (
+                                    <CheckCircle2 size={13} className="text-emerald-600" />
+                                ) : (
+                                    <Circle size={13} className="text-slate-400" />
+                                )}
+                                <span className={row.done ? 'text-slate-700' : 'text-slate-500'}>
+                                    {row.label}
+                                </span>
+                            </div>
+                        ))}
+                        {!hasPartsStockPosted && (
+                            <div className="pl-5 text-[11px] font-semibold text-amber-700">
+                                รอ role store ตัดสต็อก/ยืนยันรายการอะไหล่
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
