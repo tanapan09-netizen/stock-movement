@@ -894,6 +894,31 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             data.append('image_file', selectedFile);
         }
 
+        const selectedRoomForSubmit = rooms.find((room) => room.room_id === roomIdToSend);
+        const isUpdateFromGeneralRequest = allowGeneralRequestPull && pullFromGeneral && selectedGeneralRequestId;
+        const selectedTargetRoleLabel =
+            maintenanceTargetRoleOptions.find((option) => option.value === formData.target_role)?.label
+            || formData.target_role
+            || '-';
+        const confirmed = await showConfirm({
+            title: isUpdateFromGeneralRequest ? 'ยืนยันอัปเดตใบงานจากการรับเรื่อง' : 'ยืนยันส่งคำขอซ่อม',
+            message: [
+                isUpdateFromGeneralRequest
+                    ? `อ้างอิงใบงาน: #${selectedPulledRequest?.request_number || selectedGeneralRequestId}`
+                    : 'ระบบจะสร้างใบงานใหม่จากข้อมูลนี้',
+                `หัวข้อ: ${formData.title}`,
+                `ผู้แจ้ง: ${formData.reported_by}`,
+                `สถานที่: ${selectedRoomForSubmit?.room_code || '-'} - ${selectedRoomForSubmit?.room_name || '-'}`,
+                `แผนกงานที่ต้องการแจ้งไปหา: ${selectedTargetRoleLabel}`,
+                '',
+                'ยืนยันดำเนินการต่อหรือไม่?',
+            ].join('\n'),
+            confirmText: isUpdateFromGeneralRequest ? 'ยืนยันอัปเดต' : 'ยืนยันส่งคำขอ',
+            cancelText: 'ยกเลิก',
+            type: 'info',
+        });
+        if (!confirmed) return;
+
         try {
             const result = await createMaintenanceRequest(data);
             if (result.success) {
