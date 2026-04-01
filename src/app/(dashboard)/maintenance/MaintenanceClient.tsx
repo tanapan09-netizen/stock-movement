@@ -318,7 +318,6 @@ interface MaintenanceClientProps {
 
 const resolveDepartmentFromRole = (role: string) => role.trim().toLowerCase();
 const ALLOWED_NEW_MAINTENANCE_ROLES = new Set([
-    'admin',
     'employee',
 ]);
 const normalizePersonName = (value?: string | null) => (value || '').trim().toLowerCase();
@@ -371,6 +370,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     };
     const canCreateNewRequestByRole = ALLOWED_NEW_MAINTENANCE_ROLES.has(loggedInRole);
     const canCreateNewMaintenanceRequest = canEditPage && canCreateNewRequestByRole;
+    const allowGeneralRequestPull = false;
     const maintenanceTargetRoleOptions = MAINTENANCE_TARGET_ROLE_OPTIONS.some((option) => option.value === 'technician')
         ? MAINTENANCE_TARGET_ROLE_OPTIONS
         : [FALLBACK_TECHNICIAN_TARGET_ROLE_OPTION, ...MAINTENANCE_TARGET_ROLE_OPTIONS];
@@ -881,7 +881,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             data.append('vehicle_plate', vehiclePlate);
         }
         data.append('target_role', formData.target_role);
-        if (pullFromGeneral && selectedGeneralRequestId) {
+        if (allowGeneralRequestPull && pullFromGeneral && selectedGeneralRequestId) {
             data.append('source_request_id', String(selectedGeneralRequestId));
             data.append('source_image_count', String(selectedPulledRequestImageUrls.length));
             if (selectedPulledRequestImageUrls.length > 0) {
@@ -2185,6 +2185,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
                         <form onSubmit={handleSubmit} className="space-y-4">
                             {/* General Request Pull */}
+                            {allowGeneralRequestPull && (
                             <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-4">
                                 <label className="flex items-center gap-3 cursor-pointer group">
                                     <input
@@ -2264,6 +2265,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                     </div>
                                 )}
                             </div>
+                            )}
 
                             {/* Problem Title */}
                             <div>

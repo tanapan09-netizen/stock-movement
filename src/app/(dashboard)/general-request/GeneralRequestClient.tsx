@@ -19,6 +19,7 @@ import {
 } from '@/actions/maintenanceActions';
 import { getAllVehicles } from '@/actions/vehicleActions';
 import { resolveGeneralRequestAccess } from '@/lib/rbac';
+import { parseMaintenanceImageUrls } from '@/lib/maintenance-images';
 import {
     GENERAL_REQUEST_CATEGORY_OPTIONS,
     GENERAL_REQUEST_PRIORITY_CONFIG,
@@ -391,6 +392,40 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         });
     };
 
+    const formatDateTime = (date: Date | null | string) => {
+        if (!date) return '-';
+        return new Date(date).toLocaleString('th-TH', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    };
+
+    const formatCurrency = (value: number | null | undefined) => {
+        if (value === null || value === undefined) return '-';
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return '-';
+        return `THB ${numeric.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
+
+    const selectedRequestImageUrls = parseMaintenanceImageUrls(selectedRequest?.image_url);
+    const selectedRequestTags = (selectedRequest?.tags || '')
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+    const selectedRequestCategoryLabel = selectedRequest?.category
+        ? (GENERAL_REQUEST_CATEGORY_OPTIONS.find((option) => option.value === selectedRequest.category)?.label || selectedRequest.category)
+        : '-';
+    const selectedRequestLocationMeta = selectedRequest
+        ? [
+            selectedRequest.tbl_rooms?.building || null,
+            selectedRequest.tbl_rooms?.floor ? `Floor ${selectedRequest.tbl_rooms.floor}` : null,
+            selectedRequest.tbl_rooms?.zone ? `Zone ${selectedRequest.tbl_rooms.zone}` : null,
+        ].filter(Boolean).join(' / ')
+        : '';
+
     if (!canViewGeneralRequest) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -701,56 +736,125 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
             {showDetail && selectedRequest && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-lg font-bold text-gray-900">รายละเอียดคำขอ</h2>
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-start justify-between gap-4 mb-4">
+                            <div>
+                                <h2 className="text-lg font-bold text-gray-900">รายละเอียดคำขอแจ้งซ่อม</h2>
+                                <p className="text-sm text-gray-500 mt-1">ตรวจสอบข้อมูลก่อนเริ่มดำเนินงาน</p>
+                            </div>
                             <button onClick={() => setShowDetail(false)} className="p-2 hover:bg-gray-100 rounded-lg">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
 
-                        <div className="space-y-3">
+                        <div className="space-y-5">
                             <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono text-sm text-gray-500">{selectedRequest.request_number}</span>
+                                <span className="font-mono text-sm text-gray-600">{selectedRequest.request_number}</span>
                                 <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-medium border ${GENERAL_REQUEST_STATUS_CONFIG[selectedRequest.status]?.color}`}>
                                     {GENERAL_REQUEST_STATUS_CONFIG[selectedRequest.status]?.label}
                                 </span>
                                 <span className={`px-2.5 py-1 rounded-full text-sm font-medium ${GENERAL_REQUEST_PRIORITY_CONFIG[selectedRequest.priority]?.color}`}>
                                     {GENERAL_REQUEST_PRIORITY_CONFIG[selectedRequest.priority]?.label}
                                 </span>
-                                {selectedRequest.tags?.includes('ลูกค้า') && (
+                                {hasCustomerTag(selectedRequest.tags) && (
                                     <span className="px-2.5 py-1 rounded-full text-sm font-medium bg-pink-100 text-pink-700 border border-pink-200">
                                         แจ้งโดยลูกค้า
                                     </span>
                                 )}
                             </div>
 
-                            <h3 className="text-xl font-bold text-gray-900">{selectedRequest.title}</h3>
+                            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                                <h3 className="text-xl font-bold text-gray-900">{selectedRequest.title}</h3>
+                                <p className="text-gray-600 text-sm leading-relaxed mt-2 whitespace-pre-line">
+                                    {selectedRequest.description?.trim() || 'ไม่มีรายละเอียดเพิ่มเติม'}
+                                </p>
+                            </div>
 
-                            {selectedRequest.description && (
-                                <p className="text-gray-600 text-sm leading-relaxed">{selectedRequest.description}</p>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-3 pt-2">
-                                <div className="bg-gray-50 rounded-lg p-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div className="bg-white border border-gray-200 rounded-lg p-3">
                                     <p className="text-xs text-gray-500 mb-1">สถานที่</p>
-                                    <p className="text-sm font-medium text-gray-900">
-                                        {selectedRequest.tbl_rooms?.room_code} - {selectedRequest.tbl_rooms?.room_name}
+                                    <p className="text-sm font-semibold text-gray-900">
+                                        {selectedRequest.tbl_rooms?.room_code || '-'} - {selectedRequest.tbl_rooms?.room_name || '-'}
+                                    </p>
+                                    <p className="text-xs text-gray-500 mt-1">{selectedRequestLocationMeta || '-'}</p>
+                                </div>
+                                <div className="bg-white border border-gray-200 rounded-lg p-3">
+                                    <p className="text-xs text-gray-500 mb-1">หมวดหมู่ / แผนก</p>
+                                    <p className="text-sm font-semibold text-gray-900">{selectedRequestCategoryLabel}</p>
+                                    <p className="text-xs text-gray-500 mt-1">{selectedRequest.department || '-'}</p>
+                                </div>
+                                <div className="bg-white border border-gray-200 rounded-lg p-3">
+                                    <p className="text-xs text-gray-500 mb-1">ผู้แจ้ง</p>
+                                    <p className="text-sm font-semibold text-gray-900">{selectedRequest.reported_by || '-'}</p>
+                                    <p className="text-xs text-gray-500 mt-1">{selectedRequest.contact_info || '-'}</p>
+                                </div>
+                                <div className="bg-white border border-gray-200 rounded-lg p-3">
+                                    <p className="text-xs text-gray-500 mb-1">ผู้รับผิดชอบ</p>
+                                    <p className="text-sm font-semibold text-gray-900">{selectedRequest.assigned_to || '-'}</p>
+                                </div>
+                                <div className="bg-white border border-gray-200 rounded-lg p-3">
+                                    <p className="text-xs text-gray-500 mb-1">เวลาแจ้ง</p>
+                                    <p className="text-sm font-semibold text-gray-900">{formatDateTime(selectedRequest.created_at)}</p>
+                                </div>
+                                <div className="bg-white border border-gray-200 rounded-lg p-3">
+                                    <p className="text-xs text-gray-500 mb-1">วันที่นัดหมาย</p>
+                                    <p className="text-sm font-semibold text-gray-900">{formatDateTime(selectedRequest.scheduled_date)}</p>
+                                </div>
+                                <div className="bg-white border border-gray-200 rounded-lg p-3">
+                                    <p className="text-xs text-gray-500 mb-1">วันที่เสร็จงาน</p>
+                                    <p className="text-sm font-semibold text-gray-900">{formatDateTime(selectedRequest.completed_at)}</p>
+                                </div>
+                                <div className="bg-white border border-gray-200 rounded-lg p-3">
+                                    <p className="text-xs text-gray-500 mb-1">ค่าใช้จ่าย (ประมาณการ / จริง)</p>
+                                    <p className="text-sm font-semibold text-gray-900">
+                                        {formatCurrency(selectedRequest.estimated_cost)} / {formatCurrency(selectedRequest.actual_cost)}
                                     </p>
                                 </div>
-                                <div className="bg-gray-50 rounded-lg p-3">
-                                    <p className="text-xs text-gray-500 mb-1">ผู้แจ้ง</p>
-                                    <p className="text-sm font-medium text-gray-900">{selectedRequest.reported_by}</p>
-                                </div>
-                                <div className="bg-gray-50 rounded-lg p-3">
-                                    <p className="text-xs text-gray-500 mb-1">วันที่แจ้ง</p>
-                                    <p className="text-sm font-medium text-gray-900">{formatDate(selectedRequest.created_at)}</p>
-                                </div>
-                                {selectedRequest.assigned_to && (
-                                    <div className="bg-gray-50 rounded-lg p-3">
-                                        <p className="text-xs text-gray-500 mb-1">ผู้รับผิดชอบ</p>
-                                        <p className="text-sm font-medium text-gray-900">{selectedRequest.assigned_to}</p>
+                            </div>
+
+                            <div className="rounded-xl border border-gray-200 p-4">
+                                <p className="text-xs text-gray-500 mb-1">บันทึกช่าง / หมายเหตุ</p>
+                                <p className="text-sm text-gray-800 whitespace-pre-line">{selectedRequest.notes?.trim() || '-'}</p>
+                            </div>
+
+                            <div className="rounded-xl border border-gray-200 p-4">
+                                <p className="text-xs text-gray-500 mb-2">แท็ก</p>
+                                {selectedRequestTags.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2">
+                                        {selectedRequestTags.map((tag) => (
+                                            <span key={tag} className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 border border-blue-100 text-blue-700">
+                                                {tag}
+                                            </span>
+                                        ))}
                                     </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500">-</p>
+                                )}
+                            </div>
+
+                            <div className="rounded-xl border border-gray-200 p-4">
+                                <p className="text-xs text-gray-500 mb-2">รูปภาพประกอบ</p>
+                                {selectedRequestImageUrls.length > 0 ? (
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                        {selectedRequestImageUrls.map((src, idx) => (
+                                            <a
+                                                key={`${src}-${idx}`}
+                                                href={src}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="group rounded-lg border border-gray-200 overflow-hidden bg-gray-50"
+                                            >
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img
+                                                    src={src}
+                                                    alt={`maintenance-${idx + 1}`}
+                                                    className="w-full h-32 object-cover transition-transform group-hover:scale-[1.02]"
+                                                />
+                                            </a>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500">ไม่มีรูปภาพแนบ</p>
                                 )}
                             </div>
                         </div>
@@ -766,7 +870,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                     </div>
                 </div>
             )}
-
             {showForm && canCreateGeneralRequest && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[95vh] overflow-y-auto">

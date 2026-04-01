@@ -26,7 +26,7 @@ import {
     canSubmitMaintenanceCompletion,
     canVerifyMaintenanceParts,
 } from '@/lib/rbac';
-import { isManagerRole } from '@/lib/roles';
+import { isManagerRole, normalizeRole } from '@/lib/roles';
 import {
     canTransitionMaintenanceStatus,
     isMaintenanceWorkflowClosed,
@@ -553,6 +553,10 @@ export async function createMaintenanceRequest(formData: FormData) {
             return { success: false, error: 'Permission denied: role cannot create maintenance request' };
         }
 
+        if (normalizeRole(authContext.role) !== 'employee') {
+            return { success: false, error: 'Only employee can create new maintenance requests' };
+        }
+
         const rawData = {
             room_id: parseInt(formData.get('room_id') as string),
             title: formData.get('title') as string,
@@ -573,6 +577,9 @@ export async function createMaintenanceRequest(formData: FormData) {
         const target_role = ((formData.get('target_role') as string) || 'technician').trim();
         const sourceRequestIdRaw = formData.get('source_request_id');
         const sourceRequestId = typeof sourceRequestIdRaw === 'string' ? Number.parseInt(sourceRequestIdRaw, 10) : null;
+        if (Number.isFinite(sourceRequestId) && (sourceRequestId || 0) > 0) {
+            return { success: false, error: 'Auto create from general request is disabled. Employee must create manually.' };
+        }
         const sourceImageCountRaw = formData.get('source_image_count');
         const sourceImageCount = typeof sourceImageCountRaw === 'string' ? Number.parseInt(sourceImageCountRaw, 10) : 0;
         const sourceImageUrls = formData
