@@ -651,7 +651,6 @@ export async function createMaintenanceRequest(formData: FormData) {
                         department: department || null,
                         contact_info: contact_info || null,
                         tags: finalTags,
-                        completed_at: initialStatus === 'completed' ? new Date() : null,
                     }
                 });
 
