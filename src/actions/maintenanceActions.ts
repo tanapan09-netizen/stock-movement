@@ -704,6 +704,30 @@ export async function createMaintenanceRequest(formData: FormData) {
     }
 }
 
+function normalizeRoomOwnershipValue(value?: string | null): string {
+    return (value || '').trim().toLowerCase();
+}
+
+function resolveRoomParentCodeForOwnership(room: { room_code: string; building?: string | null; zone?: string | null }): string {
+    if (!room.zone) return room.room_code;
+    const parentCode = room.building?.trim();
+    if (parentCode && parentCode !== room.room_code) return parentCode;
+    return room.room_code;
+}
+
+function isRequestedRoomAllowedForCustomer(
+    customerRoomLookup: string,
+    room: { room_code: string; room_name: string; building?: string | null; zone?: string | null },
+): boolean {
+    if (!customerRoomLookup) return true;
+
+    return [
+        normalizeRoomOwnershipValue(room.room_code),
+        normalizeRoomOwnershipValue(room.room_name),
+        normalizeRoomOwnershipValue(resolveRoomParentCodeForOwnership(room)),
+    ].some((value) => value.length > 0 && value === customerRoomLookup);
+}
+
 export async function submitCustomerRepairRequest(formData: FormData) {
     try {
         const line_user_id = formData.get('line_user_id') as string;
@@ -727,6 +751,22 @@ export async function submitCustomerRepairRequest(formData: FormData) {
         };
 
         const validData = validateData(createMaintenanceRequestSchema, rawData, 'Maintenance');
+        const requestedRoom = await prisma.tbl_rooms.findUnique({
+            where: { room_id: validData.room_id },
+            select: { room_id: true, room_code: true, room_name: true, building: true, zone: true, active: true },
+        });
+
+        if (!requestedRoom || requestedRoom.active === false) {
+            return { success: false, error: 'Selected room is not available' };
+        }
+
+        const customerRoomLookup = normalizeRoomOwnershipValue(customer.room_number);
+        if (!customerRoomLookup) {
+            return { success: false, error: 'Unauthorized: Customer room is not registered' };
+        }
+        if (!isRequestedRoomAllowedForCustomer(customerRoomLookup, requestedRoom)) {
+            return { success: false, error: 'Unauthorized: Room is not registered for this customer' };
+        }
 
         const category = formData.get('category') as string;
         const department = formData.get('department') as string;
@@ -780,41 +820,34 @@ export async function submitCustomerRepairRequest(formData: FormData) {
         });
 
         try {
-            const room = await prisma.tbl_rooms.findUnique({
-                where: { room_id: validData.room_id },
-                select: { room_code: true, room_name: true }
-            });
+            console.log(`[Maintenance] notifying LINE target_role=${target_role} title="${validData.title}" room=${requestedRoom.room_code}`);
+            await notifyRoleViaLine(
+                target_role,
+                validData.title,
+                requestedRoom.room_code,
+                requestedRoom.room_name,
+                validData.priority,
+                reported_by,
+                {
+                    requestNumber: request.request_number,
+                    status: request.status,
+                    openUrl: `${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')}/maintenance?req=${request.request_number}`,
+                },
+            );
 
-            if (room) {
-                console.log(`[Maintenance] notifying LINE target_role=${target_role} title="${validData.title}" room=${room.room_code}`);
-                await notifyRoleViaLine(
-                    target_role,
-                    validData.title,
-                    room.room_code,
-                    room.room_name,
-                    validData.priority,
-                    reported_by,
-                    {
-                        requestNumber: request.request_number,
-                        status: request.status,
-                        openUrl: `${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')}/maintenance?req=${request.request_number}`,
-                    },
-                );
+            const notificationPayload: MaintenanceNotificationRequest = {
+                request_number: request.request_number,
+                title: request.title,
+                description: request.description,
+                priority: request.priority,
+                room_code: requestedRoom.room_code,
+                room_name: requestedRoom.room_name,
+                reported_by: request.reported_by,
+                created_at: request.created_at,
+                image_url: request.image_url,
+            };
 
-                const notificationPayload: MaintenanceNotificationRequest = {
-                    request_number: request.request_number,
-                    title: request.title,
-                    description: request.description,
-                    priority: request.priority,
-                    room_code: room.room_code,
-                    room_name: room.room_name,
-                    reported_by: request.reported_by,
-                    created_at: request.created_at,
-                    image_url: request.image_url,
-                };
-
-                await notifyNewMaintenanceRequest(notificationPayload, { disableLine: true });
-            }
+            await notifyNewMaintenanceRequest(notificationPayload, { disableLine: true });
         } catch (notifyError) {
             console.error('Failed to send customer maintenance LINE notification:', notifyError);
         }

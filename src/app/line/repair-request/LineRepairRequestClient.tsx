@@ -602,6 +602,33 @@ const resolveParentRoomCode = (room: RoomOption): string => {
     return room.room_code;
 };
 
+const normalizeRoomLookupValue = (value?: string | null): string =>
+    (value || '').trim().toLowerCase();
+
+const roomMatchesLookup = (room: RoomOption, lookup: string): boolean => {
+    if (!lookup) return false;
+    return (
+        normalizeRoomLookupValue(room.room_code) === lookup
+        || normalizeRoomLookupValue(room.room_name) === lookup
+        || normalizeRoomLookupValue(resolveParentRoomCode(room)) === lookup
+    );
+};
+
+const findPreferredRoomForLookup = (roomOptions: RoomOption[], lookup: string): RoomOption | null => {
+    if (!lookup) return null;
+
+    const exactRoomMatch = roomOptions.find((room) =>
+        !room.zone
+        && (
+            normalizeRoomLookupValue(room.room_code) === lookup
+            || normalizeRoomLookupValue(room.room_name) === lookup
+        ),
+    );
+
+    if (exactRoomMatch) return exactRoomMatch;
+    return roomOptions.find((room) => roomMatchesLookup(room, lookup)) || null;
+};
+
 // ─── Sub-components ──────────────────────────────────────────────────────────
 function Dots() {
     return <span style={{ display:'inline-flex', alignItems:'center' }}><span className="d d1"/><span className="d d2"/><span className="d d3"/></span>;
@@ -802,6 +829,10 @@ export default function LineRepairRequestClient({
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [previews, setPreviews] = useState<string[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const normalizedRegisteredRoomLookup = useMemo(
+        () => normalizeRoomLookupValue(customerInfo?.room_number),
+        [customerInfo?.room_number],
+    );
 
     const activeLocationRooms = useMemo(
         () => rooms.filter((room) => room.active !== false),
@@ -864,6 +895,43 @@ export default function LineRepairRequestClient({
         };
     }, [activeLocationRooms]);
 
+    const registeredRoomRecord = useMemo(
+        () => findPreferredRoomForLookup(activeLocationRooms, normalizedRegisteredRoomLookup),
+        [activeLocationRooms, normalizedRegisteredRoomLookup],
+    );
+
+    const lockedLocationRoomCode = registeredRoomRecord
+        ? resolveParentRoomCode(registeredRoomRecord)
+        : '';
+
+    const lockedLocationRoomOptions = useMemo(() => {
+        if (!customerInfo || !normalizedRegisteredRoomLookup || !lockedLocationRoomCode) {
+            return [] as LocationRoomOption[];
+        }
+        return locationRoomOptions.filter((room) => room.roomCode === lockedLocationRoomCode);
+    }, [customerInfo, locationRoomOptions, lockedLocationRoomCode, normalizedRegisteredRoomLookup]);
+
+    useEffect(() => {
+        if (!lockedLocationRoomCode || activeLocationRooms.length === 0) return;
+
+        const currentSelectedRoom = roomId
+            ? activeLocationRooms.find((room) => room.room_id === roomId) || null
+            : null;
+
+        if (currentSelectedRoom && resolveParentRoomCode(currentSelectedRoom) === lockedLocationRoomCode) {
+            return;
+        }
+
+        const fallbackRoom =
+            activeLocationRooms.find((room) => !room.zone && room.room_code === lockedLocationRoomCode)
+            || activeLocationRooms.find((room) => resolveParentRoomCode(room) === lockedLocationRoomCode)
+            || null;
+
+        if (fallbackRoom) {
+            setRoomId(fallbackRoom.room_id);
+        }
+    }, [activeLocationRooms, lockedLocationRoomCode, roomId]);
+
     const selectedLocationRoomRecord = roomId
         ? rooms.find((room) => room.room_id === roomId) || null
         : null;
@@ -871,7 +939,7 @@ export default function LineRepairRequestClient({
         ? resolveParentRoomCode(selectedLocationRoomRecord)
         : '';
     const selectedLocationRoomOption = selectedLocationRoomCode
-        ? locationRoomOptions.find((room) => room.roomCode === selectedLocationRoomCode) || null
+        ? lockedLocationRoomOptions.find((room) => room.roomCode === selectedLocationRoomCode) || null
         : null;
     const availableLocationZones = selectedLocationRoomCode
         ? locationZoneOptionsByRoom.get(selectedLocationRoomCode) || []
@@ -1013,12 +1081,8 @@ export default function LineRepairRequestClient({
                 if (cr.success && cr.data) {
                     setCustomerInfo({ full_name:cr.data.full_name||'', phone_number:cr.data.phone_number||'', room_number:cr.data.room_number||'' });
                     if (nextRooms.length > 0 && cr.data.room_number) {
-                        const saved = cr.data.room_number.trim().toLowerCase();
-                        const match = nextRooms.find((room) =>
-                            room.room_code?.toLowerCase() === saved
-                            || room.room_name?.toLowerCase() === saved
-                            || resolveParentRoomCode(room).toLowerCase() === saved
-                        );
+                        const savedLookup = normalizeRoomLookupValue(cr.data.room_number);
+                        const match = findPreferredRoomForLookup(nextRooms, savedLookup);
                         if (match) setRoomId(match.room_id);
                     }
                 } else if (!cr.success) setAlert({ kind:'error', text:t('errNoCustomer') });
@@ -1045,6 +1109,10 @@ export default function LineRepairRequestClient({
         setAlert(null);
         if (!lineUserId || !customerInfo) { setAlert({ kind:'error', text:t('errNoUser') }); return; }
         if (roomId === 0) { setAlert({ kind:'error', text:t('errNoRoom') }); return; }
+        if (lockedLocationRoomCode && selectedLocationRoomCode !== lockedLocationRoomCode) {
+            setAlert({ kind:'error', text:t('errNoRoom') });
+            return;
+        }
         if (captchaStatus !== 'right') { setAlert({ kind:'error', text:t('errCaptcha') }); return; }
         setShowConfirm(true);
     }
@@ -1063,7 +1131,7 @@ export default function LineRepairRequestClient({
                 setAlert(null);
                 setSuccessRoomDisplay(selectedRoomDisplay);
                 setSuccessRequestNumber(result.data?.request_number ?? null);
-                setTitle(''); setDescription(''); setRoomId(0); setSelectedFiles([]); setPreviews([]);
+                setTitle(''); setDescription(''); setSelectedFiles([]); setPreviews([]);
                 setCaptchaInput(''); setCaptchaStatus('idle'); refreshCaptcha();
             } else { setAlert({ kind:'error', text:result.error||t('errGeneric') }); setShowConfirm(false); }
         } catch (e) { console.error(e); setAlert({ kind:'error', text:t('errSubmit') }); setShowConfirm(false); }
@@ -1141,14 +1209,14 @@ export default function LineRepairRequestClient({
                             <select
                                 value={selectedLocationRoomCode}
                                 onChange={(e) => {
-                                    const nextRoomOption = locationRoomOptions.find((room) => room.roomCode === e.target.value) || null;
+                                    const nextRoomOption = lockedLocationRoomOptions.find((room) => room.roomCode === e.target.value) || null;
                                     setRoomId(nextRoomOption?.roomId || 0);
                                 }}
                                 className="fi"
-                                disabled={!customerInfo}
+                                disabled={!customerInfo || lockedLocationRoomOptions.length <= 1}
                             >
                                 <option value="">-- เลือกห้อง --</option>
-                                {locationRoomOptions.map((room) => (
+                                {lockedLocationRoomOptions.map((room) => (
                                     <option key={room.roomCode} value={room.roomCode}>
                                         {room.roomLabel}
                                     </option>
