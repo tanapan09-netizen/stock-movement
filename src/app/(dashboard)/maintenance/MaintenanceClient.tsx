@@ -1287,6 +1287,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
     async function handleUpdateRequest() {
         if (!selectedRequest) return;
+        if (loggedInRole === 'employee') {
+            showToast('Role employee ดูรายละเอียดได้อย่างเดียว ไม่สามารถแก้ไขใบงาน', 'warning');
+            return;
+        }
         const isStatusChanged = editData.status !== selectedRequest.status;
         if (!canEditPage && !(canEditDetailStatus && isStatusChanged)) {
             showToast('คุณมีสิทธิ์อ่านอย่างเดียวในหน้านี้', 'warning');
@@ -1693,6 +1697,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const assignedTechnicianFieldValue = shouldLockAssignedTechnician
         ? selectedRequestExecutionTechnician
         : (editData.assigned_to || '');
+    const isEmployeeRole = loggedInRole === 'employee';
     const isSelectedRequestAwaitingHeadApproval = selectedWorkflowStatus === 'confirmed';
     const canRoleEditMaintenanceStatus = new Set(['technician', 'leader_technician', 'manager', 'admin', 'owner']).has(loggedInRole);
     const canEditDetailStatusByRole = canRoleEditMaintenanceStatus || canManageMaintenanceStatus || canApproveCompletion;
@@ -1700,8 +1705,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         Boolean(selectedRequest)
         && isManagerRole(loggedInRole)
         && isMaintenanceWorkflowClosed(selectedRequest?.status);
-    const isSelectedRequestReadOnly = !canEditPage;
-    const isDetailReadOnly = !canEditPage;
+    const isSelectedRequestReadOnly = !canEditPage || isEmployeeRole;
+    const isDetailReadOnly = !canEditPage || isEmployeeRole;
     const managerClosedReopenStatusOptions: MaintenanceWorkflowStatus[] = ['pending', 'approved', 'in_progress'];
     const allowedDetailStatusTransitions = selectedRequest && canEditDetailStatusByRole
         ? (
@@ -1724,8 +1729,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 })),
         ]
         : [];
-    const canEditDetailStatus = canEditDetailStatusByRole && detailStatusOptions.length > 1;
-    const canShowDetailSaveButton = canEditDetailStatus;
+    const canEditDetailStatus = !isEmployeeRole && canEditDetailStatusByRole && detailStatusOptions.length > 1;
+    const canShowDetailSaveButton = !isEmployeeRole && canEditDetailStatus;
     const canShowHeadTechnicianActions = false;
     const canShowPartsAddSection = canEditPage && !isSelectedRequestReadOnly && editData.status === 'confirmed';
     const isAssignedTechnicianInputDisabled =
