@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { resolveAuthenticatedUserId } from '@/lib/server/auth-user';
 
 type MarkReadBody = {
     id?: unknown;
@@ -17,10 +18,9 @@ function normalizeNotificationIds(body: MarkReadBody): string[] {
 export async function POST(request: Request) {
     try {
         const session = await auth();
-        const userIdRaw = session?.user?.id;
-        const userId = Number(userIdRaw);
+        const userId = await resolveAuthenticatedUserId(session?.user);
 
-        if (!Number.isFinite(userId) || userId <= 0) {
+        if (!userId) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
         }
 

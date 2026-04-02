@@ -26,6 +26,7 @@ import {
     canReassignMaintenanceRequest,
     canSubmitMaintenanceCompletion,
     canVerifyMaintenanceParts,
+    isMaintenanceTechnician,
 } from '@/lib/rbac';
 import { isManagerRole, normalizeRole } from '@/lib/roles';
 import {
@@ -925,7 +926,7 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
         const actorName = authContext.session.user.name || changed_by || 'System';
         const current = await prisma.tbl_maintenance_requests.findUnique({
             where: { request_id },
-            select: { status: true, completed_at: true }
+            select: { status: true, completed_at: true, notes: true }
         });
 
         if (!current) {
@@ -971,6 +972,16 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
             return { success: false, error: 'Invalid maintenance status transition' };
         }
 
+        if (normalizedNextStatus === 'confirmed' && isMaintenanceTechnician(authContext.role)) {
+            const effectiveTechnicianNote = (notes || current.notes || '').trim();
+            if (!effectiveTechnicianNote) {
+                return { success: false, error: 'กรุณากรอกบันทึกการแก้ไขของช่างก่อนส่งงานตรวจรับ' };
+            }
+        }
+        const technicianCompletionNote = normalizedNextStatus === 'confirmed'
+            ? (notes || current.notes || '').trim()
+            : '';
+
         const request = await prisma.tbl_maintenance_requests.update({
             where: { request_id },
             data: {
@@ -978,6 +989,7 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
                 completed_at: normalizedNextStatus === 'completed'
                     ? new Date()
                     : (current.completed_at || isManagerReopenFromClosed) ? null : undefined,
+                ...(normalizedNextStatus === 'confirmed' ? { notes: technicianCompletionNote || null } : {}),
             }
         });
 
@@ -1677,6 +1689,7 @@ export async function submitRepairCompletion(formData: FormData) {
 
         const changed_by = authContext.session.user.name || (formData.get('changed_by') as string) || 'System';
         const completionNotes = (formData.get('completionNotes') as string) || (formData.get('notes') as string) || '';
+        const trimmedCompletionNotes = completionNotes.trim();
         const technician_signature = formData.get('technician_signature') as string;
         const customer_signature = formData.get('customer_signature') as string;
         const currentRequest = await prisma.tbl_maintenance_requests.findUnique({
@@ -1692,12 +1705,16 @@ export async function submitRepairCompletion(formData: FormData) {
             return { success: false, error: 'Only in-progress jobs can be submitted for head technician approval' };
         }
 
+        if (isMaintenanceTechnician(authContext.role) && trimmedCompletionNotes.length === 0) {
+            return { success: false, error: 'กรุณากรอกบันทึกการแก้ไขของช่างก่อนส่งงานตรวจรับ' };
+        }
+
         const request = await prisma.tbl_maintenance_requests.update({
             where: { request_id },
             data: {
                 status: 'confirmed',
                 completed_at: null,
-                notes: completionNotes,
+                notes: trimmedCompletionNotes || null,
                 technician_signature,
                 customer_signature
             },
@@ -1738,7 +1755,7 @@ export async function submitRepairCompletion(formData: FormData) {
                 },
                 currentRequest?.status || '',
                 'confirmed',
-                completionNotes || undefined,
+                trimmedCompletionNotes || undefined,
             );
         } catch (notifyError) {
             console.error('Failed to notify head technician for approval:', notifyError);
@@ -2092,6 +2109,13 @@ export async function updateMaintenanceRequest(
             return { success: false, error: 'Only head technicians can approve completed maintenance jobs' };
         }
 
+        if (normalizedNextStatus === 'confirmed' && isMaintenanceTechnician(authContext.role)) {
+            const effectiveTechnicianNote = ((data.notes !== undefined ? data.notes : current.notes) || '').trim();
+            if (!effectiveTechnicianNote) {
+                return { success: false, error: 'กรุณากรอกบันทึกการแก้ไขของช่างก่อนส่งงานตรวจรับ' };
+            }
+        }
+
         const updateData: Record<string, unknown> = {};
         const historyActions: Array<{ action: string; old_value: string; new_value: string }> = [];
 
@@ -2214,7 +2238,8 @@ export async function updateMaintenanceRequest(
         }
 
         if (data.notes !== undefined) {
-            updateData.notes = data.notes || null;
+            const trimmedNote = (data.notes || '').trim();
+            updateData.notes = trimmedNote || null;
         }
 
         const request = await prisma.tbl_maintenance_requests.update({

@@ -1049,10 +1049,19 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         if (!statusChangeData.request) return;
         if (!ensureCanEditPage()) return;
 
+        const requiresTechnicianRepairLog =
+            isMaintenanceTechnician(loggedInRole)
+            && ['confirmed', 'completed'].includes(statusChangeData.newStatus);
+        const completionNotesTrimmed = statusChangeData.completionNotes.trim();
+        if (requiresTechnicianRepairLog && completionNotesTrimmed.length === 0) {
+            showToast('กรุณากรอกบันทึกการแก้ไขของช่างก่อนส่งงานตรวจรับ', 'warning');
+            return;
+        }
+
         if (statusChangeData.newStatus === 'confirmed') {
             const formData = new FormData();
             formData.append('request_id', statusChangeData.request.request_id.toString());
-            formData.append('completionNotes', statusChangeData.completionNotes);
+            formData.append('completionNotes', completionNotesTrimmed);
             if (statusChangeData.technicianSignature) {
                 formData.append('technician_signature', statusChangeData.technicianSignature);
             }
@@ -1080,7 +1089,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         if (statusChangeData.newStatus === 'completed') {
             const formData = new FormData();
             formData.append('request_id', statusChangeData.request.request_id.toString());
-            formData.append('completionNotes', statusChangeData.completionNotes);
+            formData.append('completionNotes', completionNotesTrimmed);
             if (statusChangeData.technicianSignature) {
                 formData.append('technician_signature', statusChangeData.technicianSignature);
             }
@@ -1447,6 +1456,15 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
         if (isReopenFromClosedByManager && nextReopenReason.length < 8) {
             showToast('กรุณาระบุเหตุผลการเปิดงานใหม่อย่างน้อย 8 ตัวอักษร', 'warning');
+            return;
+        }
+
+        const isTechnicianClosingJob =
+            isTechnician
+            && editData.status === 'confirmed'
+            && editData.status !== selectedRequest.status;
+        if (isTechnicianClosingJob && nextNotes.trim().length === 0) {
+            showToast('กรุณากรอกบันทึกการแก้ไขของช่างก่อนส่งงานตรวจรับ', 'warning');
             return;
         }
 
@@ -1836,6 +1854,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         && isSelectedRequestAwaitingHeadApproval
         && canApproveCompletion
         && !isSelectedRequestReadOnly;
+    const requiresTechnicianRepairLog =
+        Boolean(selectedRequest)
+        && isMaintenanceTechnician(loggedInRole)
+        && editData.status === 'confirmed'
+        && editData.status !== selectedRequest?.status;
     const canShowPartsAddSection = canEditPage && !isSelectedRequestReadOnly && editData.status === 'confirmed';
     const isAssignedTechnicianInputDisabled =
         isDetailReadOnly
@@ -3193,7 +3216,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-600">
-                    หมายเหตุ
+                    {requiresTechnicianRepairLog ? 'บันทึกการแก้ไขของช่าง *' : 'หมายเหตุ'}
                   </label>
                   <textarea
                     value={editData.notes}
@@ -3201,8 +3224,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     disabled={isDetailReadOnly}
                     className="min-h-[130px] w-full rounded-2xl border border-slate-300 bg-white px-4 py-4 text-lg text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                     rows={4}
-                    placeholder="เพิ่มหมายเหตุ..."
+                    placeholder={requiresTechnicianRepairLog ? 'ระบุวิธีซ่อม, อาการที่พบ, และผลหลังทดสอบ' : 'เพิ่มหมายเหตุ...'}
                   />
+                  {requiresTechnicianRepairLog && (
+                    <p className="mt-2 text-xs text-amber-700">ต้องกรอกก่อนส่งงานให้หัวหน้าช่างตรวจรับ</p>
+                  )}
                 </div>
 
                 {canManagerEditClosedRequest && editData.status !== selectedRequest.status && (
@@ -4102,14 +4128,14 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         {/* Completion Notes */}
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                                หมายเหตุการซ่อม
+                                                บันทึกการแก้ไขของช่าง *
                                             </label>
                                             <textarea
                                                 value={statusChangeData.completionNotes}
                                                 onChange={(e) => setStatusChangeData({ ...statusChangeData, completionNotes: e.target.value })}
                                                 className="w-full border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2.5 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-green-500 focus:border-transparent"
                                                 rows={3}
-                                                placeholder="รายละเอียดเพิ่มเติมเกี่ยวกับการซ่อม..."
+                                                placeholder="ระบุวิธีซ่อม, อาการที่พบ, และผลหลังทดสอบ"
                                             />
                                         </div>
 

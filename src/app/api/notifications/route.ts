@@ -2,6 +2,7 @@
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/auth';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
+import { resolveAuthenticatedUserId } from '@/lib/server/auth-user';
 import { normalizeRole } from '@/lib/roles';
 import {
     canViewBorrowNotifications,
@@ -74,7 +75,7 @@ export async function GET(request: Request) {
         const isApprover = permissionContext.isApprover;
         const permissions = permissionContext.permissions;
         const userName = session?.user?.name || '';
-        const sessionUserId = Number(session?.user?.id);
+        const sessionUserId = await resolveAuthenticatedUserId(session?.user);
 
         const isManagerView = ['owner', 'admin', 'manager'].includes(normalizedRole);
         const isTechnicianView = isMaintenanceTechnician(normalizedRole) || normalizedRole === 'leader_technician';
@@ -440,7 +441,7 @@ export async function GET(request: Request) {
         }
 
         const readIdSet = new Set<string>();
-        if (Number.isFinite(sessionUserId) && sessionUserId > 0 && notifications.length > 0) {
+        if (sessionUserId && notifications.length > 0) {
             const readRows = await prisma.tbl_notification_reads.findMany({
                 where: {
                     user_id: sessionUserId,

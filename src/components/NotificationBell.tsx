@@ -363,11 +363,14 @@ export default function NotificationBell() {
     });
 
     try {
-      await fetch('/api/notifications/mark-read', {
+      const response = await fetch('/api/notifications/mark-read', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
+      if (!response.ok) {
+        throw new Error(`mark-read failed: ${response.status}`);
+      }
     } catch (error) {
       console.error('Failed to mark notification as read', error);
     }
@@ -550,11 +553,14 @@ export default function NotificationBell() {
     setUnreadCount(0);
 
     try {
-      await fetch('/api/notifications/mark-read', {
+      const response = await fetch('/api/notifications/mark-read', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: unreadIds }),
       });
+      if (!response.ok) {
+        throw new Error(`mark-read failed: ${response.status}`);
+      }
     } catch (error) {
       console.error('Failed to mark all notifications as read', error);
     }
