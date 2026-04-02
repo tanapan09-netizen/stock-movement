@@ -697,6 +697,15 @@ export function canDirectManageMaintenanceStock(role: string | null | undefined,
   return isManagerLike(role) || isStoreRole(role) || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE_PARTS);
 }
 
+export function canConfirmMaintenanceDefectiveReceipt(
+  role: string | null | undefined,
+  permissions: PagePermissionMap = {},
+) {
+  return isStoreRole(role)
+    || isAccountingRole(role)
+    || hasPermissionKey(permissions, PERMISSIONS.MAINTENANCE_PARTS);
+}
+
 export function canReviewMaintenancePartRequests(
   role: string | null | undefined,
   permissions: PagePermissionMap = {},

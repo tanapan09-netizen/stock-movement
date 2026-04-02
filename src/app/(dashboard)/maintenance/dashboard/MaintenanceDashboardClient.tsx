@@ -114,19 +114,19 @@ export default function MaintenanceDashboardClient({
                 const allRequests = reqResult.data as MaintenanceRequestItem[];
                 setRequests(allRequests);
 
-                // Filter my tasks (assigned to current user)
+                
                 const myName = user?.name || '';
                 setMyTasks(allRequests.filter(r =>
                     r.assigned_to?.toLowerCase() === myName.toLowerCase() &&
                     r.status !== 'completed' && r.status !== 'cancelled'
                 ));
 
-                // Filter urgent tasks
+               
                 setUrgentTasks(allRequests.filter(r =>
                     r.priority === 'urgent' && r.status !== 'completed' && r.status !== 'cancelled'
                 ));
 
-                // Filter today's scheduled tasks
+                
                 const today = new Date().toDateString();
                 setTodayTasks(allRequests.filter(r =>
                     r.scheduled_date && new Date(r.scheduled_date).toDateString() === today
@@ -161,7 +161,7 @@ export default function MaintenanceDashboardClient({
 
     useEffect(() => {
         loadData();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        
     }, []);
 
     async function handleQuickStatusChange(request_id: number, newStatus: string) {

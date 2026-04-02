@@ -161,6 +161,32 @@ interface PartUsageDailyTrendItem {
     usage_cost: number;
 }
 
+interface DefectiveReceiptItem {
+    request_id: number;
+    request_number: string;
+    title: string;
+    room_code: string;
+    room_name: string;
+    confirmer: string;
+    receipt_qty: number;
+    occurred_at: Date;
+    detail: string;
+}
+
+interface DefectiveReceiptDailyItem {
+    date_key: string;
+    date_label: string;
+    receipt_count: number;
+    receipt_qty: number;
+}
+
+interface DefectiveReceiptByConfirmerItem {
+    confirmer: string;
+    receipt_count: number;
+    receipt_qty: number;
+    request_count: number;
+}
+
 interface ScrapParetoItem {
     p_id: string;
     p_name: string;
@@ -222,6 +248,9 @@ interface PartUsageReportData {
     scrap: ScrapReportItem[];
     technician_usage: TechnicianUsageReportItem[];
     daily_trend: PartUsageDailyTrendItem[];
+    defective_receipts: DefectiveReceiptItem[];
+    defective_receipt_daily: DefectiveReceiptDailyItem[];
+    defective_receipt_by_confirmer: DefectiveReceiptByConfirmerItem[];
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -259,6 +288,9 @@ export default function MaintenanceReportClient() {
         scrap: [],
         technician_usage: [],
         daily_trend: [],
+        defective_receipts: [],
+        defective_receipt_daily: [],
+        defective_receipt_by_confirmer: [],
     });
     const [loading, setLoading] = useState(true);
     const [expandedRooms, setExpandedRooms] = useState<Set<number>>(new Set());
@@ -498,9 +530,28 @@ export default function MaintenanceReportClient() {
         return true;
     });
 
+    const defectiveReceiptTotalQty = partUsageReport.defective_receipts.reduce(
+        (sum, item) => sum + item.receipt_qty,
+        0,
+    );
+    const defectiveReceiptTotalCount = partUsageReport.defective_receipts.length;
+
     const filteredTotalScrapQty = filteredScrapItems.reduce((sum, item) => sum + item.scrap_estimate_qty, 0);
     const filteredVerificationLossQty = filteredScrapItems.reduce((sum, item) => sum + item.verification_loss_qty, 0);
     const filteredDefectiveQty = filteredScrapItems.reduce((sum, item) => sum + item.defective_marked_qty, 0);
+    const filteredConfirmedDefectiveItems = filteredScrapItems.filter((item) => item.status === 'defective');
+    const filteredConfirmedDefectiveQty = filteredConfirmedDefectiveItems.reduce(
+        (sum, item) => sum + item.defective_marked_qty,
+        0,
+    );
+    const filteredConfirmedDefectiveRecords = filteredConfirmedDefectiveItems.length;
+
+    function getScrapCauseLabel(item: Pick<ScrapReportItem, 'status' | 'defective_marked_qty' | 'verification_loss_qty'>) {
+        if (item.status === 'defective') return 'Confirmed Defective';
+        if (item.defective_marked_qty > 0) return 'Defective Pending';
+        if (item.verification_loss_qty > 0) return 'Verification Loss';
+        return 'Other';
+    }
 
     const scrapByPartMap = new Map<string, { p_id: string; p_name: string; scrap_qty: number }>();
     for (const item of filteredScrapItems) {
@@ -566,7 +617,7 @@ export default function MaintenanceReportClient() {
     const modalTechnician = selectedRequestDetail?.assigned_to ?? selectedDrilldownItem?.technician ?? '-';
     const modalPartLabel = selectedDrilldownItem ? `${selectedDrilldownItem.p_name} (${selectedDrilldownItem.p_id})` : '-';
     const modalCause = selectedDrilldownItem
-        ? (selectedDrilldownItem.defective_marked_qty > 0 ? 'Defective' : 'Verification Loss')
+        ? getScrapCauseLabel(selectedDrilldownItem)
         : '-';
     const modalScrapQty = selectedDrilldownItem?.scrap_estimate_qty ?? 0;
     const modalOccurredAt = selectedDrilldownItem?.occurred_at ? new Date(selectedDrilldownItem.occurred_at).toLocaleString('th-TH') : '-';
@@ -705,7 +756,7 @@ export default function MaintenanceReportClient() {
                 item.technician || '',
                 item.p_id,
                 item.p_name,
-                item.defective_marked_qty > 0 ? 'Defective' : 'Verification Loss',
+                getScrapCauseLabel(item),
                 item.scrap_estimate_qty,
                 new Date(item.occurred_at).toLocaleString('th-TH'),
             ]),
@@ -838,7 +889,7 @@ export default function MaintenanceReportClient() {
                     </button>
                 </div>
 
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
                     {[
                         { label: 'ตรวจนับไม่ตรง', value: exceptionReport.summary.verification_failed, color: 'text-rose-600', bg: 'bg-rose-100', Icon: TriangleAlert },
                         { label: 'รอตรวจนับนาน', value: exceptionReport.summary.pending_verification_overdue, color: 'text-amber-600', bg: 'bg-amber-100', Icon: ScanSearch },
@@ -916,7 +967,7 @@ export default function MaintenanceReportClient() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
                     <div className="rounded-xl border border-gray-100 dark:border-slate-700 p-3">
                         <div className="text-xs text-gray-500 dark:text-gray-400">Used Qty</div>
                         <div className="text-xl font-bold text-blue-600">{partUsageReport.summary.used_qty.toLocaleString()}</div>
@@ -928,6 +979,10 @@ export default function MaintenanceReportClient() {
                     <div className="rounded-xl border border-gray-100 dark:border-slate-700 p-3">
                         <div className="text-xs text-gray-500 dark:text-gray-400">Scrap Estimate Qty</div>
                         <div className="text-xl font-bold text-rose-600">{partUsageReport.summary.scrap_qty.toLocaleString()}</div>
+                    </div>
+                    <div className="rounded-xl border border-amber-100 bg-amber-50/40 dark:border-amber-700/40 dark:bg-amber-900/10 p-3">
+                        <div className="text-xs text-amber-700 dark:text-amber-300">Confirmed Defective Qty</div>
+                        <div className="text-xl font-bold text-amber-600">{filteredConfirmedDefectiveQty.toLocaleString()}</div>
                     </div>
                     <div className="rounded-xl border border-gray-100 dark:border-slate-700 p-3">
                         <div className="text-xs text-gray-500 dark:text-gray-400">Usage Cost</div>
@@ -958,6 +1013,84 @@ export default function MaintenanceReportClient() {
                     >
                         Defective only
                     </button>
+                    <span className="ml-auto text-xs text-amber-700 dark:text-amber-300">
+                        Confirmed Defective: {filteredConfirmedDefectiveQty.toLocaleString()} qty ({filteredConfirmedDefectiveRecords.toLocaleString()} records)
+                    </span>
+                </div>
+
+                <div className="mb-4 rounded-xl border border-amber-100 bg-amber-50/30 p-3 dark:border-amber-700/40 dark:bg-amber-900/10">
+                    <div className="mb-3 flex items-center justify-between">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                            Defective Receipt Into WH-08
+                        </div>
+                        <div className="text-xs text-amber-700 dark:text-amber-300">
+                            {defectiveReceiptTotalCount.toLocaleString()} receipts • {defectiveReceiptTotalQty.toLocaleString()} qty
+                        </div>
+                    </div>
+                    <div className="grid gap-3 lg:grid-cols-2">
+                        <div className="rounded-lg border border-amber-100 bg-white dark:border-amber-700/40 dark:bg-slate-800">
+                            <div className="border-b border-amber-100 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-amber-700/40 dark:text-slate-300">
+                                By Day
+                            </div>
+                            <div className="max-h-48 overflow-auto">
+                                <table className="w-full text-xs">
+                                    <thead className="sticky top-0 bg-white dark:bg-slate-800">
+                                        <tr className="text-gray-400 uppercase tracking-wide">
+                                            <th className="px-3 py-2 text-left font-semibold">Date</th>
+                                            <th className="px-3 py-2 text-right font-semibold">Receipts</th>
+                                            <th className="px-3 py-2 text-right font-semibold">Qty</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                                        {partUsageReport.defective_receipt_daily.map((item) => (
+                                            <tr key={item.date_key}>
+                                                <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{item.date_label}</td>
+                                                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-200">{item.receipt_count.toLocaleString()}</td>
+                                                <td className="px-3 py-2 text-right font-semibold text-amber-700 dark:text-amber-300">{item.receipt_qty.toLocaleString()}</td>
+                                            </tr>
+                                        ))}
+                                        {partUsageReport.defective_receipt_daily.length === 0 ? (
+                                            <tr>
+                                                <td className="px-3 py-5 text-center text-gray-400" colSpan={3}>No defective receipt data</td>
+                                            </tr>
+                                        ) : null}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div className="rounded-lg border border-amber-100 bg-white dark:border-amber-700/40 dark:bg-slate-800">
+                            <div className="border-b border-amber-100 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-amber-700/40 dark:text-slate-300">
+                                By Confirmer
+                            </div>
+                            <div className="max-h-48 overflow-auto">
+                                <table className="w-full text-xs">
+                                    <thead className="sticky top-0 bg-white dark:bg-slate-800">
+                                        <tr className="text-gray-400 uppercase tracking-wide">
+                                            <th className="px-3 py-2 text-left font-semibold">User</th>
+                                            <th className="px-3 py-2 text-right font-semibold">Requests</th>
+                                            <th className="px-3 py-2 text-right font-semibold">Receipts</th>
+                                            <th className="px-3 py-2 text-right font-semibold">Qty</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 dark:divide-slate-700/60">
+                                        {partUsageReport.defective_receipt_by_confirmer.map((item) => (
+                                            <tr key={item.confirmer}>
+                                                <td className="px-3 py-2 text-gray-700 dark:text-gray-200">{item.confirmer}</td>
+                                                <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{item.request_count.toLocaleString()}</td>
+                                                <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{item.receipt_count.toLocaleString()}</td>
+                                                <td className="px-3 py-2 text-right font-semibold text-amber-700 dark:text-amber-300">{item.receipt_qty.toLocaleString()}</td>
+                                            </tr>
+                                        ))}
+                                        {partUsageReport.defective_receipt_by_confirmer.length === 0 ? (
+                                            <tr>
+                                                <td className="px-3 py-5 text-center text-gray-400" colSpan={4}>No confirmer data</td>
+                                            </tr>
+                                        ) : null}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="mb-4 rounded-xl border border-gray-100 dark:border-slate-700 p-3">
@@ -1037,6 +1170,13 @@ export default function MaintenanceReportClient() {
                                 <div className="text-lg font-bold text-amber-600">{filteredDefectiveQty.toLocaleString()}</div>
                                 <div className="text-[11px] text-gray-400">
                                     {filteredTotalScrapQty > 0 ? ((filteredDefectiveQty / filteredTotalScrapQty) * 100).toFixed(1) : '0.0'}%
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-[11px] text-gray-500 dark:text-gray-400">Confirmed Defective</div>
+                                <div className="text-lg font-bold text-amber-700">{filteredConfirmedDefectiveQty.toLocaleString()}</div>
+                                <div className="text-[11px] text-gray-400">
+                                    {filteredDefectiveQty > 0 ? ((filteredConfirmedDefectiveQty / filteredDefectiveQty) * 100).toFixed(1) : '0.0'}% of defective marked
                                 </div>
                             </div>
                             <div className="border-t border-gray-100 pt-2 dark:border-slate-700">
@@ -1187,8 +1327,11 @@ export default function MaintenanceReportClient() {
                                                         <div className="text-[11px] text-gray-400">{item.room_code}</div>
                                                     </td>
                                                     <td className="px-2 py-2">
-                                                        {item.defective_marked_qty > 0 && (
-                                                            <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Defective</span>
+                                                        {item.status === 'defective' && (
+                                                            <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Confirmed Defective</span>
+                                                        )}
+                                                        {item.status !== 'defective' && item.defective_marked_qty > 0 && (
+                                                            <span className="inline-flex rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">Defective Pending</span>
                                                         )}
                                                         {item.defective_marked_qty <= 0 && item.verification_loss_qty > 0 && (
                                                             <span className="inline-flex rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">Verification Loss</span>

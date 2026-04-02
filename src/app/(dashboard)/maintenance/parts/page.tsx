@@ -1,5 +1,6 @@
 import { auth } from '@/auth';
 import {
+    canConfirmMaintenanceDefectiveReceipt,
     canDirectManageMaintenanceStock,
     canManageMaintenanceParts,
     isMaintenanceTechnician,
@@ -25,6 +26,10 @@ export default async function PartsManagementPage() {
                 ) || isMaintenanceTechnician(permissionContext.role)
             }
             canDirectStockActions={canDirectManageMaintenanceStock(
+                permissionContext.role,
+                permissionContext.permissions,
+            )}
+            canConfirmDefectiveReceipt={canConfirmMaintenanceDefectiveReceipt(
                 permissionContext.role,
                 permissionContext.permissions,
             )}

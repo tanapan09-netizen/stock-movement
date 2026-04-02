@@ -10,6 +10,7 @@ import { getPartRequests, updatePartRequestStatus } from '@/actions/partRequestA
 import {
   clearAllReservedParts,
   completeMaintenanceWithParts,
+  confirmMaintenancePartDefective,
   getMaintenanceRequests,
   getProducts,
   getWithdrawnPartsForMaintenance,
@@ -24,6 +25,10 @@ type Product = {
   p_unit: string | null;
   p_count: number;
   available_stock?: number;
+  stock_wh01?: number;
+  stock_wh02?: number;
+  stock_wh03?: number;
+  stock_wh08?: number;
 };
 
 type Room = {
@@ -77,6 +82,7 @@ type PartRequestItem = {
 type Props = {
   canManageParts?: boolean;
   canDirectStockActions?: boolean;
+  canConfirmDefectiveReceipt?: boolean;
 };
 
 type ActionDialogState =
@@ -99,6 +105,15 @@ type ActionDialogState =
   | {
       mode: 'clearReserved';
       reason: string;
+    }
+  | {
+      mode: 'confirmDefective';
+      partId: number;
+      requestNumber: string;
+      itemName: string;
+      quantity: number;
+      unit: string;
+      withdrawnBy: string;
     };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -138,6 +153,7 @@ const PART_REQUEST_STATUS_LABELS: Record<string, string> = {
 export default function PartsManagementClient({
   canManageParts = false,
   canDirectStockActions = false,
+  canConfirmDefectiveReceipt = false,
 }: Props) {
   const { data: session } = useSession();
   const { showToast } = useToast();
@@ -193,9 +209,13 @@ export default function PartsManagementClient({
 
   const selectedProduct = products.find((product) => product.p_id === withdrawForm.p_id);
   const availableStock = selectedProduct?.available_stock ?? selectedProduct?.p_count ?? 0;
+  const stockWh01 = selectedProduct?.stock_wh01 ?? availableStock;
+  const stockWh02 = selectedProduct?.stock_wh02 ?? 0;
+  const stockWh03 = selectedProduct?.stock_wh03 ?? 0;
+  const stockWh08 = selectedProduct?.stock_wh08 ?? 0;
   const withdrawDialogTitle = canDirectWithdraw ? 'เบิกอะไหล่' : 'ส่งคำขอเบิกให้คลัง';
   const withdrawDialogDescription = canDirectWithdraw
-    ? 'เบิกอะไหล่จาก WH-01 เพื่อจ่ายให้ใบงานซ่อมโดยตรง'
+    ? 'ตัดเบิกอะไหล่จาก WH-01 เข้า WH-02 เพื่อรอจ่ายใช้งานในใบงานซ่อม'
     : 'ส่งคำขอไปที่ role store ก่อน เพื่อยืนยันการเบิกและพร้อมส่งมอบให้ช่าง';
   const withdrawSubmitLabel = canDirectWithdraw ? 'ยืนยันเบิก' : 'ส่งคำขอไปคลัง';
   const withdrawHeaderButtonLabel = canDirectWithdraw ? 'เบิกอะไหล่' : 'ส่งคำขอเบิกไปคลัง';
@@ -309,6 +329,18 @@ export default function PartsManagementClient({
     });
   }
 
+  function handleConfirmDefective(part: MaintenancePart) {
+    setActionDialog({
+      mode: 'confirmDefective',
+      partId: part.part_id,
+      requestNumber: part.request?.request_number || `REQ-${part.request_id}`,
+      itemName: part.product?.p_name || part.p_id,
+      quantity: Number(part.actual_used ?? part.quantity),
+      unit: part.unit || part.product?.p_unit || 'ชิ้น',
+      withdrawnBy: part.withdrawn_by,
+    });
+  }
+
   function handlePartAvailability(
     requestId: number,
     nextStatus: 'approved' | 'rejected',
@@ -397,11 +429,34 @@ export default function PartsManagementClient({
         showToast(`เคลียร์ข้อมูลเรียบร้อย (${result.count || 0} รายการ)`, 'success');
       }
 
+      if (actionDialog.mode === 'confirmDefective') {
+        const result = await confirmMaintenancePartDefective({
+          part_id: actionDialog.partId,
+          confirmed_by: session?.user?.name || 'System',
+        });
+        if (!result.success) {
+          showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
+          return;
+        }
+
+        await loadData();
+        showToast('ยืนยันของเสียเรียบร้อยแล้ว', 'success');
+      }
+
       setActionDialog(null);
     } finally {
       setDialogSubmitting(false);
     }
   }
+
+  const hasDefectiveMarker = (part: MaintenancePart) =>
+    (part.notes || '').includes('MARKED AS DEFECTIVE');
+
+  const isDefectivePendingConfirmation = (part: MaintenancePart) =>
+    hasDefectiveMarker(part) && !['defective', 'verified', 'completed', 'returned'].includes(part.status);
+
+  const isDefectiveConfirmed = (part: MaintenancePart) =>
+    part.status === 'defective';
 
   const filteredParts = withdrawnParts.filter((part) => {
     const matchesSearch = !normalizedSearchText || [
@@ -414,7 +469,10 @@ export default function PartsManagementClient({
       part.request?.tbl_rooms?.room_name,
     ].some((value) => (value || '').toLowerCase().includes(normalizedSearchText));
 
-    const matchesStatus = partStatusFilter === 'all' || part.status === partStatusFilter;
+    const matchesStatus =
+      partStatusFilter === 'all'
+      || part.status === partStatusFilter
+      || (partStatusFilter === 'defective_pending_confirmation' && isDefectivePendingConfirmation(part));
 
     return matchesSearch && matchesStatus;
   });
@@ -430,6 +488,7 @@ export default function PartsManagementClient({
     rejected: maintenancePartRequests.filter((item) => item.status === 'rejected').length,
     pendingVerification: statusCounts.pending_verification || 0,
     withdrawn: statusCounts.withdrawn || 0,
+    pendingDefective: withdrawnParts.filter((part) => isDefectivePendingConfirmation(part)).length,
   };
 
   const hasActivePartsFilters = Boolean(normalizedSearchText) || partStatusFilter !== 'all';
@@ -438,9 +497,6 @@ export default function PartsManagementClient({
     setSearchText('');
     setPartStatusFilter('all');
   };
-
-  const isDefectiveMarked = (part: MaintenancePart) =>
-    part.status === 'defective' || (part.notes || '').includes('MARKED AS DEFECTIVE');
 
   const filteredPartGroups = Object.values(
     filteredParts.reduce<
@@ -536,12 +592,13 @@ export default function PartsManagementClient({
           </div>
         </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         {[
           { label: 'รอคลังยืนยัน', value: partRequestSummary.pending, className: 'bg-amber-50 text-amber-700' },
           { label: 'พร้อมจ่ายแล้ว', value: partRequestSummary.approved, className: 'bg-emerald-50 text-emerald-700' },
           { label: 'ไม่พร้อมจ่าย', value: partRequestSummary.rejected, className: 'bg-rose-50 text-rose-700' },
           { label: 'รอตรวจนับ', value: partRequestSummary.pendingVerification, className: 'bg-blue-50 text-blue-700' },
+          { label: 'รอยืนยันของเสีย', value: partRequestSummary.pendingDefective, className: 'bg-rose-50 text-rose-700' },
           { label: 'ค้างคืน/รอใช้จริง', value: partRequestSummary.withdrawn, className: 'bg-slate-100 text-slate-700' },
         ].map((item) => (
           <div key={item.label} className={`rounded-xl p-4 shadow-sm ${item.className}`}>
@@ -574,6 +631,8 @@ export default function PartsManagementClient({
             <option value="withdrawn">เบิกแล้ว</option>
             <option value="used">ใช้งานแล้ว</option>
             <option value="pending_verification">รอตรวจนับ</option>
+            <option value="defective_pending_confirmation">รอยืนยันของเสีย</option>
+            <option value="defective">ยืนยันของเสียแล้ว</option>
             <option value="verified">ตรวจแล้ว</option>
             <option value="verification_failed">ตรวจนับไม่ตรง</option>
             <option value="completed">ตัดสต็อกแล้ว</option>
@@ -590,7 +649,7 @@ export default function PartsManagementClient({
           ) : null}
         </div>
         <div className="text-sm text-gray-500 dark:text-gray-400">
-          คิวรอคลัง {filteredPendingPartRequests.length} รายการ • ประวัติล่าสุด {filteredRecentPartRequests.length} รายการ • อะไหล่ในใบงาน {filteredParts.length} รายการ
+          คิวรอคลัง {filteredPendingPartRequests.length} รายการ • รอยืนยันของเสีย {partRequestSummary.pendingDefective} รายการ • ประวัติล่าสุด {filteredRecentPartRequests.length} รายการ • อะไหล่ในใบงาน {filteredParts.length} รายการ
         </div>
       </div>
 
@@ -801,11 +860,16 @@ export default function PartsManagementClient({
         ) : (
           <div className="space-y-6 p-4">
             {filteredPartGroups.map((group) => {
-              const hasUsedParts = group.parts.some((part) => part.status === 'used');
-              const hasBlockingParts = group.parts.some((part) =>
-                ['withdrawn', 'pending_verification'].includes(part.status) || isDefectiveMarked(part),
+              const hasPostableParts = group.parts.some((part) =>
+                ['used', 'verified'].includes(part.status),
               );
-              const defectiveCount = group.parts.filter((part) => isDefectiveMarked(part)).length;
+              const hasBlockingParts = group.parts.some((part) =>
+                ['withdrawn', 'pending_verification', 'verification_failed'].includes(part.status)
+                || isDefectivePendingConfirmation(part),
+              );
+              const pendingDefectiveCount = group.parts.filter((part) =>
+                isDefectivePendingConfirmation(part),
+              ).length;
 
               return (
                 <div
@@ -828,7 +892,7 @@ export default function PartsManagementClient({
                       </p>
                     </div>
                     <div className="flex flex-col items-start gap-2 lg:items-end">
-                      {canDirectStockActions && hasUsedParts && !hasBlockingParts ? (
+                      {canDirectStockActions && hasPostableParts && !hasBlockingParts ? (
                         <button
                           onClick={() => handleCompleteWithParts(group.requestId, group.requestNumber, group.title)}
                           className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
@@ -836,14 +900,14 @@ export default function PartsManagementClient({
                           ยืนยันตัดสต็อก
                         </button>
                       ) : null}
-                      {defectiveCount > 0 ? (
+                      {pendingDefectiveCount > 0 ? (
                         <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-200">
-                          มีของเสีย {defectiveCount} รายการ รอคลังยืนยัน
+                          มีของเสีย {pendingDefectiveCount} รายการ รอคลังยืนยัน
                         </span>
                       ) : null}
                       {hasBlockingParts ? (
                         <span className="text-xs text-amber-600">
-                          ยังมีอะไหล่ค้างคืน/ค้างตรวจนับ หรือของเสียรอยืนยันในใบงานนี้
+                          ยังมีอะไหล่ค้างคืน/ค้างตรวจนับ/ตรวจนับไม่ตรง หรือของเสียรอยืนยันในใบงานนี้
                         </span>
                       ) : null}
                     </div>
@@ -893,16 +957,21 @@ export default function PartsManagementClient({
                               >
                                 {STATUS_LABELS[part.status] || part.status}
                               </span>
-                              {isDefectiveMarked(part) ? (
+                              {isDefectivePendingConfirmation(part) ? (
                                 <div className="mt-1 text-xs font-semibold text-rose-700">
                                   มีของเสีย (รอคลังยืนยัน)
+                                </div>
+                              ) : null}
+                              {isDefectiveConfirmed(part) ? (
+                                <div className="mt-1 text-xs font-semibold text-rose-700">
+                                  ยืนยันของเสียแล้ว
                                 </div>
                               ) : null}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">{part.withdrawn_by}</td>
                             <td className="px-4 py-3 text-right">
-                              {part.status === 'withdrawn' && canDirectStockActions ? (
-                                <div className="flex justify-end gap-2">
+                              <div className="flex justify-end gap-2">
+                                {part.status === 'withdrawn' && canDirectStockActions ? (
                                   <button
                                     onClick={() => {
                                       setSelectedPart(part);
@@ -913,8 +982,17 @@ export default function PartsManagementClient({
                                     <Undo2 size={12} />
                                     คืน
                                   </button>
-                                </div>
-                              ) : null}
+                                ) : null}
+                                {canConfirmDefectiveReceipt && isDefectivePendingConfirmation(part) ? (
+                                  <button
+                                    onClick={() => handleConfirmDefective(part)}
+                                    className="flex items-center gap-1 rounded bg-rose-600 px-2 py-1 text-xs font-medium text-white hover:bg-rose-700"
+                                  >
+                                    <AlertTriangle size={12} />
+                                    ยืนยันของเสีย
+                                  </button>
+                                ) : null}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -953,7 +1031,7 @@ export default function PartsManagementClient({
             </div>
             <form onSubmit={handleWithdraw} className="space-y-4">
               <div className="space-y-4 p-6">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
                 <div className="rounded-2xl bg-orange-50 px-4 py-3 text-sm text-orange-900">
                   <div className="text-xs font-semibold uppercase tracking-wide text-orange-600">ผู้ดำเนินการ</div>
                   <div className="mt-1 font-semibold">{session?.user?.name || '-'}</div>
@@ -961,7 +1039,25 @@ export default function PartsManagementClient({
                 <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-900 dark:bg-slate-700/60 dark:text-slate-100">
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">คงเหลือ WH-01</div>
                   <div className="mt-1 font-semibold">
-                    {selectedProduct ? `${availableStock} ${selectedProduct.p_unit || 'ชิ้น'}` : '-'}
+                    {selectedProduct ? `${stockWh01} ${selectedProduct.p_unit || 'ชิ้น'}` : '-'}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:bg-blue-900/25 dark:text-blue-100">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-300">ตัดเบิก WH-02</div>
+                  <div className="mt-1 font-semibold">
+                    {selectedProduct ? `${stockWh02} ${selectedProduct.p_unit || 'ชิ้น'}` : '-'}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-cyan-50 px-4 py-3 text-sm text-cyan-900 dark:bg-cyan-900/25 dark:text-cyan-100">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-300">ใช้จริง WH-03</div>
+                  <div className="mt-1 font-semibold">
+                    {selectedProduct ? `${stockWh03} ${selectedProduct.p_unit || 'ชิ้น'}` : '-'}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:bg-rose-900/25 dark:text-rose-100">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-300">ของเสีย WH-08</div>
+                  <div className="mt-1 font-semibold">
+                    {selectedProduct ? `${stockWh08} ${selectedProduct.p_unit || 'ชิ้น'}` : '-'}
                   </div>
                 </div>
               </div>
@@ -1168,6 +1264,8 @@ export default function PartsManagementClient({
                   : 'bg-gradient-to-br from-rose-500 via-red-500 to-orange-400'
                 : actionDialog.mode === 'complete'
                   ? 'bg-gradient-to-br from-blue-600 via-cyan-500 to-sky-400'
+                  : actionDialog.mode === 'confirmDefective'
+                    ? 'bg-gradient-to-br from-rose-600 via-red-500 to-orange-400'
                   : 'bg-gradient-to-br from-slate-800 via-slate-700 to-slate-500'
             }`}>
               <button
@@ -1184,6 +1282,8 @@ export default function PartsManagementClient({
                     ? 'Store Decision'
                     : actionDialog.mode === 'complete'
                       ? 'Stock Posting'
+                      : actionDialog.mode === 'confirmDefective'
+                        ? 'Defective Confirmation'
                       : 'Maintenance Cleanup'}
                 </span>
                 <h2 className="flex items-center gap-2 text-2xl font-bold">
@@ -1191,6 +1291,8 @@ export default function PartsManagementClient({
                     <CheckCircle className="text-white" />
                   ) : actionDialog.mode === 'complete' ? (
                     <ShieldCheck className="text-white" />
+                  ) : actionDialog.mode === 'confirmDefective' ? (
+                    <AlertTriangle className="text-white" />
                   ) : (
                     <Undo2 className="text-white" />
                   )}
@@ -1200,6 +1302,8 @@ export default function PartsManagementClient({
                       : 'ยืนยันไม่พร้อมจ่าย'
                     : actionDialog.mode === 'complete'
                       ? 'ยืนยันตัดสต็อก'
+                      : actionDialog.mode === 'confirmDefective'
+                        ? 'ยืนยันของเสีย'
                       : 'เคลียร์รายการค้าง'}
                 </h2>
               </div>
@@ -1267,6 +1371,31 @@ export default function PartsManagementClient({
                 </div>
               ) : null}
 
+              {actionDialog.mode === 'confirmDefective' ? (
+                <div className="space-y-3 rounded-2xl border border-dashed border-rose-200 bg-rose-50 px-4 py-4 dark:border-rose-500/40 dark:bg-rose-900/20">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl bg-white/90 px-4 py-3 dark:bg-slate-700/60">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">ใบงาน</div>
+                      <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{actionDialog.requestNumber}</div>
+                    </div>
+                    <div className="rounded-2xl bg-white/90 px-4 py-3 dark:bg-slate-700/60">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">ผู้เบิก</div>
+                      <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{actionDialog.withdrawnBy}</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">สินค้า/อะไหล่</div>
+                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">{actionDialog.itemName}</div>
+                    <div className="mt-1 text-sm text-slate-500 dark:text-slate-300">
+                      จำนวนที่ยืนยันเป็นของเสีย: {actionDialog.quantity} {actionDialog.unit}
+                    </div>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    หลังยืนยันแล้ว รายการนี้จะเปลี่ยนเป็นสถานะของเสีย และจะไม่ถูกตัดไปสต็อกใช้งานปกติ
+                  </p>
+                </div>
+              ) : null}
+
               {actionDialog.mode === 'clearReserved' ? (
                 <div className="space-y-3">
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
@@ -1321,6 +1450,8 @@ export default function PartsManagementClient({
                         : 'bg-gradient-to-r from-rose-500 to-red-500'
                       : actionDialog.mode === 'complete'
                         ? 'bg-gradient-to-r from-blue-600 to-cyan-500'
+                        : actionDialog.mode === 'confirmDefective'
+                          ? 'bg-gradient-to-r from-rose-600 to-red-500'
                         : 'bg-gradient-to-r from-slate-800 to-slate-600'
                   }`}
                 >
@@ -1332,6 +1463,8 @@ export default function PartsManagementClient({
                         : 'ยืนยันไม่พร้อมจ่าย'
                       : actionDialog.mode === 'complete'
                         ? 'ยืนยันตัดสต็อก'
+                        : actionDialog.mode === 'confirmDefective'
+                          ? 'ยืนยันของเสีย'
                         : 'ยืนยันเคลียร์รายการ'}
                 </button>
               </div>

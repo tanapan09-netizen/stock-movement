@@ -5,7 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import { getMaintenanceWorkflowStep, MAINTENANCE_WORKFLOW_LABELS } from '@/lib/maintenance-workflow';
 
-// ── AgeBadgeInfo type (ต้อง match กับที่ define ใน MaintenanceClient.tsx) ──
+
 export interface AgeBadgeInfo {
     label: string;
     isOverSLA: boolean;
@@ -195,7 +195,7 @@ export default function MaintenanceRequestCard({ request, onClick, onResend, age
             {request.status === 'confirmed' && (
                 <div className="rounded-2xl border border-purple-200 bg-purple-50/80 p-3">
                     <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-purple-700">
-                        สถานะขั้นตอนการทำงาน (ละเอียด)
+                        สถานะขั้นตอนการทำงาน
                     </div>
                     <div className="space-y-1.5">
                         {confirmedDetailRows.map((row) => (
@@ -212,7 +212,7 @@ export default function MaintenanceRequestCard({ request, onClick, onResend, age
                         ))}
                         {!hasPartsStockPosted && (
                             <div className="pl-5 text-[11px] font-semibold text-amber-700">
-                                รอ role store ตัดสต็อก/ยืนยันรายการอะไหล่
+                                รอ store ตัดสต็อก/ยืนยันรายการอะไหล่
                             </div>
                         )}
                     </div>

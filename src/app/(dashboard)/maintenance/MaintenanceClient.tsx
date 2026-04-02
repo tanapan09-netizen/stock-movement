@@ -38,6 +38,7 @@ import {
     getMaintenanceHistory,
     getMaintenanceParts,
     confirmPartsUsed,
+    confirmMaintenancePartDefective,
     storeVerifyParts,
     withdrawPartsForMaintenanceBatch,
     resendMaintenanceNotification,
@@ -399,7 +400,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const ensureCanCreateMaintenanceRequest = () => {
         if (!ensureCanEditPage()) return false;
         if (canCreateNewRequestByRole) return true;
-        showToast('Role นี้ไม่มีสิทธิ์กดปุ่มแจ้งใหม่', 'warning');
+        showToast('คุณไม่มีสิทธิ์กดปุ่มแจ้งใหม่', 'warning');
         return false;
     };
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
@@ -417,6 +418,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const [filterStartDate, setFilterStartDate] = useState('');
     const [filterEndDate, setFilterEndDate] = useState('');
     const [showCompleted, setShowCompleted] = useState(false);
+    const [showCancelled, setShowCancelled] = useState(false);
     const [assignedToMeOnly, setAssignedToMeOnly] = useState(false);
     const [urgentOnly, setUrgentOnly] = useState(false);
     const [reopenedOnly, setReopenedOnly] = useState(false);
@@ -1197,15 +1199,29 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         }
 
         try {
-            const result = await storeVerifyParts({
-                part_id: partId,
-                verified_quantity: verifyQty,
-                verified_by: session.user.name,
-                notes: ''
-            });
+            const targetPart = parts.find((part) => part.part_id === partId);
+            if (!targetPart) {
+                showToast('ไม่พบรายการอะไหล่ที่ต้องการยืนยัน', 'error');
+                return;
+            }
+
+            const result = isPartMarkedDefective(targetPart)
+                ? await confirmMaintenancePartDefective({
+                    part_id: partId,
+                    confirmed_by: session.user.name,
+                })
+                : await storeVerifyParts({
+                    part_id: partId,
+                    verified_quantity: verifyQty,
+                    verified_by: session.user.name,
+                    notes: ''
+                });
 
             if (result.success) {
-                showToast(result.message || 'Verification successful', 'success');
+                showToast(
+                    result.message || (isPartMarkedDefective(targetPart) ? 'Defective confirmed' : 'Verification successful'),
+                    'success',
+                );
                 setVerifyingPartId(null);
                 // Refresh parts
                 if (selectedRequest) {
@@ -1351,12 +1367,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     async function handleUpdateRequest() {
         if (!selectedRequest) return;
         if (loggedInRole === 'employee') {
-            showToast('Role employee ดูรายละเอียดได้อย่างเดียว ไม่สามารถแก้ไขใบงาน', 'warning');
+            showToast('employee ดูรายละเอียดได้อย่างเดียว ไม่สามารถแก้ไขใบงาน', 'warning');
             return;
         }
         const isStatusChanged = editData.status !== selectedRequest.status;
         if (!canEditPage && !(canEditDetailStatus && isStatusChanged)) {
-            showToast('คุณมีสิทธิ์อ่านอย่างเดียวในหน้านี้', 'warning');
+            showToast('อ่านได้อย่างเดียวจ้า', 'warning');
             return;
         }
         const canManagerEditClosedRequest =
@@ -1369,11 +1385,17 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         // Validation for technician completion handoff
         const isTechnician = isMaintenanceTechnician(loggedInRole);
         if (isTechnician && editData.status === 'confirmed') {
-            const blockingPartStatuses = new Set(['withdrawn', 'used', 'pending_verification']);
-            const hasUncheckedParts = parts.some((part) => blockingPartStatuses.has(part.status));
+            const blockingPartStatuses = new Set(['withdrawn', 'used', 'pending_verification', 'verification_failed']);
+            const hasUncheckedParts = parts.some((part) => {
+                const hasPendingDefectiveConfirmation =
+                    isPartMarkedDefective(part)
+                    && !['defective', 'verified', 'completed', 'returned'].includes(part.status);
+
+                return blockingPartStatuses.has(part.status) || hasPendingDefectiveConfirmation;
+            });
 
             if (hasUncheckedParts) {
-                alert('ยังมีอะไหล่ที่รอรายงานการใช้หรือรอตรวจนับอยู่ กรุณาดำเนินการให้ครบก่อนปิดงาน');
+                alert('ยังมีอะไหล่ค้าง (รอใช้จริง/รอตรวจนับ/ตรวจนับไม่ตรง/ของเสียรอยืนยัน) กรุณาดำเนินการให้ครบก่อนส่งงาน');
                 return;
             }
         }
@@ -1582,6 +1604,14 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             }
         }
 
+        if (!showCancelled) {
+            const isCancelledStatus = req.status === 'cancelled';
+            const isExplicitlyFilteringCancelled = filterStatus === 'cancelled';
+            if (isCancelledStatus && !isExplicitlyFilteringCancelled) {
+                return false;
+            }
+        }
+
         if (assignedToMeOnly && normalizedCurrentUserName) {
             const normalizedAssignedTo = normalizePersonName(req.assigned_to);
             if (normalizedAssignedTo !== normalizedCurrentUserName) {
@@ -1610,10 +1640,14 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         || Boolean(filterEndDate)
         || Boolean(searchTerm.trim())
         || showCompleted
+        || showCancelled
         || assignedToMeOnly
         || urgentOnly
         || reopenedOnly
     );
+    const emptyStateMessage = hasActiveRequestFilters
+        ? 'ไม่พบงานที่ตรงกับตัวกรอง'
+        : 'ไม่มีงานแจ้งซ่อมในขณะนี้';
 
     const clearAllRequestFilters = () => {
         setFilterStatus('all');
@@ -1621,6 +1655,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         setFilterStartDate('');
         setFilterEndDate('');
         setShowCompleted(false);
+        setShowCancelled(false);
         setAssignedToMeOnly(false);
         setUrgentOnly(false);
         setReopenedOnly(false);
@@ -1866,7 +1901,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                             }}
                             disabled={!canCreateNewMaintenanceRequest}
                             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
-                            title={canCreateNewMaintenanceRequest ? undefined : 'เฉพาะ role ที่กำหนดเท่านั้น'}
+                            title={canCreateNewMaintenanceRequest ? undefined : 'เฉพาะ ผู้ใช้ ที่กำหนดเท่านั้น'}
                         >
                             <Wrench size={18} /> แจ้งใหม่
                         </button>
@@ -1929,6 +1964,13 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                         className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${showCompleted ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-200'}`}
                     >
                         แสดงงานที่เสร็จแล้ว
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setShowCancelled((prev) => !prev)}
+                        className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${showCancelled ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-900/30 dark:text-rose-200'}`}
+                    >
+                        แสดงงานที่ยกเลิก
                     </button>
                     {hasActiveRequestFilters ? (
                         <button
@@ -2180,7 +2222,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                         <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
                                             <div className="flex flex-col items-center gap-2">
                                                 <Filter size={40} className="text-gray-200" />
-                                                <p className="text-lg font-medium text-gray-400">No requests found matching your filters</p>
+                                                <p className="text-lg font-medium text-gray-400">{emptyStateMessage}</p>
                                             </div>
                                         </td>
                                     </tr>
@@ -2204,7 +2246,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                         <div className="col-span-full py-20 text-center bg-white rounded-xl border border-dashed border-gray-200">
                             <div className="flex flex-col items-center gap-2">
                                 <Filter size={40} className="text-gray-200" />
-                                <p className="text-lg font-medium text-gray-400">No requests found matching your filters</p>
+                                <p className="text-lg font-medium text-gray-400">{emptyStateMessage}</p>
                             </div>
                         </div>
                     )}
@@ -3558,24 +3600,34 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     <div className="mt-3 rounded-xl bg-yellow-50 px-3 pb-2 pt-3 ring-1 ring-yellow-200">
                       {verifyingPartId === part.part_id ? (
                         <div className="flex flex-col gap-2">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              min="0"
-                              value={verifyQty}
-                              onChange={(e) => setVerifyQty(Number(e.target.value))}
-                              className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                              placeholder="จำนวน"
-                            />
-                            <span className="text-sm text-slate-500">นับได้จริง</span>
-                          </div>
+                          {isPartMarkedDefective(part) ? (
+                            <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">
+                              รายการนี้ถูกแจ้งเป็นของเสียจากฝ่ายช่าง กดยืนยันเพื่อส่งสถานะของเสียให้คลัง
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="0"
+                                value={verifyQty}
+                                onChange={(e) => setVerifyQty(Number(e.target.value))}
+                                className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                placeholder="จำนวน"
+                              />
+                              <span className="text-sm text-slate-500">นับได้จริง</span>
+                            </div>
+                          )}
 
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleVerifyPart(part.part_id)}
-                              className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700"
+                              className={`rounded-xl px-4 py-2 text-xs font-medium text-white ${
+                                isPartMarkedDefective(part)
+                                  ? 'bg-rose-600 hover:bg-rose-700'
+                                  : 'bg-emerald-600 hover:bg-emerald-700'
+                              }`}
                             >
-                              ยืนยันถูกต้อง
+                              {isPartMarkedDefective(part) ? 'ยืนยันของเสีย' : 'ยืนยันถูกต้อง'}
                             </button>
                             <button
                               onClick={() => setVerifyingPartId(null)}

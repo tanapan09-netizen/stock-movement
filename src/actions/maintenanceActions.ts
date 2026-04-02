@@ -19,6 +19,7 @@ import { getUserPermissionContext } from '@/lib/server/permission-service';
 import {
     canApproveMaintenanceCompletion,
     canConfirmMaintenancePartUsage,
+    canConfirmMaintenanceDefectiveReceipt,
     canCreateMaintenanceRequest,
     canDirectManageMaintenanceStock,
     canManageMaintenanceEdit,
@@ -1130,9 +1131,9 @@ export async function withdrawPartForMaintenance(data: {
         await assertMaintenanceRequestAllowsPartChanges(data.request_id);
 
         const wh01 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-01' } });
-        const wh03 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-03' } });
+        const wh02 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-02' } });
 
-        if (!wh01 || !wh03) return { success: false, error: 'Warehouses not configured' };
+        if (!wh01 || !wh02) return { success: false, error: 'Warehouses not configured' };
 
         const stockWh01 = await prisma.tbl_warehouse_stock.findUnique({
             where: { warehouse_id_p_id: { warehouse_id: wh01.warehouse_id, p_id: data.p_id } }
@@ -1168,8 +1169,8 @@ export async function withdrawPartForMaintenance(data: {
             });
 
             await tx.tbl_warehouse_stock.upsert({
-                where: { warehouse_id_p_id: { warehouse_id: wh03.warehouse_id, p_id: data.p_id } },
-                create: { warehouse_id: wh03.warehouse_id, p_id: data.p_id, quantity: data.quantity, min_stock: 0 },
+                where: { warehouse_id_p_id: { warehouse_id: wh02.warehouse_id, p_id: data.p_id } },
+                create: { warehouse_id: wh02.warehouse_id, p_id: data.p_id, quantity: data.quantity, min_stock: 0 },
                 update: { quantity: { increment: data.quantity } }
             });
 
@@ -1228,9 +1229,9 @@ export async function withdrawPartsForMaintenanceBatch(data: {
         }
 
         const wh01 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-01' } });
-        const wh03 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-03' } });
+        const wh02 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-02' } });
 
-        if (!wh01 || !wh03) return { success: false, error: 'Warehouses not configured' };
+        if (!wh01 || !wh02) return { success: false, error: 'Warehouses not configured' };
 
         const productIds = [...new Set(normalizedItems.map((item) => item.p_id))];
 
@@ -1290,9 +1291,9 @@ export async function withdrawPartsForMaintenanceBatch(data: {
                 });
 
                 await tx.tbl_warehouse_stock.upsert({
-                    where: { warehouse_id_p_id: { warehouse_id: wh03.warehouse_id, p_id: item.p_id } },
+                    where: { warehouse_id_p_id: { warehouse_id: wh02.warehouse_id, p_id: item.p_id } },
                     create: {
-                        warehouse_id: wh03.warehouse_id,
+                        warehouse_id: wh02.warehouse_id,
                         p_id: item.p_id,
                         quantity: item.quantity,
                         min_stock: 0
@@ -1393,7 +1394,7 @@ export async function confirmPartsUsed(data: {
                 where: { part_id: data.part_id },
                 data: {
                     actual_used: data.actual_used,
-                    status: 'used',
+                    status: 'pending_verification',
                     used_at: new Date(),
                     notes: data.is_defective ? 'MARKED AS DEFECTIVE' : undefined
                 }
@@ -1488,13 +1489,33 @@ export async function returnPartToStock(data: { part_id: number; returned_qty: n
         }
 
         const wh01 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-01' } });
+        const wh02 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-02' } });
         const wh03 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-03' } });
 
-        if (!wh01 || !wh03) return { success: false, error: 'Warehouses not configured' };
+        if (!wh01 || !wh02 || !wh03) return { success: false, error: 'Warehouses not configured' };
 
         await prisma.$transaction(async (tx) => {
-            await tx.tbl_warehouse_stock.update({
+            const stockWh02 = await tx.tbl_warehouse_stock.findUnique({
+                where: { warehouse_id_p_id: { warehouse_id: wh02.warehouse_id, p_id: part.p_id } },
+                select: { quantity: true }
+            });
+            const stockWh03 = await tx.tbl_warehouse_stock.findUnique({
                 where: { warehouse_id_p_id: { warehouse_id: wh03.warehouse_id, p_id: part.p_id } },
+                select: { quantity: true }
+            });
+
+            const qtyInWh02 = Number(stockWh02?.quantity ?? 0);
+            const qtyInWh03 = Number(stockWh03?.quantity ?? 0);
+            const sourceWarehouseId = qtyInWh02 >= data.returned_qty
+                ? wh02.warehouse_id
+                : (qtyInWh03 >= data.returned_qty ? wh03.warehouse_id : null);
+
+            if (!sourceWarehouseId) {
+                throw new Error(`Insufficient stock in WH-02/WH-03 for return (${part.p_id})`);
+            }
+
+            await tx.tbl_warehouse_stock.update({
+                where: { warehouse_id_p_id: { warehouse_id: sourceWarehouseId, p_id: part.p_id } },
                 data: { quantity: { decrement: data.returned_qty } }
             });
 
@@ -1553,36 +1574,66 @@ export async function completeMaintenanceWithParts(request_id: number, changed_b
             return { success: false, error: 'No maintenance parts found for this request' };
         }
 
-        const hasBlockingParts = parts.some((part) =>
-            ['withdrawn', 'pending_verification', 'verification_failed'].includes(part.status)
-        );
+        const hasBlockingParts = parts.some((part) => {
+            const hasPendingDefectiveConfirmation = (part.notes || '').includes('MARKED AS DEFECTIVE')
+                && !['defective', 'verified', 'completed', 'returned'].includes(part.status);
+
+            return (
+                ['withdrawn', 'pending_verification', 'verification_failed'].includes(part.status)
+                || hasPendingDefectiveConfirmation
+            );
+        });
         if (hasBlockingParts) {
             return { success: false, error: 'All parts must be cleared and verified before stock posting' };
         }
 
-        const partsToPost = parts.filter((part) => part.status === 'used');
+        const partsToPost = parts.filter((part) => ['used', 'verified'].includes(part.status));
         if (partsToPost.length === 0) {
-            return { success: false, error: 'No used parts are ready for stock posting' };
+            return { success: false, error: 'No used or verified parts are ready for stock posting' };
         }
 
-        const wh03 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-03' } });
         const wh02 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-02' } });
+        const wh03 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-03' } });
 
         if (!wh03 || !wh02) return { success: false, error: 'Warehouses not configured' };
 
         await prisma.$transaction(async (tx) => {
             for (const part of partsToPost) {
-                const qty = part.actual_used || part.quantity;
-                await tx.tbl_warehouse_stock.update({
+                const qty = part.status === 'verified'
+                    ? Number(part.verified_quantity ?? part.actual_used ?? part.quantity)
+                    : Number(part.actual_used ?? part.quantity);
+
+                const stockWh02 = await tx.tbl_warehouse_stock.findUnique({
+                    where: { warehouse_id_p_id: { warehouse_id: wh02.warehouse_id, p_id: part.p_id } },
+                    select: { quantity: true }
+                });
+                const stockWh03 = await tx.tbl_warehouse_stock.findUnique({
                     where: { warehouse_id_p_id: { warehouse_id: wh03.warehouse_id, p_id: part.p_id } },
-                    data: { quantity: { decrement: qty } }
+                    select: { quantity: true }
                 });
 
-                await tx.tbl_warehouse_stock.upsert({
-                    where: { warehouse_id_p_id: { warehouse_id: wh02.warehouse_id, p_id: part.p_id } },
-                    create: { warehouse_id: wh02.warehouse_id, p_id: part.p_id, quantity: qty, min_stock: 0 },
-                    update: { quantity: { increment: qty } }
-                });
+                const qtyInWh02 = Number(stockWh02?.quantity ?? 0);
+                const qtyInWh03 = Number(stockWh03?.quantity ?? 0);
+                const sourceWarehouseId = qtyInWh02 >= qty
+                    ? wh02.warehouse_id
+                    : (qtyInWh03 >= qty ? wh03.warehouse_id : null);
+
+                if (!sourceWarehouseId) {
+                    throw new Error(`Insufficient stock in WH-02/WH-03 for posting (${part.p_id})`);
+                }
+
+                if (sourceWarehouseId !== wh03.warehouse_id) {
+                    await tx.tbl_warehouse_stock.update({
+                        where: { warehouse_id_p_id: { warehouse_id: sourceWarehouseId, p_id: part.p_id } },
+                        data: { quantity: { decrement: qty } }
+                    });
+
+                    await tx.tbl_warehouse_stock.upsert({
+                        where: { warehouse_id_p_id: { warehouse_id: wh03.warehouse_id, p_id: part.p_id } },
+                        create: { warehouse_id: wh03.warehouse_id, p_id: part.p_id, quantity: qty, min_stock: 0 },
+                        update: { quantity: { increment: qty } }
+                    });
+                }
 
                 await tx.tbl_maintenance_parts.update({
                     where: { part_id: part.part_id },
@@ -1757,33 +1808,53 @@ export async function getMaintenanceStats() {
 
 export async function getProducts() {
     try {
-        const wh01 = await prisma.tbl_warehouses.findFirst({
-            where: { warehouse_code: 'WH-01' },
-            select: { warehouse_id: true }
+        const warehouses = await prisma.tbl_warehouses.findMany({
+            where: {
+                warehouse_code: { in: ['WH-01', 'WH-02', 'WH-03', 'WH-08'] }
+            },
+            select: { warehouse_id: true, warehouse_code: true }
         });
+
+        const warehouseIdByCode = new Map(
+            warehouses.map((warehouse) => [warehouse.warehouse_code, warehouse.warehouse_id])
+        );
 
         const products = await prisma.tbl_products.findMany({
             where: { active: true },
             orderBy: { p_name: 'asc' }
         });
 
-        const warehouseStock = wh01
+        const warehouseIds = warehouses.map((warehouse) => warehouse.warehouse_id);
+        const warehouseStock = warehouseIds.length > 0
             ? await prisma.tbl_warehouse_stock.findMany({
-                where: { warehouse_id: wh01.warehouse_id },
-                select: { p_id: true, quantity: true }
+                where: { warehouse_id: { in: warehouseIds } },
+                select: { warehouse_id: true, p_id: true, quantity: true }
             })
             : [];
 
-        const stockByProduct = new Map(
-            warehouseStock.map((stock) => [stock.p_id, stock.quantity ?? 0])
+        const stockByWarehouseProduct = new Map(
+            warehouseStock.map((stock) => [
+                `${stock.warehouse_id}:${stock.p_id}`,
+                Number(stock.quantity ?? 0),
+            ])
         );
+
+        const getWarehouseStock = (warehouseCode: string, p_id: string) => {
+            const warehouseId = warehouseIdByCode.get(warehouseCode);
+            if (!warehouseId) return 0;
+            return stockByWarehouseProduct.get(`${warehouseId}:${p_id}`) ?? 0;
+        };
 
         const data = products.map(p => ({
             ...p,
+            stock_wh01: getWarehouseStock('WH-01', p.p_id),
+            stock_wh02: getWarehouseStock('WH-02', p.p_id),
+            stock_wh03: getWarehouseStock('WH-03', p.p_id),
+            stock_wh08: getWarehouseStock('WH-08', p.p_id),
             available_stock: (() => {
-                const whStock = stockByProduct.get(p.p_id);
-                if (whStock === undefined || whStock <= 0) return p.p_count;
-                return whStock;
+                const wh01Stock = getWarehouseStock('WH-01', p.p_id);
+                if (wh01Stock <= 0) return p.p_count;
+                return wh01Stock;
             })()
         }));
 
@@ -1868,17 +1939,37 @@ export async function clearAllReservedParts(adminName: string, reason: string) {
         if (pendingParts.length === 0) return { success: true, count: 0 };
 
         const wh01 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-01' } });
+        const wh02 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-02' } });
         const wh03 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-03' } });
 
-        if (!wh01 || !wh03) return { success: false, error: 'Warehouses WH-01 or WH-03 not found' };
+        if (!wh01 || !wh02 || !wh03) return { success: false, error: 'Warehouses WH-01/WH-02/WH-03 not found' };
 
         await prisma.$transaction(async (tx) => {
             for (const part of pendingParts) {
                 const qtyToReturn = part.quantity - part.returned_qty;
                 if (qtyToReturn <= 0) continue;
 
-                await tx.tbl_warehouse_stock.update({
+                const stockWh02 = await tx.tbl_warehouse_stock.findUnique({
+                    where: { warehouse_id_p_id: { warehouse_id: wh02.warehouse_id, p_id: part.p_id } },
+                    select: { quantity: true }
+                });
+                const stockWh03 = await tx.tbl_warehouse_stock.findUnique({
                     where: { warehouse_id_p_id: { warehouse_id: wh03.warehouse_id, p_id: part.p_id } },
+                    select: { quantity: true }
+                });
+
+                const qtyInWh02 = Number(stockWh02?.quantity ?? 0);
+                const qtyInWh03 = Number(stockWh03?.quantity ?? 0);
+                const sourceWarehouseId = qtyInWh02 >= qtyToReturn
+                    ? wh02.warehouse_id
+                    : (qtyInWh03 >= qtyToReturn ? wh03.warehouse_id : null);
+
+                if (!sourceWarehouseId) {
+                    throw new Error(`Insufficient stock in WH-02/WH-03 for clearing (${part.p_id})`);
+                }
+
+                await tx.tbl_warehouse_stock.update({
+                    where: { warehouse_id_p_id: { warehouse_id: sourceWarehouseId, p_id: part.p_id } },
                     data: { quantity: { decrement: qtyToReturn } }
                 });
 
@@ -2568,12 +2659,25 @@ export async function getMaintenancePartUsageReports(filters?: {
                     scrap: [],
                     technician_usage: [],
                     daily_trend: [],
+                    defective_receipts: [],
+                    defective_receipt_daily: [],
+                    defective_receipt_by_confirmer: [],
                 }
             };
         }
 
         const requestIds = requests.map((request) => request.request_id);
         const requestMap = new Map(requests.map((request) => [request.request_id, request]));
+
+        const parseDefectiveReceiptQty = (newValue?: string | null) => {
+            const message = String(newValue || '');
+            const match = message.match(/defective\s*\(([-+]?\d*\.?\d+)\)/i);
+            if (match) {
+                const parsed = Number(match[1]);
+                if (Number.isFinite(parsed)) return parsed;
+            }
+            return 0;
+        };
 
         const parts = await prisma.tbl_maintenance_parts.findMany({
             where: { request_id: { in: requestIds } },
@@ -2587,6 +2691,14 @@ export async function getMaintenancePartUsageReports(filters?: {
                     }
                 }
             }
+        });
+
+        const defectiveReceiptHistories = await prisma.tbl_maintenance_history.findMany({
+            where: {
+                request_id: { in: requestIds },
+                action: 'parts_defective_confirmed',
+            },
+            orderBy: { changed_at: 'desc' },
         });
 
         const consumptionMap = new Map<string, {
@@ -2783,6 +2895,73 @@ export async function getMaintenancePartUsageReports(filters?: {
                 date_label: item.date_key,
             }));
 
+        const defectiveReceipts = defectiveReceiptHistories.map((history) => {
+            const request = requestMap.get(history.request_id);
+            const receiptQty = parseDefectiveReceiptQty(history.new_value);
+
+            return {
+                request_id: history.request_id,
+                request_number: request?.request_number || `REQ-${history.request_id}`,
+                title: request?.title || '-',
+                room_code: request?.tbl_rooms?.room_code || '-',
+                room_name: request?.tbl_rooms?.room_name || '-',
+                confirmer: history.changed_by || '-',
+                receipt_qty: receiptQty,
+                occurred_at: history.changed_at,
+                detail: history.new_value || '',
+            };
+        });
+
+        const defectiveReceiptDailyMap = new Map<string, {
+            date_key: string;
+            receipt_count: number;
+            receipt_qty: number;
+        }>();
+        const defectiveReceiptByConfirmerMap = new Map<string, {
+            confirmer: string;
+            receipt_count: number;
+            receipt_qty: number;
+            request_ids: Set<number>;
+        }>();
+
+        for (const receipt of defectiveReceipts) {
+            const dateKey = new Date(receipt.occurred_at).toISOString().slice(0, 10);
+            const currentDaily = defectiveReceiptDailyMap.get(dateKey) || {
+                date_key: dateKey,
+                receipt_count: 0,
+                receipt_qty: 0,
+            };
+            currentDaily.receipt_count += 1;
+            currentDaily.receipt_qty += receipt.receipt_qty;
+            defectiveReceiptDailyMap.set(dateKey, currentDaily);
+
+            const confirmerKey = receipt.confirmer || '-';
+            const currentConfirmer = defectiveReceiptByConfirmerMap.get(confirmerKey) || {
+                confirmer: confirmerKey,
+                receipt_count: 0,
+                receipt_qty: 0,
+                request_ids: new Set<number>(),
+            };
+            currentConfirmer.receipt_count += 1;
+            currentConfirmer.receipt_qty += receipt.receipt_qty;
+            currentConfirmer.request_ids.add(receipt.request_id);
+            defectiveReceiptByConfirmerMap.set(confirmerKey, currentConfirmer);
+        }
+
+        const defectiveReceiptDaily = Array.from(defectiveReceiptDailyMap.values())
+            .sort((a, b) => a.date_key.localeCompare(b.date_key))
+            .map((item) => ({
+                ...item,
+                date_label: item.date_key,
+            }));
+
+        const defectiveReceiptByConfirmer = Array.from(defectiveReceiptByConfirmerMap.values())
+            .map(({ request_ids, ...item }) => ({
+                ...item,
+                request_count: request_ids.size,
+            }))
+            .sort((a, b) => b.receipt_qty - a.receipt_qty);
+
         return {
             success: true,
             data: {
@@ -2799,6 +2978,9 @@ export async function getMaintenancePartUsageReports(filters?: {
                 scrap,
                 technician_usage: technicianUsage,
                 daily_trend: dailyTrend,
+                defective_receipts: defectiveReceipts,
+                defective_receipt_daily: defectiveReceiptDaily,
+                defective_receipt_by_confirmer: defectiveReceiptByConfirmer,
             }
         };
     } catch (error: unknown) {
@@ -2809,11 +2991,12 @@ export async function getMaintenancePartUsageReports(filters?: {
 
 export async function getMaintenanceSummary() {
     try {
-        const [total, pending, approved, inProgress, completed, pendingVerification, costAgg] = await Promise.all([
+        const [total, pending, approved, inProgress, confirmed, completed, pendingVerification, costAgg] = await Promise.all([
             prisma.tbl_maintenance_requests.count(),
             prisma.tbl_maintenance_requests.count({ where: { status: 'pending' } }),
             prisma.tbl_maintenance_requests.count({ where: { status: 'approved' } }),
             prisma.tbl_maintenance_requests.count({ where: { status: 'in_progress' } }),
+            prisma.tbl_maintenance_requests.count({ where: { status: 'confirmed' } }),
             prisma.tbl_maintenance_requests.count({ where: { status: 'completed' } }),
             prisma.tbl_maintenance_parts.count({ where: { status: 'pending_verification' } }),
             prisma.tbl_maintenance_requests.aggregate({ _sum: { actual_cost: true } })
@@ -2826,6 +3009,7 @@ export async function getMaintenanceSummary() {
                 pending,
                 approved,
                 in_progress: inProgress,
+                confirmed,
                 completed,
                 total_cost: Number(costAgg._sum.actual_cost || 0),
                 pending_verification: pendingVerification
@@ -2900,6 +3084,15 @@ export async function storeVerifyParts(data: {
 
         await assertMaintenanceRequestAllowsPartChanges(part.request_id);
 
+        const allowedStatuses = new Set(['pending_verification', 'used']);
+        if (!allowedStatuses.has(part.status)) {
+            return { success: false, error: `Part status "${part.status}" is not available for verification` };
+        }
+
+        if ((part.notes || '').includes('MARKED AS DEFECTIVE')) {
+            return { success: false, error: 'Part marked as defective must be confirmed via defective confirmation flow' };
+        }
+
         const expectedQty = part.actual_used ?? part.quantity;
         const nextStatus = data.verified_quantity === expectedQty ? 'verified' : 'verification_failed';
 
@@ -2932,6 +3125,138 @@ export async function storeVerifyParts(data: {
     } catch (error: unknown) {
         console.error('Error verifying maintenance parts:', error);
         return { success: false, error: getErrorMessage(error, 'Failed to verify parts') };
+    }
+}
+
+export async function confirmMaintenancePartDefective(data: {
+    part_id: number;
+    confirmed_by: string;
+    notes?: string;
+}) {
+    try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        const canConfirmDefective = canConfirmMaintenanceDefectiveReceipt(
+            authContext.role,
+            authContext.permissions,
+        );
+
+        if (!canConfirmDefective) {
+            return { success: false, error: 'Permission denied' };
+        }
+
+        const actorName = authContext.session.user.name || data.confirmed_by || 'System';
+
+        const part = await prisma.tbl_maintenance_parts.findUnique({
+            where: { part_id: data.part_id }
+        });
+
+        if (!part) {
+            return { success: false, error: 'Part record not found' };
+        }
+
+        await assertMaintenanceRequestAllowsPartChanges(part.request_id);
+
+        const hasDefectiveMarker = (part.notes || '').includes('MARKED AS DEFECTIVE');
+        if (!hasDefectiveMarker) {
+            return { success: false, error: 'Part is not marked as defective by technician' };
+        }
+
+        if (part.status === 'defective') {
+            return { success: true, data: part, message: 'Defective part already confirmed' };
+        }
+
+        const nextNotes = part.notes?.includes('MARKED AS DEFECTIVE')
+            ? part.notes
+            : [part.notes, 'MARKED AS DEFECTIVE'].filter(Boolean).join(' | ');
+
+        const nextVerificationNotes = data.notes?.trim() || part.verification_notes || null;
+        const nextVerifiedQty = Number(part.actual_used ?? part.verified_quantity ?? part.quantity);
+        if (!Number.isFinite(nextVerifiedQty) || nextVerifiedQty <= 0) {
+            return { success: false, error: 'Defective quantity must be greater than 0' };
+        }
+
+        const wh02 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-02' } });
+        const wh03 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-03' } });
+        const wh08 = await prisma.tbl_warehouses.findFirst({ where: { warehouse_code: 'WH-08' } });
+        if (!wh02 || !wh03 || !wh08) {
+            return { success: false, error: 'Warehouses not configured (WH-02/WH-03/WH-08)' };
+        }
+
+        const updatedPart = await prisma.$transaction(async (tx) => {
+            const stockWh02 = await tx.tbl_warehouse_stock.findUnique({
+                where: { warehouse_id_p_id: { warehouse_id: wh02.warehouse_id, p_id: part.p_id } },
+                select: { quantity: true }
+            });
+            const stockWh03 = await tx.tbl_warehouse_stock.findUnique({
+                where: { warehouse_id_p_id: { warehouse_id: wh03.warehouse_id, p_id: part.p_id } },
+                select: { quantity: true }
+            });
+
+            const qtyInWh02 = Number(stockWh02?.quantity ?? 0);
+            const qtyInWh03 = Number(stockWh03?.quantity ?? 0);
+            const sourceWarehouseId = qtyInWh02 >= nextVerifiedQty
+                ? wh02.warehouse_id
+                : (qtyInWh03 >= nextVerifiedQty ? wh03.warehouse_id : null);
+
+            if (!sourceWarehouseId) {
+                throw new Error(`Insufficient stock in WH-02/WH-03 for defective receipt (${part.p_id})`);
+            }
+
+            await tx.tbl_warehouse_stock.update({
+                where: { warehouse_id_p_id: { warehouse_id: sourceWarehouseId, p_id: part.p_id } },
+                data: { quantity: { decrement: nextVerifiedQty } }
+            });
+
+            await tx.tbl_warehouse_stock.upsert({
+                where: { warehouse_id_p_id: { warehouse_id: wh08.warehouse_id, p_id: part.p_id } },
+                create: {
+                    warehouse_id: wh08.warehouse_id,
+                    p_id: part.p_id,
+                    quantity: nextVerifiedQty,
+                    min_stock: 0,
+                },
+                update: { quantity: { increment: nextVerifiedQty } }
+            });
+
+            const updated = await tx.tbl_maintenance_parts.update({
+                where: { part_id: data.part_id },
+                data: {
+                    status: 'defective',
+                    notes: nextNotes,
+                    verified_quantity: nextVerifiedQty,
+                    verified_at: new Date(),
+                    verification_notes: nextVerificationNotes,
+                },
+            });
+
+            await tx.tbl_maintenance_history.create({
+                data: {
+                    request_id: part.request_id,
+                    action: 'parts_defective_confirmed',
+                    old_value: part.status,
+                    new_value: `defective (${nextVerifiedQty}) | moved to WH-08`,
+                    changed_by: actorName,
+                }
+            });
+
+            return updated;
+        });
+
+        revalidatePath('/maintenance');
+        revalidatePath('/maintenance/parts');
+
+        return {
+            success: true,
+            data: updatedPart,
+            message: 'Defective part confirmation saved',
+        };
+    } catch (error: unknown) {
+        console.error('Error confirming defective maintenance part:', error);
+        return { success: false, error: getErrorMessage(error, 'Failed to confirm defective part') };
     }
 }
 
