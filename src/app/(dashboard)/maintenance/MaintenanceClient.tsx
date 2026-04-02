@@ -1576,21 +1576,33 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         }
     }
 
-    async function handleEmployeeCancelPendingRequest() {
+    async function handleCancelRequestFromDetail() {
         if (!selectedRequest || !session?.user?.name) return;
+
+        const currentStatus = normalizeMaintenanceWorkflowStatus(selectedRequest.status);
+        const isCancelableStatus = ['pending', 'approved', 'in_progress'].includes(currentStatus || '');
+        if (!isCancelableStatus) {
+            showToast('ยกเลิกได้เฉพาะใบงานที่ยังไม่ปิดงาน', 'warning');
+            return;
+        }
+
+        if (!isEmployeeRole && !ensureCanEditPage()) {
+            return;
+        }
 
         const normalizedReporter = normalizePersonName(selectedRequest.reported_by);
         const normalizedActor = normalizePersonName(session.user.name);
         const isOwnRequest = normalizedReporter.length > 0 && normalizedReporter === normalizedActor;
-        const isPendingRequest = normalizeMaintenanceWorkflowStatus(selectedRequest.status) === 'pending';
 
-        if (!isOwnRequest) {
-            showToast('ยกเลิกได้เฉพาะใบงานที่คุณเป็นผู้แจ้ง', 'warning');
-            return;
-        }
-        if (!isPendingRequest) {
-            showToast('ยกเลิกได้เฉพาะใบงานที่ยังไม่ได้ส่งเรื่องต่อ', 'warning');
-            return;
+        if (isEmployeeRole) {
+            if (!isOwnRequest) {
+                showToast('ยกเลิกได้เฉพาะใบงานที่คุณเป็นผู้แจ้ง', 'warning');
+                return;
+            }
+            if (currentStatus !== 'pending') {
+                showToast('ยกเลิกได้เฉพาะใบงานที่ยังไม่ได้ส่งเรื่องต่อ', 'warning');
+                return;
+            }
         }
 
         const confirmed = await showConfirm({
@@ -1881,6 +1893,13 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         && normalizePersonName(selectedRequest?.reported_by) === normalizedCurrentUserName;
     const canRoleEditMaintenanceStatus = new Set(['technician', 'leader_technician', 'manager', 'admin', 'owner']).has(loggedInRole);
     const canEditDetailStatusByRole = canRoleEditMaintenanceStatus || canManageMaintenanceStatus || canApproveCompletion;
+    const canRoleCancelRequestDirectly =
+        Boolean(selectedRequest)
+        && !isEmployeeRole
+        && canEditPage
+        && canEditDetailStatusByRole
+        && ['pending', 'approved', 'in_progress'].includes(selectedWorkflowStatus || '');
+    const canShowCancelRequestButton = canEmployeeCancelPendingRequest || canRoleCancelRequestDirectly;
     const canManagerEditClosedRequest =
         Boolean(selectedRequest)
         && isManagerRole(loggedInRole)
@@ -3940,9 +3959,9 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
               </button>
             )}
 
-            {canEmployeeCancelPendingRequest && (
+            {canShowCancelRequestButton && (
               <button
-                onClick={handleEmployeeCancelPendingRequest}
+                onClick={handleCancelRequestFromDetail}
                 disabled={isEmployeeCancelling}
                 className="inline-flex min-w-[220px] items-center justify-center gap-2 rounded-2xl bg-rose-600 px-6 py-4 text-lg font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
               >

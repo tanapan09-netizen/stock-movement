@@ -975,6 +975,10 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
         }
 
         const isHeadTechCompletion = normalizedCurrentStatus === 'confirmed' && normalizedNextStatus === 'completed';
+        const isDirectCancelFromActive =
+            ['pending', 'approved', 'in_progress'].includes(normalizedCurrentStatus)
+            && normalizedNextStatus === 'cancelled'
+            && canEditMaintenance;
         const isManagerReopenFromClosed =
             canManagerEditClosedRequest
             && ['pending', 'approved', 'in_progress'].includes(normalizedNextStatus);
@@ -997,6 +1001,7 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
 
         if (
             !isEmployeeCancelOwnPending
+            && !isDirectCancelFromActive
             && !isManagerReopenFromClosed
             && !canTransitionMaintenanceStatus(current.status, new_status, { canApproveCompletion })
         ) {
