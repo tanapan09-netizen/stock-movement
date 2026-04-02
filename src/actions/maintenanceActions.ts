@@ -895,7 +895,13 @@ export async function submitCustomerRepairRequest(formData: FormData) {
 
         revalidatePath('/general-request');
         revalidatePath('/maintenance');
-        return { success: true, data: request };
+        return {
+            success: true,
+            data: {
+                request_id: request.request_id,
+                request_number: request.request_number,
+            },
+        };
     } catch (error: unknown) {
         console.error('Error submitCustomerRepairRequest:', error);
         return { success: false, error: getErrorMessage(error, 'Failed to create customer maintenance request') };

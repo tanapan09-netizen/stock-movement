@@ -474,7 +474,7 @@ const T: Record<Lang, Record<string, string>> = {
         errNoCustomer:'ไม่พบข้อมูลลูกค้า กรุณาติดต่อผู้ดูแลระบบ',
         errLineId:'ไม่สามารถดึง LINE User ID ได้ กรุณาเปิดจากใน LINE',
         errNoLiffId:'ยังไม่ได้ตั้งค่า NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID',
-        errSubmit:'เกิดข้อผิดพลาดระหว่างส่งข้อมูล', errGeneric:'แจ้งซ่อมไม่สำเร็จ',
+        errSubmit:'เกิดข้อผิดพลาดระหว่างส่งข้อมูล', errPayloadTooLarge:'ไฟล์รูปมีขนาดใหญ่เกินกำหนด กรุณาลดขนาดรูปหรือส่งใหม่น้อยลง', errGeneric:'แจ้งซ่อมไม่สำเร็จ',
         errCaptcha:'รหัสยืนยันไม่ถูกต้อง กรุณาลองอีกครั้ง',
         closeAlert:'ปิด', required:'จำเป็น', optional:'ไม่บังคับ',
         detailSection:'รายละเอียดปัญหา', footer:'ข้อมูลของท่านปลอดภัยและเป็นความลับ',
@@ -509,7 +509,7 @@ const T: Record<Lang, Record<string, string>> = {
         errNoCustomer:'Customer not found. Please register or contact admin.',
         errLineId:'Unable to retrieve LINE User ID. Open from within LINE.',
         errNoLiffId:'NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID is not configured.',
-        errSubmit:'An error occurred while submitting.', errGeneric:'Submission failed.',
+        errSubmit:'An error occurred while submitting.', errPayloadTooLarge:'Attached images are too large. Please reduce file size or attach fewer images.', errGeneric:'Submission failed.',
         errCaptcha:'Incorrect verification code. Please try again.',
         closeAlert:'Dismiss', required:'Required', optional:'Optional',
         detailSection:'Issue Details', footer:'Your information is safe and confidential.',
@@ -544,7 +544,7 @@ const T: Record<Lang, Record<string, string>> = {
         errNoCustomer:'顧客が見つかりません。管理者にお問い合わせください。',
         errLineId:'LINE User IDを取得できませんでした。LINEから開いてください。',
         errNoLiffId:'NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID が設定されていません。',
-        errSubmit:'送信中にエラーが発生しました。', errGeneric:'送信に失敗しました。',
+        errSubmit:'送信中にエラーが発生しました。', errPayloadTooLarge:'画像サイズが大きすぎます。画像を圧縮するか、添付枚数を減らしてください。', errGeneric:'送信に失敗しました。',
         errCaptcha:'認証コードが間違っています。もう一度お試しください。',
         closeAlert:'閉じる', required:'必須', optional:'任意',
         detailSection:'問題の詳細', footer:'情報は安全に保護されます。',
@@ -566,6 +566,24 @@ const T: Record<Lang, Record<string, string>> = {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function genCaptcha(): string {
     return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+function resolveSubmitErrorMessage(error: unknown, t: (k: string) => string): string {
+    const message = error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+            ? error
+            : '';
+    const normalized = message.toLowerCase();
+    if (
+        normalized.includes('payload too large')
+        || normalized.includes('body exceeded')
+        || (normalized.includes('body') && normalized.includes('size'))
+        || normalized.includes('413')
+    ) {
+        return t('errPayloadTooLarge');
+    }
+    return t('errSubmit');
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1134,7 +1152,7 @@ export default function LineRepairRequestClient({
                 setTitle(''); setDescription(''); setSelectedFiles([]); setPreviews([]);
                 setCaptchaInput(''); setCaptchaStatus('idle'); refreshCaptcha();
             } else { setAlert({ kind:'error', text:result.error||t('errGeneric') }); setShowConfirm(false); }
-        } catch (e) { console.error(e); setAlert({ kind:'error', text:t('errSubmit') }); setShowConfirm(false); }
+        } catch (e) { console.error(e); setAlert({ kind:'error', text:resolveSubmitErrorMessage(e, t) }); setShowConfirm(false); }
         finally { setLoading(false); }
     }
 
