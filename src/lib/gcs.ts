@@ -14,6 +14,15 @@ const storage = new Storage({
 
 const bucketName = process.env.GCP_BUCKET_NAME;
 
+async function saveToLocalUpload(folder: string, filename: string, buffer: Buffer): Promise<string> {
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads', folder);
+    await mkdir(uploadDir, { recursive: true });
+
+    const filePath = path.join(uploadDir, filename);
+    await writeFile(filePath, buffer);
+    return `/uploads/${folder}/${filename}`;
+}
+
 /**
  * Uploads a file to Google Cloud Storage or Local Disk (fallback)
  * @param file The File object to upload
@@ -71,17 +80,17 @@ export async function uploadFile(
 
         } catch (error) {
             console.error('GCS Upload Error:', error);
-            throw new Error('Failed to upload to Google Cloud Storage');
+            try {
+                // Fallback to local upload so request attachments are not lost when GCS is unavailable.
+                return await saveToLocalUpload(folder, filename, buffer);
+            } catch (localError) {
+                console.error('Local fallback upload error:', localError);
+                throw new Error('Failed to upload file');
+            }
         }
     } else {
         // Fallback to Local Storage
-        const uploadDir = path.join(process.cwd(), 'public', 'uploads', folder);
-        await mkdir(uploadDir, { recursive: true });
-
-        const filePath = path.join(uploadDir, filename);
-        await writeFile(filePath, buffer);
-
-        return `/uploads/${folder}/${filename}`;
+        return saveToLocalUpload(folder, filename, buffer);
     }
 }
 

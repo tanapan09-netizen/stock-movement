@@ -1111,9 +1111,23 @@ export default function LineRepairRequestClient({
     }, [lineUserId]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = Array.from(e.target.files||[]); if (!files.length) return;
-        setSelectedFiles(prev=>[...prev,...files]);
-        files.forEach(f=>{const r=new FileReader();r.onloadend=()=>setPreviews(prev=>[...prev,r.result as string]);r.readAsDataURL(f);});
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+
+        const remaining = Math.max(0, 4 - selectedFiles.length);
+        if (remaining <= 0) {
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
+        }
+
+        const accepted = files.slice(0, remaining);
+        setSelectedFiles(prev => [...prev, ...accepted]);
+        accepted.forEach((f) => {
+            const r = new FileReader();
+            r.onloadend = () => setPreviews(prev => [...prev, r.result as string]);
+            r.readAsDataURL(f);
+        });
+
         if (fileInputRef.current) fileInputRef.current.value='';
     };
     const removeFile = (i: number) => {

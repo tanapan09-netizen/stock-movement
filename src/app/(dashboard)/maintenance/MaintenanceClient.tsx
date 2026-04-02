@@ -32,6 +32,7 @@ import {
     getMaintenanceRequests,
     createMaintenanceRequest,
     updateMaintenanceRequest,
+    updateMaintenanceRequestStatus,
     getRooms,
     createRoom,
     getMaintenanceSummary,
@@ -591,6 +592,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const [newPartsUsed, setNewPartsUsed] = useState<{ p_id: string; quantity: number }[]>([]);
     const [modalPartSearch, setModalPartSearch] = useState('');
     const [isWithdrawingParts, setIsWithdrawingParts] = useState(false);
+    const [isEmployeeCancelling, setIsEmployeeCancelling] = useState(false);
     const filteredModalProducts = modalPartSearch.trim()
         ? products
             .filter((product) =>
@@ -1574,6 +1576,61 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         }
     }
 
+    async function handleEmployeeCancelPendingRequest() {
+        if (!selectedRequest || !session?.user?.name) return;
+
+        const normalizedReporter = normalizePersonName(selectedRequest.reported_by);
+        const normalizedActor = normalizePersonName(session.user.name);
+        const isOwnRequest = normalizedReporter.length > 0 && normalizedReporter === normalizedActor;
+        const isPendingRequest = normalizeMaintenanceWorkflowStatus(selectedRequest.status) === 'pending';
+
+        if (!isOwnRequest) {
+            showToast('ยกเลิกได้เฉพาะใบงานที่คุณเป็นผู้แจ้ง', 'warning');
+            return;
+        }
+        if (!isPendingRequest) {
+            showToast('ยกเลิกได้เฉพาะใบงานที่ยังไม่ได้ส่งเรื่องต่อ', 'warning');
+            return;
+        }
+
+        const confirmed = await showConfirm({
+            title: 'ยืนยันยกเลิกใบงาน',
+            message: [
+                `ใบงาน: ${selectedRequest.request_number}`,
+                `เรื่อง: ${selectedRequest.title}`,
+                '',
+                'ระบบจะยกเลิกใบงานนี้ทันที',
+            ].join('\n'),
+            confirmText: 'ยืนยันยกเลิก',
+            cancelText: 'กลับไปแก้ไข',
+            type: 'warning',
+        });
+
+        if (!confirmed) return;
+
+        setIsEmployeeCancelling(true);
+        try {
+            const result = await updateMaintenanceRequestStatus(
+                selectedRequest.request_id,
+                'cancelled',
+                session.user.name,
+            );
+
+            if (result.success) {
+                setShowDetailModal(false);
+                loadData();
+                showToast('ยกเลิกใบงานเรียบร้อยแล้ว', 'success');
+            } else {
+                showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            console.error(error);
+            showToast('เกิดข้อผิดพลาดในการยกเลิกใบงาน', 'error');
+        } finally {
+            setIsEmployeeCancelling(false);
+        }
+    }
+
     async function handleReturnForRework(note: string) {
         if (!selectedRequest) return;
         if (!ensureCanEditPage()) return;
@@ -1816,6 +1873,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const isEmployeeRole = loggedInRole === 'employee';
     const isHeadTechnicianRole = loggedInRole === 'leader_technician';
     const isSelectedRequestAwaitingHeadApproval = selectedWorkflowStatus === 'confirmed';
+    const canEmployeeCancelPendingRequest =
+        Boolean(selectedRequest)
+        && isEmployeeRole
+        && selectedWorkflowStatus === 'pending'
+        && Boolean(normalizedCurrentUserName)
+        && normalizePersonName(selectedRequest?.reported_by) === normalizedCurrentUserName;
     const canRoleEditMaintenanceStatus = new Set(['technician', 'leader_technician', 'manager', 'admin', 'owner']).has(loggedInRole);
     const canEditDetailStatusByRole = canRoleEditMaintenanceStatus || canManageMaintenanceStatus || canApproveCompletion;
     const canManagerEditClosedRequest =
@@ -3874,6 +3937,17 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
               >
                 <CheckCircle2 size={18} />
                 ตรวจรับงาน
+              </button>
+            )}
+
+            {canEmployeeCancelPendingRequest && (
+              <button
+                onClick={handleEmployeeCancelPendingRequest}
+                disabled={isEmployeeCancelling}
+                className="inline-flex min-w-[220px] items-center justify-center gap-2 rounded-2xl bg-rose-600 px-6 py-4 text-lg font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <XCircle size={18} />
+                {isEmployeeCancelling ? 'กำลังยกเลิก...' : 'ยกเลิกใบงาน'}
               </button>
             )}
 

@@ -608,6 +608,7 @@ export async function createMaintenanceRequest(formData: FormData) {
             ...(formData.getAll('image_file') as File[])
         ].filter(file => file && file.size > 0);
         const uploadedImageUrls: string[] = [];
+        const failedUploadNames: string[] = [];
 
         if (imageFiles.length > 0) {
             for (let index = 0; index < imageFiles.length; index += 1) {
@@ -828,6 +829,7 @@ export async function submitCustomerRepairRequest(formData: FormData) {
             ...(formData.getAll('image_file') as File[])
         ].filter(file => file && file.size > 0);
         const uploadedImageUrls: string[] = [];
+        const failedUploadNames: string[] = [];
 
         if (imageFiles.length > 0) {
             for (let index = 0; index < imageFiles.length; index += 1) {
@@ -839,8 +841,17 @@ export async function submitCustomerRepairRequest(formData: FormData) {
                     uploadedImageUrls.push(url);
                 } catch (error) {
                     console.error('Failed upload:', error);
+                    failedUploadNames.push(file.name || `image-${index + 1}`);
                 }
             }
+        }
+
+        if (imageFiles.length > 0 && uploadedImageUrls.length !== imageFiles.length) {
+            return {
+                success: false,
+                error: `อัปโหลดรูปแนบไม่ครบ (${uploadedImageUrls.length}/${imageFiles.length}) กรุณาลองส่งใหม่`,
+                failed_files: failedUploadNames,
+            };
         }
 
         const request = await prisma.tbl_maintenance_requests.create({
@@ -925,14 +936,11 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
             authContext.permissions,
             authContext.isApprover,
         );
-        if (!canEditMaintenance && !canApproveCompletion) {
-            return { success: false, error: 'Permission denied' };
-        }
 
         const actorName = authContext.session.user.name || changed_by || 'System';
         const current = await prisma.tbl_maintenance_requests.findUnique({
             where: { request_id },
-            select: { status: true, completed_at: true, notes: true }
+            select: { status: true, completed_at: true, notes: true, reported_by: true }
         });
 
         if (!current) {
@@ -953,6 +961,19 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
             return { success: false, error: 'Invalid maintenance status transition' };
         }
 
+        const normalizePersonName = (value?: string | null) => (value || '').trim().toLowerCase();
+        const normalizedSessionUserName = normalizePersonName(authContext.session.user.name);
+        const isEmployeeCancelOwnPending =
+            normalizeRole(authContext.role) === 'employee'
+            && normalizedCurrentStatus === 'pending'
+            && normalizedNextStatus === 'cancelled'
+            && normalizedSessionUserName.length > 0
+            && normalizePersonName(current.reported_by) === normalizedSessionUserName;
+
+        if (!canEditMaintenance && !canApproveCompletion && !isEmployeeCancelOwnPending) {
+            return { success: false, error: 'Permission denied' };
+        }
+
         const isHeadTechCompletion = normalizedCurrentStatus === 'confirmed' && normalizedNextStatus === 'completed';
         const isManagerReopenFromClosed =
             canManagerEditClosedRequest
@@ -970,11 +991,15 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
             return { success: false, error: 'Only head technicians can approve completed maintenance jobs' };
         }
 
-        if (!canEditMaintenance && !isHeadTechCompletion) {
+        if (!canEditMaintenance && !isHeadTechCompletion && !isEmployeeCancelOwnPending) {
             return { success: false, error: 'Permission denied' };
         }
 
-        if (!isManagerReopenFromClosed && !canTransitionMaintenanceStatus(current.status, new_status, { canApproveCompletion })) {
+        if (
+            !isEmployeeCancelOwnPending
+            && !isManagerReopenFromClosed
+            && !canTransitionMaintenanceStatus(current.status, new_status, { canApproveCompletion })
+        ) {
             return { success: false, error: 'Invalid maintenance status transition' };
         }
 
