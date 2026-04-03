@@ -138,10 +138,39 @@ function normalizeColumnOrder(raw: unknown, isAdmin: boolean): ProductColumnId[]
 
 function getProductImageSrc(imagePath?: string | null): string | null {
     if (!imagePath) return null;
-    if (imagePath.startsWith('http://') || imagePath.startsWith('https://') || imagePath.startsWith('/uploads/')) {
-        return imagePath;
+    const trimmed = imagePath.trim();
+    if (!trimmed) return null;
+
+    if (
+        trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('data:image/')
+    ) {
+        return trimmed;
     }
-    return `/uploads/${imagePath.replace(/^\/+/, '')}`;
+
+    if (trimmed.startsWith('storage.googleapis.com/')) {
+        return `https://${trimmed}`;
+    }
+
+    if (trimmed.startsWith('/uploads/')) {
+        return trimmed;
+    }
+
+    if (trimmed.startsWith('uploads/')) {
+        return `/${trimmed}`;
+    }
+
+    if (trimmed.startsWith('public/uploads/')) {
+        return `/${trimmed.replace(/^public\//, '')}`;
+    }
+
+    // Legacy values may store only file name or folder/file without leading slash.
+    const normalized = trimmed.replace(/^\/+/, '');
+    if (normalized.includes('/')) {
+        return `/${normalized}`;
+    }
+    return `/uploads/products/${normalized}`;
 }
 
 interface ProductsToolbarProps {

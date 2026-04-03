@@ -3,6 +3,9 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
+import path from 'path';
+import { mkdir, writeFile } from 'fs/promises';
 
 const HEADER_KEYWORDS = [
     'code',
@@ -38,6 +41,10 @@ const HEADER_KEYWORDS = [
     'ชื่อแบรนด์',
     'รหัสแบรนด์',
     'ขนาด',
+    'image',
+    'image url',
+    'รูปประกอบ',
+    'รูปภาพ',
 ];
 
 const CATEGORY_HEADER_HINTS = [
@@ -77,6 +84,7 @@ const MOJIBAKE_PATTERNS = [
 
 const ENCODING_ERROR_MESSAGE =
     'พบปัญหาการอ่านภาษาไทย (Encoding) กรุณาบันทึกไฟล์เป็น .xlsx หรือ CSV (UTF-8) แล้วลองใหม่';
+const PRODUCT_IMAGE_UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'products');
 
 function normalizeKey(value: string): string {
     return value.toLowerCase().replace(/[\s\uFEFF]/g, '');
@@ -154,9 +162,12 @@ function isLikelySubHeaderRow(rowData: Record<string, unknown>): boolean {
 
     if (tokens.length === 0) return true;
 
-    return tokens.every((token) =>
+    const markerHits = tokens.filter((token) =>
         SUB_HEADER_TOKENS.some((marker) => token === marker || token.includes(marker)),
-    );
+    ).length;
+
+    if (markerHits === tokens.length) return true;
+    return markerHits >= 3 && markerHits / tokens.length >= 0.4;
 }
 
 function buildFallbackProductId(rowData: Record<string, unknown>, rowNum: number): string {
@@ -189,6 +200,144 @@ function toFloat(value: unknown, fallback = 0): number {
     if (value === undefined || value === null || String(value).trim() === '') return fallback;
     const parsed = Number.parseFloat(String(value));
     return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+type RelationshipEntry = { target: string; type: string };
+
+function resolveZipPath(baseFilePath: string, target: string): string {
+    const normalizedTarget = target.replace(/\\/g, '/');
+    if (normalizedTarget.startsWith('/')) {
+        return normalizedTarget.replace(/^\/+/, '');
+    }
+
+    const baseDir = path.posix.dirname(baseFilePath);
+    const resolved = path.posix.normalize(path.posix.join(baseDir, normalizedTarget));
+    return resolved.replace(/^\/+/, '');
+}
+
+function extractAttribute(tagSource: string, attrName: string): string | null {
+    const matcher = new RegExp(`${attrName}="([^"]+)"`, 'i');
+    const match = matcher.exec(tagSource);
+    return match?.[1] ?? null;
+}
+
+function parseRelationships(xml: string): Map<string, RelationshipEntry> {
+    const relationMap = new Map<string, RelationshipEntry>();
+    const relRegex = /<Relationship\b[^>]*\/?>/g;
+
+    let match: RegExpExecArray | null;
+    while ((match = relRegex.exec(xml)) !== null) {
+        const tag = match[0];
+        const id = extractAttribute(tag, 'Id');
+        const target = extractAttribute(tag, 'Target');
+        const type = extractAttribute(tag, 'Type');
+        if (!id || !target || !type) continue;
+        relationMap.set(id, { target, type });
+    }
+
+    return relationMap;
+}
+
+function extractImageAnchors(drawingXml: string): Array<{ row: number; relationId: string }> {
+    const anchors: Array<{ row: number; relationId: string }> = [];
+    const anchorRegex = /<(?:xdr:)?(?:twoCellAnchor|oneCellAnchor)\b[\s\S]*?<\/(?:xdr:)?(?:twoCellAnchor|oneCellAnchor)>/g;
+
+    let anchorMatch: RegExpExecArray | null;
+    while ((anchorMatch = anchorRegex.exec(drawingXml)) !== null) {
+        const anchorXml = anchorMatch[0];
+        const rowMatch = /<(?:xdr:)?from\b[\s\S]*?<(?:xdr:)?row>(\d+)<\/(?:xdr:)?row>/.exec(anchorXml);
+        const relationMatch = /\br:embed="([^"]+)"/.exec(anchorXml);
+        if (!rowMatch || !relationMatch) continue;
+
+        const zeroBasedRow = Number.parseInt(rowMatch[1], 10);
+        if (!Number.isFinite(zeroBasedRow)) continue;
+
+        anchors.push({ row: zeroBasedRow + 1, relationId: relationMatch[1] });
+    }
+
+    return anchors;
+}
+
+async function persistEmbeddedImage(buffer: Buffer, sourcePath: string, rowNum: number): Promise<string> {
+    await mkdir(PRODUCT_IMAGE_UPLOAD_DIR, { recursive: true });
+
+    const sourceExt = path.extname(sourcePath).toLowerCase();
+    const safeExt = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].includes(sourceExt)
+        ? sourceExt
+        : '.jpg';
+    const randomSuffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const filename = `import-${Date.now()}-${rowNum}-${randomSuffix}${safeExt}`;
+    const destination = path.join(PRODUCT_IMAGE_UPLOAD_DIR, filename);
+
+    await writeFile(destination, buffer);
+    return `/uploads/products/${filename}`;
+}
+
+async function extractEmbeddedImagesByRow(fileBuffer: ArrayBuffer): Promise<Map<number, string>> {
+    const imageMap = new Map<number, string>();
+
+    try {
+        const zip = await JSZip.loadAsync(Buffer.from(fileBuffer));
+
+        const workbookFile = zip.file('xl/workbook.xml');
+        const workbookRelsFile = zip.file('xl/_rels/workbook.xml.rels');
+        if (!workbookFile || !workbookRelsFile) return imageMap;
+
+        const workbookXml = await workbookFile.async('string');
+        const workbookRelsXml = await workbookRelsFile.async('string');
+
+        const firstSheetRidMatch = /<sheet\b[^>]*\br:id="([^"]+)"/.exec(workbookXml);
+        const firstSheetRid = firstSheetRidMatch?.[1];
+        if (!firstSheetRid) return imageMap;
+
+        const workbookRelations = parseRelationships(workbookRelsXml);
+        const sheetRelation = workbookRelations.get(firstSheetRid);
+        if (!sheetRelation) return imageMap;
+
+        const sheetPath = resolveZipPath('xl/workbook.xml', sheetRelation.target);
+        const sheetRelsPath = `${path.posix.dirname(sheetPath)}/_rels/${path.posix.basename(sheetPath)}.rels`;
+        const sheetRelsFile = zip.file(sheetRelsPath);
+        if (!sheetRelsFile) return imageMap;
+
+        const sheetRelsXml = await sheetRelsFile.async('string');
+        const sheetRelations = parseRelationships(sheetRelsXml);
+        const drawingRelation = [...sheetRelations.values()].find((entry) =>
+            entry.type.includes('/drawing'),
+        );
+        if (!drawingRelation) return imageMap;
+
+        const drawingPath = resolveZipPath(sheetPath, drawingRelation.target);
+        const drawingFile = zip.file(drawingPath);
+        if (!drawingFile) return imageMap;
+
+        const drawingXml = await drawingFile.async('string');
+        const drawingRelsPath = `${path.posix.dirname(drawingPath)}/_rels/${path.posix.basename(drawingPath)}.rels`;
+        const drawingRelsFile = zip.file(drawingRelsPath);
+        if (!drawingRelsFile) return imageMap;
+
+        const drawingRelsXml = await drawingRelsFile.async('string');
+        const drawingRelations = parseRelationships(drawingRelsXml);
+        const anchors = extractImageAnchors(drawingXml);
+
+        for (const anchor of anchors) {
+            if (imageMap.has(anchor.row)) continue;
+
+            const imageRelation = drawingRelations.get(anchor.relationId);
+            if (!imageRelation) continue;
+
+            const imagePath = resolveZipPath(drawingPath, imageRelation.target);
+            const imageFile = zip.file(imagePath);
+            if (!imageFile) continue;
+
+            const imageBuffer = await imageFile.async('nodebuffer');
+            const savedPath = await persistEmbeddedImage(imageBuffer, imagePath, anchor.row);
+            imageMap.set(anchor.row, savedPath);
+        }
+    } catch (error) {
+        console.error('Failed to extract embedded images from workbook:', error);
+    }
+
+    return imageMap;
 }
 
 function parseWorkbookRows(fileBuffer: ArrayBuffer): unknown[][] {
@@ -234,6 +383,7 @@ export async function importProducts(formData: FormData) {
 
         const buffer = await file.arrayBuffer();
         const rows = parseWorkbookRows(buffer);
+        const embeddedImagesByRow = await extractEmbeddedImagesByRow(buffer);
 
         if (rows.length === 0) {
             return { success: false, error: 'File is empty' };
@@ -268,6 +418,7 @@ export async function importProducts(formData: FormData) {
             const brand_name = getValue(rowData, ['Brand', 'Brand Name', 'แบรนด์', 'ชื่อแบรนด์', 'brand_name']);
             const brand_code = getValue(rowData, ['Brand Code', 'รหัสแบรนด์', 'brand_code']);
             const size = getValue(rowData, ['Size', 'ขนาด', 'size']);
+            const image = getValue(rowData, ['Image', 'Image URL', 'รูปประกอบ', 'รูปภาพ', 'p_image']);
             const mainCategoryCode = getValue(rowData, ['Main Category Code', 'Code หมวดหลัก', 'โค๊ตหมวดหลัก', 'โค้ดหมวดหลัก', 'หมวดหลัก', 'main_category_code']);
             const subCategoryCode = getValue(rowData, ['Sub Category Code', 'Code หมวดรอง', 'โค๊ตหมวดรอง', 'โค้ดหมวดรอง', 'หมวดรอง', 'sub_category_code']);
             const subSubCategoryCode = getValue(rowData, ['Sub Sub Category Code', 'Code ย่อย', 'Code หมวดย่อย', 'โค๊ตหมวดย่อย', 'โค้ดหมวดย่อย', 'หมวดย่อย', 'sub_sub_category_code']);
@@ -322,6 +473,7 @@ export async function importProducts(formData: FormData) {
                 const brandNameVal = optionalText(brand_name);
                 const brandCodeVal = optionalText(brand_code);
                 const sizeVal = optionalText(size);
+                const imageVal = optionalText(image) ?? embeddedImagesByRow.get(rowNum) ?? null;
                 const mainCategoryCodeVal = optionalText(normalizeCodePart(mainCategoryCode));
                 const subCategoryCodeVal = optionalText(normalizeCodePart(subCategoryCode));
                 const subSubCategoryCodeVal = optionalText(normalizeCodePart(subSubCategoryCode));
@@ -341,6 +493,7 @@ export async function importProducts(formData: FormData) {
                             p_count: stockVal,
                             safety_stock: safetyVal,
                             p_unit: unitVal,
+                            ...(imageVal ? { p_image: imageVal } : {}),
                         },
                     });
 
@@ -373,6 +526,7 @@ export async function importProducts(formData: FormData) {
                             p_count: stockVal,
                             safety_stock: safetyVal,
                             p_unit: unitVal,
+                            ...(imageVal ? { p_image: imageVal } : {}),
                         },
                     });
 
@@ -402,7 +556,7 @@ export async function importProducts(formData: FormData) {
                         safety_stock: safetyVal,
                         p_unit: unitVal,
                         active: true,
-                        p_image: '',
+                        p_image: imageVal || '',
                     },
                 });
 

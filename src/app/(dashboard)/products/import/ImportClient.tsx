@@ -105,6 +105,7 @@ export default function ImportClient() {
                             <li><strong>ชื่อแบรนด์</strong> (Brand, Brand Name)</li>
                             <li><strong>รหัสแบรนด์</strong> (Brand Code)</li>
                             <li><strong>ขนาด</strong> (Size)</li>
+                            <li><strong>รูปประกอบ</strong> (Image, Image URL, p_image)</li>
                         </ul>
                     </div>
                 </div>
