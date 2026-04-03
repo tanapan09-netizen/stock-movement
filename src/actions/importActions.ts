@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import * as XLSX from 'xlsx';
 import path from 'path';
 import { uploadFile } from '@/lib/gcs';
+import { auth } from '@/auth';
 
 const HEADER_KEYWORDS = [
     'code',
@@ -83,6 +84,20 @@ const MOJIBAKE_PATTERNS = [
 
 const ENCODING_ERROR_MESSAGE =
     'พบปัญหาการอ่านภาษาไทย (Encoding) กรุณาบันทึกไฟล์เป็น .xlsx หรือ CSV (UTF-8) แล้วลองใหม่';
+
+async function ensureImportPermission() {
+    try {
+        const session = await auth();
+        const role = (session?.user as { role?: string } | undefined)?.role || 'employee';
+        if (role !== 'admin') {
+            return { ok: false as const, error: 'ไม่มีสิทธิ์นำเข้าข้อมูล' };
+        }
+        return { ok: true as const };
+    } catch (error) {
+        console.error('Import permission check failed:', error);
+        return { ok: false as const, error: 'ไม่สามารถตรวจสอบสิทธิ์ผู้ใช้งานได้' };
+    }
+}
 
 function normalizeKey(value: string): string {
     return value.toLowerCase().replace(/[\s\uFEFF]/g, '');
@@ -388,6 +403,11 @@ async function resolveCategory(categoryInput: unknown): Promise<{ categoryName: 
 
 export async function importProducts(formData: FormData) {
     try {
+        const permission = await ensureImportPermission();
+        if (!permission.ok) {
+            return { success: false, error: permission.error };
+        }
+
         const file = formData.get('file') as File;
         if (!file) {
             return { success: false, error: 'No file uploaded' };
@@ -601,6 +621,11 @@ export async function importProducts(formData: FormData) {
 
 export async function checkDuplicateProducts(formData: FormData) {
     try {
+        const permission = await ensureImportPermission();
+        if (!permission.ok) {
+            return { success: false, error: permission.error };
+        }
+
         const file = formData.get('file') as File;
         if (!file) {
             return { success: false, error: 'No file uploaded' };
