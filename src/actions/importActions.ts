@@ -296,7 +296,7 @@ async function persistEmbeddedImage(buffer: Buffer, sourcePath: string, rowNum: 
     return uploadFile(file, 'products', { baseName: `embedded-row-${rowNum}` });
 }
 
-async function extractEmbeddedImagesByRow(fileBuffer: ArrayBuffer): Promise<Map<number, string>> {
+async function extractEmbeddedImagesByRow(fileBuffer: ArrayBuffer, maxRow: number): Promise<Map<number, string>> {
     const imageMap = new Map<number, string>();
 
     try {
@@ -333,6 +333,7 @@ async function extractEmbeddedImagesByRow(fileBuffer: ArrayBuffer): Promise<Map<
         const anchors = extractImageAnchors(drawingXml);
 
         for (const anchor of anchors) {
+            if (anchor.row < 1 || anchor.row > maxRow) continue;
             if (imageMap.has(anchor.row)) continue;
 
             const imageRelation = drawingRelations.get(anchor.relationId);
@@ -394,7 +395,7 @@ export async function importProducts(formData: FormData) {
 
         const buffer = await file.arrayBuffer();
         const rows = parseWorkbookRows(buffer);
-        const embeddedImagesByRow = await extractEmbeddedImagesByRow(buffer);
+        const embeddedImagesByRow = await extractEmbeddedImagesByRow(buffer, rows.length);
 
         if (rows.length === 0) {
             return { success: false, error: 'File is empty' };

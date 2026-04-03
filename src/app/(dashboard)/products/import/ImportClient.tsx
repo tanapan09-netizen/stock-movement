@@ -52,6 +52,12 @@ export default function ImportClient() {
     const handleCheckAndUpload = async () => {
         if (!file) return;
 
+        // Large files are imported directly to avoid pre-check timeouts/crashes.
+        if (file.size > 8 * 1024 * 1024) {
+            await processImport();
+            return;
+        }
+
         setIsUploading(true);
         const formData = new FormData();
         formData.append('file', file);
