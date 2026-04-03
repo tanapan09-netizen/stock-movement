@@ -3,7 +3,6 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import * as XLSX from 'xlsx';
-import JSZip from 'jszip';
 import path from 'path';
 import { uploadFile } from '@/lib/gcs';
 
@@ -202,6 +201,8 @@ function toFloat(value: unknown, fallback = 0): number {
 }
 
 type RelationshipEntry = { target: string; type: string };
+type WorkbookFileEntry = { content?: ArrayLike<number> };
+type WorkbookFiles = Record<string, WorkbookFileEntry | undefined>;
 
 function resolveZipPath(baseFilePath: string, target: string): string {
     const normalizedTarget = target.replace(/\\/g, '/');
@@ -257,6 +258,23 @@ function extractImageAnchors(drawingXml: string): Array<{ row: number; relationI
     return anchors;
 }
 
+function getWorkbookFiles(fileBuffer: ArrayBuffer): WorkbookFiles {
+    const workbook = XLSX.read(fileBuffer, { type: 'buffer', bookFiles: true });
+    return ((workbook as unknown as { files?: WorkbookFiles }).files) ?? {};
+}
+
+function getFileText(files: WorkbookFiles, filePath: string): string | null {
+    const content = files[filePath]?.content;
+    if (!content) return null;
+    return Buffer.from(content).toString('utf8');
+}
+
+function getFileBuffer(files: WorkbookFiles, filePath: string): Buffer | null {
+    const content = files[filePath]?.content;
+    if (!content) return null;
+    return Buffer.from(content);
+}
+
 async function persistEmbeddedImage(buffer: Buffer, sourcePath: string, rowNum: number): Promise<string> {
     const sourceExt = path.extname(sourcePath).toLowerCase();
     const safeExt = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].includes(sourceExt)
@@ -282,14 +300,10 @@ async function extractEmbeddedImagesByRow(fileBuffer: ArrayBuffer): Promise<Map<
     const imageMap = new Map<number, string>();
 
     try {
-        const zip = await JSZip.loadAsync(Buffer.from(fileBuffer));
-
-        const workbookFile = zip.file('xl/workbook.xml');
-        const workbookRelsFile = zip.file('xl/_rels/workbook.xml.rels');
-        if (!workbookFile || !workbookRelsFile) return imageMap;
-
-        const workbookXml = await workbookFile.async('string');
-        const workbookRelsXml = await workbookRelsFile.async('string');
+        const files = getWorkbookFiles(fileBuffer);
+        const workbookXml = getFileText(files, 'xl/workbook.xml');
+        const workbookRelsXml = getFileText(files, 'xl/_rels/workbook.xml.rels');
+        if (!workbookXml || !workbookRelsXml) return imageMap;
 
         const firstSheetRidMatch = /<sheet\b[^>]*\br:id="([^"]+)"/.exec(workbookXml);
         const firstSheetRid = firstSheetRidMatch?.[1];
@@ -301,10 +315,8 @@ async function extractEmbeddedImagesByRow(fileBuffer: ArrayBuffer): Promise<Map<
 
         const sheetPath = resolveZipPath('xl/workbook.xml', sheetRelation.target);
         const sheetRelsPath = `${path.posix.dirname(sheetPath)}/_rels/${path.posix.basename(sheetPath)}.rels`;
-        const sheetRelsFile = zip.file(sheetRelsPath);
-        if (!sheetRelsFile) return imageMap;
-
-        const sheetRelsXml = await sheetRelsFile.async('string');
+        const sheetRelsXml = getFileText(files, sheetRelsPath);
+        if (!sheetRelsXml) return imageMap;
         const sheetRelations = parseRelationships(sheetRelsXml);
         const drawingRelation = [...sheetRelations.values()].find((entry) =>
             entry.type.includes('/drawing'),
@@ -312,15 +324,11 @@ async function extractEmbeddedImagesByRow(fileBuffer: ArrayBuffer): Promise<Map<
         if (!drawingRelation) return imageMap;
 
         const drawingPath = resolveZipPath(sheetPath, drawingRelation.target);
-        const drawingFile = zip.file(drawingPath);
-        if (!drawingFile) return imageMap;
-
-        const drawingXml = await drawingFile.async('string');
+        const drawingXml = getFileText(files, drawingPath);
+        if (!drawingXml) return imageMap;
         const drawingRelsPath = `${path.posix.dirname(drawingPath)}/_rels/${path.posix.basename(drawingPath)}.rels`;
-        const drawingRelsFile = zip.file(drawingRelsPath);
-        if (!drawingRelsFile) return imageMap;
-
-        const drawingRelsXml = await drawingRelsFile.async('string');
+        const drawingRelsXml = getFileText(files, drawingRelsPath);
+        if (!drawingRelsXml) return imageMap;
         const drawingRelations = parseRelationships(drawingRelsXml);
         const anchors = extractImageAnchors(drawingXml);
 
@@ -331,10 +339,8 @@ async function extractEmbeddedImagesByRow(fileBuffer: ArrayBuffer): Promise<Map<
             if (!imageRelation) continue;
 
             const imagePath = resolveZipPath(drawingPath, imageRelation.target);
-            const imageFile = zip.file(imagePath);
-            if (!imageFile) continue;
-
-            const imageBuffer = await imageFile.async('nodebuffer');
+            const imageBuffer = getFileBuffer(files, imagePath);
+            if (!imageBuffer) continue;
             const savedPath = await persistEmbeddedImage(imageBuffer, imagePath, anchor.row);
             imageMap.set(anchor.row, savedPath);
         }

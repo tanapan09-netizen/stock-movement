@@ -73,8 +73,8 @@ export default function ImportClient() {
                 setIsUploading(false);
             }
         } catch (error) {
-            setResult({ success: false, error: 'Check failed' });
-            setIsUploading(false);
+            // Fallback: if duplicate check fails unexpectedly, continue direct import.
+            await processImport();
         }
     };
 
