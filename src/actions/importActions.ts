@@ -161,13 +161,13 @@ function isLikelySubHeaderRow(rowData: Record<string, unknown>): boolean {
 
 function buildFallbackProductId(rowData: Record<string, unknown>, rowNum: number): string {
     const main = normalizeCodePart(
-        getValue(rowData, ['Main Category Code', 'โค๊ตหมวดหลัก', 'โค้ดหมวดหลัก', 'หมวดหลัก', 'main_category_code']),
+        getValue(rowData, ['Main Category Code', 'Code หมวดหลัก', 'โค๊ตหมวดหลัก', 'โค้ดหมวดหลัก', 'หมวดหลัก', 'main_category_code']),
     );
     const sub = normalizeCodePart(
-        getValue(rowData, ['Sub Category Code', 'โค๊ตหมวดรอง', 'โค้ดหมวดรอง', 'หมวดรอง', 'sub_category_code']),
+        getValue(rowData, ['Sub Category Code', 'Code หมวดรอง', 'โค๊ตหมวดรอง', 'โค้ดหมวดรอง', 'หมวดรอง', 'sub_category_code']),
     );
     const subSub = normalizeCodePart(
-        getValue(rowData, ['Sub Sub Category Code', 'โค๊ตหมวดย่อย', 'โค้ดหมวดย่อย', 'หมวดย่อย', 'sub_sub_category_code']),
+        getValue(rowData, ['Sub Sub Category Code', 'Code ย่อย', 'Code หมวดย่อย', 'โค๊ตหมวดย่อย', 'โค้ดหมวดย่อย', 'หมวดย่อย', 'sub_sub_category_code']),
     );
     const seq = normalizeCodePart(
         getValue(rowData, ['Sequence', 'Seq', 'ลำดับ', 'เลขลำดับ']),
@@ -268,9 +268,9 @@ export async function importProducts(formData: FormData) {
             const brand_name = getValue(rowData, ['Brand', 'Brand Name', 'แบรนด์', 'ชื่อแบรนด์', 'brand_name']);
             const brand_code = getValue(rowData, ['Brand Code', 'รหัสแบรนด์', 'brand_code']);
             const size = getValue(rowData, ['Size', 'ขนาด', 'size']);
-            const mainCategoryCode = getValue(rowData, ['Main Category Code', 'โค๊ตหมวดหลัก', 'โค้ดหมวดหลัก', 'หมวดหลัก', 'main_category_code']);
-            const subCategoryCode = getValue(rowData, ['Sub Category Code', 'โค๊ตหมวดรอง', 'โค้ดหมวดรอง', 'หมวดรอง', 'sub_category_code']);
-            const subSubCategoryCode = getValue(rowData, ['Sub Sub Category Code', 'โค๊ตหมวดย่อย', 'โค้ดหมวดย่อย', 'หมวดย่อย', 'sub_sub_category_code']);
+            const mainCategoryCode = getValue(rowData, ['Main Category Code', 'Code หมวดหลัก', 'โค๊ตหมวดหลัก', 'โค้ดหมวดหลัก', 'หมวดหลัก', 'main_category_code']);
+            const subCategoryCode = getValue(rowData, ['Sub Category Code', 'Code หมวดรอง', 'โค๊ตหมวดรอง', 'โค้ดหมวดรอง', 'หมวดรอง', 'sub_category_code']);
+            const subSubCategoryCode = getValue(rowData, ['Sub Sub Category Code', 'Code ย่อย', 'Code หมวดย่อย', 'โค๊ตหมวดย่อย', 'โค้ดหมวดย่อย', 'หมวดย่อย', 'sub_sub_category_code']);
 
             let p_id_val = p_id ? String(p_id).trim() : '';
             const p_name_val = p_name ? String(p_name).trim() : '';
@@ -322,6 +322,9 @@ export async function importProducts(formData: FormData) {
                 const brandNameVal = optionalText(brand_name);
                 const brandCodeVal = optionalText(brand_code);
                 const sizeVal = optionalText(size);
+                const mainCategoryCodeVal = optionalText(normalizeCodePart(mainCategoryCode));
+                const subCategoryCodeVal = optionalText(normalizeCodePart(subCategoryCode));
+                const subSubCategoryCodeVal = optionalText(normalizeCodePart(subSubCategoryCode));
 
                 const existingById = await prisma.tbl_products.findUnique({
                     where: { p_id: p_id_val },
@@ -346,7 +349,10 @@ export async function importProducts(formData: FormData) {
                         SET model_name = ${modelVal},
                             brand_name = ${brandNameVal},
                             brand_code = ${brandCodeVal},
-                            size = ${sizeVal}
+                            size = ${sizeVal},
+                            main_category_code = ${mainCategoryCodeVal},
+                            sub_category_code = ${subCategoryCodeVal},
+                            sub_sub_category_code = ${subSubCategoryCodeVal}
                         WHERE p_id = ${p_id_val}
                     `;
                     successCount += 1;
@@ -375,7 +381,10 @@ export async function importProducts(formData: FormData) {
                         SET model_name = ${modelVal},
                             brand_name = ${brandNameVal},
                             brand_code = ${brandCodeVal},
-                            size = ${sizeVal}
+                            size = ${sizeVal},
+                            main_category_code = ${mainCategoryCodeVal},
+                            sub_category_code = ${subCategoryCodeVal},
+                            sub_sub_category_code = ${subSubCategoryCodeVal}
                         WHERE p_id = ${existingByName.p_id}
                     `;
                     successCount += 1;
@@ -402,7 +411,10 @@ export async function importProducts(formData: FormData) {
                     SET model_name = ${modelVal},
                         brand_name = ${brandNameVal},
                         brand_code = ${brandCodeVal},
-                        size = ${sizeVal}
+                        size = ${sizeVal},
+                        main_category_code = ${mainCategoryCodeVal},
+                        sub_category_code = ${subCategoryCodeVal},
+                        sub_sub_category_code = ${subSubCategoryCodeVal}
                     WHERE p_id = ${p_id_val}
                 `;
                 successCount += 1;
