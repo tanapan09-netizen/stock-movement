@@ -49,6 +49,25 @@ const CATEGORY_HEADER_HINTS = [
     'main_category',
 ];
 
+const SUB_HEADER_TOKENS = [
+    'main',
+    'sub',
+    'minor',
+    'max',
+    'min',
+    'order',
+    'high',
+    'medium',
+    'low',
+    'หลัก',
+    'รอง',
+    'ย่อย',
+    'มาก',
+    'ปานกลาง',
+    'ต่ำ',
+    'สั่งซื้อ',
+];
+
 const MOJIBAKE_PATTERNS = [
     /[\u00C2\u00C3]/,
     /\u00E2\u20AC/,
@@ -61,6 +80,15 @@ const ENCODING_ERROR_MESSAGE =
 
 function normalizeKey(value: string): string {
     return value.toLowerCase().replace(/[\s\uFEFF]/g, '');
+}
+
+function normalizeCodePart(value: unknown): string {
+    if (value === undefined || value === null) return '';
+    return String(value)
+        .trim()
+        .replace(/\s+/g, '')
+        .replace(/[^0-9A-Za-zก-๙_-]/g, '')
+        .toUpperCase();
 }
 
 function getValue(rowData: Record<string, unknown>, targetKeys: string[]): unknown {
@@ -110,6 +138,57 @@ function optionalText(value: unknown): string | null {
     if (value === undefined || value === null) return null;
     const trimmed = String(value).trim();
     return trimmed.length > 0 ? trimmed : null;
+}
+
+function hasAnyValue(rowData: Record<string, unknown>): boolean {
+    return Object.values(rowData).some((value) => {
+        if (value === undefined || value === null) return false;
+        return String(value).trim() !== '';
+    });
+}
+
+function isLikelySubHeaderRow(rowData: Record<string, unknown>): boolean {
+    const tokens = Object.values(rowData)
+        .map((value) => normalizeKey(String(value ?? '')))
+        .filter((value) => value.length > 0);
+
+    if (tokens.length === 0) return true;
+
+    return tokens.every((token) =>
+        SUB_HEADER_TOKENS.some((marker) => token === marker || token.includes(marker)),
+    );
+}
+
+function buildFallbackProductId(rowData: Record<string, unknown>, rowNum: number): string {
+    const main = normalizeCodePart(
+        getValue(rowData, ['Main Category Code', 'โค๊ตหมวดหลัก', 'โค้ดหมวดหลัก', 'หมวดหลัก', 'main_category_code']),
+    );
+    const sub = normalizeCodePart(
+        getValue(rowData, ['Sub Category Code', 'โค๊ตหมวดรอง', 'โค้ดหมวดรอง', 'หมวดรอง', 'sub_category_code']),
+    );
+    const subSub = normalizeCodePart(
+        getValue(rowData, ['Sub Sub Category Code', 'โค๊ตหมวดย่อย', 'โค้ดหมวดย่อย', 'หมวดย่อย', 'sub_sub_category_code']),
+    );
+    const seq = normalizeCodePart(
+        getValue(rowData, ['Sequence', 'Seq', 'ลำดับ', 'เลขลำดับ']),
+    );
+
+    const composed = [main, sub, subSub, seq].filter((part) => part.length > 0).join('');
+    if (composed.length > 0) return composed.slice(0, 64);
+
+    return `IMP${Date.now().toString(36).toUpperCase()}${String(rowNum).padStart(4, '0')}`;
+}
+
+function toInt(value: unknown, fallback = 0): number {
+    if (value === undefined || value === null || String(value).trim() === '') return fallback;
+    const parsed = Number.parseInt(String(value), 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toFloat(value: unknown, fallback = 0): number {
+    if (value === undefined || value === null || String(value).trim() === '') return fallback;
+    const parsed = Number.parseFloat(String(value));
+    return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function parseWorkbookRows(fileBuffer: ArrayBuffer): unknown[][] {
@@ -180,32 +259,45 @@ export async function importProducts(formData: FormData) {
 
             const p_id = getValue(rowData, ['Code', 'Product Code', 'รหัส', 'รหัสสินค้า', 'p_id']);
             const p_name = getValue(rowData, ['Name', 'Product Name', 'ชื่อ', 'ชื่อสินค้า', 'ชื่อเรียกภาษาไทย', 'p_name']);
-            const category = getValue(rowData, ['Category', 'หมวด', 'หมวดหมู่', 'หมวดสินค้า', 'กลุ่มสินค้า', 'main_category']);
+            const category = getValue(rowData, ['Category', 'หมวด', 'หมวดหมู่', 'หมวดสินค้า', 'กลุ่มสินค้า', 'main_category', 'ประเภทงาน']);
             const price = getValue(rowData, ['Price', 'Price/Unit', 'ราคา', 'ราคาขาย', 'price_unit']);
-            const stock = getValue(rowData, ['Stock', 'Qty', 'Quantity', 'จำนวน', 'คงเหลือ', 'p_count']);
-            const safety = getValue(rowData, ['Safety', 'Safety Stock', 'จุดสั่งซื้อ', 'safety_stock']);
+            const stock = getValue(rowData, ['Stock', 'Qty', 'Quantity', 'จำนวน', 'คงเหลือ', 'นับจริง', 'p_count']);
+            const safety = getValue(rowData, ['Safety', 'Safety Stock', 'จุดสั่งซื้อ', 'จำนวน min สั่งซื้อ', 'min สั่งซื้อ', 'safety_stock']);
             const unit = getValue(rowData, ['Unit', 'หน่วย', 'หน่วยนับ', 'p_unit']);
             const model_name = getValue(rowData, ['Model', 'Model Name', 'รุ่น', 'ชื่อรุ่น', 'model_name']);
             const brand_name = getValue(rowData, ['Brand', 'Brand Name', 'แบรนด์', 'ชื่อแบรนด์', 'brand_name']);
             const brand_code = getValue(rowData, ['Brand Code', 'รหัสแบรนด์', 'brand_code']);
             const size = getValue(rowData, ['Size', 'ขนาด', 'size']);
+            const mainCategoryCode = getValue(rowData, ['Main Category Code', 'โค๊ตหมวดหลัก', 'โค้ดหมวดหลัก', 'หมวดหลัก', 'main_category_code']);
+            const subCategoryCode = getValue(rowData, ['Sub Category Code', 'โค๊ตหมวดรอง', 'โค้ดหมวดรอง', 'หมวดรอง', 'sub_category_code']);
+            const subSubCategoryCode = getValue(rowData, ['Sub Sub Category Code', 'โค๊ตหมวดย่อย', 'โค้ดหมวดย่อย', 'หมวดย่อย', 'sub_sub_category_code']);
 
-            const p_id_val = p_id ? String(p_id).trim() : '';
+            let p_id_val = p_id ? String(p_id).trim() : '';
             const p_name_val = p_name ? String(p_name).trim() : '';
 
-            if (!p_id_val || !p_name_val) {
-                const hasData = Object.values(rowData).some(
-                    (value) => value !== undefined && value !== '' && value !== null,
-                );
-                if (hasData) {
+            if (!p_name_val) {
+                if (hasAnyValue(rowData) && !isLikelySubHeaderRow(rowData)) {
                     errorCount += 1;
                     const foundKeys = headerRow.join(', ');
-                    errors.push(`Row ${rowNum}: Missing Code or Name. Header used: [${foundKeys}]`);
+                    errors.push(`Row ${rowNum}: Missing Name. Header used: [${foundKeys}]`);
                 }
                 continue;
             }
 
+            if (!p_id_val) {
+                p_id_val = buildFallbackProductId(rowData, rowNum);
+            }
+
             let categoryFinal = category;
+            if (!categoryFinal) {
+                const groupedCategory = [mainCategoryCode, subCategoryCode, subSubCategoryCode]
+                    .map((part) => optionalText(part))
+                    .filter((part): part is string => Boolean(part))
+                    .join('-');
+                if (groupedCategory.length > 0) {
+                    categoryFinal = groupedCategory;
+                }
+            }
             if (!categoryFinal) {
                 const catHeaderIdx = headerRow.findIndex((headerKey) => {
                     const normalizedKey = normalizeKey(String(headerKey));
@@ -221,9 +313,9 @@ export async function importProducts(formData: FormData) {
             try {
                 const { categoryName, categoryId } = await resolveCategory(categoryFinal);
 
-                const stockVal = stock ? parseInt(String(stock), 10) : 0;
-                const priceVal = price ? parseFloat(String(price)) : 0;
-                const safetyVal = safety ? parseInt(String(safety), 10) : 0;
+                const stockVal = toInt(stock, 0);
+                const priceVal = toFloat(price, 0);
+                const safetyVal = toInt(safety, 0);
                 const unitVal = unit ? String(unit).trim() : 'ชิ้น';
 
                 const modelVal = optionalText(model_name);
@@ -362,20 +454,23 @@ export async function checkDuplicateProducts(formData: FormData) {
             const p_id_val = p_id ? String(p_id).trim() : '';
             const p_name_val = p_name ? String(p_name).trim() : '';
 
-            if (!p_id_val) continue;
+            if (isLikelySubHeaderRow(rowData)) continue;
+            if (!p_id_val && !p_name_val) continue;
 
-            const existing = await prisma.tbl_products.findUnique({
-                where: { p_id: p_id_val },
-                select: { p_id: true, p_name: true },
-            });
-
-            if (existing) {
-                duplicates.push({
-                    p_id: existing.p_id,
-                    p_name: existing.p_name,
-                    conflict: `รหัสซ้ำ: ${existing.p_id}`,
+            if (p_id_val) {
+                const existing = await prisma.tbl_products.findUnique({
+                    where: { p_id: p_id_val },
+                    select: { p_id: true, p_name: true },
                 });
-                continue;
+
+                if (existing) {
+                    duplicates.push({
+                        p_id: existing.p_id,
+                        p_name: existing.p_name,
+                        conflict: `รหัสซ้ำ: ${existing.p_id}`,
+                    });
+                    continue;
+                }
             }
 
             if (!p_name_val) continue;
@@ -385,7 +480,7 @@ export async function checkDuplicateProducts(formData: FormData) {
                 select: { p_id: true, p_name: true },
             });
 
-            if (existingName && existingName.p_id !== p_id_val) {
+            if (existingName && (!p_id_val || existingName.p_id !== p_id_val)) {
                 duplicates.push({
                     p_id: existingName.p_id,
                     p_name: existingName.p_name,

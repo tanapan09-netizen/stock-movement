@@ -96,11 +96,11 @@ export default function ImportClient() {
                         <p>ไฟล์ Excel (.xlsx) ควรมีหัวข้อคอลัมน์ดังนี้ (รองรับทั้งไทยและอังกฤษ):</p>
                         <ul className="list-disc list-inside ml-4 space-y-1">
                             <li><strong>รหัสสินค้า</strong> (Code, Product Code) <span className="text-red-500">*จำเป็น</span></li>
-                            <li><strong>ชื่อสินค้า</strong> (Name, Product Name) <span className="text-red-500">*จำเป็น</span></li>
-                            <li><strong>หมวดหมู่</strong> (Category, Main Category)</li>
+                            <li><strong>ชื่อสินค้า</strong> (Name, Product Name, ชื่อเรียกภาษาไทย) <span className="text-red-500">*จำเป็น</span></li>
+                            <li><strong>หมวดหมู่</strong> (Category, Main Category, ประเภทงาน, โค๊ตหมวดหลัก/รอง/ย่อย)</li>
                             <li><strong>ราคาขาย</strong> (Price, Price/Unit)</li>
-                            <li><strong>จำนวนคงเหลือ</strong> (Stock, Qty, Amount)</li>
-                            <li><strong>จุดสั่งซื้อ</strong> (Safety Stock, Safety)</li>
+                            <li><strong>จำนวนคงเหลือ</strong> (Stock, Qty, Quantity, นับจริง)</li>
+                            <li><strong>จุดสั่งซื้อ</strong> (Safety Stock, Safety, จำนวน min สั่งซื้อ)</li>
                             <li><strong>ชื่อรุ่น</strong> (Model, Model Name)</li>
                             <li><strong>ชื่อแบรนด์</strong> (Brand, Brand Name)</li>
                             <li><strong>รหัสแบรนด์</strong> (Brand Code)</li>
