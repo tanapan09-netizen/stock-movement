@@ -96,10 +96,11 @@ export async function GET(request: NextRequest) {
         asset.created_at.toISOString(),
     ]);
 
-    const csv = [
+    const csvBody = [
         headers.map(escapeCsv).join(','),
         ...rows.map((row) => row.map(escapeCsv).join(',')),
-    ].join('\n');
+    ].join('\r\n');
+    const csv = `\uFEFF${csvBody}`;
 
     const datePart = new Date().toISOString().slice(0, 10);
 
@@ -108,7 +109,7 @@ export async function GET(request: NextRequest) {
         headers: {
             'Content-Type': 'text/csv; charset=utf-8',
             'Content-Disposition': `attachment; filename=\"asset-registry-${datePart}.csv\"`,
+            'Cache-Control': 'no-store',
         },
     });
 }
-
