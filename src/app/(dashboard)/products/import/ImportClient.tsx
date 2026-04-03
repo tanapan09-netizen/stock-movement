@@ -42,7 +42,8 @@ export default function ImportClient() {
                 }, 2000);
             }
         } catch (error) {
-            setResult({ success: false, error: 'Upload failed' });
+            const message = error instanceof Error ? error.message : 'Upload failed';
+            setResult({ success: false, error: message });
         } finally {
             setIsUploading(false);
         }
@@ -68,9 +69,8 @@ export default function ImportClient() {
                 // No duplicates, proceed directly
                 await processImport();
             } else {
-                // Check failed
-                setResult({ success: false, error: checkRes.error || 'Check failed' });
-                setIsUploading(false);
+                // Fallback: if duplicate check reports failure, continue direct import.
+                await processImport();
             }
         } catch (error) {
             // Fallback: if duplicate check fails unexpectedly, continue direct import.
