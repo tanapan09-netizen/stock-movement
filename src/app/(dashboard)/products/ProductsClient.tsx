@@ -138,35 +138,45 @@ function normalizeColumnOrder(raw: unknown, isAdmin: boolean): ProductColumnId[]
 
 function getProductImageSrc(imagePath?: string | null): string | null {
     if (!imagePath) return null;
-    const trimmed = imagePath.trim();
-    if (!trimmed) return null;
+    const normalizedInput = imagePath.trim().replace(/\\/g, '/');
+    if (!normalizedInput) return null;
 
     if (
-        trimmed.startsWith('http://') ||
-        trimmed.startsWith('https://') ||
-        trimmed.startsWith('data:image/')
+        normalizedInput.startsWith('http://') ||
+        normalizedInput.startsWith('https://') ||
+        normalizedInput.startsWith('data:image/')
     ) {
-        return trimmed;
+        return normalizedInput;
     }
 
-    if (trimmed.startsWith('storage.googleapis.com/')) {
-        return `https://${trimmed}`;
+    if (normalizedInput.startsWith('storage.googleapis.com/')) {
+        return `https://${normalizedInput}`;
     }
 
-    if (trimmed.startsWith('/uploads/')) {
-        return trimmed;
+    if (normalizedInput.startsWith('/uploads/')) {
+        return normalizedInput;
     }
 
-    if (trimmed.startsWith('uploads/')) {
-        return `/${trimmed}`;
+    if (normalizedInput.startsWith('uploads/')) {
+        return `/${normalizedInput}`;
     }
 
-    if (trimmed.startsWith('public/uploads/')) {
-        return `/${trimmed.replace(/^public\//, '')}`;
+    if (normalizedInput.startsWith('public/uploads/')) {
+        return `/${normalizedInput.replace(/^public\//, '')}`;
+    }
+
+    const uploadsIndex = normalizedInput.indexOf('/uploads/');
+    if (uploadsIndex >= 0) {
+        return normalizedInput.slice(uploadsIndex);
+    }
+
+    const publicUploadsIndex = normalizedInput.indexOf('public/uploads/');
+    if (publicUploadsIndex >= 0) {
+        return `/${normalizedInput.slice(publicUploadsIndex).replace(/^public\//, '')}`;
     }
 
     // Legacy values may store only file name or folder/file without leading slash.
-    const normalized = trimmed.replace(/^\/+/, '');
+    const normalized = normalizedInput.replace(/^\/+/, '');
     if (normalized.includes('/')) {
         return `/${normalized}`;
     }

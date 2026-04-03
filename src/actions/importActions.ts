@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import path from 'path';
-import { mkdir, writeFile } from 'fs/promises';
+import { uploadFile } from '@/lib/gcs';
 
 const HEADER_KEYWORDS = [
     'code',
@@ -84,7 +84,6 @@ const MOJIBAKE_PATTERNS = [
 
 const ENCODING_ERROR_MESSAGE =
     'พบปัญหาการอ่านภาษาไทย (Encoding) กรุณาบันทึกไฟล์เป็น .xlsx หรือ CSV (UTF-8) แล้วลองใหม่';
-const PRODUCT_IMAGE_UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'products');
 
 function normalizeKey(value: string): string {
     return value.toLowerCase().replace(/[\s\uFEFF]/g, '');
@@ -259,18 +258,24 @@ function extractImageAnchors(drawingXml: string): Array<{ row: number; relationI
 }
 
 async function persistEmbeddedImage(buffer: Buffer, sourcePath: string, rowNum: number): Promise<string> {
-    await mkdir(PRODUCT_IMAGE_UPLOAD_DIR, { recursive: true });
-
     const sourceExt = path.extname(sourcePath).toLowerCase();
     const safeExt = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].includes(sourceExt)
         ? sourceExt
         : '.jpg';
+    const mimeTypeMap: Record<string, string> = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.webp': 'image/webp',
+        '.gif': 'image/gif',
+        '.bmp': 'image/bmp',
+    };
+    const mimeType = mimeTypeMap[safeExt] || 'image/jpeg';
     const randomSuffix = Math.random().toString(36).slice(2, 8).toUpperCase();
-    const filename = `import-${Date.now()}-${rowNum}-${randomSuffix}${safeExt}`;
-    const destination = path.join(PRODUCT_IMAGE_UPLOAD_DIR, filename);
-
-    await writeFile(destination, buffer);
-    return `/uploads/products/${filename}`;
+    const filename = `embedded-row-${rowNum}-${randomSuffix}${safeExt}`;
+    const bytes = Uint8Array.from(buffer);
+    const file = new File([bytes], filename, { type: mimeType });
+    return uploadFile(file, 'products', { baseName: `embedded-row-${rowNum}` });
 }
 
 async function extractEmbeddedImagesByRow(fileBuffer: ArrayBuffer): Promise<Map<number, string>> {
