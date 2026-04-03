@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import path from 'path';
 import { uploadFile } from '@/lib/gcs';
 import { auth } from '@/auth';
+import { mkdir, writeFile } from 'fs/promises';
 
 const HEADER_KEYWORDS = [
     'code',
@@ -319,6 +320,18 @@ async function persistEmbeddedImage(buffer: Buffer, sourcePath: string, rowNum: 
     const mimeType = mimeTypeMap[safeExt] || 'image/jpeg';
     const randomSuffix = Math.random().toString(36).slice(2, 8).toUpperCase();
     const filename = `embedded-row-${rowNum}-${randomSuffix}${safeExt}`;
+
+    // Prefer local static path so browser can load without external bucket policy dependency.
+    try {
+        const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'products');
+        await mkdir(uploadDir, { recursive: true });
+        const fullPath = path.join(uploadDir, filename);
+        await writeFile(fullPath, buffer);
+        return `/uploads/products/${filename}`;
+    } catch (localError) {
+        console.error('Local save for embedded image failed, fallback to uploadFile:', localError);
+    }
+
     const bytes = Uint8Array.from(buffer);
     const file = new File([bytes], filename, { type: mimeType });
     return uploadFile(file, 'products', { baseName: `embedded-row-${rowNum}` });
