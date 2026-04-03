@@ -161,6 +161,19 @@ function optionalText(value: unknown): string | null {
     return trimmed.length > 0 ? trimmed : null;
 }
 
+function isPlaceholderCode(value: string): boolean {
+    const normalized = value.trim().toLowerCase();
+    return (
+        normalized === '' ||
+        normalized === '-' ||
+        normalized === '--' ||
+        normalized === '---' ||
+        normalized === 'n/a' ||
+        normalized === 'na' ||
+        normalized === 'null'
+    );
+}
+
 function hasAnyValue(rowData: Record<string, unknown>): boolean {
     return Object.values(rowData).some((value) => {
         if (value === undefined || value === null) return false;
@@ -431,6 +444,7 @@ export async function importProducts(formData: FormData) {
         const dataRows = rows.slice(headerRowIndex + 1);
 
         let successCount = 0;
+        const touchedProductIds = new Set<string>();
         let errorCount = 0;
         const errors: string[] = [];
 
@@ -455,10 +469,15 @@ export async function importProducts(formData: FormData) {
             const subCategoryCode = getValue(rowData, ['Sub Category Code', 'Code หมวดรอง', 'โค๊ตหมวดรอง', 'โค้ดหมวดรอง', 'หมวดรอง', 'sub_category_code']);
             const subSubCategoryCode = getValue(rowData, ['Sub Sub Category Code', 'Code ย่อย', 'Code หมวดย่อย', 'โค๊ตหมวดย่อย', 'โค้ดหมวดย่อย', 'หมวดย่อย', 'sub_sub_category_code']);
 
-            let p_id_val = p_id ? String(p_id).trim() : '';
-            const p_name_val = p_name ? String(p_name).trim() : '';
+            const rawCodeVal = p_id ? String(p_id).trim() : '';
+            const isPlaceholderRowCode = isPlaceholderCode(rawCodeVal);
+            let p_id_val = isPlaceholderRowCode ? '' : rawCodeVal;
+            const p_name_val = optionalText(p_name) ?? optionalText(model_name) ?? '';
 
             if (!p_name_val) {
+                if (isPlaceholderRowCode) {
+                    continue;
+                }
                 if (hasAnyValue(rowData) && !isLikelySubHeaderRow(rowData)) {
                     errorCount += 1;
                     const foundKeys = headerRow.join(', ');
@@ -513,12 +532,18 @@ export async function importProducts(formData: FormData) {
                 const existingById = await prisma.tbl_products.findUnique({
                     where: { p_id: p_id_val },
                 });
+                const existingByName = await prisma.tbl_products.findUnique({
+                    where: { p_name: p_name_val },
+                });
 
                 if (existingById) {
+                    const nameBelongsToAnotherProduct =
+                        existingByName !== null && existingByName.p_id !== p_id_val;
+
                     await prisma.tbl_products.update({
                         where: { p_id: p_id_val },
                         data: {
-                            p_name: p_name_val,
+                            ...(nameBelongsToAnotherProduct ? {} : { p_name: p_name_val }),
                             main_category: categoryName,
                             cat_id: categoryId,
                             price_unit: priceVal,
@@ -540,13 +565,16 @@ export async function importProducts(formData: FormData) {
                             sub_sub_category_code = ${subSubCategoryCodeVal}
                         WHERE p_id = ${p_id_val}
                     `;
+
+                    if (nameBelongsToAnotherProduct) {
+                        errors.push(
+                            `Row ${rowNum}: Name "${p_name_val}" already belongs to ${existingByName?.p_id}; updated by Code ${p_id_val} without changing name.`,
+                        );
+                    }
+                    touchedProductIds.add(p_id_val);
                     successCount += 1;
                     continue;
                 }
-
-                const existingByName = await prisma.tbl_products.findUnique({
-                    where: { p_name: p_name_val },
-                });
 
                 if (existingByName) {
                     await prisma.tbl_products.update({
@@ -573,6 +601,7 @@ export async function importProducts(formData: FormData) {
                             sub_sub_category_code = ${subSubCategoryCodeVal}
                         WHERE p_id = ${existingByName.p_id}
                     `;
+                    touchedProductIds.add(existingByName.p_id);
                     successCount += 1;
                     continue;
                 }
@@ -603,6 +632,7 @@ export async function importProducts(formData: FormData) {
                         sub_sub_category_code = ${subSubCategoryCodeVal}
                     WHERE p_id = ${p_id_val}
                 `;
+                touchedProductIds.add(p_id_val);
                 successCount += 1;
             } catch (err: any) {
                 console.error(`Error importing row ${rowNum}:`, err);
@@ -612,7 +642,13 @@ export async function importProducts(formData: FormData) {
         }
 
         revalidatePath('/products');
-        return { success: true, count: successCount, errorCount, errors };
+        return {
+            success: true,
+            count: touchedProductIds.size,
+            rowSuccessCount: successCount,
+            errorCount,
+            errors,
+        };
     } catch (error: any) {
         console.error('Import error:', error);
         return { success: false, error: 'Failed to process file: ' + error.message };
@@ -653,9 +689,11 @@ export async function checkDuplicateProducts(formData: FormData) {
 
             const p_id = getValue(rowData, ['Code', 'Product Code', 'รหัส', 'รหัสสินค้า', 'p_id']);
             const p_name = getValue(rowData, ['Name', 'Product Name', 'ชื่อ', 'ชื่อสินค้า', 'ชื่อเรียกภาษาไทย', 'p_name']);
+            const model_name = getValue(rowData, ['Model', 'Model Name', 'รุ่น', 'ชื่อรุ่น', 'model_name']);
 
-            const p_id_val = p_id ? String(p_id).trim() : '';
-            const p_name_val = p_name ? String(p_name).trim() : '';
+            const rawCodeVal = p_id ? String(p_id).trim() : '';
+            const p_id_val = isPlaceholderCode(rawCodeVal) ? '' : rawCodeVal;
+            const p_name_val = optionalText(p_name) ?? optionalText(model_name) ?? '';
 
             if (isLikelySubHeaderRow(rowData)) continue;
             if (!p_id_val && !p_name_val) continue;

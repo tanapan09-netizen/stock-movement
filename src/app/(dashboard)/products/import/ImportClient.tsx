@@ -142,6 +142,11 @@ export default function ImportClient() {
                         <div>
                             <p className="font-bold">นำเข้าสำเร็จ!</p>
                             <p>เพิ่ม/อัปเดตสินค้าจำนวน {result.count} รายการ</p>
+                            {typeof result.rowSuccessCount === 'number' && result.rowSuccessCount !== result.count && (
+                                <p className="text-sm text-green-700">
+                                    ประมวลผลสำเร็จทั้งหมด {result.rowSuccessCount} แถว (รวมแถวที่ซ้ำกัน)
+                                </p>
+                            )}
                             {result.errors && result.errors.length > 0 && (
                                 <div className="mt-2 text-sm text-yellow-700">
                                     <p className="font-semibold">ข้อผิดพลาดบางส่วน:</p>
