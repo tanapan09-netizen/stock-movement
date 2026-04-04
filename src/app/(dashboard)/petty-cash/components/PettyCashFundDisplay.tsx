@@ -90,6 +90,11 @@ export default function PettyCashFundDisplay({
     const balance = Number(fund.current_balance);
     const max = Number(fund.max_limit);
     const threshold = Number(fund.warning_threshold);
+    const formatMoney = (value: number) =>
+        Number(value || 0).toLocaleString('th-TH', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
 
     const isLow = balance <= threshold;
     const progressPercent = Math.min(100, Math.max(0, (balance / max) * 100));
@@ -119,7 +124,7 @@ export default function PettyCashFundDisplay({
                 <div className="text-left md:text-right bg-gray-50 py-3 px-5 rounded-xl border border-gray-100">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">ยอดคงเหลือปัจจุบัน</p>
                     <p className={`text-4xl font-black tracking-tight ${isLow ? 'text-red-600' : 'text-gray-900'}`}>
-                        ฿{balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        ฿{formatMoney(balance)}
                     </p>
                 </div>
             </div>
@@ -128,7 +133,7 @@ export default function PettyCashFundDisplay({
             <div className="relative pt-2 pb-4">
                 <div className="flex mb-3 items-center justify-between text-sm">
                     <div className="font-medium text-gray-700 flex items-center gap-2">
-                        วงเงินอนุมัติ: <span className="font-bold">฿{max.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        วงเงินอนุมัติ: <span className="font-bold">฿{formatMoney(max)}</span>
                         {canUpdateFundLimit && (
                             <button
                                 onClick={() => {
@@ -177,7 +182,7 @@ export default function PettyCashFundDisplay({
 
                         <h3 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight">ตั้งเบิกชดเชย (Replenish)</h3>
                         <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-                            เติมเงินเข้าคลังเงินสดย่อยส่วนกลาง เพื่อให้มีเงินหมุนเวียนพร้อมใช้งาน (แนะนำให้เติมจนเต็มวงเงิน <strong>฿{max.toLocaleString()}</strong>)
+                            เติมเงินเข้าคลังเงินสดย่อยส่วนกลาง เพื่อให้มีเงินหมุนเวียนพร้อมใช้งาน (แนะนำให้เติมจนเต็มวงเงิน <strong>฿{formatMoney(max)}</strong>)
                         </p>
 
                         <form onSubmit={handleReplenish}>
@@ -205,7 +210,7 @@ export default function PettyCashFundDisplay({
                                         className="text-sm text-emerald-600 hover:text-emerald-700 font-medium bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
                                     >
                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
-                                        เติมเต็มวงเงิน (฿{(max - balance).toLocaleString()})
+                                        เติมเต็มวงเงิน (฿{formatMoney(max - balance)})
                                     </button>
                                 </div>
                             </div>

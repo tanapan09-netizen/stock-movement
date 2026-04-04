@@ -461,6 +461,12 @@ export default function PettyCashClient({
         </span>
     );
 
+    const formatMoney = (value: number | string | null | undefined) =>
+        Number(value ?? 0).toLocaleString('th-TH', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+
     return (
         <div className="p-6">
             <div className="flex justify-between items-center mb-6">
@@ -567,7 +573,7 @@ export default function PettyCashClient({
                                             })()}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                            ฿{Number(req.dispensed_amount || req.requested_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            ฿{formatMoney(req.dispensed_amount || req.requested_amount)}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
                                             {/* Receipt Toggle logic */}
@@ -642,7 +648,7 @@ export default function PettyCashClient({
                         <h2 className="text-xl font-bold mb-4">ยืนยันการจ่ายเงิน</h2>
                         <div className="mb-4 p-3 bg-gray-50 rounded-lg">
                             <p className="text-sm"><strong>ผู้เบิก:</strong> {selectedRequest.requested_by}</p>
-                            <p className="text-sm"><strong>จำนวเงินที่ขอ:</strong> ฿{Number(selectedRequest.requested_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                            <p className="text-sm"><strong>จำนวเงินที่ขอ:</strong> ฿{formatMoney(selectedRequest.requested_amount)}</p>
                             <div className="text-sm mt-3">
                                 <strong>รายละเอียดรายการ:</strong>
                                 <div className="mt-2 p-3 bg-white border border-gray-200 rounded-md max-h-[300px] overflow-y-auto whitespace-pre-wrap leading-relaxed shadow-inner">
@@ -694,12 +700,12 @@ export default function PettyCashClient({
                         <div className="mb-4 p-3 bg-gray-50 rounded-lg flex justify-between">
                             <div>
                                 <p className="text-sm text-gray-500">เงินที่ได้รับไป</p>
-                                <p className="text-lg font-bold">฿{Number(selectedRequest.dispensed_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                <p className="text-lg font-bold">฿{formatMoney(selectedRequest.dispensed_amount)}</p>
                             </div>
                             <div className="text-right">
                                 <p className="text-sm text-gray-500">เงินทอนที่ต้องคืน</p>
                                 <p className="text-lg font-bold text-blue-600">
-                                    ฿{Math.max(0, Number(selectedRequest.dispensed_amount) - Number(formData.actual_spent || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    ฿{formatMoney(Math.max(0, Number(selectedRequest.dispensed_amount) - Number(formData.actual_spent || 0)))}
                                 </p>
                             </div>
                         </div>
@@ -733,9 +739,9 @@ export default function PettyCashClient({
                     <div className="bg-white rounded-lg p-6 w-full max-w-md">
                         <h2 className="text-xl font-bold mb-4">กระทบยอดและตรวจรับ (Reconcile)</h2>
                         <div className="mb-4 space-y-2 text-sm bg-gray-50 p-3 rounded-lg">
-                            <div className="flex justify-between"><span>เงินที่จ่ายไป:</span> <strong>฿{Number(selectedRequest.dispensed_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
-                            <div className="flex justify-between"><span>ใบเสร็จที่ใช้จริง:</span> <strong>฿{Number(selectedRequest.actual_spent).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
-                            <div className="flex justify-between text-blue-600 border-t pt-2"><span>เงินทอนที่คืนมา:</span> <strong>฿{Number(selectedRequest.change_returned).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></div>
+                            <div className="flex justify-between"><span>เงินที่จ่ายไป:</span> <strong>฿{formatMoney(selectedRequest.dispensed_amount)}</strong></div>
+                            <div className="flex justify-between"><span>ใบเสร็จที่ใช้จริง:</span> <strong>฿{formatMoney(selectedRequest.actual_spent)}</strong></div>
+                            <div className="flex justify-between text-blue-600 border-t pt-2"><span>เงินทอนที่คืนมา:</span> <strong>฿{formatMoney(selectedRequest.change_returned)}</strong></div>
                         </div>
 
                         {selectedRequest.receipt_urls && (
@@ -804,12 +810,12 @@ export default function PettyCashClient({
                             <div className="grid grid-cols-2 gap-4 text-sm mt-4">
                                 <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg">
                                     <p className="text-blue-600 mb-1 font-medium">ยอดเงินที่ขอเบิก</p>
-                                    <p className="text-xl font-bold text-blue-700">฿{Number(selectedRequest.requested_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                    <p className="text-xl font-bold text-blue-700">฿{formatMoney(selectedRequest.requested_amount)}</p>
                                 </div>
                                 {selectedRequest.dispensed_amount && (
                                     <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-lg">
                                         <p className="text-emerald-600 mb-1 font-medium">ยอดเงินที่จ่ายจริง</p>
-                                        <p className="text-xl font-bold text-emerald-700">฿{Number(selectedRequest.dispensed_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                        <p className="text-xl font-bold text-emerald-700">฿{formatMoney(selectedRequest.dispensed_amount)}</p>
                                     </div>
                                 )}
                             </div>
