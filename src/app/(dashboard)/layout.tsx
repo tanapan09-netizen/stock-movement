@@ -105,6 +105,7 @@ export default async function DashboardLayout({
         }
 
         console.error('Dashboard layout render error:', error);
+        redirect('/login');
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
                 <div className="max-w-md w-full bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
