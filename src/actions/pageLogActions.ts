@@ -3,6 +3,12 @@
 import { auth } from '@/auth';
 import { logSystemAction } from '@/lib/logger';
 
+type SessionUserLike = {
+    p_id?: number | string | null;
+    id?: number | string | null;
+    name?: string | null;
+};
+
 const PAGE_NAMES: Record<string, string> = {
     '/': 'หน้าแรก (Dashboard)',
     '/dashboard': 'หน้าแรก (Dashboard)',
@@ -53,10 +59,17 @@ export async function logPageView(
     },
 ) {
     try {
+        // By default, system logs run in "important only" mode.
+        // Skip page-view logs to keep log volume small unless explicitly disabled.
+        if (process.env.SYSTEM_LOG_IMPORTANT_ONLY !== 'false') {
+            return;
+        }
+
         const session = await auth();
         if (!session?.user) return;
 
-        const userId = (session.user as any).p_id || (session.user as any).id;
+        const sessionUser = session.user as SessionUserLike;
+        const userId = sessionUser.p_id || sessionUser.id;
         const parsedUserId = userId ? parseInt(userId.toString(), 10) : null;
         const validUserId = Number.isNaN(parsedUserId as number) ? null : parsedUserId;
         const pageName = getPageName(pathname);
@@ -89,7 +102,7 @@ export async function logPageView(
             pathname,
             details,
             validUserId,
-            session.user.name || 'Unknown',
+            sessionUser.name || 'Unknown',
             'unknown',
         );
     } catch (error) {
