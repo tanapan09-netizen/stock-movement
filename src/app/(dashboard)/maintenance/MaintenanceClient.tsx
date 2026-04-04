@@ -62,7 +62,7 @@ import {
     canVerifyMaintenanceParts,
     isMaintenanceTechnician,
 } from '@/lib/rbac';
-import { isManagerRole, normalizeRole } from '@/lib/roles';
+import { DEPARTMENT_BASE_ROLES, isManagerRole, normalizeRole } from '@/lib/roles';
 import {
     MAINTENANCE_CATEGORY_OPTIONS,
     MAINTENANCE_PRIORITY_OPTIONS,
@@ -254,6 +254,8 @@ const getHistoryActionLabel = (action: string): string => {
             return 'เปิดใบงานใหม่';
         case 'reopen_reason':
             return 'เหตุผลการเปิดงานใหม่';
+        case 'cancel_reason':
+            return 'เหตุผลการยกเลิกใบงาน';
         default:
             return action;
     }
@@ -324,6 +326,18 @@ const ALLOWED_NEW_MAINTENANCE_ROLES = new Set([
     'employee',
 ]);
 const normalizePersonName = (value?: string | null) => (value || '').trim().toLowerCase();
+const MAINTENANCE_DEPARTMENT_ROLE_SET = new Set<string>(DEPARTMENT_BASE_ROLES);
+const resolveDepartmentLeaderRole = (department?: string | null) => {
+    const normalized = normalizeRole(department);
+    if (!normalized) return null;
+
+    if (normalized.startsWith('leader_')) {
+        const departmentRole = normalized.slice('leader_'.length);
+        return MAINTENANCE_DEPARTMENT_ROLE_SET.has(departmentRole) ? normalized : null;
+    }
+
+    return MAINTENANCE_DEPARTMENT_ROLE_SET.has(normalized) ? `leader_${normalized}` : null;
+};
 const FALLBACK_TECHNICIAN_TARGET_ROLE_OPTION = {
     value: 'technician',
     label: 'Technician (ช่างซ่อมบำรุง)',
@@ -346,7 +360,8 @@ function normalizeMaintenanceStatusFilter(value: string | null): string {
 }
 
 function isPartMarkedDefective(part: Pick<MaintenancePart, 'status' | 'notes'>): boolean {
-    return part.status === 'defective' || (part.notes || '').includes('MARKED AS DEFECTIVE');
+    const hasDefectiveMarker = (part.notes || '').includes('MARKED AS DEFECTIVE');
+    return hasDefectiveMarker && ['pending_verification', 'used', 'verification_failed'].includes(part.status);
 }
 
 const resolveParentRoomCode = (room: Room): string => {
@@ -473,6 +488,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const [products, setProducts] = useState<ProductOption[]>([]);
     const [parts, setParts] = useState<MaintenancePart[]>([]);
     const [verifyingPartId, setVerifyingPartId] = useState<number | null>(null);
+    const [verifyingPartActionId, setVerifyingPartActionId] = useState<number | null>(null);
     const [verifyQty, setVerifyQty] = useState<number>(0);
     const [confirmingPartId, setConfirmingPartId] = useState<number | null>(null);
     const [confirmQty, setConfirmQty] = useState<number>(0);
@@ -1216,7 +1232,20 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 return;
             }
 
-            const result = isPartMarkedDefective(targetPart)
+            if (targetPart.status === 'defective') {
+                showToast('รายการนี้ยืนยันของเสียแล้ว', 'info');
+                setVerifyingPartId(null);
+                return;
+            }
+
+            if (verifyingPartActionId === partId) {
+                return;
+            }
+
+            const requiresDefectiveConfirmation = isPartMarkedDefective(targetPart);
+            setVerifyingPartActionId(partId);
+
+            const result = requiresDefectiveConfirmation
                 ? await confirmMaintenancePartDefective({
                     part_id: partId,
                     confirmed_by: session.user.name,
@@ -1230,7 +1259,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
             if (result.success) {
                 showToast(
-                    result.message || (isPartMarkedDefective(targetPart) ? 'Defective confirmed' : 'Verification successful'),
+                    result.message || (requiresDefectiveConfirmation ? 'ยืนยันของเสียสำเร็จ' : 'ตรวจนับสำเร็จ'),
                     'success',
                 );
                 setVerifyingPartId(null);
@@ -1247,6 +1276,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         } catch (error) {
             console.error(error);
             showToast('Failed to verify part', 'error');
+        } finally {
+            setVerifyingPartActionId((current) => (current === partId ? null : current));
         }
     }
 
@@ -1461,6 +1492,24 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             return;
         }
 
+        const isCancellingRequest = submitData.status === 'cancelled';
+        if (isCancellingRequest) {
+            const requestDepartmentLeaderRole = resolveDepartmentLeaderRole(selectedRequest.department);
+            const canConfirmCancel =
+                isManagerRole(loggedInRole)
+                || Boolean(requestDepartmentLeaderRole && loggedInRole === requestDepartmentLeaderRole);
+
+            if (!canConfirmCancel) {
+                showToast('ต้องให้หัวหน้าฝ่ายของผู้แจ้งหรือผู้จัดการเป็นผู้ยืนยันยกเลิกใบงาน', 'warning');
+                return;
+            }
+
+            if (nextNotes.trim().length < 8) {
+                showToast('กรุณาระบุเหตุผลการยกเลิกอย่างน้อย 8 ตัวอักษร', 'warning');
+                return;
+            }
+        }
+
         const isTechnicianClosingJob =
             isTechnician
             && editData.status === 'confirmed'
@@ -1586,39 +1635,49 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             return;
         }
 
-        if (!isEmployeeRole && !ensureCanEditPage()) {
+        if (!ensureCanEditPage()) {
             return;
         }
 
-        const normalizedReporter = normalizePersonName(selectedRequest.reported_by);
-        const normalizedActor = normalizePersonName(session.user.name);
-        const isOwnRequest = normalizedReporter.length > 0 && normalizedReporter === normalizedActor;
+        const departmentLeaderRole = resolveDepartmentLeaderRole(selectedRequest.department);
+        const canConfirmCancel =
+            isManagerRole(loggedInRole)
+            || Boolean(departmentLeaderRole && loggedInRole === departmentLeaderRole);
 
-        if (isEmployeeRole) {
-            if (!isOwnRequest) {
-                showToast('ยกเลิกได้เฉพาะใบงานที่คุณเป็นผู้แจ้ง', 'warning');
-                return;
-            }
-            if (currentStatus !== 'pending') {
-                showToast('ยกเลิกได้เฉพาะใบงานที่ยังไม่ได้ส่งเรื่องต่อ', 'warning');
-                return;
-            }
+        if (!canConfirmCancel) {
+            showToast('ต้องให้หัวหน้าฝ่ายของผู้แจ้งหรือผู้จัดการเป็นผู้ยืนยันยกเลิกใบงาน', 'warning');
+            return;
         }
 
-        const confirmed = await showConfirm({
+        const confirmResult = await Swal.fire({
             title: 'ยืนยันยกเลิกใบงาน',
-            message: [
-                `ใบงาน: ${selectedRequest.request_number}`,
-                `เรื่อง: ${selectedRequest.title}`,
-                '',
-                'ระบบจะยกเลิกใบงานนี้ทันที',
-            ].join('\n'),
-            confirmText: 'ยืนยันยกเลิก',
-            cancelText: 'กลับไปแก้ไข',
-            type: 'warning',
+            html: [
+                `<div style="text-align:left;line-height:1.5;">`,
+                `<div><strong>ใบงาน:</strong> ${selectedRequest.request_number}</div>`,
+                `<div><strong>เรื่อง:</strong> ${selectedRequest.title}</div>`,
+                `<div style="margin-top:10px;">กรุณาระบุเหตุผลการยกเลิก (อย่างน้อย 8 ตัวอักษร)</div>`,
+                `</div>`,
+            ].join(''),
+            input: 'textarea',
+            inputPlaceholder: 'ระบุเหตุผลการยกเลิกใบงาน...',
+            inputAttributes: { 'aria-label': 'เหตุผลการยกเลิกใบงาน', maxlength: '500' },
+            showCancelButton: true,
+            confirmButtonText: 'ยืนยันยกเลิก',
+            cancelButtonText: 'กลับไปแก้ไข',
+            confirmButtonColor: '#dc2626',
+            cancelButtonColor: '#94a3b8',
+            preConfirm: (value) => {
+                const reason = String(value || '').trim();
+                if (reason.length < 8) {
+                    Swal.showValidationMessage('กรุณาระบุเหตุผลอย่างน้อย 8 ตัวอักษร');
+                    return false;
+                }
+                return reason;
+            },
         });
 
-        if (!confirmed) return;
+        if (!confirmResult.isConfirmed) return;
+        const cancelReason = String(confirmResult.value || '').trim();
 
         setIsEmployeeCancelling(true);
         try {
@@ -1626,6 +1685,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 selectedRequest.request_id,
                 'cancelled',
                 session.user.name,
+                cancelReason,
             );
 
             if (result.success) {
@@ -1885,21 +1945,18 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const isEmployeeRole = loggedInRole === 'employee';
     const isHeadTechnicianRole = loggedInRole === 'leader_technician';
     const isSelectedRequestAwaitingHeadApproval = selectedWorkflowStatus === 'confirmed';
-    const canEmployeeCancelPendingRequest =
-        Boolean(selectedRequest)
-        && isEmployeeRole
-        && selectedWorkflowStatus === 'pending'
-        && Boolean(normalizedCurrentUserName)
-        && normalizePersonName(selectedRequest?.reported_by) === normalizedCurrentUserName;
+    const selectedRequestDepartmentLeaderRole = resolveDepartmentLeaderRole(selectedRequest?.department);
     const canRoleEditMaintenanceStatus = new Set(['technician', 'leader_technician', 'manager', 'admin', 'owner']).has(loggedInRole);
     const canEditDetailStatusByRole = canRoleEditMaintenanceStatus || canManageMaintenanceStatus || canApproveCompletion;
-    const canRoleCancelRequestDirectly =
+    const canRoleConfirmCancelRequest =
         Boolean(selectedRequest)
-        && !isEmployeeRole
         && canEditPage
-        && canEditDetailStatusByRole
-        && ['pending', 'approved', 'in_progress'].includes(selectedWorkflowStatus || '');
-    const canShowCancelRequestButton = canEmployeeCancelPendingRequest || canRoleCancelRequestDirectly;
+        && ['pending', 'approved', 'in_progress'].includes(selectedWorkflowStatus || '')
+        && (
+            isManagerRole(loggedInRole)
+            || Boolean(selectedRequestDepartmentLeaderRole && loggedInRole === selectedRequestDepartmentLeaderRole)
+        );
+    const canShowCancelRequestButton = canRoleConfirmCancelRequest;
     const canManagerEditClosedRequest =
         Boolean(selectedRequest)
         && isManagerRole(loggedInRole)
@@ -3620,10 +3677,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                             ? 'รอตรวจนับ'
                             : part.status === 'verified'
                               ? 'ตรวจนับแล้ว'
-                              : part.status === 'verification_failed'
-                                ? 'ตรวจนับไม่ตรง'
-                                : part.status === 'defective'
-                                  ? 'ของเสีย'
+                                : part.status === 'verification_failed'
+                                  ? 'ตรวจนับไม่ตรง'
+                                  : part.status === 'defective'
+                                  ? 'ของเสีย (ยืนยันแล้ว)'
                                   : part.status === 'returned'
                                     ? 'คืนสต็อก'
                                     : part.status}
@@ -3704,7 +3761,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                       </div>
                     )}
 
-                  {['pending_verification', 'used', 'defective'].includes(part.status) && !isSelectedRequestReadOnly && canVerifyParts && (
+                  {['pending_verification', 'used'].includes(part.status) && !isSelectedRequestReadOnly && canVerifyParts && (
                     <div className="mt-3 rounded-xl bg-yellow-50 px-3 pb-2 pt-3 ring-1 ring-yellow-200">
                       {verifyingPartId === part.part_id ? (
                         <div className="flex flex-col gap-2">
@@ -3729,16 +3786,20 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleVerifyPart(part.part_id)}
+                              disabled={verifyingPartActionId === part.part_id}
                               className={`rounded-xl px-4 py-2 text-xs font-medium text-white ${
                                 isPartMarkedDefective(part)
                                   ? 'bg-rose-600 hover:bg-rose-700'
                                   : 'bg-emerald-600 hover:bg-emerald-700'
-                              }`}
+                              } ${verifyingPartActionId === part.part_id ? 'cursor-not-allowed opacity-60' : ''}`}
                             >
-                              {isPartMarkedDefective(part) ? 'ยืนยันของเสีย' : 'ยืนยันถูกต้อง'}
+                              {verifyingPartActionId === part.part_id
+                                  ? 'กำลังบันทึก...'
+                                  : (isPartMarkedDefective(part) ? 'ยืนยันของเสีย' : 'ยืนยันถูกต้อง')}
                             </button>
                             <button
                               onClick={() => setVerifyingPartId(null)}
+                              disabled={verifyingPartActionId === part.part_id}
                               className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-200"
                             >
                               ยกเลิก

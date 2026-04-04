@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { BarChart3, TrendingUp, Package, DollarSign, AlertTriangle } from 'lucide-react';
+import { BarChart3, TrendingUp, Package, DollarSign, AlertTriangle, Warehouse } from 'lucide-react';
 import Link from 'next/link';
 import ReportsDashboardClient from './ReportsDashboardClient';
 
@@ -71,7 +71,7 @@ export default async function ReportsPage() {
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div className="bg-white rounded-xl shadow p-6">
                     <div className="flex items-center justify-between">
                         <div>
@@ -97,6 +97,15 @@ export default async function ReportsPage() {
                             <p className="text-2xl font-bold text-red-600">{lowStock.length}</p>
                         </div>
                         <AlertTriangle className="w-10 h-10 text-red-500 opacity-50" />
+                    </div>
+                </Link>
+                <Link href="/reports/warehouse-stock" className="bg-white rounded-xl shadow p-6 hover:shadow-md transition cursor-pointer border border-transparent hover:border-indigo-200 block">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-sm text-gray-500">รายงานสต็อกแต่ละคลัง</p>
+                            <p className="text-2xl font-bold text-indigo-600">เปิด</p>
+                        </div>
+                        <Warehouse className="w-10 h-10 text-indigo-500 opacity-50" />
                     </div>
                 </Link>
                 <div className="bg-white rounded-xl shadow p-6">

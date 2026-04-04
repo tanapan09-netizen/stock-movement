@@ -15,6 +15,7 @@ import {
     createStorePartsFlexMessage,
 } from './lineMessaging';
 import { sendEmail, generatePartRequestEmail, generateStatusChangeEmail, generateMaintenanceRequestEmail, generateJobAssignmentEmail, generateMaintenanceStatusChangeEmail } from './emailService';
+import { DEPARTMENT_BASE_ROLES, normalizeRole } from '@/lib/roles';
 
 export interface PartRequestData {
     request_id: number;
@@ -60,6 +61,56 @@ function formatLineSection(title: string, rows: Array<[string, string | number |
 
     if (lines.length === 0) return [];
     return [title, ...lines];
+}
+
+const DEPARTMENT_ROLE_SET = new Set<string>(DEPARTMENT_BASE_ROLES);
+
+function resolveDepartmentLeaderRole(department?: string | null): string | null {
+    const normalized = normalizeRole(department);
+    if (!normalized) return null;
+
+    if (normalized.startsWith('leader_')) {
+        const departmentRole = normalized.slice('leader_'.length);
+        return DEPARTMENT_ROLE_SET.has(departmentRole) ? normalized : null;
+    }
+
+    return DEPARTMENT_ROLE_SET.has(normalized) ? `leader_${normalized}` : null;
+}
+
+async function resolveRoleRecipients(role: string): Promise<{ lineIds: string[]; emails: string[] }> {
+    const { prisma } = await import('@/lib/prisma');
+
+    const [lineUsers, users] = await Promise.all([
+        prisma.tbl_line_users.findMany({
+            where: {
+                role,
+                is_active: true,
+                line_user_id: { not: '' },
+            },
+            select: { line_user_id: true },
+        }),
+        prisma.tbl_users.findMany({
+            where: {
+                role,
+                deleted_at: null,
+            },
+            select: { line_user_id: true, email: true },
+        }),
+    ]);
+
+    const lineIds = new Set<string>();
+    const emails = new Set<string>();
+
+    lineUsers.forEach((row) => lineIds.add(row.line_user_id));
+    users.forEach((row) => {
+        if (row.line_user_id) lineIds.add(row.line_user_id);
+        if (row.email) emails.add(row.email);
+    });
+
+    return {
+        lineIds: [...lineIds],
+        emails: [...emails],
+    };
 }
 
 async function resolveApprovalRequesterLineIds(data: {
@@ -508,6 +559,7 @@ export async function notifyMaintenanceStatusChange(
         room_name: string;
         reported_by?: string | null;
         assigned_to?: string | null;
+        department?: string | null;
     },
     oldStatus: string,
     newStatus: string,
@@ -518,6 +570,8 @@ export async function notifyMaintenanceStatusChange(
     const { prisma } = await import('@/lib/prisma');
     const { getLineIdsByRoles } = await import('@/actions/lineUserActions');
     const assignedName = request.assigned_to?.trim() || null;
+    const normalizedOldStatus = (oldStatus || '').trim().toLowerCase();
+    const normalizedNewStatus = (newStatus || '').trim().toLowerCase();
     const statusLabelMap: Record<string, string> = {
         pending: 'Pending',
         approved: 'Forwarded',
@@ -558,7 +612,7 @@ export async function notifyMaintenanceStatusChange(
             summary: 'The maintenance request has been cancelled.',
         },
     };
-    const statusMeta = statusMetaMap[newStatus] || {
+    const statusMeta = statusMetaMap[normalizedNewStatus] || {
         headline: '[Maintenance Status Update]',
         subjectPrefix: '[Maintenance] Status Update',
         summary: 'The maintenance request status has changed.',
@@ -604,8 +658,8 @@ export async function notifyMaintenanceStatusChange(
 
     const lineRecipientIds = new Set<string>();
     const emailRecipients = new Set<string>();
-    const shouldNotifyApprovers = ['approved', 'confirmed', 'completed', 'cancelled'].includes(newStatus);
-    const shouldNotifyAssignee = ['approved', 'in_progress', 'pending'].includes(newStatus);
+    const shouldNotifyApprovers = ['approved', 'confirmed', 'completed', 'cancelled'].includes(normalizedNewStatus);
+    const shouldNotifyAssignee = ['approved', 'in_progress', 'pending'].includes(normalizedNewStatus);
 
     if (reporterUser?.line_user_id) lineRecipientIds.add(reporterUser.line_user_id);
     if (reporterCustomer?.line_user_id) lineRecipientIds.add(reporterCustomer.line_user_id);
@@ -636,6 +690,15 @@ export async function notifyMaintenanceStatusChange(
         getApproverEmails().forEach((email) => emailRecipients.add(email));
     }
 
+    if (normalizedOldStatus === 'approved' && normalizedNewStatus === 'cancelled') {
+        const departmentLeaderRole = resolveDepartmentLeaderRole(request.department);
+        if (departmentLeaderRole) {
+            const departmentLeaderRecipients = await resolveRoleRecipients(departmentLeaderRole);
+            departmentLeaderRecipients.lineIds.forEach((lineId) => lineRecipientIds.add(lineId));
+            departmentLeaderRecipients.emails.forEach((email) => emailRecipients.add(email));
+        }
+    }
+
     const lineMessage = createTextMessage([
         statusMeta.headline,
         '',
@@ -648,7 +711,7 @@ export async function notifyMaintenanceStatusChange(
         '',
         ...formatLineSection('อัปเดตสถานะ', [
             ['สรุป', statusMeta.summary],
-            ['สถานะ', `${statusLabelMap[oldStatus] || oldStatus} -> ${statusLabelMap[newStatus] || newStatus}`],
+            ['สถานะ', `${statusLabelMap[normalizedOldStatus] || oldStatus} -> ${statusLabelMap[normalizedNewStatus] || newStatus}`],
             ['หมายเหตุ', notes || null],
         ]),
         '',

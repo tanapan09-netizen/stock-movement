@@ -28,7 +28,7 @@ import {
     canVerifyMaintenanceParts,
     isMaintenanceTechnician,
 } from '@/lib/rbac';
-import { isManagerRole, normalizeRole } from '@/lib/roles';
+import { DEPARTMENT_BASE_ROLES, isManagerRole, normalizeRole } from '@/lib/roles';
 import {
     canTransitionMaintenanceStatus,
     isMaintenanceWorkflowClosed,
@@ -46,6 +46,20 @@ type MaintenanceNotificationRequest = {
     created_at: Date;
     image_url?: string | null;
 };
+
+const MAINTENANCE_DEPARTMENT_ROLE_SET = new Set<string>(DEPARTMENT_BASE_ROLES);
+
+function resolveDepartmentLeaderRole(department?: string | null): string | null {
+    const normalized = normalizeRole(department);
+    if (!normalized) return null;
+
+    if (normalized.startsWith('leader_')) {
+        const departmentRole = normalized.slice('leader_'.length);
+        return MAINTENANCE_DEPARTMENT_ROLE_SET.has(departmentRole) ? normalized : null;
+    }
+
+    return MAINTENANCE_DEPARTMENT_ROLE_SET.has(normalized) ? `leader_${normalized}` : null;
+}
 
 // ==================== ROOMS ====================
 
@@ -940,7 +954,22 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
         const actorName = authContext.session.user.name || changed_by || 'System';
         const current = await prisma.tbl_maintenance_requests.findUnique({
             where: { request_id },
-            select: { status: true, completed_at: true, notes: true, reported_by: true }
+            select: {
+                request_number: true,
+                title: true,
+                status: true,
+                completed_at: true,
+                notes: true,
+                reported_by: true,
+                assigned_to: true,
+                department: true,
+                tbl_rooms: {
+                    select: {
+                        room_code: true,
+                        room_name: true,
+                    }
+                },
+            }
         });
 
         if (!current) {
@@ -961,24 +990,23 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
             return { success: false, error: 'Invalid maintenance status transition' };
         }
 
-        const normalizePersonName = (value?: string | null) => (value || '').trim().toLowerCase();
-        const normalizedSessionUserName = normalizePersonName(authContext.session.user.name);
-        const isEmployeeCancelOwnPending =
-            normalizeRole(authContext.role) === 'employee'
-            && normalizedCurrentStatus === 'pending'
-            && normalizedNextStatus === 'cancelled'
-            && normalizedSessionUserName.length > 0
-            && normalizePersonName(current.reported_by) === normalizedSessionUserName;
+        const normalizedRole = normalizeRole(authContext.role);
+        const departmentLeaderRole = resolveDepartmentLeaderRole(current.department);
+        const canDepartmentLeaderConfirmCancel = Boolean(departmentLeaderRole) && normalizedRole === departmentLeaderRole;
+        const canConfirmCancel = isManagerRole(authContext.role) || canDepartmentLeaderConfirmCancel;
+        const isCancelTransitionFromActive =
+            ['pending', 'approved', 'in_progress'].includes(normalizedCurrentStatus)
+            && normalizedNextStatus === 'cancelled';
+        const cancelReason = (notes || '').trim();
 
-        if (!canEditMaintenance && !canApproveCompletion && !isEmployeeCancelOwnPending) {
+        if (!canEditMaintenance && !canApproveCompletion && !(isCancelTransitionFromActive && canConfirmCancel)) {
             return { success: false, error: 'Permission denied' };
         }
 
         const isHeadTechCompletion = normalizedCurrentStatus === 'confirmed' && normalizedNextStatus === 'completed';
         const isDirectCancelFromActive =
-            ['pending', 'approved', 'in_progress'].includes(normalizedCurrentStatus)
-            && normalizedNextStatus === 'cancelled'
-            && canEditMaintenance;
+            isCancelTransitionFromActive
+            && canConfirmCancel;
         const isManagerReopenFromClosed =
             canManagerEditClosedRequest
             && ['pending', 'approved', 'in_progress'].includes(normalizedNextStatus);
@@ -995,13 +1023,20 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
             return { success: false, error: 'Only head technicians can approve completed maintenance jobs' };
         }
 
-        if (!canEditMaintenance && !isHeadTechCompletion && !isEmployeeCancelOwnPending) {
+        if (isCancelTransitionFromActive && !canConfirmCancel) {
+            return { success: false, error: 'Only the requester department head can confirm cancellation' };
+        }
+
+        if (isCancelTransitionFromActive && cancelReason.length < 8) {
+            return { success: false, error: 'Please provide a cancellation reason (at least 8 characters)' };
+        }
+
+        if (!canEditMaintenance && !isHeadTechCompletion && !isDirectCancelFromActive) {
             return { success: false, error: 'Permission denied' };
         }
 
         if (
-            !isEmployeeCancelOwnPending
-            && !isDirectCancelFromActive
+            !isDirectCancelFromActive
             && !isManagerReopenFromClosed
             && !canTransitionMaintenanceStatus(current.status, new_status, { canApproveCompletion })
         ) {
@@ -1049,6 +1084,43 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
                     changed_by: actorName
                 }
             });
+        }
+
+        if (isDirectCancelFromActive) {
+            await prisma.tbl_maintenance_history.create({
+                data: {
+                    request_id,
+                    action: 'cancel_reason',
+                    old_value: null,
+                    new_value: cancelReason,
+                    changed_by: actorName,
+                }
+            });
+        }
+
+        try {
+            if (current.tbl_rooms && current.status !== normalizedNextStatus) {
+                await notifyMaintenanceStatusChange(
+                    {
+                        request_number: current.request_number,
+                        title: current.title,
+                        room_code: current.tbl_rooms.room_code,
+                        room_name: current.tbl_rooms.room_name,
+                        reported_by: current.reported_by,
+                        assigned_to: request.assigned_to,
+                        department: current.department,
+                    },
+                    current.status || '',
+                    normalizedNextStatus,
+                    normalizedNextStatus === 'cancelled'
+                        ? cancelReason
+                        : normalizedNextStatus === 'confirmed'
+                        ? (technicianCompletionNote || undefined)
+                        : (notes || undefined),
+                );
+            }
+        } catch (notificationError) {
+            console.error('Failed to trigger maintenance status notification:', notificationError);
         }
 
         revalidatePath('/maintenance');
@@ -1788,6 +1860,7 @@ export async function submitRepairCompletion(formData: FormData) {
                     room_name: request.tbl_rooms.room_name,
                     reported_by: request.reported_by,
                     assigned_to: request.assigned_to,
+                    department: request.department,
                 },
                 currentRequest?.status || '',
                 'confirmed',
@@ -2133,6 +2206,14 @@ export async function updateMaintenanceRequest(
 
         const normalizedCurrentStatus = normalizeMaintenanceWorkflowStatus(current.status);
         const normalizedNextStatus = normalizeMaintenanceWorkflowStatus(data.status);
+        const normalizedRole = normalizeRole(authContext.role);
+        const departmentLeaderRole = resolveDepartmentLeaderRole(current.department);
+        const canDepartmentLeaderConfirmCancel = Boolean(departmentLeaderRole) && normalizedRole === departmentLeaderRole;
+        const canConfirmCancel = isManagerRole(authContext.role) || canDepartmentLeaderConfirmCancel;
+        const isCancelTransitionFromActive =
+            ['pending', 'approved', 'in_progress'].includes(normalizedCurrentStatus || '')
+            && normalizedNextStatus === 'cancelled';
+        const cancellationReason = (data.notes || '').trim();
 
         const isHeadTechApproval = normalizedCurrentStatus === 'confirmed' && normalizedNextStatus === 'completed';
         if (normalizedCurrentStatus === 'confirmed' && !isHeadTechApproval) {
@@ -2143,6 +2224,14 @@ export async function updateMaintenanceRequest(
         }
         if (isHeadTechApproval && !canApproveCompletion) {
             return { success: false, error: 'Only head technicians can approve completed maintenance jobs' };
+        }
+
+        if (isCancelTransitionFromActive && !canConfirmCancel) {
+            return { success: false, error: 'Only the requester department head can confirm cancellation' };
+        }
+
+        if (isCancelTransitionFromActive && (data.notes === undefined || cancellationReason.length < 8)) {
+            return { success: false, error: 'Please provide a cancellation reason (at least 8 characters)' };
         }
 
         if (normalizedNextStatus === 'confirmed' && isMaintenanceTechnician(authContext.role)) {
@@ -2173,7 +2262,11 @@ export async function updateMaintenanceRequest(
                 });
             }
 
-            if (!isManagerReopenFromClosed && !canTransitionMaintenanceStatus(current.status, data.status, { canApproveCompletion })) {
+            if (
+                !isManagerReopenFromClosed
+                && !(isCancelTransitionFromActive && canConfirmCancel)
+                && !canTransitionMaintenanceStatus(current.status, data.status, { canApproveCompletion })
+            ) {
                 return { success: false, error: 'Invalid maintenance status transition' };
             }
 
@@ -2192,6 +2285,14 @@ export async function updateMaintenanceRequest(
                 updateData.completed_at = data.completed_at || new Date();
             } else if (current.completed_at || isManagerReopenFromClosed) {
                 updateData.completed_at = null;
+            }
+
+            if (isCancelTransitionFromActive && canConfirmCancel) {
+                historyActions.push({
+                    action: 'cancel_reason',
+                    old_value: '',
+                    new_value: cancellationReason,
+                });
             }
         }
 
@@ -2307,6 +2408,7 @@ export async function updateMaintenanceRequest(
                     room_name: request.tbl_rooms.room_name,
                     reported_by: request.reported_by,
                     assigned_to: request.assigned_to,
+                    department: request.department,
                 };
 
                 if (current.assigned_to !== request.assigned_to && request.assigned_to) {
@@ -2318,11 +2420,14 @@ export async function updateMaintenanceRequest(
                 }
 
                 if (current.status !== request.status) {
+                    const statusChangeNote = request.status === 'cancelled'
+                        ? cancellationReason || undefined
+                        : (typeof updateData.notes === 'string' ? updateData.notes : request.notes || undefined);
                     await notifyMaintenanceStatusChange(
                         notificationRequest,
                         current.status || '',
                         request.status || '',
-                        typeof updateData.notes === 'string' ? updateData.notes : request.notes || undefined,
+                        statusChangeNote,
                     );
                 }
             }
@@ -3227,7 +3332,12 @@ export async function confirmMaintenancePartDefective(data: {
         }
 
         if (part.status === 'defective') {
-            return { success: true, data: part, message: 'Defective part already confirmed' };
+            return { success: false, error: 'Defective part already confirmed' };
+        }
+
+        const allowedStatuses = new Set(['pending_verification', 'used', 'verification_failed']);
+        if (!allowedStatuses.has(part.status)) {
+            return { success: false, error: `Part status "${part.status}" is not available for defective confirmation` };
         }
 
         const nextNotes = part.notes?.includes('MARKED AS DEFECTIVE')
@@ -3248,6 +3358,25 @@ export async function confirmMaintenancePartDefective(data: {
         }
 
         const updatedPart = await prisma.$transaction(async (tx) => {
+            const claimed = await tx.tbl_maintenance_parts.updateMany({
+                where: {
+                    part_id: data.part_id,
+                    status: { in: ['pending_verification', 'used', 'verification_failed'] },
+                    notes: { contains: 'MARKED AS DEFECTIVE' },
+                },
+                data: {
+                    status: 'defective',
+                    notes: nextNotes,
+                    verified_quantity: nextVerifiedQty,
+                    verified_at: new Date(),
+                    verification_notes: nextVerificationNotes,
+                },
+            });
+
+            if (claimed.count === 0) {
+                throw new Error('Defective part was already confirmed by another user');
+            }
+
             const stockWh02 = await tx.tbl_warehouse_stock.findUnique({
                 where: { warehouse_id_p_id: { warehouse_id: wh02.warehouse_id, p_id: part.p_id } },
                 select: { quantity: true }
@@ -3283,17 +3412,6 @@ export async function confirmMaintenancePartDefective(data: {
                 update: { quantity: { increment: nextVerifiedQty } }
             });
 
-            const updated = await tx.tbl_maintenance_parts.update({
-                where: { part_id: data.part_id },
-                data: {
-                    status: 'defective',
-                    notes: nextNotes,
-                    verified_quantity: nextVerifiedQty,
-                    verified_at: new Date(),
-                    verification_notes: nextVerificationNotes,
-                },
-            });
-
             await tx.tbl_maintenance_history.create({
                 data: {
                     request_id: part.request_id,
@@ -3303,6 +3421,14 @@ export async function confirmMaintenancePartDefective(data: {
                     changed_by: actorName,
                 }
             });
+
+            const updated = await tx.tbl_maintenance_parts.findUnique({
+                where: { part_id: data.part_id },
+            });
+
+            if (!updated) {
+                throw new Error('Part record not found after defective confirmation');
+            }
 
             return updated;
         });
@@ -3401,6 +3527,7 @@ export async function returnMaintenanceForRework(request_id: number, note?: stri
                         room_name: updated.tbl_rooms.room_name,
                         reported_by: updated.reported_by,
                         assigned_to: updated.assigned_to,
+                        department: updated.department,
                     },
                     current.status || '',
                     'in_progress',
