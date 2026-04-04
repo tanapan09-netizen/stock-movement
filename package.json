@@ -12,6 +12,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "uploads:cleanup": "node scripts/cleanup-orphan-uploads.js",
+    "uploads:cleanup:execute": "node scripts/cleanup-orphan-uploads.js --execute",
     "prisma:generate": "prisma generate",
     "postinstall": "prisma generate || echo [postinstall] prisma generate failed - continuing"
   },

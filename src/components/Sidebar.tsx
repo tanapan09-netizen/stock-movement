@@ -28,7 +28,8 @@ import {
     ChevronLeft,
     ChevronRight,
     ScrollText,
-    MapPin
+    MapPin,
+    HardDrive
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import { PERMISSIONS, RolePermissions } from '@/lib/permissions';
@@ -670,6 +671,16 @@ export default function Sidebar(props: SidebarProps) {
                                                 >
                                                     <ClipboardList className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isActive('/settings/asset-policy') && 'group-hover:scale-110 group-hover:text-cyan-300'}`} />
                                                     <span className="truncate">นโยบายทรัพย์สิน</span>
+                                                </Link>
+                                            )}
+                                            {can(PERMISSIONS.ADMIN_SETTINGS) && (
+                                                <Link
+                                                    href="/settings/storage-cleanup"
+                                                    onClick={handleLinkClick}
+                                                    className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isActive('/settings/storage-cleanup') ? 'bg-white/15 text-amber-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                                                >
+                                                    <HardDrive className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isActive('/settings/storage-cleanup') && 'group-hover:scale-110 group-hover:text-amber-300'}`} />
+                                                    <span className="truncate">Storage Cleanup</span>
                                                 </Link>
                                             )}
                                             {can(PERMISSIONS.ADMIN_SETTINGS) && (
