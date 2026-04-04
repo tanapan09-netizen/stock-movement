@@ -33,6 +33,18 @@ function formatDateTime(value?: Date | null): string {
     }).format(value);
 }
 
+const WAREHOUSE_FLOW_LABELS: Record<string, string> = {
+    'WH-01': 'คลังหลัก',
+    'WH-02': 'คลังตัดผ่าน',
+    'WH-03': 'ใช้จริง',
+    'WH-08': 'ของเสีย',
+};
+
+function getWarehouseFlowLabel(warehouseCode?: string | null): string | null {
+    if (!warehouseCode) return null;
+    return WAREHOUSE_FLOW_LABELS[warehouseCode] || null;
+}
+
 export default async function WarehouseStockReportPage({ searchParams }: PageProps) {
     const params = (await searchParams) || {};
     const selectedWarehouseId = Number.parseInt(params.warehouse_id || '', 10);
@@ -206,6 +218,10 @@ export default async function WarehouseStockReportPage({ searchParams }: PagePro
                 </div>
             </div>
 
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-xs text-indigo-700">
+                Flow คลังงานซ่อม: WH-01 -&gt; WH-02 -&gt; ใช้จริงไป WH-03 / ของเสียไป WH-08 / ไม่ได้ใช้ย้อนกลับ WH-01
+            </div>
+
             <form method="get" className="grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:grid-cols-4">
                 <div className="md:col-span-1">
                     <label htmlFor="warehouse_id" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -218,11 +234,14 @@ export default async function WarehouseStockReportPage({ searchParams }: PagePro
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none ring-indigo-500 focus:ring-2"
                     >
                         <option value="">ทุกคลัง</option>
-                        {warehouses.map((warehouse) => (
-                            <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>
-                                {warehouse.warehouse_code ? `${warehouse.warehouse_code} - ` : ''}{warehouse.warehouse_name}
-                            </option>
-                        ))}
+                        {warehouses.map((warehouse) => {
+                            const flowLabel = getWarehouseFlowLabel(warehouse.warehouse_code);
+                            return (
+                                <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>
+                                    {warehouse.warehouse_code ? `${warehouse.warehouse_code} - ` : ''}{warehouse.warehouse_name}{flowLabel ? ` (${flowLabel})` : ''}
+                                </option>
+                            );
+                        })}
                     </select>
                 </div>
 
@@ -298,7 +317,14 @@ export default async function WarehouseStockReportPage({ searchParams }: PagePro
                                 reportItems.map((item) => (
                                     <tr key={`${item.warehouseId}-${item.p_id}`} className="hover:bg-gray-50">
                                         <td className="px-4 py-3 text-gray-700">
-                                            {item.warehouseCode !== '-' ? `${item.warehouseCode} - ` : ''}{item.warehouseName}
+                                            <div className="flex items-center gap-2">
+                                                <span>{item.warehouseCode !== '-' ? `${item.warehouseCode} - ` : ''}{item.warehouseName}</span>
+                                                {getWarehouseFlowLabel(item.warehouseCode) && (
+                                                    <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 ring-1 ring-indigo-200">
+                                                        {getWarehouseFlowLabel(item.warehouseCode)}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3 font-mono text-xs text-gray-700">{item.p_id}</td>
                                         <td className="px-4 py-3 font-medium text-gray-900">{item.p_name}</td>
