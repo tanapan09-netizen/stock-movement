@@ -14,6 +14,11 @@ import {
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { useToast } from './ToastProvider';
+import {
+  getReadNotificationsKey,
+  getStoredReadNotificationIds,
+  storeReadNotificationIds,
+} from '@/lib/notifications/clientReadState';
 
 type NotificationModule =
   | 'all'
@@ -86,6 +91,10 @@ export default function NotificationBell() {
   const { data: session } = useSession();
   const sessionUser = session?.user as SessionUserLike | undefined;
   const sessionUserKey = `${sessionUser?.id || sessionUser?.name || 'anonymous'}`;
+  const readStorageKey = useMemo(
+    () => getReadNotificationsKey(sessionUser?.id || null, sessionUser?.name || null),
+    [sessionUser?.id, sessionUser?.name],
+  );
   const { showToast } = useToast();
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -353,6 +362,16 @@ export default function NotificationBell() {
     }
   }, [isSoundEnabled]);
 
+  const applyClientReadState = useCallback(
+    (items: AppNotification[]) => {
+      const readIds = getStoredReadNotificationIds(readStorageKey);
+      if (readIds.size === 0) return items;
+
+      return items.map(item => (readIds.has(item.id) ? { ...item, read: true } : item));
+    },
+    [readStorageKey],
+  );
+
   const markAsRead = useCallback(async (id: string) => {
     setNotifications(prev => {
       const target = prev.find(item => item.id === id);
@@ -361,12 +380,14 @@ export default function NotificationBell() {
       }
       return prev.map(n => (n.id === id ? { ...n, read: true } : n));
     });
+    storeReadNotificationIds(readStorageKey, [id]);
 
     try {
       const response = await fetch('/api/notifications/mark-read', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
+        keepalive: true,
       });
       if (!response.ok) {
         throw new Error(`mark-read failed: ${response.status}`);
@@ -374,12 +395,12 @@ export default function NotificationBell() {
     } catch (error) {
       console.error('Failed to mark notification as read', error);
     }
-  }, []);
+  }, [readStorageKey]);
 
   const openNotificationTarget = useCallback(
-    (notification: AppNotification) => {
+    async (notification: AppNotification) => {
       setIsOpen(false);
-      void markAsRead(notification.id);
+      await markAsRead(notification.id);
       router.push(getNotificationHref(notification));
     },
     [getNotificationHref, markAsRead, router],
@@ -399,7 +420,7 @@ export default function NotificationBell() {
 
         browserNotification.onclick = () => {
           window.focus();
-          openNotificationTarget(notification);
+          void openNotificationTarget(notification);
           browserNotification.close();
         };
       } catch (error) {
@@ -422,7 +443,8 @@ export default function NotificationBell() {
       if (!res.ok) return;
 
       const payload = parseNotificationsResponse(await res.json());
-      const data = payload.items;
+      const data = applyClientReadState(payload.items);
+      const unreadCountFromData = data.filter(notification => !notification.read).length;
       const latestIds = new Set(data.map(notification => notification.id));
 
       let notificationsToAnnounce: AppNotification[] = [];
@@ -451,21 +473,22 @@ export default function NotificationBell() {
 
         playNotificationSound();
         lastReminderTimeRef.current = Date.now();
-      } else if (payload.unreadCount > 0 && Date.now() - lastReminderTimeRef.current >= 60000) {
+      } else if (unreadCountFromData > 0 && Date.now() - lastReminderTimeRef.current >= 60000) {
         playNotificationSound();
-        showToast(`แจ้งเตือน: คุณมีการแจ้งเตือนที่ยังไม่ได้อ่าน ${payload.unreadCount} รายการ`, 'info');
+        showToast(`แจ้งเตือน: คุณมีการแจ้งเตือนที่ยังไม่ได้อ่าน ${unreadCountFromData} รายการ`, 'info');
         lastReminderTimeRef.current = Date.now();
       }
 
       knownIdsRef.current = latestIds;
       setNotifications(data);
-      setUnreadCount(payload.unreadCount);
+      setUnreadCount(unreadCountFromData);
     } catch (error) {
       console.error('Failed to fetch notifications', error);
     } finally {
       setLoading(false);
     }
   }, [
+    applyClientReadState,
     effectiveSelectedModule,
     playNotificationSound,
     showBrowserNotification,
@@ -551,12 +574,14 @@ export default function NotificationBell() {
 
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     setUnreadCount(0);
+    storeReadNotificationIds(readStorageKey, unreadIds);
 
     try {
       const response = await fetch('/api/notifications/mark-read', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: unreadIds }),
+        keepalive: true,
       });
       if (!response.ok) {
         throw new Error(`mark-read failed: ${response.status}`);
@@ -685,7 +710,9 @@ export default function NotificationBell() {
               notifications.map(notification => (
                 <button
                   key={notification.id}
-                  onClick={() => openNotificationTarget(notification)}
+                  onClick={() => {
+                    void openNotificationTarget(notification);
+                  }}
                   className={`flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-gray-50 ${
                     !notification.read ? 'bg-indigo-50/40' : 'bg-white'
                   }`}

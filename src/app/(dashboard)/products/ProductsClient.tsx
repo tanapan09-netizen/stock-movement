@@ -34,6 +34,18 @@ interface Product {
     is_luxury?: boolean | null;
 }
 
+function isBelowSafetyStock(product: Pick<Product, 'p_count' | 'safety_stock'>): boolean {
+    return product.p_count < product.safety_stock;
+}
+
+function isAtSafetyStock(product: Pick<Product, 'p_count' | 'safety_stock'>): boolean {
+    return product.p_count === product.safety_stock;
+}
+
+function isOutOfStock(product: Pick<Product, 'p_count' | 'safety_stock'>): boolean {
+    return product.p_count <= 0 && !isAtSafetyStock(product);
+}
+
 type ProductColumnId =
     | 'image'
     | 'p_id'
@@ -359,7 +371,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
             (p.sub_category_code || '').toLowerCase().includes(normalizedSearch) ||
             (p.sub_sub_category_code || '').toLowerCase().includes(normalizedSearch) ||
             (p.asset_current_location || '').toLowerCase().includes(normalizedSearch);
-        const matchesLowStock = showLowStock ? p.p_count <= p.safety_stock : true;
+        const matchesLowStock = showLowStock ? isBelowSafetyStock(p) : true;
 
         return matchesSearch && matchesLowStock;
     });
@@ -397,9 +409,9 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
             aValue = a.main_category || a.tbl_categories?.cat_name || '';
             bValue = b.main_category || b.tbl_categories?.cat_name || '';
         } else if (sortColumn === 'status') {
-            // Sort by stock status: positive stock = 1 (Available), zero/negative = 0 (Out of Stock)
-            aValue = a.p_count > 0 ? 1 : 0;
-            bValue = b.p_count > 0 ? 1 : 0;
+            // Sort by stock status: ready = 2, equal safety stock = 1, out of stock = 0
+            aValue = isOutOfStock(a) ? 0 : isAtSafetyStock(a) ? 1 : 2;
+            bValue = isOutOfStock(b) ? 0 : isAtSafetyStock(b) ? 1 : 2;
         } else if (sortColumn === 'price_unit') {
             aValue = Number(a.price_unit);
             bValue = Number(b.price_unit);
@@ -518,18 +530,22 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                 return Number(product.price_unit).toFixed(2);
             case 'p_count':
                 return (
-                    <span className={product.p_count <= product.safety_stock ? 'font-bold text-red-600' : ''}>
+                    <span className={isBelowSafetyStock(product) ? 'font-bold text-red-600' : ''}>
                         {product.p_count} {product.p_unit}
                     </span>
                 );
             case 'status':
-                return product.p_count > 0 ? (
-                    <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
-                        พร้อมขาย
-                    </span>
-                ) : (
+                return isOutOfStock(product) ? (
                     <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
                         สินค้าหมด
+                    </span>
+                ) : isAtSafetyStock(product) ? (
+                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                        เท่าจุดสั่งซื้อ
+                    </span>
+                ) : (
+                    <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                        พร้อมขาย
                     </span>
                 );
             case 'actions':
@@ -594,7 +610,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                     title={showLowStock ? 'แสดงทั้งหมด' : 'แสดงเฉพาะสินค้าใกล้หมด'}
                 >
                     <AlertTriangle className={`w-4 h-4 ${showLowStock ? 'fill-current' : ''}`} />
-                    <span className="text-sm font-medium hidden sm:inline">สินค้าใกล้หมด ({products.filter(p => p.p_count <= p.safety_stock).length})</span>
+                    <span className="text-sm font-medium hidden sm:inline">สินค้าใกล้หมด ({products.filter(isBelowSafetyStock).length})</span>
                 </button>
 
                 {/* View Toggle */}
@@ -805,7 +821,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                         <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded">
                                             {product.main_category || product.tbl_categories?.cat_name || '-'}
                                         </span>
-                                        <span className={`font-bold ${product.p_count <= product.safety_stock ? 'text-red-600' : 'text-green-600'}`}>
+                                        <span className={`font-bold ${isBelowSafetyStock(product) ? 'text-red-600' : 'text-green-600'}`}>
                                             {product.p_count} {product.p_unit}
                                         </span>
                                     </div>

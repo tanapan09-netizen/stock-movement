@@ -95,7 +95,7 @@ export async function GET(request: Request) {
             products.forEach(product => {
                 const stock = product.p_count ?? 0;
                 const safety = product.safety_stock ?? 0;
-                if (stock <= safety) {
+                if (stock < safety) {
                     notifications.push({
                         id: `low_stock_${product.p_id}`,
                         type: 'low_stock',

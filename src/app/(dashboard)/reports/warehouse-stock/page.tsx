@@ -80,11 +80,15 @@ function getWarehouseFlowLabel(warehouseCode?: string | null): string | null {
     return WAREHOUSE_FLOW_LABELS[warehouseCode] || null;
 }
 
+function shouldHideMinAndValue(warehouseCode?: string | null): boolean {
+    return warehouseCode === 'WH-03' || warehouseCode === 'WH-08';
+}
+
 function getWarehouseStatusType(warehouseCode: string, quantity: number, minStock: number): ReportStatusType {
     if (warehouseCode === 'WH-02') {
         return quantity > 0 ? 'pending_withdrawal' : 'normal';
     }
-    return quantity <= minStock ? 'low_stock' : 'normal';
+    return quantity < minStock ? 'low_stock' : 'normal';
 }
 
 function normalizeStatusFilter(value?: string): StatusFilter {
@@ -448,6 +452,7 @@ export default async function WarehouseStockReportPage({ searchParams }: PagePro
                             {reportItems.length > 0 ? (
                                 reportItems.map((item) => {
                                     const flowLabel = getWarehouseFlowLabel(item.warehouseCode);
+                                    const hideMinAndValue = shouldHideMinAndValue(item.warehouseCode);
                                     const quantityClassName =
                                         item.statusType === 'low_stock'
                                             ? 'text-red-700'
@@ -487,10 +492,10 @@ export default async function WarehouseStockReportPage({ searchParams }: PagePro
                                                 {item.quantity.toLocaleString()} {item.unit}
                                             </td>
                                             <td className="px-4 py-3 text-right text-gray-700">
-                                                {item.minStock.toLocaleString()} {item.unit}
+                                                {hideMinAndValue ? '-' : `${item.minStock.toLocaleString()} ${item.unit}`}
                                             </td>
                                             <td className="px-4 py-3 text-right font-semibold text-emerald-700">
-                                                ฿{formatCurrency(item.totalValue)}
+                                                {hideMinAndValue ? '-' : `฿${formatCurrency(item.totalValue)}`}
                                             </td>
                                             <td className="px-4 py-3 text-center">
                                                 <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_BADGE_CLASSNAMES[item.statusType]}`}>
