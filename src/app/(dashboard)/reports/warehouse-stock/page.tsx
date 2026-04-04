@@ -68,10 +68,17 @@ export default async function WarehouseStockReportPage({ searchParams }: PagePro
         }),
     ]);
 
-    const productIds = Array.from(new Set(stockRows.map((row) => row.p_id)));
-    const products = productIds.length > 0
+    const wh01 = warehouses.find((warehouse) => warehouse.warehouse_code === 'WH-01') || null;
+    const shouldUseProductsForWh01 = Boolean(
+        wh01 && (!warehouseIdFilter || warehouseIdFilter === wh01.warehouse_id),
+    );
+    const stockRowsWithoutWh01 = wh01
+        ? stockRows.filter((row) => row.warehouse_id !== wh01.warehouse_id)
+        : stockRows;
+
+    const stockProductIds = Array.from(new Set(stockRowsWithoutWh01.map((row) => row.p_id)));
+    const products = shouldUseProductsForWh01
         ? await prisma.tbl_products.findMany({
-            where: { p_id: { in: productIds } },
             select: {
                 p_id: true,
                 p_name: true,
@@ -79,43 +86,87 @@ export default async function WarehouseStockReportPage({ searchParams }: PagePro
                 main_category: true,
                 supplier: true,
                 price_unit: true,
+                p_count: true,
+                safety_stock: true,
+                created_at: true,
             },
+            orderBy: { p_id: 'asc' },
         })
-        : [];
+        : (stockProductIds.length > 0
+            ? await prisma.tbl_products.findMany({
+                where: { p_id: { in: stockProductIds } },
+                select: {
+                    p_id: true,
+                    p_name: true,
+                    p_unit: true,
+                    main_category: true,
+                    supplier: true,
+                    price_unit: true,
+                    p_count: true,
+                    safety_stock: true,
+                    created_at: true,
+                },
+            })
+            : []);
 
     const productMap = new Map(products.map((product) => [product.p_id, product]));
 
-    const reportItems = stockRows
-        .map((row) => {
-            const product = productMap.get(row.p_id);
-            const quantity = toNumber(row.quantity);
-            const minStock = toNumber(row.min_stock);
-            const pricePerUnit = toNumber(product?.price_unit);
-            const totalValue = quantity * pricePerUnit;
-            const warehouseCode = row.tbl_warehouses?.warehouse_code || '-';
-            const warehouseName = row.tbl_warehouses?.warehouse_name || '-';
-            const productName = product?.p_name || row.p_id;
-            const category = product?.main_category || '-';
-            const supplier = product?.supplier || '-';
-            const unit = product?.p_unit || 'unit';
-            const isLowStock = quantity <= minStock;
+    const stockReportItems = stockRowsWithoutWh01.map((row) => {
+        const product = productMap.get(row.p_id);
+        const quantity = toNumber(row.quantity);
+        const minStock = toNumber(row.min_stock);
+        const pricePerUnit = toNumber(product?.price_unit);
+        const totalValue = quantity * pricePerUnit;
+        const warehouseCode = row.tbl_warehouses?.warehouse_code || '-';
+        const warehouseName = row.tbl_warehouses?.warehouse_name || '-';
+        const productName = product?.p_name || row.p_id;
+        const category = product?.main_category || '-';
+        const supplier = product?.supplier || '-';
+        const unit = product?.p_unit || 'unit';
+        const isLowStock = quantity <= minStock;
+
+        return {
+            warehouseId: row.warehouse_id,
+            warehouseCode,
+            warehouseName,
+            p_id: row.p_id,
+            p_name: productName,
+            category,
+            supplier,
+            quantity,
+            minStock,
+            unit,
+            totalValue,
+            lastUpdated: row.last_updated,
+            isLowStock,
+        };
+    });
+
+    const wh01ReportItems = shouldUseProductsForWh01 && wh01
+        ? products.map((product) => {
+            const quantity = toNumber(product.p_count);
+            const minStock = toNumber(product.safety_stock);
+            const totalValue = quantity * toNumber(product.price_unit);
 
             return {
-                warehouseId: row.warehouse_id,
-                warehouseCode,
-                warehouseName,
-                p_id: row.p_id,
-                p_name: productName,
-                category,
-                supplier,
+                warehouseId: wh01.warehouse_id,
+                warehouseCode: wh01.warehouse_code || 'WH-01',
+                warehouseName: wh01.warehouse_name,
+                p_id: product.p_id,
+                p_name: product.p_name || product.p_id,
+                category: product.main_category || '-',
+                supplier: product.supplier || '-',
                 quantity,
                 minStock,
-                unit,
+                unit: product.p_unit || 'unit',
                 totalValue,
-                lastUpdated: row.last_updated,
-                isLowStock,
+                lastUpdated: product.created_at ?? null,
+                isLowStock: quantity <= minStock,
             };
         })
+        : [];
+
+    const reportItems = [...stockReportItems, ...wh01ReportItems]
         .filter((item) => {
             if (lowStockOnly && !item.isLowStock) return false;
             if (!normalizedKeyword) return true;
@@ -128,6 +179,11 @@ export default async function WarehouseStockReportPage({ searchParams }: PagePro
                 item.warehouseCode,
                 item.warehouseName,
             ].some((value) => normalizeText(value).includes(normalizedKeyword));
+        })
+        .sort((a, b) => {
+            const warehouseCompare = normalizeText(a.warehouseCode).localeCompare(normalizeText(b.warehouseCode));
+            if (warehouseCompare !== 0) return warehouseCompare;
+            return normalizeText(a.p_id).localeCompare(normalizeText(b.p_id));
         });
 
     const totalRows = reportItems.length;
