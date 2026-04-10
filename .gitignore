@@ -75,3 +75,6 @@ prisma/migrations/**/*.sql
 *.rar
 *.zip
 *.gz
+
+# office temporary lock files
+~$*.xlsx

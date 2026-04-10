@@ -84,6 +84,18 @@ const translations: Record<Locale, Messages> = {
     },
 };
 
+const localePickerOptions: Array<{ locale: Locale; flag: string; label: string }> = [
+    { locale: 'th', flag: '🇹🇭', label: 'TH' },
+    { locale: 'en', flag: '🇺🇸', label: 'EN' },
+    { locale: 'jp', flag: '🇯🇵', label: 'JP' },
+];
+
+const localeSwipeHint: Record<Locale, string> = {
+    th: 'เลื่อนเพื่อเลือก',
+    en: 'Swipe to choose',
+    jp: 'スワイプして選択',
+};
+
 const getErrorMessage = (locale: Locale, code: ErrorCodeKey, params?: { attempts?: string; errCode?: string; detail?: string; timeLeft?: string }) => {
     const dict: Record<Locale, Record<ErrorCodeKey, string>> = {
         th: {
@@ -266,147 +278,162 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 relative">
-            <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:20px_20px] opacity-50" />
+        <div className="relative min-h-screen overflow-hidden bg-white">
+            <div className="pointer-events-none absolute inset-0">
+                <div className="absolute -left-20 top-10 h-56 w-56 rounded-full bg-cyan-400/12 blur-3xl" />
+                <div className="absolute right-0 top-0 h-72 w-72 rounded-full bg-blue-400/10 blur-3xl" />
+                <div className="absolute inset-0 bg-[radial-gradient(rgba(148,163,184,0.14)_1px,transparent_1px)] [background-size:20px_20px] opacity-25" />
+            </div>
 
-            <div className="relative z-10 w-full max-w-md mx-4">
-                <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
-                    <div className="flex justify-end mb-4">
-                        <label className="flex items-center gap-2 text-xs text-gray-600">
-                            <span>{t.languageLabel}</span>
-                            <select
-                                value={locale}
-                                onChange={(e) => setLocale(e.target.value as Locale)}
-                                className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white"
-                            >
-                                <option value="th">TH</option>
-                                <option value="en">EN</option>
-                                <option value="jp">JP</option>
-                            </select>
-                        </label>
-                    </div>
-
-                    <div className="text-center mb-8">
-                        <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-xl mb-4 shadow-lg shadow-blue-600/30">
-                            <Package className="w-8 h-8 text-white" />
-                        </div>
-                        <h1 className="text-2xl font-bold text-gray-900 mb-1">{t.title}</h1>
-                        <p className="text-gray-500 text-sm">{t.subtitle}</p>
-                    </div>
-
-                    {error && (
-                        <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-100 flex items-center gap-3">
-                            <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                            <div className="text-red-700 text-sm">
-                                <div>{error}</div>
-                                {lockoutEndTime && timeLeft && <div className="font-bold mt-1">{getErrorMessage(locale, 'wait_more', { timeLeft })}</div>}
+            <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-8">
+                <section className="grid w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200 bg-white/95 shadow-[0_35px_90px_-60px_rgba(2,6,23,0.35)] backdrop-blur-xl lg:grid-cols-2">
+                    <div className="border-b border-slate-200 p-6 sm:p-8 lg:border-b-0 lg:border-r">
+                        <div className="mb-5">
+                            <div className="mb-2 flex items-center justify-between">
+                                <span className="text-xs font-medium text-slate-600">{t.languageLabel}</span>
+                                <span className="text-[11px] text-slate-400">{localeSwipeHint[locale]}</span>
+                            </div>
+                            <div className="flex snap-x gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                {localePickerOptions.map((option) => {
+                                    const isActive = option.locale === locale;
+                                    return (
+                                        <button
+                                            key={option.locale}
+                                            type="button"
+                                            onClick={() => setLocale(option.locale)}
+                                            aria-pressed={isActive}
+                                            className={`flex min-w-[92px] snap-start items-center justify-center gap-2 rounded-xl border px-3 py-2 transition-all ${isActive
+                                                ? 'border-cyan-300 bg-cyan-50 text-cyan-800 shadow-sm'
+                                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                                                }`}
+                                        >
+                                            <span className="text-base leading-none">{option.flag}</span>
+                                            <span className="text-xs font-semibold tracking-wide">{option.label}</span>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
-                    )}
 
-                    <form onSubmit={handleSubmit} className="space-y-5">
-                        <div>
-                            <label className="block text-gray-700 text-sm font-medium mb-2">{t.username}</label>
-                            <input
-                                type="text"
-                                value={username}
-                                onChange={(e) => setUsername(e.target.value)}
-                                autoComplete="username"
-                                placeholder={t.usernamePlaceholder}
-                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                                required
-                            />
+                        <div className="mb-8 text-center">
+                            <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-xl bg-cyan-600 shadow-lg shadow-cyan-600/30">
+                                <Package className="h-7 w-7 text-white" />
+                            </div>
+                            <h1 className="text-2xl font-bold text-slate-900">{t.title}</h1>
                         </div>
 
-                        <div>
-                            <label className="block text-gray-700 text-sm font-medium mb-2">{t.password}</label>
-                            <input
-                                type={showPassword ? 'text' : 'password'}
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                autoComplete="current-password"
-                                placeholder={t.passwordPlaceholder}
-                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                                required
-                            />
-                            <div className="flex items-center mt-2">
+                        {error && (
+                            <div className="mb-6 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                                <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-500" />
+                                <div className="text-sm text-red-700">
+                                    <div>{error}</div>
+                                    {lockoutEndTime && timeLeft && <div className="mt-1 font-bold">{getErrorMessage(locale, 'wait_more', { timeLeft })}</div>}
+                                </div>
+                            </div>
+                        )}
+
+                        <form onSubmit={handleSubmit} className="space-y-5">
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-slate-700">{t.username}</label>
                                 <input
-                                    type="checkbox"
-                                    id="show-password"
-                                    checked={showPassword}
-                                    onChange={() => setShowPassword(!showPassword)}
-                                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                                    type="text"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    autoComplete="username"
+                                    placeholder={t.usernamePlaceholder}
+                                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none focus:ring-4 focus:ring-cyan-200/70"
+                                    required
                                 />
-                                <label htmlFor="show-password" className="ml-2 text-sm text-gray-600 cursor-pointer">
-                                    {t.showPassword}
-                                </label>
                             </div>
-                        </div>
 
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full py-3.5 bg-blue-600 text-white font-semibold rounded-xl shadow-lg shadow-blue-600/30 hover:bg-blue-700 hover:shadow-xl hover:shadow-blue-600/40 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {loading ? (
-                                <>
-                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    <span>{t.loggingIn}</span>
-                                </>
-                            ) : (
-                                <>
-                                    <span>{t.login}</span>
-                                    <ArrowRight className="w-5 h-5" />
-                                </>
-                            )}
-                        </button>
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-slate-700">{t.password}</label>
+                                <input
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    autoComplete="current-password"
+                                    placeholder={t.passwordPlaceholder}
+                                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none focus:ring-4 focus:ring-cyan-200/70"
+                                    required
+                                />
+                                <div className="mt-2 flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        id="show-password"
+                                        checked={showPassword}
+                                        onChange={() => setShowPassword(!showPassword)}
+                                        className="h-4 w-4 cursor-pointer rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                                    />
+                                    <label htmlFor="show-password" className="ml-2 cursor-pointer text-sm text-slate-600">
+                                        {t.showPassword}
+                                    </label>
+                                </div>
+                            </div>
 
-                        <button
-                            type="button"
-                            onClick={() => signIn('line', { callbackUrl: '/' })}
-                            className="w-full py-[12px] bg-[#06C755] text-white font-medium rounded-xl shadow-lg shadow-[#06C755]/20 hover:bg-[#05b34c] hover:shadow-xl hover:shadow-[#06C755]/30 active:scale-[0.98] transition-all duration-200 flex flex-row items-center justify-center gap-3"
-                        >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                                src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg"
-                                alt="LINE"
-                                className="w-8 h-8 rounded-full"
-                                style={{ marginTop: '-1px' }}
-                            />
-                            <span className="text-[16px] tracking-wide">{t.loginWithLine}</span>
-                        </button>
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 py-3.5 font-semibold text-white shadow-lg shadow-cyan-700/35 transition-all duration-200 hover:-translate-y-0.5 hover:from-cyan-500 hover:to-blue-500 hover:shadow-cyan-700/45 active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {loading ? (
+                                    <>
+                                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/35 border-t-white" />
+                                        <span>{t.loggingIn}</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span>{t.login}</span>
+                                        <ArrowRight className="h-5 w-5" />
+                                    </>
+                                )}
+                            </button>
 
-                        <div className="relative flex py-2 mt-2 items-center">
-                            <div className="flex-grow border-t border-gray-200" />
-                            <span className="flex-shrink-0 mx-4 text-gray-400 text-[11px] uppercase tracking-wider font-semibold">{t.customerSection}</span>
-                            <div className="flex-grow border-t border-gray-200" />
-                        </div>
-
-                        <button
-                            type="button"
-                            onClick={() => openCustomerServicePage(customerRegisterUrl)}
-                            className="w-full py-3 border border-green-200 bg-green-50 text-green-700 font-medium rounded-xl hover:bg-green-100 transition-all duration-200 flex items-center justify-center gap-2"
-                        >
-                            <UserPlus className="w-5 h-5" />
-                            <span>{t.registerCustomer}</span>
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => openCustomerServicePage(repairRequestUrl)}
-                            className="w-full py-3 border border-orange-200 bg-orange-50 text-orange-700 font-medium rounded-xl hover:bg-orange-100 shadow-sm transition-all duration-200 flex items-center justify-center gap-2"
-                        >
-                            <Wrench className="w-5 h-5" />
-                            <span>{t.repairRequest}</span>
-                        </button>
-                    </form>
-
-                    <div className="mt-8 pt-6 border-t border-gray-100 text-center relative group">
-                        <p className="text-gray-400 text-xs">Stock Movement System v4.0</p>
+                            <button
+                                type="button"
+                                onClick={() => signIn('line', { callbackUrl: '/' })}
+                                className="flex w-full flex-row items-center justify-center gap-3 rounded-xl bg-[#06C755] py-[12px] font-medium text-white shadow-lg shadow-[#06C755]/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#05b34c] hover:shadow-[#06C755]/30 active:scale-[0.985]"
+                            >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                    src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg"
+                                    alt="LINE"
+                                    className="h-8 w-8 rounded-full"
+                                    style={{ marginTop: '-1px' }}
+                                />
+                                <span className="text-[16px] tracking-wide">{t.loginWithLine}</span>
+                            </button>
+                        </form>
                     </div>
-                </div>
 
-             
+                    <div className="flex flex-col justify-center bg-slate-50/80 p-6 sm:p-8">
+                        <h2 className="mb-5 text-center text-lg font-semibold text-slate-900">{t.customerSection}</h2>
+
+                        <div className="space-y-4">
+                            <button
+                                type="button"
+                                onClick={() => openCustomerServicePage(customerRegisterUrl)}
+                                className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 py-3 font-medium text-emerald-700 transition-all duration-200 hover:border-emerald-300 hover:bg-emerald-100"
+                            >
+                                <UserPlus className="h-5 w-5" />
+                                <span>{t.registerCustomer}</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => openCustomerServicePage(repairRequestUrl)}
+                                className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 py-3 font-medium text-amber-700 shadow-sm transition-all duration-200 hover:border-amber-300 hover:bg-amber-100"
+                            >
+                                <Wrench className="h-5 w-5" />
+                                <span>{t.repairRequest}</span>
+                            </button>
+                        </div>
+
+                        <div className="relative mt-7 border-t border-slate-200 pt-5 text-center">
+                            <p className="text-xs text-slate-400">Stock Movement System v4.0</p>
+                        </div>
+                    </div>
+                </section>
             </div>
         </div>
     );

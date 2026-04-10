@@ -50,13 +50,13 @@ export default async function DashboardLayout({
             }
 
             return (
-                <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-                    <div className="max-w-md w-full bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
-                        <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-red-50 text-red-500 flex items-center justify-center">
+                <div className="app-shell min-h-screen flex items-center justify-center p-6">
+                    <div className="max-w-md w-full rounded-2xl border border-red-100 bg-white/95 p-8 text-center shadow-[0_30px_60px_-40px_rgba(239,68,68,0.55)] backdrop-blur">
+                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-red-500">
                             <Lock className="w-7 h-7" />
                         </div>
-                        <h1 className="text-xl font-semibold text-gray-900">Access Denied</h1>
-                        <p className="mt-2 text-sm text-gray-600">
+                        <h1 className="text-xl font-semibold text-slate-900">Access Denied</h1>
+                        <p className="mt-2 text-sm text-slate-600">
                             คุณไม่มีสิทธิ์เข้าถึงหน้านี้ ({pathname}) - ต้องการสิทธิ์ {requiredAccessLevel.toUpperCase()}
                         </p>
                     </div>
@@ -67,7 +67,7 @@ export default async function DashboardLayout({
         return (
             <SidebarProvider>
                 <OfflineQueueProvider>
-                    <div className="flex min-h-screen overflow-x-hidden bg-gray-50 dark:bg-slate-900 transition-colors duration-300">
+                    <div className="app-shell flex min-h-screen overflow-x-hidden transition-colors duration-300">
                         {/* Auto backup on dashboard load */}
                         <AutoBackup />
 
@@ -107,13 +107,13 @@ export default async function DashboardLayout({
         console.error('Dashboard layout render error:', error);
         redirect('/login');
         return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-                <div className="max-w-md w-full bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
-                    <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center">
+            <div className="app-shell min-h-screen flex items-center justify-center p-6">
+                <div className="max-w-md w-full rounded-2xl border border-amber-100 bg-white/95 p-8 text-center shadow-[0_30px_60px_-40px_rgba(251,191,36,0.55)] backdrop-blur">
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-500">
                         <Lock className="w-7 h-7" />
                     </div>
-                    <h1 className="text-xl font-semibold text-gray-900">เกิดข้อผิดพลาดในการโหลดหน้า</h1>
-                    <p className="mt-2 text-sm text-gray-600">
+                    <h1 className="text-xl font-semibold text-slate-900">เกิดข้อผิดพลาดในการโหลดหน้า</h1>
+                    <p className="mt-2 text-sm text-slate-600">
                         กรุณารีเฟรชหน้า หรือลองเข้าสู่ระบบใหม่อีกครั้ง
                     </p>
                 </div>
