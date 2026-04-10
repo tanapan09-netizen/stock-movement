@@ -1294,6 +1294,31 @@ export async function withdrawPartForMaintenance(data: {
                 update: { quantity: { increment: data.quantity } }
             });
 
+            const productRow = await tx.tbl_products.findUnique({
+                where: { p_id: data.p_id },
+                select: { p_count: true }
+            });
+            if (!productRow) {
+                throw new Error(`Product not found: ${data.p_id}`);
+            }
+
+            const nextProductStock = Math.max(0, Number(productRow.p_count ?? 0) - data.quantity);
+            await tx.tbl_products.update({
+                where: { p_id: data.p_id },
+                data: { p_count: nextProductStock }
+            });
+
+            await tx.tbl_product_movements.create({
+                data: {
+                    p_id: data.p_id,
+                    movement_type: 'ออก',
+                    quantity: data.quantity,
+                    remarks: `Maintenance withdrawal (WH-01 -> WH-02) | Request #${data.request_id}${data.notes ? ` | ${data.notes}` : ''}`,
+                    username: withdrawnBy,
+                    movement_time: new Date(),
+                }
+            });
+
             return await tx.tbl_maintenance_parts.create({
                 data: {
                     request_id: data.request_id,
@@ -1308,6 +1333,8 @@ export async function withdrawPartForMaintenance(data: {
         });
 
         revalidatePath('/maintenance');
+        revalidatePath('/maintenance/parts');
+        revalidatePath('/movements');
         revalidatePath('/products');
         return { success: true, data: result };
     } catch (error: unknown) {
@@ -1421,6 +1448,31 @@ export async function withdrawPartsForMaintenanceBatch(data: {
                     update: { quantity: { increment: item.quantity } }
                 });
 
+                const productRow = await tx.tbl_products.findUnique({
+                    where: { p_id: item.p_id },
+                    select: { p_count: true }
+                });
+                if (!productRow) {
+                    throw new Error(`Product not found: ${item.p_id}`);
+                }
+
+                const nextProductStock = Math.max(0, Number(productRow.p_count ?? 0) - item.quantity);
+                await tx.tbl_products.update({
+                    where: { p_id: item.p_id },
+                    data: { p_count: nextProductStock }
+                });
+
+                await tx.tbl_product_movements.create({
+                    data: {
+                        p_id: item.p_id,
+                        movement_type: 'ออก',
+                        quantity: item.quantity,
+                        remarks: `Maintenance withdrawal (WH-01 -> WH-02) | Request #${data.request_id}${item.notes ? ` | ${item.notes}` : ''}`,
+                        username: withdrawnBy,
+                        movement_time: new Date(),
+                    }
+                });
+
                 const createdPart = await tx.tbl_maintenance_parts.create({
                     data: {
                         request_id: data.request_id,
@@ -1441,6 +1493,8 @@ export async function withdrawPartsForMaintenanceBatch(data: {
         });
 
         revalidatePath('/maintenance');
+        revalidatePath('/maintenance/parts');
+        revalidatePath('/movements');
         revalidatePath('/products');
         return { success: true, data: result };
     } catch (error: unknown) {
@@ -1644,6 +1698,22 @@ export async function returnPartToStock(data: { part_id: number; returned_qty: n
                 data: { quantity: { increment: data.returned_qty } }
             });
 
+            await tx.tbl_products.update({
+                where: { p_id: part.p_id },
+                data: { p_count: { increment: data.returned_qty } }
+            });
+
+            await tx.tbl_product_movements.create({
+                data: {
+                    p_id: part.p_id,
+                    movement_type: 'รับเข้า',
+                    quantity: data.returned_qty,
+                    remarks: `Maintenance return (WH-02/WH-03 -> WH-01) | Request #${part.request_id} | Part #${part.part_id}`,
+                    username: returnedBy,
+                    movement_time: new Date(),
+                }
+            });
+
             await tx.tbl_maintenance_parts.update({
                 where: { part_id: data.part_id },
                 data: {
@@ -1664,6 +1734,8 @@ export async function returnPartToStock(data: { part_id: number; returned_qty: n
         });
 
         revalidatePath('/maintenance');
+        revalidatePath('/maintenance/parts');
+        revalidatePath('/movements');
         revalidatePath('/products');
         return { success: true };
     } catch (error: unknown) {
@@ -1971,18 +2043,17 @@ export async function getProducts() {
             return stockByWarehouseProduct.get(`${warehouseId}:${p_id}`) ?? 0;
         };
 
-        const data = products.map(p => ({
-            ...p,
-            stock_wh01: getWarehouseStock('WH-01', p.p_id),
-            stock_wh02: getWarehouseStock('WH-02', p.p_id),
-            stock_wh03: getWarehouseStock('WH-03', p.p_id),
-            stock_wh08: getWarehouseStock('WH-08', p.p_id),
-            available_stock: (() => {
-                const wh01Stock = getWarehouseStock('WH-01', p.p_id);
-                if (wh01Stock <= 0) return p.p_count;
-                return wh01Stock;
-            })()
-        }));
+        const data = products.map((p) => {
+            const normalizedWh01 = Number(p.p_count ?? 0);
+            return {
+                ...p,
+                stock_wh01: normalizedWh01,
+                stock_wh02: getWarehouseStock('WH-02', p.p_id),
+                stock_wh03: getWarehouseStock('WH-03', p.p_id),
+                stock_wh08: getWarehouseStock('WH-08', p.p_id),
+                available_stock: normalizedWh01,
+            };
+        });
 
         return { success: true, data };
     } catch {
@@ -2104,6 +2175,22 @@ export async function clearAllReservedParts(adminName: string, reason: string) {
                     data: { quantity: { increment: qtyToReturn } }
                 });
 
+                await tx.tbl_products.update({
+                    where: { p_id: part.p_id },
+                    data: { p_count: { increment: qtyToReturn } }
+                });
+
+                await tx.tbl_product_movements.create({
+                    data: {
+                        p_id: part.p_id,
+                        movement_type: 'รับเข้า',
+                        quantity: qtyToReturn,
+                        remarks: `Maintenance reserve clear (WH-02/WH-03 -> WH-01) | Request #${part.request_id} | ${clearReason}`,
+                        username: clearedBy,
+                        movement_time: new Date(),
+                    }
+                });
+
                 await tx.tbl_maintenance_parts.update({
                     where: { part_id: part.part_id },
                     data: { status: 'returned', returned_qty: part.quantity, returned_at: new Date() }
@@ -2121,6 +2208,9 @@ export async function clearAllReservedParts(adminName: string, reason: string) {
         });
 
         revalidatePath('/maintenance');
+        revalidatePath('/maintenance/parts');
+        revalidatePath('/movements');
+        revalidatePath('/products');
         return { success: true, count: pendingParts.length };
     } catch (error: unknown) {
         console.error('Error clearing reserved parts:', error);

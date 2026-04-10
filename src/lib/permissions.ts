@@ -91,6 +91,7 @@ export const DASHBOARD_PAGE_ROUTES = [
     '/approvals/purchasing',
     '/approvals/workflows',
     '/assets',
+    '/assets/depreciation',
     '/assets/rooms',
     '/assets/[id]',
     '/assets/[id]/edit',
@@ -172,6 +173,7 @@ const ROUTE_REQUIRED_PERMISSIONS: Record<DashboardRoute, RouteRequirement> = {
     '/approvals/purchasing': PERMISSIONS.PURCHASING_APPROVALS,
     '/approvals/workflows': PERMISSIONS.APPROVALS,
     '/assets': PERMISSIONS.ASSETS,
+    '/assets/depreciation': PERMISSIONS.ASSETS,
     '/assets/rooms': PERMISSIONS.ASSETS,
     '/assets/[id]': PERMISSIONS.ASSETS,
     '/assets/[id]/edit': PERMISSIONS.ASSETS,
@@ -240,6 +242,7 @@ const ROUTE_REQUIRED_PERMISSIONS: Record<DashboardRoute, RouteRequirement> = {
 const MAIN_LIST_EDIT_ROUTES = new Set<DashboardRoute>([
     '/approvals',
     '/assets',
+    '/assets/depreciation',
     '/borrow',
     '/categories',
     '/general-request',

@@ -1,263 +1,351 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Save, Settings2, ShieldCheck } from 'lucide-react';
-import { getAssetPolicySettings, updateAssetPolicySettings } from '@/actions/assetPolicyActions';
-import { ASSET_POLICY_DEFAULTS, type AssetPolicy, type AssetPolicyKey } from '@/lib/asset-policy';
+import { Pencil, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
+import {
+    createAssetCategoryForSettings,
+    deleteAssetCategoryForSettings,
+    listAssetCategoriesForSettings,
+    updateAssetCategoryForSettings,
+} from '@/actions/assetCategorySettingsActions';
 
-type AlertState = {
-    type: 'success' | 'error';
-    text: string;
+type AlertState =
+    | {
+        type: 'success' | 'error';
+        text: string;
+    }
+    | null;
+
+type AssetCategory = {
+    cat_id: number;
+    cat_name: string;
+    description: string;
+    asset_count: number;
+    product_count: number;
+};
+
+type EditState = {
+    catId: number;
+    name: string;
+    description: string;
+    syncAssets: boolean;
 } | null;
 
-const BOOLEAN_FIELDS: Array<{ key: AssetPolicyKey; label: string; hint: string }> = [
-    {
-        key: 'require_serial',
-        label: 'บังคับกรอก Serial Number',
-        hint: 'ไม่อนุญาตให้สร้างทรัพย์สินหากไม่ได้กรอก Serial Number',
-    },
-    {
-        key: 'require_custodian_on_in_use',
-        label: 'บังคับผู้รับผิดชอบเมื่อเริ่มใช้งาน',
-        hint: 'ไม่สามารถเปลี่ยนสถานะเป็นใช้งานได้ หากยังไม่ระบุผู้รับผิดชอบ',
-    },
-    {
-        key: 'transfer_requires_approval',
-        label: 'การโอนย้ายต้องได้รับอนุมัติ',
-        hint: 'ทุกการโอนย้ายต้องผ่านการอนุมัติก่อนเสร็จสิ้น',
-    },
-    {
-        key: 'disposal_requires_dual_approval',
-        label: 'การจำหน่ายต้องอนุมัติ 2 ชั้น',
-        hint: 'ต้องมีผู้อนุมัติ 2 คนก่อนจำหน่ายทรัพย์สิน',
-    },
-];
-
-const SLA_FIELDS: Array<{ key: AssetPolicyKey; label: string; suffix: string; min: number; step: number }> = [
-    { key: 'approval_sla_hours', label: 'SLA การอนุมัติ', suffix: 'ชั่วโมง', min: 1, step: 1 },
-    { key: 'transfer_sla_hours', label: 'SLA การโอนย้าย', suffix: 'ชั่วโมง', min: 1, step: 1 },
-    { key: 'repair_sla_critical_hours', label: 'SLA งานซ่อมเร่งด่วน', suffix: 'ชั่วโมง', min: 1, step: 1 },
-    { key: 'repair_sla_normal_hours', label: 'SLA งานซ่อมปกติ', suffix: 'ชั่วโมง', min: 1, step: 1 },
-];
-
-const ALERT_FIELDS: Array<{ key: AssetPolicyKey; label: string; suffix: string; min: number; step: number }> = [
-    { key: 'scrap_rate_threshold_pct', label: 'เกณฑ์อัตราของเสีย', suffix: '%', min: 0, step: 0.1 },
-    { key: 'repair_frequency_threshold', label: 'เกณฑ์ความถี่การซ่อม', suffix: 'ครั้ง', min: 1, step: 1 },
-    { key: 'warranty_expiry_alert_days', label: 'แจ้งเตือนก่อนหมดประกัน', suffix: 'วัน', min: 1, step: 1 },
-    { key: 'stocktake_accuracy_min_pct', label: 'ความแม่นยำขั้นต่ำของการตรวจนับ', suffix: '%', min: 0, step: 0.1 },
-];
-
 export default function AssetPolicyClient() {
-    const [form, setForm] = useState<AssetPolicy>(ASSET_POLICY_DEFAULTS);
-    const [initialForm, setInitialForm] = useState<AssetPolicy>(ASSET_POLICY_DEFAULTS);
+    const [rows, setRows] = useState<AssetCategory[]>([]);
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
     const [alert, setAlert] = useState<AlertState>(null);
 
+    const [newName, setNewName] = useState('');
+    const [newDescription, setNewDescription] = useState('');
+    const [editState, setEditState] = useState<EditState>(null);
+
     useEffect(() => {
-        void loadPolicy();
+        void loadRows();
     }, []);
 
-    const hasChanges = useMemo(() => {
-        return JSON.stringify(form) !== JSON.stringify(initialForm);
-    }, [form, initialForm]);
+    const totalAssetUsage = useMemo(
+        () => rows.reduce((sum, row) => sum + row.asset_count, 0),
+        [rows],
+    );
 
-    const setField = <K extends AssetPolicyKey>(key: K, value: AssetPolicy[K]) => {
-        setForm((prev) => ({ ...prev, [key]: value }));
-    };
+    const totalLinkedProducts = useMemo(
+        () => rows.reduce((sum, row) => sum + row.product_count, 0),
+        [rows],
+    );
 
-    async function loadPolicy() {
+    async function loadRows() {
         setLoading(true);
         setAlert(null);
-        const result = await getAssetPolicySettings();
-
-        if (result.success && result.data) {
-            setForm(result.data);
-            setInitialForm(result.data);
+        const result = await listAssetCategoriesForSettings();
+        if (result.success) {
+            setRows(result.data);
         } else {
-            setAlert({ type: 'error', text: result.error || 'ไม่สามารถโหลดการตั้งค่านโยบายทรัพย์สินได้' });
+            setAlert({ type: 'error', text: result.error });
         }
-
         setLoading(false);
     }
 
-    async function handleSave() {
-        setSaving(true);
+    async function handleCreate() {
+        if (!newName.trim()) return;
+        setSubmitting(true);
         setAlert(null);
 
-        const result = await updateAssetPolicySettings(form);
+        const result = await createAssetCategoryForSettings({
+            name: newName,
+            description: newDescription,
+        });
 
-        if (result.success && result.data) {
-            setForm(result.data);
-            setInitialForm(result.data);
-            setAlert({ type: 'success', text: 'บันทึกนโยบายทรัพย์สินเรียบร้อยแล้ว' });
+        if (result.success) {
+            setNewName('');
+            setNewDescription('');
+            setAlert({ type: 'success', text: 'เพิ่มหมวดหมู่สินทรัพย์เรียบร้อยแล้ว' });
+            await loadRows();
         } else {
-            setAlert({ type: 'error', text: result.error || 'ไม่สามารถบันทึกการตั้งค่านโยบายทรัพย์สินได้' });
+            setAlert({ type: 'error', text: result.error });
         }
 
-        setSaving(false);
+        setSubmitting(false);
     }
 
-    function handleResetDefault() {
-        setForm(ASSET_POLICY_DEFAULTS);
+    async function handleUpdate() {
+        if (!editState) return;
+        setSubmitting(true);
         setAlert(null);
+
+        const result = await updateAssetCategoryForSettings({
+            catId: editState.catId,
+            name: editState.name,
+            description: editState.description,
+            syncAssets: editState.syncAssets,
+        });
+
+        if (result.success) {
+            setEditState(null);
+            setAlert({ type: 'success', text: 'บันทึกการแก้ไขหมวดหมู่สินทรัพย์เรียบร้อยแล้ว' });
+            await loadRows();
+        } else {
+            setAlert({ type: 'error', text: result.error });
+        }
+
+        setSubmitting(false);
+    }
+
+    async function handleDelete(row: AssetCategory) {
+        const confirmed = window.confirm(
+            `ยืนยันการลบหมวดหมู่ "${row.cat_name}" ?\n\nระบบจะลบได้เฉพาะหมวดหมู่ที่ไม่มีสินทรัพย์หรือสินค้าเชื่อมอยู่เท่านั้น`,
+        );
+        if (!confirmed) return;
+
+        setSubmitting(true);
+        setAlert(null);
+        const result = await deleteAssetCategoryForSettings(row.cat_id);
+
+        if (result.success) {
+            setAlert({ type: 'success', text: 'ลบหมวดหมู่สินทรัพย์เรียบร้อยแล้ว' });
+            await loadRows();
+        } else {
+            setAlert({ type: 'error', text: result.error });
+        }
+
+        setSubmitting(false);
     }
 
     if (loading) {
         return (
-            <div className="p-6">
-                <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-                    กำลังโหลดการตั้งค่านโยบายทรัพย์สิน...
-                </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                กำลังโหลดข้อมูลหมวดหมู่สินทรัพย์...
             </div>
         );
     }
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                <div className="flex items-center gap-3">
-                    <div className="rounded-xl bg-indigo-100 p-2 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300">
-                        <Settings2 className="h-5 w-5" />
-                    </div>
-                    <div>
-                        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">นโยบายทรัพย์สิน</h1>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">
-                            กำหนดนโยบายพื้นฐานสำหรับการลงทะเบียน วงจรชีวิต SLA และเกณฑ์การแจ้งเตือนของทรัพย์สิน
-                        </p>
-                    </div>
+        <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-cyan-50 via-white to-sky-50 p-5 shadow-sm">
+                <h1 className="text-xl font-semibold text-slate-900">ตั้งค่าหมวดหมู่สินทรัพย์</h1>
+                <p className="mt-1 text-sm text-slate-600">
+                    จัดการหมวดหมู่ที่ใช้ในทะเบียนทรัพย์สินและฟอร์มเพิ่มทรัพย์สิน
+                </p>
+            </div>
+
+            {alert && (
+                <div
+                    className={`rounded-lg border px-4 py-3 text-sm ${alert.type === 'success'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-rose-200 bg-rose-50 text-rose-700'
+                        }`}
+                >
+                    {alert.text}
                 </div>
+            )}
 
-                {alert && (
-                    <div
-                        className={`rounded-lg border px-4 py-3 text-sm ${alert.type === 'success'
-                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                : 'border-rose-200 bg-rose-50 text-rose-700'
-                            }`}
-                    >
-                        {alert.text}
-                    </div>
-                )}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="text-xs text-slate-500">จำนวนหมวดหมู่</div>
+                    <div className="mt-1 text-xl font-bold text-slate-900">{rows.length.toLocaleString('th-TH')}</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="text-xs text-slate-500">สินทรัพย์ที่อ้างอิงทั้งหมด</div>
+                    <div className="mt-1 text-xl font-bold text-cyan-700">{totalAssetUsage.toLocaleString('th-TH')}</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="text-xs text-slate-500">สินค้าที่เชื่อมหมวดหมู่</div>
+                    <div className="mt-1 text-xl font-bold text-amber-700">{totalLinkedProducts.toLocaleString('th-TH')}</div>
+                </div>
+            </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                    <h2 className="text-sm font-semibold text-slate-800">เพิ่มหมวดหมู่สินทรัพย์ใหม่</h2>
                     <button
                         type="button"
-                        onClick={handleSave}
-                        disabled={saving}
-                        className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                        onClick={() => void loadRows()}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                     >
-                        {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        บันทึกนโยบาย
-                    </button>
-                    <button
-                        type="button"
-                        onClick={handleResetDefault}
-                        className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
-                    >
-                        รีเซ็ตค่าเริ่มต้น
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => void loadPolicy()}
-                        className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
-                    >
-                        <RefreshCw className="h-4 w-4" />
+                        <RefreshCw className="h-3.5 w-3.5" />
                         โหลดใหม่
                     </button>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                        {hasChanges ? 'มีการเปลี่ยนแปลงที่ยังไม่บันทึก' : 'แบบฟอร์มตรงกับค่าพื้นฐานล่าสุด'}
-                    </span>
+                </div>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                    <input
+                        type="text"
+                        value={newName}
+                        onChange={(event) => setNewName(event.target.value)}
+                        placeholder="ชื่อหมวดหมู่ เช่น คอมพิวเตอร์"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                    <input
+                        type="text"
+                        value={newDescription}
+                        onChange={(event) => setNewDescription(event.target.value)}
+                        placeholder="คำอธิบาย (ไม่บังคับ)"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => void handleCreate()}
+                        disabled={submitting || !newName.trim()}
+                        className="inline-flex items-center justify-center gap-1 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:opacity-60"
+                    >
+                        <Plus className="h-4 w-4" />
+                        เพิ่มหมวดหมู่
+                    </button>
                 </div>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-2">
-                <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                    <div className="mb-4 flex items-center gap-2">
-                        <ShieldCheck className="h-4 w-4 text-indigo-500" />
-                        <h2 className="text-base font-semibold text-slate-900 dark:text-white">การลงทะเบียนและการควบคุม</h2>
-                    </div>
-
-                    <div className="space-y-4">
-                        <label className="block">
-                            <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">รูปแบบรหัสทรัพย์สิน</span>
-                            <input
-                                type="text"
-                                value={form.asset_code_format}
-                                onChange={(event) => setField('asset_code_format', event.target.value)}
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
-                                placeholder="AST-{YYYY}-{00000}"
-                            />
-                        </label>
-
-                        {BOOLEAN_FIELDS.map((field) => (
-                            <label key={field.key} className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                                <div>
-                                    <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{field.label}</div>
-                                    <div className="text-xs text-slate-500 dark:text-slate-400">{field.hint}</div>
-                                </div>
-                                <input
-                                    type="checkbox"
-                                    checked={Boolean(form[field.key])}
-                                    onChange={(event) => setField(field.key, event.target.checked)}
-                                    className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                />
-                            </label>
-                        ))}
-                    </div>
-                </section>
-
-                <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                    <h2 className="mb-4 text-base font-semibold text-slate-900 dark:text-white">ระดับการให้บริการ (SLA)</h2>
-                    <div className="space-y-4">
-                        {SLA_FIELDS.map((field) => (
-                            <label key={field.key} className="block">
-                                <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">{field.label}</span>
-                                <div className="flex items-center">
-                                    <input
-                                        type="number"
-                                        min={field.min}
-                                        step={field.step}
-                                        value={Number(form[field.key])}
-                                        onChange={(event) =>
-                                            setField(field.key, Number(event.target.value || 0))
-                                        }
-                                        className="w-full rounded-l-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
-                                    />
-                                    <span className="rounded-r-lg border border-l-0 border-slate-300 bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                                        {field.suffix}
-                                    </span>
-                                </div>
-                            </label>
-                        ))}
-                    </div>
-                </section>
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <table className="w-full text-left text-sm text-slate-600">
+                    <thead className="bg-slate-50 text-xs uppercase text-slate-700">
+                        <tr>
+                            <th className="px-4 py-3">ชื่อหมวดหมู่</th>
+                            <th className="px-4 py-3">คำอธิบาย</th>
+                            <th className="px-4 py-3 text-right">สินทรัพย์</th>
+                            <th className="px-4 py-3 text-right">สินค้า</th>
+                            <th className="px-4 py-3 text-right">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                        {rows.map((row) => {
+                            const isEditing = editState?.catId === row.cat_id;
+                            return (
+                                <tr key={row.cat_id} className="hover:bg-slate-50">
+                                    <td className="px-4 py-3">
+                                        {isEditing ? (
+                                            <input
+                                                value={editState.name}
+                                                onChange={(event) =>
+                                                    setEditState((prev) =>
+                                                        prev ? { ...prev, name: event.target.value } : prev,
+                                                    )
+                                                }
+                                                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                                            />
+                                        ) : (
+                                            <span className="font-medium text-slate-900">{row.cat_name}</span>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        {isEditing ? (
+                                            <div className="space-y-2">
+                                                <input
+                                                    value={editState.description}
+                                                    onChange={(event) =>
+                                                        setEditState((prev) =>
+                                                            prev ? { ...prev, description: event.target.value } : prev,
+                                                        )
+                                                    }
+                                                    className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                                                />
+                                                <label className="inline-flex items-center gap-2 text-xs text-slate-600">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={editState.syncAssets}
+                                                        onChange={(event) =>
+                                                            setEditState((prev) =>
+                                                                prev ? { ...prev, syncAssets: event.target.checked } : prev,
+                                                            )
+                                                        }
+                                                        className="h-4 w-4"
+                                                    />
+                                                    อัปเดตชื่อหมวดหมู่ในข้อมูลสินทรัพย์เดิมด้วย
+                                                </label>
+                                            </div>
+                                        ) : (
+                                            <span>{row.description || '-'}</span>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-3 text-right font-medium text-cyan-700">
+                                        {row.asset_count.toLocaleString('th-TH')}
+                                    </td>
+                                    <td className="px-4 py-3 text-right font-medium text-amber-700">
+                                        {row.product_count.toLocaleString('th-TH')}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <div className="flex items-center justify-end gap-2">
+                                            {isEditing ? (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void handleUpdate()}
+                                                        disabled={submitting || !editState.name.trim()}
+                                                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                                                    >
+                                                        <Save className="h-3.5 w-3.5" />
+                                                        บันทึก
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEditState(null)}
+                                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                                    >
+                                                        <X className="h-3.5 w-3.5" />
+                                                        ยกเลิก
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setEditState({
+                                                                catId: row.cat_id,
+                                                                name: row.cat_name,
+                                                                description: row.description || '',
+                                                                syncAssets: true,
+                                                            })
+                                                        }
+                                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                                    >
+                                                        <Pencil className="h-3.5 w-3.5" />
+                                                        แก้ไข
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void handleDelete(row)}
+                                                        disabled={submitting}
+                                                        className="inline-flex items-center gap-1 rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                        ลบ
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                        {rows.length === 0 && (
+                            <tr>
+                                <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">
+                                    ยังไม่มีหมวดหมู่สินทรัพย์
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
             </div>
-
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-                <h2 className="mb-4 text-base font-semibold text-slate-900 dark:text-white">เกณฑ์การแจ้งเตือน</h2>
-                <div className="grid gap-4 md:grid-cols-2">
-                    {ALERT_FIELDS.map((field) => (
-                        <label key={field.key} className="block">
-                            <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">{field.label}</span>
-                            <div className="flex items-center">
-                                <input
-                                    type="number"
-                                    min={field.min}
-                                    step={field.step}
-                                    value={Number(form[field.key])}
-                                    onChange={(event) =>
-                                        setField(field.key, Number(event.target.value || 0))
-                                    }
-                                    className="w-full rounded-l-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-slate-600 dark:bg-slate-700 dark:text-white"
-                                />
-                                <span className="rounded-r-lg border border-l-0 border-slate-300 bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                                    {field.suffix}
-                                </span>
-                            </div>
-                        </label>
-                    ))}
-                </div>
-            </section>
         </div>
     );
 }

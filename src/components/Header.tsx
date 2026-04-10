@@ -15,6 +15,7 @@ interface UserWithRole {
 const ROUTE_LABELS: Record<string, string> = {
     '/': 'Dashboard',
     '/assets': 'ทะเบียนทรัพย์สิน',
+    '/assets/depreciation': 'บันทึกค่าเสื่อมราคา',
     '/products': 'รายการสินค้า',
     '/movements': 'เคลื่อนไหวสินค้า',
     '/borrow': 'ยืม/คืนสินค้า',

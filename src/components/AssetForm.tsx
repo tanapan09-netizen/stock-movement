@@ -52,6 +52,8 @@ type ZoneOption = {
     zoneLabel: string;
 };
 
+type AcquisitionType = 'register' | 'purchase' | 'opening';
+
 const ROOM_SECTION_PRESETS = [
     'ประตูทางเข้า',
     'พื้นที่นั่งเล่น',
@@ -67,6 +69,8 @@ const ROOM_SECTION_PRESETS = [
     'ครัว/แพนทรี',
 ];
 
+const DEFAULT_ASSET_CATEGORIES = ['Furniture', 'Electronics', 'Vehicle', 'Machinery', 'Other'];
+
 const normalizeText = (value?: string | null) => (value || '').trim().toLowerCase();
 
 export default function AssetForm({
@@ -74,11 +78,15 @@ export default function AssetForm({
     prefill,
     suggestedAssetCode,
     roomReferences = [],
+    assetGroups = [],
+    acquisitionType = 'register',
 }: {
     asset?: Asset;
     prefill?: Partial<Asset>;
     suggestedAssetCode?: string;
     roomReferences?: AssetRoomReference[];
+    assetGroups?: string[];
+    acquisitionType?: AcquisitionType;
 }) {
     const [isPending, setIsPending] = useState(false);
     const [selectedStatus, setSelectedStatus] = useState(asset?.status || prefill?.status || 'Active');
@@ -96,8 +104,20 @@ export default function AssetForm({
     const router = useRouter();
     const initialAssetCode = asset?.asset_code || prefill?.asset_code || suggestedAssetCode || '';
     const isAssetCodeReadOnly = Boolean(asset) || Boolean(suggestedAssetCode);
+    const effectiveAcquisitionType: AcquisitionType = asset ? 'register' : acquisitionType;
     const initialLocationText = (asset?.location || prefill?.location || '').trim();
     const initialRoomSectionText = (asset?.room_section || prefill?.room_section || '').trim();
+    const categoryOptions = useMemo(
+        () => Array.from(
+            new Set([
+                ...DEFAULT_ASSET_CATEGORIES,
+                ...assetGroups,
+                asset?.category || '',
+                prefill?.category || '',
+            ]),
+        ).filter((value): value is string => Boolean(value)).sort((left, right) => left.localeCompare(right)),
+        [asset?.category, assetGroups, prefill?.category],
+    );
 
     const { roomOptions, zoneOptionsByRoom } = useMemo(() => {
         const activeReferences = roomReferences
@@ -304,8 +324,17 @@ export default function AssetForm({
 
     return (
         <form ref={formRef} onSubmit={handleSubmit} className="bg-white rounded-lg shadow-lg overflow-hidden">
+            <input type="hidden" name="acquisition_type" value={effectiveAcquisitionType} />
             <div className="p-6 border-b bg-gray-50">
-                <h2 className="text-lg font-bold text-gray-800">{asset ? 'แก้ไขข้อมูลทรัพย์สิน' : 'ลงทะเบียนทรัพย์สินใหม่'}</h2>
+                <h2 className="text-lg font-bold text-gray-800">
+                    {asset
+                        ? 'แก้ไขข้อมูลทรัพย์สิน'
+                        : effectiveAcquisitionType === 'opening'
+                            ? 'เพิ่มสินทรัพย์ยกมา'
+                            : effectiveAcquisitionType === 'purchase'
+                                ? 'ซื้อสินทรัพย์'
+                                : 'ลงทะเบียนทรัพย์สินใหม่'}
+                </h2>
             </div>
 
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -331,14 +360,42 @@ export default function AssetForm({
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">หมวดหมู่ *</label>
-                        <select name="category" defaultValue={asset?.category || prefill?.category || 'Other'} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3">
-                            <option value="Furniture">Furniture (เฟอร์นิเจอร์)</option>
-                            <option value="Electronics">Electronics (อิเล็กทรอนิกส์)</option>
-                            <option value="Vehicle">Vehicle (ยานพาหนะ)</option>
-                            <option value="Machinery">Machinery (เครื่องจักร)</option>
-                            <option value="Other">Other (อื่นๆ)</option>
-                        </select>
+                        <input
+                            type="text"
+                            name="category"
+                            list="asset-category-options"
+                            defaultValue={asset?.category || prefill?.category || 'Other'}
+                            required
+                            placeholder="ระบุหรือเลือกกลุ่มสินทรัพย์"
+                            className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                        />
+                        <datalist id="asset-category-options">
+                            {categoryOptions.map((category) => (
+                                <option key={category} value={category} />
+                            ))}
+                        </datalist>
                     </div>
+                    {!asset && (effectiveAcquisitionType === 'purchase' || effectiveAcquisitionType === 'opening') && (
+                        <>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                    {effectiveAcquisitionType === 'opening' ? 'อ้างอิงเอกสารยกมา' : 'อ้างอิงการซื้อ'}
+                                </label>
+                                <input
+                                    type="text"
+                                    name="acquisition_note"
+                                    placeholder={effectiveAcquisitionType === 'opening' ? 'เช่น ทะเบียนยกมา ณ วันเปิดงวด' : 'เช่น PO/Invoice เลขที่ ...'}
+                                    className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                                />
+                            </div>
+                            {effectiveAcquisitionType === 'opening' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">ค่าเสื่อมสะสมยกมา (บาท)</label>
+                                    <CurrencyInput name="opening_accumulated_depreciation" defaultValue={0} placeholder="0.00" />
+                                </div>
+                            )}
+                        </>
+                    )}
                     {hasRoomReferenceData ? (
                         <>
                             <div>
@@ -430,7 +487,9 @@ export default function AssetForm({
                             className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
                         >
                             <option value="Active">Active (ใช้งานปกติ)</option>
+                            <option value="DepreciationPaused">Depreciation Paused (หยุดคิดค่าเสื่อม)</option>
                             <option value="InRepair">In Repair (ส่งซ่อม)</option>
+                            <option value="Sold">Sold (ขายแล้ว)</option>
                             <option value="Disposed">Disposed (จำหน่ายออก)</option>
                             <option value="Lost">Lost (สูญหาย)</option>
                         </select>

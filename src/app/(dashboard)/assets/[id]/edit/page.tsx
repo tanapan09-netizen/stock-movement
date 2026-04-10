@@ -5,6 +5,8 @@ import { auth } from '@/auth';
 import { canAccessDashboardPage } from '@/lib/rbac';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 
+const ASSET_GROUP_DESC_PREFIX = 'ASSET_GROUP:';
+
 export default async function EditAssetPage({ params }: { params: Promise<{ id: string }> }) {
     const session = await auth();
     const permissionContext = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
@@ -20,7 +22,7 @@ export default async function EditAssetPage({ params }: { params: Promise<{ id: 
     }
 
     const { id } = await params;
-    const [asset, roomReferences] = await Promise.all([
+    const [asset, roomReferences, categoryRows, groupRows] = await Promise.all([
         prisma.tbl_assets.findUnique({
             where: { asset_id: parseInt(id, 10) },
         }),
@@ -38,6 +40,16 @@ export default async function EditAssetPage({ params }: { params: Promise<{ id: 
             },
             orderBy: [{ room_code: 'asc' }],
         }),
+        prisma.tbl_assets.findMany({
+            distinct: ['category'],
+            select: { category: true },
+            orderBy: { category: 'asc' },
+        }),
+        prisma.tbl_categories.findMany({
+            where: { cat_desc: { startsWith: ASSET_GROUP_DESC_PREFIX } },
+            select: { cat_name: true },
+            orderBy: { cat_name: 'asc' },
+        }),
     ]);
 
     if (!asset) {
@@ -50,11 +62,19 @@ export default async function EditAssetPage({ params }: { params: Promise<{ id: 
         purchase_price: Number(asset.purchase_price),
         salvage_value: Number(asset.salvage_value),
     };
+    const assetGroups = Array.from(
+        new Set([
+            ...categoryRows.map((row) => row.category),
+            ...groupRows.map((row) => row.cat_name),
+        ]),
+    )
+        .filter((value): value is string => Boolean(value))
+        .sort((left, right) => left.localeCompare(right));
 
     return (
         <div className="max-w-4xl mx-auto">
             <h1 className="text-2xl font-bold text-gray-800 mb-6">แก้ไขข้อมูลทรัพย์สิน</h1>
-            <AssetForm asset={formattedAsset} roomReferences={roomReferences} />
+            <AssetForm asset={formattedAsset} roomReferences={roomReferences} assetGroups={assetGroups} />
         </div>
     );
 }

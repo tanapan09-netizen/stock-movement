@@ -165,7 +165,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/manager-dashboard': 'แดชบอร์ดผู้จัดการ',
   '/store-dashboard': 'แดชบอร์ดคลังสินค้า',
   '/purchasing-dashboard': 'แดชบอร์ดจัดซื้อ',
-  '/settings/asset-policy': 'นโยบายทรัพย์สิน',
+  '/settings/asset-policy': 'ตั้งค่าหมวดหมู่สินทรัพย์',
 };
 
 const ROUTE_SEGMENT_LABELS: Record<string, string> = {
@@ -190,7 +190,7 @@ const ROUTE_SEGMENT_LABELS: Record<string, string> = {
   'purchase-request': 'คำขอจัดซื้อ',
   roles: 'สิทธิ์และผู้ใช้',
   settings: 'ตั้งค่า',
-  'asset-policy': 'นโยบายทรัพย์สิน',
+  'asset-policy': 'ตั้งค่าหมวดหมู่สินทรัพย์',
   'line-users': 'ผู้ใช้ LINE',
   'line-customers': 'ลูกค้า LINE',
   'system-logs': 'บันทึกระบบ',

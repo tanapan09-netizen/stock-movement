@@ -28,7 +28,6 @@ import {
     ChevronLeft,
     ChevronRight,
     ScrollText,
-    MapPin,
     HardDrive
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
@@ -61,7 +60,11 @@ export default function Sidebar(props: SidebarProps) {
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
     const { collapsed, setCollapsed, isMobile, setIsOpen, sidebarMode } = useSidebar();
     const [expandedSubMenu, setExpandedSubMenu] = useState<string | null>(
-        pathname.startsWith('/admin') || pathname === '/roles' || pathname.startsWith('/settings') ? 'admin' : null
+        pathname === '/settings/asset-policy' || pathname.startsWith('/assets')
+            ? 'assets'
+            : pathname.startsWith('/admin') || pathname === '/roles' || pathname.startsWith('/settings')
+                ? 'admin'
+                : null
     );
     const handleLinkClick = () => {
         if (isMobile) {
@@ -81,6 +84,15 @@ export default function Sidebar(props: SidebarProps) {
     const canManagerDashboardPage = canAccessPage('/manager-dashboard');
     const canStoreDashboardPage = canAccessPage('/store-dashboard');
     const canWarehouseStockReportPage = canAccessPage('/reports/warehouse-stock');
+    const canAssetPolicyPage = canAccessPage('/settings/asset-policy');
+    const canAssetDepreciationPage = canAccessPage('/assets/depreciation');
+    const hasAssetManagementMenu = can(PERMISSIONS.ASSETS) || canAssetPolicyPage || canAssetDepreciationPage;
+    const isAssetRegistryRoute =
+        pathname === '/assets' ||
+        pathname === '/assets/new' ||
+        pathname === '/assets/rooms' ||
+        /^\/assets\/\d+\/edit$/.test(pathname) ||
+        /^\/assets\/\d+$/.test(pathname);
     const showStoreSection =
         canStoreDashboardPage ||
         can(PERMISSIONS.PRODUCTS) ||
@@ -265,29 +277,66 @@ export default function Sidebar(props: SidebarProps) {
                             </Link>
                         )}
 
-                        {can(PERMISSIONS.ASSETS) && (
+                        {hasAssetManagementMenu && collapsed && (
                             <Link
-                                href="/assets"
+                                href={can(PERMISSIONS.ASSETS) ? '/assets' : '/settings/asset-policy'}
                                 onClick={handleLinkClick}
-                                className={getNavItemClass(isActive('/assets'))}
-                                title={collapsed ? 'ทะเบียนทรัพย์สิน' : undefined}
+                                className={getNavItemClass(pathname.startsWith('/assets') || pathname === '/settings/asset-policy')}
+                                title="จัดการสินทรัพย์"
                             >
-                                <Briefcase className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/assets') && 'group-hover:scale-110 group-hover:text-teal-400'}`} />
-                                {!collapsed && <span className="truncate">ทะเบียนทรัพย์สิน</span>}
+                                <Briefcase className={`h-5 w-5 transition-transform duration-300 ${!(pathname.startsWith('/assets') || pathname === '/settings/asset-policy') && 'group-hover:scale-110 group-hover:text-teal-400'}`} />
                             </Link>
                         )}
 
-                        {/* ─── งานซ่อมบำรุง ─── */}
-                        {can(PERMISSIONS.ASSETS) && (
-                            <Link
-                                href="/assets/rooms"
-                                onClick={handleLinkClick}
-                                className={getNavItemClass(isActive('/assets/rooms'))}
-                                title={collapsed ? 'สินทรัพย์ตามห้อง' : undefined}
-                            >
-                                <MapPin className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/assets/rooms') && 'group-hover:scale-110 group-hover:text-teal-400'}`} />
-                                {!collapsed && <span className="truncate">สินทรัพย์ตามห้อง</span>}
-                            </Link>
+                        {hasAssetManagementMenu && !collapsed && (
+                            <div className="mb-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setExpandedSubMenu(expandedSubMenu === 'assets' ? null : 'assets')}
+                                    className="group flex w-full items-center rounded-xl px-3 py-2.5 text-sm font-medium text-gray-300 transition-all duration-300 ease-out hover:bg-white/10 hover:text-white"
+                                >
+                                    <Briefcase className={`mr-3 h-5 w-5 flex-shrink-0 transition-transform duration-300 ${expandedSubMenu === 'assets' ? 'text-teal-300' : 'group-hover:scale-110 group-hover:text-teal-400'}`} />
+                                    <span className="flex-1 truncate text-left">จัดการสินทรัพย์</span>
+                                    <ChevronRight className={`h-4 w-4 transition-transform duration-300 ${expandedSubMenu === 'assets' ? 'rotate-90' : ''}`} />
+                                </button>
+
+                                <div
+                                    className={`overflow-hidden transition-all duration-300 ease-in-out ${expandedSubMenu === 'assets' ? 'max-h-80 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}
+                                >
+                                    <div className="mt-1 space-y-1">
+                                        {can(PERMISSIONS.ASSETS) && (
+                                            <Link
+                                                href="/assets"
+                                                onClick={handleLinkClick}
+                                                className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isAssetRegistryRoute ? 'bg-white/15 text-teal-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                                            >
+                                                <FileText className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isAssetRegistryRoute && 'group-hover:scale-110 group-hover:text-teal-300'}`} />
+                                                <span className="truncate">รายการสินทรัพย์</span>
+                                            </Link>
+                                        )}
+                                        {canAssetDepreciationPage && (
+                                            <Link
+                                                href="/assets/depreciation"
+                                                onClick={handleLinkClick}
+                                                className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isActive('/assets/depreciation') ? 'bg-white/15 text-emerald-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                                            >
+                                                <DollarSign className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isActive('/assets/depreciation') && 'group-hover:scale-110 group-hover:text-emerald-300'}`} />
+                                                <span className="truncate">บันทึกค่าเสื่อมราคา</span>
+                                            </Link>
+                                        )}
+                                        {canAssetPolicyPage && (
+                                            <Link
+                                                href="/settings/asset-policy"
+                                                onClick={handleLinkClick}
+                                                className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isActive('/settings/asset-policy') ? 'bg-white/15 text-cyan-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                                            >
+                                                <ClipboardList className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isActive('/settings/asset-policy') && 'group-hover:scale-110 group-hover:text-cyan-300'}`} />
+                                                <span className="truncate">ตั้งค่าหมวดหมู่สินทรัพย์</span>
+                                            </Link>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         )}
 
                         {(canGeneralRequestPage || canMaintenancePage || can(PERMISSIONS.MAINTENANCE_DASHBOARD)) && !collapsed && (
@@ -665,16 +714,6 @@ export default function Sidebar(props: SidebarProps) {
                                             )}
                                             {can(PERMISSIONS.ADMIN_SETTINGS) && (
                                                 <Link
-                                                    href="/settings/asset-policy"
-                                                    onClick={handleLinkClick}
-                                                    className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isActive('/settings/asset-policy') ? 'bg-white/15 text-cyan-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
-                                                >
-                                                    <ClipboardList className={`mr-3 h-4 w-4 flex-shrink-0 transition-transform duration-300 ${!isActive('/settings/asset-policy') && 'group-hover:scale-110 group-hover:text-cyan-300'}`} />
-                                                    <span className="truncate">นโยบายทรัพย์สิน</span>
-                                                </Link>
-                                            )}
-                                            {can(PERMISSIONS.ADMIN_SETTINGS) && (
-                                                <Link
                                                     href="/settings/storage-cleanup"
                                                     onClick={handleLinkClick}
                                                     className={`group flex items-center rounded-xl px-3 py-2 text-xs font-medium transition-all duration-300 ease-out translate-x-3 hover:translate-x-4 ${isActive('/settings/storage-cleanup') ? 'bg-white/15 text-amber-300' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
@@ -801,7 +840,4 @@ export default function Sidebar(props: SidebarProps) {
         </>
     );
 }
-
-
-
 

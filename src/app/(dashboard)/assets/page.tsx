@@ -1,5 +1,15 @@
 ﻿import Link from 'next/link';
-import { Download, MapPin, Plus, Search } from 'lucide-react';
+import {
+    ChevronDown,
+    ChevronLeft,
+    ChevronRight,
+    Download,
+    Filter,
+    MapPin,
+    Plus,
+    Printer,
+    Search,
+} from 'lucide-react';
 
 import { auth } from '@/auth';
 import AssetActions from '@/components/AssetActions';
@@ -28,6 +38,35 @@ function getImageUrl(url: string | null) {
     }
     if (url.startsWith('http') || url.startsWith('/uploads/')) return url;
     return `/uploads/${url}`;
+}
+
+function getStatusBadgeClass(status: string | null | undefined) {
+    if (status === 'Active') return 'bg-green-100 text-green-800';
+    if (status === 'InRepair') return 'bg-amber-100 text-amber-800';
+    if (status === 'DepreciationPaused') return 'bg-violet-100 text-violet-800';
+    if (status === 'Disposed') return 'bg-red-100 text-red-800';
+    if (status === 'Sold') return 'bg-rose-100 text-rose-800';
+    if (status === 'Lost') return 'bg-slate-200 text-slate-800';
+    return 'bg-slate-100 text-slate-700';
+}
+
+function getStatusLabel(status: string | null | undefined) {
+    switch (status) {
+        case 'Active':
+            return 'ใช้งาน';
+        case 'InRepair':
+            return 'ซ่อม';
+        case 'DepreciationPaused':
+            return 'พักค่าเสื่อม';
+        case 'Disposed':
+            return 'จำหน่าย';
+        case 'Sold':
+            return 'ขายแล้ว';
+        case 'Lost':
+            return 'สูญหาย';
+        default:
+            return status || 'ไม่ระบุ';
+    }
 }
 
 function buildQueryString(
@@ -62,6 +101,20 @@ function buildExportQueryString(filters: ReturnType<typeof normalizeAssetRegistr
     return params.toString();
 }
 
+function buildStatusQuickFilterHref(
+    filters: ReturnType<typeof normalizeAssetRegistryFilters>,
+    status: string,
+) {
+    const query = buildQueryString(
+        {
+            ...filters,
+            status,
+        },
+        1,
+    );
+    return `/assets${query ? `?${query}` : ''}`;
+}
+
 export default async function AssetsPage({
     searchParams,
 }: {
@@ -80,6 +133,10 @@ export default async function AssetsPage({
     const filters = normalizeAssetRegistryFilters(rawSearchParams);
     const where = buildAssetRegistryWhere(filters);
     const orderBy = buildAssetRegistryOrderBy(filters.sort);
+    const statusScopeWhere = buildAssetRegistryWhere({
+        ...filters,
+        status: 'all',
+    });
 
     const [
         totalFiltered,
@@ -92,7 +149,11 @@ export default async function AssetsPage({
         prisma.tbl_assets.count({ where }),
         prisma.tbl_assets.count(),
         prisma.tbl_assets.aggregate({ _sum: { purchase_price: true } }),
-        prisma.tbl_assets.groupBy({ by: ['status'], _count: { _all: true } }),
+        prisma.tbl_assets.groupBy({
+            by: ['status'],
+            where: statusScopeWhere,
+            _count: { _all: true },
+        }),
         prisma.tbl_assets.findMany({
             distinct: ['category'],
             select: { category: true },
@@ -124,7 +185,9 @@ export default async function AssetsPage({
     const activeCount = statusCountMap.Active || 0;
     const disposedCount = statusCountMap.Disposed || 0;
     const inRepairCount = statusCountMap.InRepair || 0;
+    const pausedCount = statusCountMap.DepreciationPaused || 0;
     const totalValue = Number(totalValueAggregate._sum.purchase_price || 0);
+    const statusScopeTotal = statusGroups.reduce((sum, row) => sum + row._count._all, 0);
 
     const categories = categoryRows
         .map((row) => row.category)
@@ -134,103 +197,182 @@ export default async function AssetsPage({
         .map((row) => row.location)
         .filter((value): value is string => Boolean(value));
 
-    const exportQuery = buildExportQueryString(filters);
+    const safeFilters = {
+        ...filters,
+        page: currentPage,
+    };
+
+    const exportQuery = buildExportQueryString(safeFilters);
     const exportHref = `/api/assets/export${exportQuery ? `?${exportQuery}` : ''}`;
+    const printHref = `/print/assets${exportQuery ? `?${exportQuery}` : ''}`;
+    const printGroupsHref = `/print/assets/groups${exportQuery ? `?${exportQuery}` : ''}`;
 
     const prevHref = (() => {
-        const query = buildQueryString(filters, Math.max(1, currentPage - 1));
+        const query = buildQueryString(safeFilters, Math.max(1, currentPage - 1));
         return `/assets${query ? `?${query}` : ''}`;
     })();
 
     const nextHref = (() => {
-        const query = buildQueryString(filters, Math.min(totalPages, currentPage + 1));
+        const query = buildQueryString(safeFilters, Math.min(totalPages, currentPage + 1));
         return `/assets${query ? `?${query}` : ''}`;
     })();
 
+    const quickStatusFilters = [
+        { value: 'all', label: 'ทั้งหมด', count: statusScopeTotal },
+        { value: 'Active', label: 'ใช้งาน', count: activeCount },
+        { value: 'InRepair', label: 'ซ่อม', count: inRepairCount },
+        { value: 'DepreciationPaused', label: 'พักค่าเสื่อม', count: pausedCount },
+        { value: 'Disposed', label: 'จำหน่าย', count: disposedCount },
+    ].filter((item) => item.value === filters.status || item.count > 0 || item.value === 'all');
+
+    const startItem = totalFiltered === 0 ? 0 : (currentPage - 1) * ASSET_REGISTRY_PAGE_SIZE + 1;
+    const endItem = totalFiltered === 0 ? 0 : Math.min(currentPage * ASSET_REGISTRY_PAGE_SIZE, totalFiltered);
+
     return (
-        <div>
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800">ทะเบียนทรัพย์สิน</h1>
-                    <p className="text-sm text-gray-500">ค้นหา กรอง และติดตามข้อมูลทรัพย์สินทั้งหมดในระบบ</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Link
-                        href="/assets/rooms"
-                        className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                    >
-                        <MapPin className="mr-2 h-4 w-4" /> รายละเอียดตามห้อง
-                    </Link>
-                    <Link
-                        href={exportHref}
-                        className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                    >
-                        <Download className="mr-2 h-4 w-4" /> Export CSV
-                    </Link>
-                    {canEditPage && (
+        <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-cyan-50 via-white to-sky-50 p-4 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-900">ทะเบียนทรัพย์สิน</h1>
+                        <p className="text-sm text-slate-600">ค้นหา กรอง และติดตามข้อมูลทรัพย์สินทั้งหมดในระบบ</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                         <Link
-                            href="/assets/new"
-                            className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
+                            href="/assets/rooms"
+                            className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                         >
-                            <Plus className="mr-2 h-4 w-4" /> เพิ่มทรัพย์สิน
+                            <MapPin className="mr-2 h-4 w-4" /> รายละเอียดตามห้อง
                         </Link>
-                    )}
+                        <Link
+                            href={exportHref}
+                            className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                            <Download className="mr-2 h-4 w-4" /> Export CSV
+                        </Link>
+                        <Link
+                            href={printHref}
+                            className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                            <Printer className="mr-2 h-4 w-4" /> พิมพ์ทะเบียน
+                        </Link>
+                        <Link
+                            href={printGroupsHref}
+                            className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                            <Printer className="mr-2 h-4 w-4" /> พิมพ์รายงานกลุ่ม
+                        </Link>
+                        {canEditPage && (
+                            <details className="group relative">
+                                <summary className="inline-flex list-none cursor-pointer items-center rounded-lg bg-green-600 px-4 py-2 font-medium text-white hover:bg-green-700 [&::-webkit-details-marker]:hidden">
+                                    <Plus className="mr-2 h-4 w-4" /> เพิ่มสินทรัพย์
+                                    <ChevronDown className="ml-1 h-4 w-4 transition-transform group-open:rotate-180" />
+                                </summary>
+                                <div className="absolute right-0 z-30 mt-2 w-64 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+                                    <Link
+                                        href="/assets/new?mode=purchase"
+                                        className="block px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                                    >
+                                        ซื้อสินทรัพย์ผ่านใหม่
+                                    </Link>
+                                    <Link
+                                        href="/assets/new?mode=opening"
+                                        className="block border-t border-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                                    >
+                                        เพิ่มสินทรัพย์ยกมา
+                                    </Link>
+                                </div>
+                            </details>
+                        )}
+                    </div>
                 </div>
             </div>
 
-            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <div className="rounded-lg bg-white p-4 shadow">
-                    <div className="text-xs text-gray-500">ทรัพย์สินทั้งหมด</div>
-                    <div className="mt-1 text-xl font-bold text-gray-900">{totalAssets.toLocaleString()}</div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="card p-4">
+                    <div className="text-xs text-slate-500">ทรัพย์สินทั้งหมด</div>
+                    <div className="mt-1 text-xl font-bold text-slate-900">{totalAssets.toLocaleString('th-TH')}</div>
                 </div>
-                <div className="rounded-lg bg-white p-4 shadow">
-                    <div className="text-xs text-gray-500">ใช้งานปกติ</div>
-                    <div className="mt-1 text-xl font-bold text-green-700">{activeCount.toLocaleString()}</div>
+                <div className="card p-4">
+                    <div className="text-xs text-slate-500">ใช้งานปกติ</div>
+                    <div className="mt-1 text-xl font-bold text-green-700">{activeCount.toLocaleString('th-TH')}</div>
                 </div>
-                <div className="rounded-lg bg-white p-4 shadow">
-                    <div className="text-xs text-gray-500">ส่งซ่อม</div>
-                    <div className="mt-1 text-xl font-bold text-amber-700">{inRepairCount.toLocaleString()}</div>
+                <div className="card p-4">
+                    <div className="text-xs text-slate-500">ส่งซ่อม</div>
+                    <div className="mt-1 text-xl font-bold text-amber-700">{inRepairCount.toLocaleString('th-TH')}</div>
                 </div>
-                <div className="rounded-lg bg-white p-4 shadow">
-                    <div className="text-xs text-gray-500">จำหน่ายแล้ว</div>
-                    <div className="mt-1 text-xl font-bold text-red-700">{disposedCount.toLocaleString()}</div>
+                <div className="card p-4">
+                    <div className="text-xs text-slate-500">หยุดคิดค่าเสื่อม</div>
+                    <div className="mt-1 text-xl font-bold text-violet-700">{pausedCount.toLocaleString('th-TH')}</div>
                 </div>
-                <div className="rounded-lg bg-white p-4 shadow">
-                    <div className="text-xs text-gray-500">มูลค่าซื้อรวม</div>
-                    <div className="mt-1 text-xl font-bold text-blue-700">{totalValue.toLocaleString()}</div>
+                <div className="card p-4">
+                    <div className="text-xs text-slate-500">มูลค่าซื้อรวม</div>
+                    <div className="mt-1 text-xl font-bold text-blue-700">{totalValue.toLocaleString('th-TH')}</div>
                 </div>
             </div>
 
-            <form method="get" className="mb-4 rounded-lg bg-white p-4 shadow">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <Filter className="h-4 w-4 text-cyan-600" />
+                        กรองสถานะแบบเร็ว
+                    </div>
+                    <span className="text-sm text-slate-500">ผลลัพธ์ {totalFiltered.toLocaleString('th-TH')} รายการ</span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                    {quickStatusFilters.map((item) => {
+                        const isActive = filters.status === item.value;
+                        return (
+                            <Link
+                                key={item.value}
+                                href={buildStatusQuickFilterHref(safeFilters, item.value)}
+                                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium ${isActive
+                                    ? 'border-cyan-300 bg-cyan-100 text-cyan-800'
+                                    : 'border-slate-200 bg-white text-slate-700 hover:border-cyan-200 hover:text-cyan-700'
+                                    }`}
+                            >
+                                <span>{item.label}</span>
+                                <span className={`rounded-full px-2 py-0.5 text-xs ${isActive ? 'bg-cyan-200 text-cyan-900' : 'bg-slate-100 text-slate-600'}`}>
+                                    {item.count.toLocaleString('th-TH')}
+                                </span>
+                            </Link>
+                        );
+                    })}
+                </div>
+            </div>
+
+            <form method="get" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <input type="hidden" name="page" value="1" />
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
                     <div className="xl:col-span-2">
-                        <label className="mb-1 block text-xs text-gray-500">ค้นหา</label>
+                        <label className="mb-1 block text-xs font-medium text-slate-600">ค้นหา</label>
                         <div className="relative">
-                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                             <input
                                 type="text"
                                 name="q"
                                 defaultValue={filters.q}
                                 placeholder="รหัส, ชื่อ, S/N, สถานที่..."
-                                className="w-full rounded-md border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none"
+                                className="w-full rounded-xl border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label className="mb-1 block text-xs text-gray-500">สถานะ</label>
-                        <select name="status" defaultValue={filters.status} className="w-full rounded-md border border-gray-300 py-2 px-3 text-sm">
+                        <label className="mb-1 block text-xs font-medium text-slate-600">สถานะ</label>
+                        <select name="status" defaultValue={filters.status} className="w-full rounded-xl border border-slate-300 py-2 px-3 text-sm">
                             <option value="all">ทั้งหมด</option>
                             <option value="Active">Active</option>
                             <option value="InRepair">InRepair</option>
+                            <option value="DepreciationPaused">DepreciationPaused</option>
                             <option value="Disposed">Disposed</option>
+                            <option value="Sold">Sold</option>
                             <option value="Lost">Lost</option>
                         </select>
                     </div>
 
                     <div>
-                        <label className="mb-1 block text-xs text-gray-500">หมวดหมู่</label>
-                        <select name="category" defaultValue={filters.category} className="w-full rounded-md border border-gray-300 py-2 px-3 text-sm">
+                        <label className="mb-1 block text-xs font-medium text-slate-600">หมวดหมู่</label>
+                        <select name="category" defaultValue={filters.category} className="w-full rounded-xl border border-slate-300 py-2 px-3 text-sm">
                             <option value="all">ทั้งหมด</option>
                             {categories.map((category) => (
                                 <option key={category} value={category}>{category}</option>
@@ -239,13 +381,13 @@ export default async function AssetsPage({
                     </div>
 
                     <div>
-                        <label className="mb-1 block text-xs text-gray-500">สถานที่</label>
+                        <label className="mb-1 block text-xs font-medium text-slate-600">สถานที่</label>
                         <input
                             name="location"
                             list="asset-location-list"
                             defaultValue={filters.location}
                             placeholder="พิมพ์หรือเลือก"
-                            className="w-full rounded-md border border-gray-300 py-2 px-3 text-sm"
+                            className="w-full rounded-xl border border-slate-300 py-2 px-3 text-sm"
                         />
                         <datalist id="asset-location-list">
                             {locations.map((location) => (
@@ -255,18 +397,18 @@ export default async function AssetsPage({
                     </div>
 
                     <div>
-                        <label className="mb-1 block text-xs text-gray-500">ตั้งแต่วันที่ซื้อ</label>
-                        <input type="date" name="fromDate" defaultValue={filters.fromDate} className="w-full rounded-md border border-gray-300 py-2 px-3 text-sm" />
+                        <label className="mb-1 block text-xs font-medium text-slate-600">ตั้งแต่วันที่ซื้อ</label>
+                        <input type="date" name="fromDate" defaultValue={filters.fromDate} className="w-full rounded-xl border border-slate-300 py-2 px-3 text-sm" />
                     </div>
 
                     <div>
-                        <label className="mb-1 block text-xs text-gray-500">ถึงวันที่ซื้อ</label>
-                        <input type="date" name="toDate" defaultValue={filters.toDate} className="w-full rounded-md border border-gray-300 py-2 px-3 text-sm" />
+                        <label className="mb-1 block text-xs font-medium text-slate-600">ถึงวันที่ซื้อ</label>
+                        <input type="date" name="toDate" defaultValue={filters.toDate} className="w-full rounded-xl border border-slate-300 py-2 px-3 text-sm" />
                     </div>
                 </div>
 
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <select name="sort" defaultValue={filters.sort} className="rounded-md border border-gray-300 py-2 px-3 text-sm">
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
+                    <select name="sort" defaultValue={filters.sort} className="rounded-xl border border-slate-300 py-2 px-3 text-sm">
                         <option value="created_desc">ล่าสุดก่อน</option>
                         <option value="created_asc">เก่าสุดก่อน</option>
                         <option value="code_asc">รหัส A-Z</option>
@@ -277,117 +419,178 @@ export default async function AssetsPage({
                         <option value="value_asc">มูลค่าต่ำ-สูง</option>
                     </select>
 
-                    <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                    <button type="submit" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
                         ค้นหา/กรอง
                     </button>
 
-                    <Link href="/assets" className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    <Link href="/assets" className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                         ล้างตัวกรอง
                     </Link>
-
-                    <span className="ml-auto text-sm text-gray-500">ผลลัพธ์ {totalFiltered.toLocaleString()} รายการ</span>
                 </div>
             </form>
 
-            <div className="rounded-lg bg-white shadow overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm text-gray-600">
-                        <thead className="bg-gray-50 text-xs uppercase text-gray-700">
-                            <tr>
-                                <th className="px-6 py-3">รหัสทรัพย์สิน</th>
-                                <th className="px-6 py-3">ชื่อทรัพย์สิน</th>
-                                <th className="px-6 py-3">หมวดหมู่</th>
-                                <th className="px-6 py-3">สถานที่ตั้ง</th>
-                                <th className="px-6 py-3 text-right">ราคาซื้อ</th>
-                                <th className="px-6 py-3 text-center">สถานะ</th>
-                                <th className="px-6 py-3 text-center">จัดการ</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                            {assets.length === 0 ? (
-                                <tr>
-                                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">ไม่พบข้อมูลทรัพย์สินตามเงื่อนไขที่ค้นหา</td>
-                                </tr>
-                            ) : (
-                                assets.map((asset) => (
-                                    <tr key={asset.asset_id} className="hover:bg-gray-50">
-                                        <td className="px-6 py-4 font-medium text-gray-900">{asset.asset_code}</td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center">
-                                                {asset.image_url && (
-                                                    <AssetImage
-                                                        src={getImageUrl(asset.image_url) || ''}
-                                                        className="h-8 w-8 rounded mr-2 object-cover"
-                                                        alt=""
-                                                        fallbackText="Asset"
-                                                    />
-                                                )}
-                                                <div>
-                                                    <div className="font-medium text-gray-900">{asset.asset_name}</div>
-                                                    <div className="text-xs text-gray-500">S/N: {asset.serial_number || '-'}</div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">{asset.category || '-'}</td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex flex-col gap-0.5">
-                                                <span className="inline-flex items-center text-gray-500">
-                                                    <MapPin className="mr-1 h-3 w-3" /> {asset.location || '-'}
-                                                </span>
-                                                <span className="text-xs text-gray-400">{asset.room_section || '-'}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-right">{Number(asset.purchase_price).toLocaleString()}</td>
-                                        <td className="px-6 py-4 text-center">
-                                            <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${asset.status === 'Active'
-                                                ? 'bg-green-100 text-green-800'
-                                                : asset.status === 'Disposed'
-                                                    ? 'bg-red-100 text-red-800'
-                                                    : 'bg-yellow-100 text-yellow-800'
-                                                }`}>
-                                                {asset.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 text-center">
-                                            <div className="flex items-center justify-center gap-2">
-                                                <Link href={`/assets/${asset.asset_id}`} className="text-blue-600 hover:text-blue-900 font-medium text-sm">
-                                                    รายละเอียด
-                                                </Link>
-                                                {canEditPage && (
-                                                    <AssetActions
-                                                        asset={{
-                                                            asset_id: asset.asset_id,
-                                                            asset_code: asset.asset_code,
-                                                            asset_name: asset.asset_name,
-                                                        }}
-                                                        isAdmin={canEditPage}
-                                                    />
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                {assets.length === 0 ? (
+                    <div className="px-6 py-12 text-center text-slate-500">
+                        ไม่พบข้อมูลทรัพย์สินตามเงื่อนไขที่ค้นหา
+                    </div>
+                ) : (
+                    <>
+                        <div className="divide-y divide-slate-200 md:hidden">
+                            {assets.map((asset) => (
+                                <article key={asset.asset_id} className="space-y-3 p-4">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                            <div className="text-sm font-semibold text-slate-900">{asset.asset_code}</div>
+                                            <div className="text-sm text-slate-700">{asset.asset_name}</div>
+                                        </div>
+                                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getStatusBadgeClass(asset.status)}`}>
+                                            {getStatusLabel(asset.status)}
+                                        </span>
+                                    </div>
 
-                <div className="flex items-center justify-between border-t bg-gray-50 px-4 py-3 text-sm">
-                    <div className="text-gray-500">หน้า {currentPage} / {totalPages}</div>
+                                    <div className="flex gap-3">
+                                        {asset.image_url ? (
+                                            <AssetImage
+                                                src={getImageUrl(asset.image_url) || ''}
+                                                className="h-12 w-12 rounded-lg object-cover"
+                                                alt=""
+                                                fallbackText="Asset"
+                                            />
+                                        ) : (
+                                            <div className="h-12 w-12 rounded-lg bg-slate-100" />
+                                        )}
+                                        <div className="min-w-0 flex-1 text-sm text-slate-600">
+                                            <div className="truncate">หมวดหมู่: {asset.category || '-'}</div>
+                                            <div className="truncate">S/N: {asset.serial_number || '-'}</div>
+                                            <div className="truncate">
+                                                สถานที่: {[asset.location, asset.room_section].filter(Boolean).join(' / ') || '-'}
+                                            </div>
+                                            <div className="font-medium text-slate-800">
+                                                ราคาซื้อ: {Number(asset.purchase_price || 0).toLocaleString('th-TH')}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        <Link href={`/assets/${asset.asset_id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-blue-700">
+                                            รายละเอียด
+                                        </Link>
+                                        {canEditPage && (
+                                            <AssetActions
+                                                asset={{
+                                                    asset_id: asset.asset_id,
+                                                    asset_code: asset.asset_code,
+                                                    asset_name: asset.asset_name,
+                                                }}
+                                                isAdmin={canEditPage}
+                                            />
+                                        )}
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
+
+                        <div className="hidden overflow-x-auto md:block">
+                            <table className="w-full text-left text-sm text-slate-600">
+                                <thead className="bg-slate-50 text-xs uppercase text-slate-700">
+                                    <tr>
+                                        <th className="px-6 py-3">รหัสทรัพย์สิน</th>
+                                        <th className="px-6 py-3">ชื่อทรัพย์สิน</th>
+                                        <th className="px-6 py-3">หมวดหมู่</th>
+                                        <th className="px-6 py-3">สถานที่ตั้ง</th>
+                                        <th className="px-6 py-3 text-right">ราคาซื้อ</th>
+                                        <th className="px-6 py-3 text-center">สถานะ</th>
+                                        <th className="px-6 py-3 text-center">จัดการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200">
+                                    {assets.map((asset) => (
+                                        <tr key={asset.asset_id} className="hover:bg-slate-50">
+                                            <td className="px-6 py-4 font-medium text-slate-900">{asset.asset_code}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center">
+                                                    {asset.image_url && (
+                                                        <AssetImage
+                                                            src={getImageUrl(asset.image_url) || ''}
+                                                            className="mr-2 h-8 w-8 rounded object-cover"
+                                                            alt=""
+                                                            fallbackText="Asset"
+                                                        />
+                                                    )}
+                                                    <div>
+                                                        <div className="font-medium text-slate-900">{asset.asset_name}</div>
+                                                        <div className="text-xs text-slate-500">S/N: {asset.serial_number || '-'}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">{asset.category || '-'}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span className="inline-flex items-center text-slate-600">
+                                                        <MapPin className="mr-1 h-3 w-3" /> {asset.location || '-'}
+                                                    </span>
+                                                    <span className="text-xs text-slate-400">{asset.room_section || '-'}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">{Number(asset.purchase_price || 0).toLocaleString('th-TH')}</td>
+                                            <td className="px-6 py-4 text-center">
+                                                <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${getStatusBadgeClass(asset.status)}`}>
+                                                    {getStatusLabel(asset.status)}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <Link href={`/assets/${asset.asset_id}`} className="text-sm font-medium text-blue-600 hover:text-blue-800">
+                                                        รายละเอียด
+                                                    </Link>
+                                                    {canEditPage && (
+                                                        <AssetActions
+                                                            asset={{
+                                                                asset_id: asset.asset_id,
+                                                                asset_code: asset.asset_code,
+                                                                asset_name: asset.asset_name,
+                                                            }}
+                                                            isAdmin={canEditPage}
+                                                        />
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
+                )}
+
+                <div className="flex flex-col gap-3 border-t bg-slate-50 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-slate-600">
+                        แสดง {startItem.toLocaleString('th-TH')}-{endItem.toLocaleString('th-TH')} จาก {totalFiltered.toLocaleString('th-TH')} รายการ
+                    </div>
                     <div className="flex items-center gap-2">
                         <Link
                             href={prevHref}
                             aria-disabled={currentPage <= 1}
-                            className={`rounded-md border px-3 py-1.5 ${currentPage <= 1 ? 'pointer-events-none opacity-50' : 'hover:bg-white'}`}
+                            className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 ${currentPage <= 1
+                                ? 'pointer-events-none border-slate-200 bg-slate-100 text-slate-400'
+                                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'}`}
                         >
+                            <ChevronLeft className="h-4 w-4" />
                             ก่อนหน้า
                         </Link>
+                        <span className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-700">
+                            หน้า {currentPage.toLocaleString('th-TH')} / {totalPages.toLocaleString('th-TH')}
+                        </span>
                         <Link
                             href={nextHref}
                             aria-disabled={currentPage >= totalPages}
-                            className={`rounded-md border px-3 py-1.5 ${currentPage >= totalPages ? 'pointer-events-none opacity-50' : 'hover:bg-white'}`}
+                            className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 ${currentPage >= totalPages
+                                ? 'pointer-events-none border-slate-200 bg-slate-100 text-slate-400'
+                                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'}`}
                         >
                             ถัดไป
+                            <ChevronRight className="h-4 w-4" />
                         </Link>
                     </div>
                 </div>
@@ -395,3 +598,4 @@ export default async function AssetsPage({
         </div>
     );
 }
+

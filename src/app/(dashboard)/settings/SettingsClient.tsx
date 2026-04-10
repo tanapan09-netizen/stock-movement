@@ -415,13 +415,13 @@ export default function SettingsClient() {
                 >
                     <div>
                         <div className="font-medium flex items-center gap-2">
-                            Asset Policy
+                            Asset Category Settings
                             <span className="px-2 py-0.5 rounded text-xs bg-indigo-100 text-indigo-700 border border-indigo-200">
                                 New
                             </span>
                         </div>
                         <div className="text-sm text-gray-500">
-                            ตั้งค่านโยบายทะเบียนทรัพย์สิน เช่น serial requirement, SLA, และ threshold สำหรับการแจ้งเตือน
+                            จัดการหมวดหมู่สินทรัพย์ที่ใช้ในทะเบียนทรัพย์สินและฟอร์มเพิ่มทรัพย์สิน
                         </div>
                     </div>
                     <div className="text-blue-600 text-sm font-medium">Manage &rarr;</div>

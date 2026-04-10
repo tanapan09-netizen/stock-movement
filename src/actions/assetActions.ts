@@ -18,6 +18,9 @@ import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/serv
 import { auth } from '@/auth';
 
 const UPLOAD_DIR = 'assets';
+const ASSET_GROUP_DESC_PREFIX = 'ASSET_GROUP:';
+
+type AcquisitionType = 'register' | 'purchase' | 'opening';
 
 type SessionUserLike = {
     id?: string | number | null;
@@ -76,6 +79,20 @@ function formatAssetPlacement(location?: string | null, roomSection?: string | n
     return [loc, section].filter(Boolean).join(' / ');
 }
 
+function normalizeAcquisitionType(raw: string): AcquisitionType {
+    const value = raw.trim().toLowerCase();
+    if (value === 'purchase') return 'purchase';
+    if (value === 'opening') return 'opening';
+    return 'register';
+}
+
+function formatCurrency(value: number) {
+    return Number(value || 0).toLocaleString('th-TH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
 async function getTransferApprovalByRef(reference: string) {
     const requestNumber = reference.trim();
     if (!requestNumber) return null;
@@ -92,6 +109,46 @@ async function getTransferApprovalByRef(reference: string) {
     });
 }
 
+export async function createAssetGroup(formData: FormData) {
+    const session = await auth();
+    await assertAssetWriteAccess(session);
+
+    const groupName = String(formData.get('group_name') || '').trim();
+    const groupDescription = String(formData.get('group_description') || '').trim();
+
+    if (groupName.length < 2) {
+        throw new Error('Asset group name must be at least 2 characters');
+    }
+
+    const taggedDescription = `${ASSET_GROUP_DESC_PREFIX}${groupDescription || groupName}`;
+
+    const existing = await prisma.tbl_categories.findFirst({
+        where: { cat_name: groupName },
+        select: { cat_id: true, cat_desc: true },
+    });
+
+    if (existing) {
+        await prisma.tbl_categories.update({
+            where: { cat_id: existing.cat_id },
+            data: {
+                cat_desc: existing.cat_desc?.startsWith(ASSET_GROUP_DESC_PREFIX)
+                    ? existing.cat_desc
+                    : taggedDescription,
+            },
+        });
+    } else {
+        await prisma.tbl_categories.create({
+            data: {
+                cat_name: groupName,
+                cat_desc: taggedDescription,
+            },
+        });
+    }
+
+    revalidatePath('/assets');
+    revalidatePath('/assets/new');
+}
+
 export async function createAsset(formData: FormData) {
     const session = await auth();
     await assertAssetWriteAccess(session);
@@ -101,6 +158,9 @@ export async function createAsset(formData: FormData) {
 
     const providedAssetCode = ((formData.get('asset_code') as string) || '').trim();
     let asset_code = providedAssetCode || await generateNextAssetCodeByPolicy();
+    const acquisition_type = normalizeAcquisitionType(String(formData.get('acquisition_type') || ''));
+    const acquisition_note = String(formData.get('acquisition_note') || '').trim();
+    const opening_accumulated_depreciation = parseFloat(String(formData.get('opening_accumulated_depreciation') || '0')) || 0;
     const asset_name = formData.get('asset_name') as string;
     const description = formData.get('description') as string;
     const category = formData.get('category') as string;
@@ -164,12 +224,31 @@ export async function createAsset(formData: FormData) {
             });
 
             const placement = formatAssetPlacement(location, room_section);
+            const initialActionType =
+                acquisition_type === 'opening'
+                    ? 'OpeningBalance'
+                    : acquisition_type === 'purchase'
+                        ? 'Purchase'
+                        : 'Create';
+            const initialDescription = [
+                acquisition_type === 'opening'
+                    ? `บันทึกสินทรัพย์ยกมา: ${asset_name} (${asset_code})`
+                    : acquisition_type === 'purchase'
+                        ? `ซื้อสินทรัพย์ใหม่: ${asset_name} (${asset_code})`
+                        : `ลงทะเบียนทรัพย์สินใหม่: ${asset_name} (${asset_code})`,
+                placement ? `Location: ${placement}` : '',
+                acquisition_note ? `หมายเหตุ: ${acquisition_note}` : '',
+                acquisition_type === 'opening' && opening_accumulated_depreciation > 0
+                    ? `ค่าเสื่อมสะสมยกมา: ${formatCurrency(opening_accumulated_depreciation)}`
+                    : '',
+            ].filter(Boolean).join(' | ');
+
             // Add initial history
             await prisma.tbl_asset_history.create({
                 data: {
                     asset_id: asset.asset_id,
-                    action_type: 'Create',
-                    description: `ลงทะเบียนทรัพย์สินใหม่: ${asset_name} (${asset_code})${placement ? ` | Location: ${placement}` : ''}`,
+                    action_type: initialActionType,
+                    description: initialDescription,
                     performed_by: userName,
                 }
             });
@@ -420,12 +499,31 @@ export async function addAssetHistory(formData: FormData) {
     const new_location = ((formData.get('new_location') as string) || '').trim();
     const new_room_section = ((formData.get('new_room_section') as string) || '').trim();
     const transfer_approval_ref = ((formData.get('transfer_approval_ref') as string) || '').trim();
+    const work_date = ((formData.get('work_date') as string) || '').trim();
+    const sale_date = ((formData.get('sale_date') as string) || '').trim();
+    const sale_price = parseFloat((formData.get('sale_price') as string) || '0') || 0;
+    const buyer_name = ((formData.get('buyer_name') as string) || '').trim();
+    const sale_reference = ((formData.get('sale_reference') as string) || '').trim();
+    const next_maintenance_date = ((formData.get('next_maintenance_date') as string) || '').trim();
+    const work_order_ref = ((formData.get('work_order_ref') as string) || '').trim();
+    const service_provider = ((formData.get('service_provider') as string) || '').trim();
+    const parts_replaced = ((formData.get('parts_replaced') as string) || '').trim();
+    const downtime_hours = parseFloat((formData.get('downtime_hours') as string) || '0') || 0;
+    const performed_by_override = ((formData.get('performed_by_override') as string) || '').trim();
+    const maintenance_state = ((formData.get('maintenance_state') as string) || '').trim();
+
+    const parseDateOrNull = (raw: string) => {
+        if (!raw) return null;
+        const parsed = new Date(raw);
+        if (!Number.isFinite(parsed.getTime())) return null;
+        return parsed;
+    };
 
     try {
         const policy = await getAssetPolicyFromDb();
         const currentAsset = await prisma.tbl_assets.findUnique({
             where: { asset_id },
-            select: { asset_id: true, location: true, room_section: true },
+            select: { asset_id: true, location: true, room_section: true, status: true },
         });
         if (!currentAsset) {
             throw new Error('Asset not found');
@@ -469,32 +567,109 @@ export async function addAssetHistory(formData: FormData) {
             }
         }
 
+        if (action_type === 'Sell') {
+            if (currentAsset.status === 'Disposed' || currentAsset.status === 'Sold') {
+                throw new Error('Asset already disposed/sold');
+            }
+            if (sale_price <= 0) {
+                throw new Error('Sale price must be greater than 0');
+            }
+        }
+
+        if (action_type === 'DepreciationPause') {
+            if (currentAsset.status === 'DepreciationPaused') {
+                throw new Error('Depreciation is already paused');
+            }
+            if (currentAsset.status === 'Disposed' || currentAsset.status === 'Sold') {
+                throw new Error('Cannot pause depreciation for disposed/sold asset');
+            }
+        }
+
+        if (action_type === 'DepreciationResume' && currentAsset.status !== 'DepreciationPaused') {
+            throw new Error('Depreciation is not paused');
+        }
+
+        const workDate = parseDateOrNull(work_date);
+        const saleDate = parseDateOrNull(sale_date);
+        const nextMaintenanceDate = parseDateOrNull(next_maintenance_date);
+        if (workDate && nextMaintenanceDate && nextMaintenanceDate < workDate) {
+            throw new Error('Next maintenance date must be later than or equal to work date');
+        }
+
+        const metadataParts: string[] = [];
+        if (workDate) {
+            metadataParts.push(`วันที่ดำเนินการ: ${workDate.toLocaleDateString('th-TH')}`);
+        }
+        if (work_order_ref) {
+            metadataParts.push(`เลขที่ใบงาน: ${work_order_ref}`);
+        }
+        if (service_provider) {
+            metadataParts.push(`ผู้ให้บริการ: ${service_provider}`);
+        }
+        if (parts_replaced) {
+            metadataParts.push(`อะไหล่ที่เปลี่ยน: ${parts_replaced}`);
+        }
+        if (downtime_hours > 0) {
+            metadataParts.push(`Downtime: ${downtime_hours} ชั่วโมง`);
+        }
+        if (nextMaintenanceDate) {
+            metadataParts.push(`รอบบำรุงครั้งถัดไป: ${nextMaintenanceDate.toLocaleDateString('th-TH')}`);
+        }
+        if (maintenance_state) {
+            metadataParts.push(`สถานะหลังงาน: ${maintenance_state}`);
+        }
+
+        const normalizedDescription = (description || '').trim();
+        const actorName = performed_by_override || userName;
+
         const historyDescription = action_type === 'Dispose'
             ? [
                 `เหตุผลจำหน่าย: ${disposal_reason}`,
                 secondary_approver ? `ผู้อนุมัติคนที่ 2: ${secondary_approver}` : '',
             ].filter(Boolean).join(' | ')
+            : action_type === 'Sell'
+                ? [
+                    normalizedDescription || 'ขายทรัพย์สิน',
+                    `ราคาขาย: ${formatCurrency(sale_price)} บาท`,
+                    buyer_name ? `ผู้ซื้อ: ${buyer_name}` : '',
+                    sale_reference ? `เอกสารอ้างอิง: ${sale_reference}` : '',
+                ].filter(Boolean).join(' | ')
             : action_type === 'Move'
                 ? `ย้ายจาก "${formatAssetPlacement(currentAsset.location, currentAsset.room_section) || '-'}" ไป "${formatAssetPlacement(new_location || currentAsset.location, new_room_section || currentAsset.room_section) || '-'}"${transfer_approval_ref ? ` | ใบอนุมัติ: ${transfer_approval_ref}` : ''}`
-                : description;
+                : action_type === 'DepreciationPause'
+                    ? `หยุดคิดค่าเสื่อมราคา${workDate ? ` ตั้งแต่วันที่ ${workDate.toLocaleDateString('th-TH')}` : ''}${normalizedDescription ? ` | ${normalizedDescription}` : ''}`
+                    : action_type === 'DepreciationResume'
+                        ? `เริ่มคิดค่าเสื่อมราคาอีกครั้ง${workDate ? ` ตั้งแต่วันที่ ${workDate.toLocaleDateString('th-TH')}` : ''}${normalizedDescription ? ` | ${normalizedDescription}` : ''}`
+                : [normalizedDescription, ...metadataParts].filter(Boolean).join(' | ');
+
+        const explicitStatus = maintenance_state === 'Active' || maintenance_state === 'InRepair'
+            ? maintenance_state
+            : null;
+        const statusAfterAction = action_type === 'Dispose'
+            ? 'Disposed'
+            : action_type === 'Sell'
+                ? 'Sold'
+                : action_type === 'DepreciationPause'
+                    ? 'DepreciationPaused'
+                    : action_type === 'DepreciationResume'
+                        ? 'Active'
+                        : explicitStatus || (action_type === 'Repair' ? 'InRepair' : null);
+
+        const actionDate = saleDate ?? workDate ?? new Date();
+        const effectiveCost = action_type === 'Sell' ? sale_price : cost;
 
         await prisma.tbl_asset_history.create({
             data: {
                 asset_id,
                 action_type,
                 description: historyDescription,
-                cost,
-                performed_by: userName
+                cost: effectiveCost,
+                performed_by: actorName,
+                action_date: actionDate,
             }
         });
 
-        // If status changes (e.g. disposed), update asset status
-        if (action_type === 'Dispose') {
-            await prisma.tbl_assets.update({
-                where: { asset_id },
-                data: { status: 'Disposed' }
-            });
-        } else if (action_type === 'Move') {
+        if (action_type === 'Move') {
             const targetLocation = new_location || currentAsset.location || null;
             const targetRoomSection = new_room_section || currentAsset.room_section || null;
             await prisma.tbl_assets.update({
@@ -502,7 +677,13 @@ export async function addAssetHistory(formData: FormData) {
                 data: {
                     location: targetLocation,
                     room_section: targetRoomSection,
+                    ...(statusAfterAction ? { status: statusAfterAction } : {}),
                 },
+            });
+        } else if (statusAfterAction) {
+            await prisma.tbl_assets.update({
+                where: { asset_id },
+                data: { status: statusAfterAction }
             });
         }
     } catch (error) {
@@ -510,6 +691,7 @@ export async function addAssetHistory(formData: FormData) {
         throw new Error(message);
     }
 
+    revalidatePath('/assets');
     revalidatePath(`/assets/${asset_id}`);
 }
 
@@ -546,7 +728,7 @@ export async function searchAssets(query: string) {
                     { location: { contains: query } },
                     { room_section: { contains: query } },
                 ],
-                status: { not: 'Disposed' } // Only show active assets
+                status: { notIn: ['Disposed', 'Sold'] } // Only show active assets
             },
             select: {
                 asset_id: true,
@@ -584,14 +766,45 @@ export async function getSuggestedAssetCode() {
 export async function getAssetFinancialSummary() {
     try {
         const assets = await prisma.tbl_assets.findMany({
-            where: { status: 'Active' },
+            where: {
+                status: {
+                    in: ['Active', 'DepreciationPaused'],
+                },
+            },
             select: {
+                asset_id: true,
+                status: true,
                 purchase_price: true,
                 salvage_value: true,
                 useful_life_years: true,
                 purchase_date: true
             }
         });
+
+        const pausedAssetIds = assets
+            .filter((asset) => asset.status === 'DepreciationPaused')
+            .map((asset) => asset.asset_id);
+
+        const pauseHistories = pausedAssetIds.length > 0
+            ? await prisma.tbl_asset_history.findMany({
+                where: {
+                    asset_id: { in: pausedAssetIds },
+                    action_type: 'DepreciationPause',
+                },
+                orderBy: [{ asset_id: 'asc' }, { action_date: 'desc' }],
+                select: {
+                    asset_id: true,
+                    action_date: true,
+                },
+            })
+            : [];
+
+        const pauseDateByAsset = new Map<number, Date>();
+        for (const row of pauseHistories) {
+            if (!pauseDateByAsset.has(row.asset_id)) {
+                pauseDateByAsset.set(row.asset_id, new Date(row.action_date));
+            }
+        }
 
         let totalValue = 0;
         let totalAccumulatedDepreciation = 0;
@@ -606,10 +819,13 @@ export async function getAssetFinancialSummary() {
             const life = asset.useful_life_years;
             const purchaseDate = new Date(asset.purchase_date);
             const purchaseYear = purchaseDate.getFullYear();
+            const depreciationCutoffDate = asset.status === 'DepreciationPaused'
+                ? (pauseDateByAsset.get(asset.asset_id) || now)
+                : now;
 
             totalValue += cost;
 
-            if (life > 0 && cost > salvage) {
+            if (life > 0 && cost > salvage && depreciationCutoffDate.getTime() >= purchaseDate.getTime()) {
                 const totalDepreciable = cost - salvage;
                 const annualDepreciation = totalDepreciable / life;
 
@@ -619,10 +835,10 @@ export async function getAssetFinancialSummary() {
                 let accumulatedDep = 0;
 
                 // If we are past end of life, it's fully depreciated
-                if (now.getTime() >= endOfLifeDate.getTime()) {
+                if (depreciationCutoffDate.getTime() >= endOfLifeDate.getTime()) {
                     totalAccumulatedDepreciation += totalDepreciable;
                 } else {
-                    const currentYear = now.getFullYear();
+                    const currentYear = depreciationCutoffDate.getFullYear();
 
                     // Loop through years since purchase up to current year
                     for (let i = 0; i <= (currentYear - purchaseYear); i++) {
@@ -635,7 +851,7 @@ export async function getAssetFinancialSummary() {
 
                         if (i === 0 && year === currentYear) {
                             // Bought this year -> run up to today
-                            daysUsed = Math.floor((now.getTime() - purchaseDate.getTime()) / msPerDay) + 1;
+                            daysUsed = Math.floor((depreciationCutoffDate.getTime() - purchaseDate.getTime()) / msPerDay) + 1;
                             expense = (annualDepreciation / daysInThisYear) * daysUsed;
                         } else if (i === 0) {
                             // Year 1: from purchase date to Dec 31
@@ -645,7 +861,7 @@ export async function getAssetFinancialSummary() {
                         } else if (year === currentYear) {
                             // Current year: from Jan 1 to today
                             const startOfYear = new Date(year, 0, 1);
-                            daysUsed = Math.floor((now.getTime() - startOfYear.getTime()) / msPerDay) + 1;
+                            daysUsed = Math.floor((depreciationCutoffDate.getTime() - startOfYear.getTime()) / msPerDay) + 1;
                             expense = (annualDepreciation / daysInThisYear) * daysUsed;
                         } else {
                             // Full years in between

@@ -18,6 +18,15 @@ type MovementQuery = {
     };
 };
 
+async function getWh01WarehouseId() {
+    const wh01 = await prisma.tbl_warehouses.findFirst({
+        where: { warehouse_code: 'WH-01' },
+        select: { warehouse_id: true },
+    });
+
+    return wh01?.warehouse_id ?? null;
+}
+
 export async function adjustStock(formData: FormData) {
     const session = await auth();
     if (!session?.user) {
@@ -61,8 +70,10 @@ export async function adjustStock(formData: FormData) {
             newStock += quantity;
         }
 
-        await prisma.$transaction([
-            prisma.tbl_product_movements.create({
+        const wh01WarehouseId = await getWh01WarehouseId();
+
+        await prisma.$transaction(async (tx) => {
+            await tx.tbl_product_movements.create({
                 data: {
                     p_id,
                     movement_type: movementType,
@@ -71,12 +82,33 @@ export async function adjustStock(formData: FormData) {
                     username,
                     movement_time: movementTime,
                 },
-            }),
-            prisma.tbl_products.update({
+            });
+
+            await tx.tbl_products.update({
                 where: { p_id },
                 data: { p_count: newStock },
-            }),
-        ]);
+            });
+
+            if (wh01WarehouseId) {
+                await tx.tbl_warehouse_stock.upsert({
+                    where: {
+                        warehouse_id_p_id: {
+                            warehouse_id: wh01WarehouseId,
+                            p_id,
+                        },
+                    },
+                    create: {
+                        warehouse_id: wh01WarehouseId,
+                        p_id,
+                        quantity: newStock,
+                        min_stock: 0,
+                    },
+                    update: {
+                        quantity: newStock,
+                    },
+                });
+            }
+        });
     } catch (error) {
         console.error('Stock adjustment failed:', error);
         return { error: MOVEMENT_ACTION_MESSAGES.adjustFailed };
@@ -125,15 +157,39 @@ export async function deleteMovement(formData: FormData) {
                 ? product.p_count - movement.quantity
                 : product.p_count + movement.quantity;
 
-            await prisma.$transaction([
-                prisma.tbl_product_movements.delete({
+            const normalizedStock = Math.max(0, newStock);
+            const wh01WarehouseId = await getWh01WarehouseId();
+
+            await prisma.$transaction(async (tx) => {
+                await tx.tbl_product_movements.delete({
                     where: { movement_id: movementId },
-                }),
-                prisma.tbl_products.update({
+                });
+
+                await tx.tbl_products.update({
                     where: { p_id: movement.p_id },
-                    data: { p_count: Math.max(0, newStock) },
-                }),
-            ]);
+                    data: { p_count: normalizedStock },
+                });
+
+                if (wh01WarehouseId) {
+                    await tx.tbl_warehouse_stock.upsert({
+                        where: {
+                            warehouse_id_p_id: {
+                                warehouse_id: wh01WarehouseId,
+                                p_id: movement.p_id,
+                            },
+                        },
+                        create: {
+                            warehouse_id: wh01WarehouseId,
+                            p_id: movement.p_id,
+                            quantity: normalizedStock,
+                            min_stock: 0,
+                        },
+                        update: {
+                            quantity: normalizedStock,
+                        },
+                    });
+                }
+            });
         } else {
             await prisma.tbl_product_movements.delete({
                 where: { movement_id: movementId },
@@ -192,19 +248,43 @@ export async function updateMovement(formData: FormData) {
                     ? product.p_count + diff
                     : product.p_count - diff;
 
-                await prisma.$transaction([
-                    prisma.tbl_product_movements.update({
+                const normalizedStock = Math.max(0, newStock);
+                const wh01WarehouseId = await getWh01WarehouseId();
+
+                await prisma.$transaction(async (tx) => {
+                    await tx.tbl_product_movements.update({
                         where: { movement_id: movementId },
                         data: {
                             quantity: newQuantity,
                             remarks: newRemarks !== undefined ? newRemarks : movement.remarks,
                         },
-                    }),
-                    prisma.tbl_products.update({
+                    });
+
+                    await tx.tbl_products.update({
                         where: { p_id: movement.p_id },
-                        data: { p_count: Math.max(0, newStock) },
-                    }),
-                ]);
+                        data: { p_count: normalizedStock },
+                    });
+
+                    if (wh01WarehouseId) {
+                        await tx.tbl_warehouse_stock.upsert({
+                            where: {
+                                warehouse_id_p_id: {
+                                    warehouse_id: wh01WarehouseId,
+                                    p_id: movement.p_id,
+                                },
+                            },
+                            create: {
+                                warehouse_id: wh01WarehouseId,
+                                p_id: movement.p_id,
+                                quantity: normalizedStock,
+                                min_stock: 0,
+                            },
+                            update: {
+                                quantity: normalizedStock,
+                            },
+                        });
+                    }
+                });
             }
         } else {
             await prisma.tbl_product_movements.update({
