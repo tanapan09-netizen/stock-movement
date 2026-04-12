@@ -131,3 +131,26 @@ docker-compose ps
 docker-compose down -v --rmi all
 docker-compose up -d --build
 ```
+
+---
+
+## Friendly Message Instead of `502 Bad Gateway (openresty)`
+
+If you deploy behind OpenResty/Nginx and want a friendly downtime page when app container is unavailable:
+
+```bash
+docker compose -f docker-compose.prod.yml -f docker-compose.proxy.yml up -d
+```
+
+Then open:
+- `http://localhost:8088` (default proxy port)
+
+You can change port:
+
+```bash
+PROXY_PORT=80 docker compose -f docker-compose.prod.yml -f docker-compose.proxy.yml up -d
+```
+
+Related files:
+- `deploy/openresty/stock-movement.docker.conf`
+- `deploy/openresty/errors/upstream-down.html`
