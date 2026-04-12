@@ -2,7 +2,6 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle,
   ChevronDown,
   ChevronRight,
   CheckSquare,
@@ -14,9 +13,6 @@ import {
   Search,
   ShieldCheck,
   Square,
-  Users,
-  SlidersHorizontal,
-  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -234,6 +230,95 @@ function humanizeRouteSegment(segment: string): string {
   return words.join(' ');
 }
 
+const ROUTE_PURPOSES: Record<string, string> = {
+  '/': 'ดูภาพรวมงานและสถานะล่าสุดของระบบ',
+  '/products': 'จัดการข้อมูลสินค้า เช่น เพิ่ม แก้ไข และค้นหา',
+  '/movements': 'ตรวจสอบประวัติการเคลื่อนไหวของสต็อก',
+  '/stock/adjust': 'ปรับยอดสต็อกให้ตรงกับสถานะจริง',
+  '/borrow': 'จัดการยืมคืนอุปกรณ์และติดตามสถานะ',
+  '/assets': 'จัดการทะเบียนทรัพย์สินและข้อมูลประกอบ',
+  '/maintenance': 'จัดการใบงานซ่อมและงานบำรุงรักษา',
+  '/maintenance/part-requests': 'จัดการคำขออะไหล่สำหรับงานซ่อม',
+  '/maintenance/parts': 'จัดการอะไหล่คงคลังสำหรับงานซ่อม',
+  '/approvals': 'อนุมัติคำขอจากฝ่ายต่าง ๆ',
+  '/purchase-request': 'สร้างและติดตามคำขอจัดซื้อ',
+  '/purchase-request/manage': 'จัดการคิวงานและขั้นตอนจัดซื้อ',
+  '/purchase-orders': 'จัดการใบสั่งซื้อและสถานะการรับของ',
+  '/reports': 'ดูรายงานสรุปและวิเคราะห์ข้อมูล',
+  '/roles': 'กำหนดบทบาทผู้ใช้และสิทธิ์การเข้าถึง',
+  '/settings': 'ตั้งค่าระบบและพารามิเตอร์การทำงาน',
+  '/suppliers': 'จัดการข้อมูลผู้ขายและเงื่อนไขสั่งซื้อ',
+  '/warehouses': 'จัดการคลังสินค้าและตำแหน่งจัดเก็บ',
+  '/inventory-audit': 'ทำรายการตรวจนับและปรับปรุงผลตรวจนับ',
+  '/general-request': 'จัดการคำขอทั่วไปภายในองค์กร',
+  '/petty-cash': 'จัดการรายการเงินสดย่อย',
+  '/api-docs': 'ดูเอกสาร API สำหรับเชื่อมต่อระบบ',
+};
+
+type PageAccess = 'read' | 'edit';
+
+interface PagePermissionMeta {
+  route: string;
+  access: PageAccess;
+}
+
+interface PermissionDisplayMeta {
+  title: string;
+  usage: string;
+  route: string | null;
+  accessLabel: string | null;
+  searchableText: string;
+}
+
+function getRouteLabel(route: string): string {
+  if (ROUTE_LABELS[route]) return ROUTE_LABELS[route];
+
+  return (
+    route
+      .split('/')
+      .filter(Boolean)
+      .map(humanizeRouteSegment)
+      .join(' / ') || 'หน้าหลัก'
+  );
+}
+
+function getRoutePurpose(route: string): string {
+  if (ROUTE_PURPOSES[route]) return ROUTE_PURPOSES[route];
+
+  if (route.includes('/new')) return 'ใช้สร้างรายการใหม่';
+  if (route.includes('/edit')) return 'ใช้แก้ไขข้อมูลรายการ';
+  if (route.includes('/[id]') || route.includes('/id')) {
+    return 'ใช้ดูรายละเอียดของรายการ';
+  }
+
+  if (route.startsWith('/approvals')) return 'ใช้อนุมัติและติดตามคำขอ';
+  if (route.startsWith('/maintenance')) return 'ใช้จัดการงานซ่อมและบำรุงรักษา';
+  if (route.startsWith('/reports')) return 'ใช้ดูรายงานและสรุปผล';
+  if (route.startsWith('/settings')) return 'ใช้ตั้งค่าระบบ';
+  if (route.startsWith('/roles')) return 'ใช้จัดการบทบาทและสิทธิ์ผู้ใช้งาน';
+  if (route.startsWith('/purchase-orders')) return 'ใช้จัดการใบสั่งซื้อ';
+  if (route.startsWith('/purchase-request')) return 'ใช้จัดการคำขอจัดซื้อ';
+  if (route.startsWith('/assets')) return 'ใช้จัดการทรัพย์สิน';
+  if (route.startsWith('/admin')) return 'ใช้จัดการข้อมูลระดับผู้ดูแลระบบ';
+
+  return `ใช้สำหรับหน้าการทำงาน ${getRouteLabel(route)}`;
+}
+
+function parsePagePermissionMeta(permission: PermissionItem): PagePermissionMeta | null {
+  const keyMatch = permission.key.match(/^page_(.+)_(read|edit)$/);
+  if (!keyMatch) return null;
+
+  const [, rawRouteKey, access] = keyMatch as [string, string, PageAccess];
+  const routeFromLabel = permission.label.match(/(\/[A-Za-z0-9_/\-[\]]+)/)?.[1];
+  const routeFromKey =
+    rawRouteKey === 'root' ? '/' : `/${rawRouteKey.replaceAll('_', '/')}`;
+
+  return {
+    route: routeFromLabel || routeFromKey,
+    access,
+  };
+}
+
 function formatPagePermissionLabel(label: string): string {
   const pageLabelMatch = label.match(/^Page\s+(.+)\s+\((Read|Edit)\)$/);
 
@@ -242,15 +327,36 @@ function formatPagePermissionLabel(label: string): string {
   const [, route, access] = pageLabelMatch;
   const normalizedRoute = route.trim();
   const accessText = access === 'Read' ? 'อ่าน' : 'แก้ไข';
-  const routeLabel =
-    ROUTE_LABELS[normalizedRoute] ||
-    normalizedRoute
-      .split('/')
-      .filter(Boolean)
-      .map(humanizeRouteSegment)
-      .join(' / ');
 
-  return `${routeLabel} (${accessText})`;
+  return `${getRouteLabel(normalizedRoute)} (${accessText})`;
+}
+
+function getPermissionDisplayMeta(permission: PermissionItem): PermissionDisplayMeta {
+  const pageMeta = parsePagePermissionMeta(permission);
+  if (!pageMeta) {
+    const title = formatPagePermissionLabel(permission.label);
+    const usage = permission.description;
+    return {
+      title,
+      usage,
+      route: null,
+      accessLabel: null,
+      searchableText: `${title} ${usage} ${permission.key} ${permission.category}`.toLowerCase(),
+    };
+  }
+
+  const title = getRouteLabel(pageMeta.route);
+  const accessLabel = pageMeta.access === 'read' ? 'อ่าน' : 'แก้ไข';
+  const usage = getRoutePurpose(pageMeta.route);
+
+  return {
+    title,
+    usage,
+    route: pageMeta.route,
+    accessLabel,
+    searchableText:
+      `${title} ${usage} ${permission.description} ${pageMeta.route} ${accessLabel} ${permission.key} ${permission.category}`.toLowerCase(),
+  };
 }
 
 function getCategoryDescription(category: string) {
@@ -328,29 +434,6 @@ function SelectionIcon({ state }: { state: SelectionState }) {
   return <Square className="h-3.5 w-3.5" />;
 }
 
-function StatChip({
-  icon,
-  label,
-  variant = 'default',
-}: {
-  icon: React.ReactNode;
-  label: string;
-  variant?: 'default' | 'success' | 'warning';
-}) {
-  const styles = {
-    default: 'bg-slate-100 text-slate-700 ring-1 ring-slate-200',
-    success: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
-    warning: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
-  };
-
-  return (
-    <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm ${styles[variant]}`}>
-      {icon}
-      <span>{label}</span>
-    </div>
-  );
-}
-
 function EmptyState({ text }: { text: string }) {
   return (
     <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-12 text-center text-sm text-slate-500">
@@ -376,6 +459,13 @@ export default function RolePermissionEditor({ roles }: Props) {
       acc[item.category].push(item);
       return acc;
     }, {} as Record<string, PermissionItem[]>);
+  }, []);
+
+  const permissionDisplayMetaByKey = useMemo(() => {
+    return PERMISSION_LIST.reduce((acc, item) => {
+      acc[item.key] = getPermissionDisplayMeta(item);
+      return acc;
+    }, {} as Record<string, PermissionDisplayMeta>);
   }, []);
 
   const [savedPermissions, setSavedPermissions] =
@@ -449,20 +539,14 @@ export default function RolePermissionEditor({ roles }: Props) {
 
     Object.entries(groupedPermissions).forEach(([category, items]) => {
       const filteredItems = items.filter((item) => {
-        const label = item.label.toLowerCase();
-        const prettyLabel = formatPagePermissionLabel(item.label).toLowerCase();
-        const description = item.description.toLowerCase();
+        const displayMeta = permissionDisplayMetaByKey[item.key];
         const key = item.key.toLowerCase();
-        const categoryText = category.toLowerCase();
         const isChanged = changedPermissionKeys.has(item.key);
 
         const matchSearch =
           !hasSearch ||
-          label.includes(keyword) ||
-          prettyLabel.includes(keyword) ||
-          description.includes(keyword) ||
-          key.includes(keyword) ||
-          categoryText.includes(keyword);
+          displayMeta.searchableText.includes(keyword) ||
+          key.includes(keyword);
 
         const matchChanged = !showChangedOnly || isChanged;
 
@@ -475,7 +559,13 @@ export default function RolePermissionEditor({ roles }: Props) {
     });
 
     return next;
-  }, [groupedPermissions, debouncedSearch, showChangedOnly, changedPermissionKeys]);
+  }, [
+    groupedPermissions,
+    debouncedSearch,
+    showChangedOnly,
+    changedPermissionKeys,
+    permissionDisplayMetaByKey,
+  ]);
 
   const visiblePermissionKeys = useMemo(() => {
     return Object.values(filteredGroupedPermissions)
@@ -647,20 +737,6 @@ export default function RolePermissionEditor({ roles }: Props) {
 
   const categoryNames = Object.keys(filteredGroupedPermissions);
 
-  const permissionOrderMap = useMemo(() => {
-    const orderMap: Record<string, number> = {};
-    let counter = 1;
-
-    Object.values(filteredGroupedPermissions).forEach((items) => {
-      items.forEach((item) => {
-        orderMap[item.key] = counter;
-        counter += 1;
-      });
-    });
-
-    return orderMap;
-  }, [filteredGroupedPermissions]);
-
   const collapseAllCategories = () => {
     setCollapsedCategories(
       Object.fromEntries(categoryNames.map((name) => [name, true])),
@@ -703,35 +779,25 @@ export default function RolePermissionEditor({ roles }: Props) {
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2.5">
-              <StatChip
-                icon={<Users className="h-4 w-4" />}
-                label={`${roles.length} บทบาท`}
-              />
-              <StatChip
-                icon={<ShieldCheck className="h-4 w-4" />}
-                label={`${totalPermissions} Permissions`}
-              />
-              <StatChip
-                icon={<Lock className="h-4 w-4" />}
-                label="Admin role locked"
-                variant="warning"
-              />
-              <StatChip
-                icon={
-                  isDirty ? (
-                    <AlertCircle className="h-4 w-4" />
-                  ) : (
-                    <CheckSquare className="h-4 w-4" />
-                  )
-                }
-                label={
-                  isDirty
-                    ? `มีการเปลี่ยนแปลง ${changedRoleIds.length} role`
-                    : 'ไม่มีการเปลี่ยนแปลง'
-                }
-                variant={isDirty ? 'warning' : 'success'}
-              />
+            <div className="mt-4 flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
+                บทบาท {roles.length}
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
+                สิทธิ์ทั้งหมด {totalPermissions}
+              </span>
+              <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-700">
+                Admin ถูกล็อกสิทธิ์
+              </span>
+              <span
+                className={`rounded-full px-3 py-1.5 ${
+                  isDirty ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+                }`}
+              >
+                {isDirty
+                  ? `มีการเปลี่ยนแปลง ${changedRoleIds.length} role`
+                  : 'ไม่มีการเปลี่ยนแปลง'}
+              </span>
             </div>
           </div>
 
@@ -784,7 +850,7 @@ export default function RolePermissionEditor({ roles }: Props) {
                 type="text"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="ค้นหา permission, key, description, category..."
+                placeholder="ค้นหาหน้า, งานที่ใช้ทำ, permission key..."
                 className="
                   w-full rounded-xl border border-slate-200 bg-white
                   py-2.5 pl-10 pr-4 text-sm text-slate-700
@@ -845,19 +911,6 @@ export default function RolePermissionEditor({ roles }: Props) {
             <div className="rounded-xl bg-blue-50 px-3 py-2.5 text-xs font-medium text-blue-700">
               เลื่อนซ้าย-ขวาเพื่อดูทุก role
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="px-4 py-3 sm:px-6">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-          <div className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5">
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            รองรับ bulk edit
-          </div>
-          <div className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5">
-            <Sparkles className="h-3.5 w-3.5" />
-            คลิกที่หัว role / หมวด / แถว เพื่อเปิด-ปิดหลายรายการพร้อมกัน
           </div>
         </div>
       </div>
@@ -930,28 +983,35 @@ export default function RolePermissionEditor({ roles }: Props) {
                   }`}
                 >
                   <div className="divide-y divide-slate-200">
-                    {items.map((permission, index) => {
+                    {items.map((permission) => {
                       const selectionState = getPermissionSelectionState(permission.key);
                       const enabledRoleCount = getEnabledRoleCountByPermission(permission.key);
                       const isChanged = changedPermissionKeys.has(permission.key);
-                      const orderNumber = permissionOrderMap[permission.key] || index + 1;
-                      const displayLabel = formatPagePermissionLabel(permission.label);
+                      const displayMeta = permissionDisplayMetaByKey[permission.key];
+                      const displayLabel = displayMeta?.title || permission.label;
 
                       return (
                         <div key={permission.key} className="space-y-3 p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="mb-1.5 flex items-center gap-2">
-                                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-slate-200 px-1 text-[10px] font-bold text-slate-700">
-                                  {orderNumber}
-                                </span>
+                              <div className="mb-1.5 flex flex-wrap items-center gap-2">
                                 <div className="text-sm font-semibold text-slate-800">
                                   {displayLabel}
                                 </div>
+                                {displayMeta?.accessLabel && (
+                                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                                    {displayMeta.accessLabel}
+                                  </span>
+                                )}
                               </div>
                               <div className="text-[11px] leading-relaxed text-slate-500">
-                                {permission.description}
+                                ใช้สำหรับ: {displayMeta?.usage || permission.description}
                               </div>
+                              {displayMeta?.route && (
+                                <div className="mt-1 text-[11px] text-slate-400">
+                                  หน้า: {displayMeta.route}
+                                </div>
+                              )}
                             </div>
 
                             <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -967,10 +1027,6 @@ export default function RolePermissionEditor({ roles }: Props) {
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="inline-flex max-w-full truncate rounded-md bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
-                              {permission.key}
-                            </span>
-
                             <button
                               type="button"
                               onClick={() =>
@@ -1053,7 +1109,7 @@ export default function RolePermissionEditor({ roles }: Props) {
           <thead className="sticky top-0 z-30 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
             <tr className="bg-slate-100">
               <th className={`${PERMISSION_LABEL_COLUMN_WIDTH} z-40 border-b border-r border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-700 lg:sticky lg:left-0 lg:shadow-[12px_0_24px_-16px_rgba(15,23,42,0.34),1px_0_0_0_rgba(148,163,184,0.45)]`}>
-                เมนู / รายการสิทธิ์
+                หน้า / ใช้ทำอะไร
               </th>
 
               {visibleRoles.map((role) => {
@@ -1202,8 +1258,8 @@ export default function RolePermissionEditor({ roles }: Props) {
                         const selectionState = getPermissionSelectionState(permission.key);
                         const enabledRoleCount = getEnabledRoleCountByPermission(permission.key);
                         const isChanged = changedPermissionKeys.has(permission.key);
-                        const orderNumber = permissionOrderMap[permission.key] || index + 1;
-                        const displayLabel = formatPagePermissionLabel(permission.label);
+                        const displayMeta = permissionDisplayMetaByKey[permission.key];
+                        const displayLabel = displayMeta?.title || permission.label;
 
                         return (
                           <tr
@@ -1222,17 +1278,24 @@ export default function RolePermissionEditor({ roles }: Props) {
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
-                                  <div className="mb-1.5 flex items-center gap-2">
-                                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-slate-200 px-1 text-[10px] font-bold text-slate-700">
-                                      {orderNumber}
-                                    </span>
+                                  <div className="mb-1.5 flex flex-wrap items-center gap-2">
                                     <div className="truncate text-sm font-semibold text-slate-800">
                                       {displayLabel}
                                     </div>
+                                    {displayMeta?.accessLabel && (
+                                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                                        {displayMeta.accessLabel}
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="line-clamp-2 text-[11px] leading-relaxed text-slate-500">
-                                    {permission.description}
+                                    ใช้สำหรับ: {displayMeta?.usage || permission.description}
                                   </div>
+                                  {displayMeta?.route && (
+                                    <div className="mt-1 text-[11px] text-slate-400">
+                                      หน้า: {displayMeta.route}
+                                    </div>
+                                  )}
                                 </div>
 
                                 <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -1248,10 +1311,6 @@ export default function RolePermissionEditor({ roles }: Props) {
                               </div>
 
                               <div className="mt-2 flex flex-wrap items-center gap-2">
-                                <span className="inline-flex max-w-full truncate rounded-md bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
-                                  {permission.key}
-                                </span>
-
                                 <button
                                   type="button"
                                   onClick={() =>
