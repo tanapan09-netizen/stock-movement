@@ -150,6 +150,9 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
 
                     <div>
                         <label htmlFor="role" className="mb-1 block text-sm font-medium text-gray-700">Role</label>
+                        {isSelfLockedRole && (
+                            <input type="hidden" name="role" value={userData?.role || 'admin'} />
+                        )}
                         <div className="relative">
                             <Shield className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
                             <select

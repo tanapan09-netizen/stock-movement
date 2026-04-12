@@ -109,13 +109,14 @@ export async function createUser(formData: FormData) {
 
 export async function updateUser(formData: FormData) {
     const p_id = parseInt(formData.get('p_id') as string, 10);
-    const role = formData.get('role') as string;
+    const roleValue = formData.get('role');
+    const requestedRole = typeof roleValue === 'string' ? roleValue.trim() : '';
     const password = formData.get('password') as string;
     const rawEmail = formData.get('email') as string;
     const rawLineId = formData.get('line_user_id') as string;
     const isApproverVal = formData.get('is_approver');
 
-    if (!p_id || !role) {
+    if (!p_id) {
         return { error: 'ข้อมูลไม่ถูกต้อง' };
     }
 
@@ -136,17 +137,19 @@ export async function updateUser(formData: FormData) {
         }
 
         const currentUserId = session.user.id ? (parseInt(session.user.id as string, 10) || 0) : 0;
-        if (currentUserId === p_id && role !== existingUser.role) {
+        if (currentUserId === p_id && requestedRole && requestedRole !== existingUser.role) {
             return { error: 'ไม่สามารถเปลี่ยน role ของบัญชีตัวเองได้' };
         }
 
+        const effectiveRole = requestedRole || existingUser.role;
+
         const { role_id, is_approver } = await resolveRoleMetadata(
-            role,
+            effectiveRole,
             isApproverVal === 'true' || isApproverVal === 'on',
         );
 
         const data: Record<string, unknown> = {
-            role,
+            role: effectiveRole,
             role_id,
             email: rawEmail?.trim() === '' ? null : rawEmail?.trim(),
             line_user_id: rawLineId?.trim() === '' ? null : rawLineId?.trim(),
@@ -166,7 +169,7 @@ export async function updateUser(formData: FormData) {
             'UPDATE',
             'User',
             p_id,
-            `Updated user ID ${p_id} (role: ${role})`,
+            `Updated user ID ${p_id} (role: ${effectiveRole})`,
             session.user.id ? (parseInt(session.user.id as string, 10) || 0) : 0,
             session.user.name || 'Unknown',
             'user_management',
@@ -287,3 +290,4 @@ export async function updateUserPermissions(p_id: number, permissions: Record<st
         return { success: false, error: 'ไม่สามารถอัปเดตสิทธิ์รายบุคคลได้' };
     }
 }
+
