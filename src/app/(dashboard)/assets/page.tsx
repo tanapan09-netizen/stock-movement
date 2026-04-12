@@ -28,6 +28,67 @@ type SearchParams = {
     [key: string]: string | string[] | undefined;
 };
 
+type AssetDepreciationSnapshot = {
+    annualDepreciation: number;
+    accumulatedDepreciation: number;
+    netBookValue: number;
+    totalDepreciable: number;
+};
+
+function calculateAssetDepreciationSnapshot(input: {
+    cost: number;
+    salvage: number;
+    life: number;
+    purchaseDate: Date;
+    cutoffDate: Date;
+}): AssetDepreciationSnapshot {
+    const { cost, salvage, life, purchaseDate, cutoffDate } = input;
+    if (life <= 0 || cost <= salvage || cutoffDate.getTime() < purchaseDate.getTime()) {
+        return {
+            annualDepreciation: 0,
+            accumulatedDepreciation: 0,
+            netBookValue: cost,
+            totalDepreciable: Math.max(0, cost - salvage),
+        };
+    }
+
+    const totalDepreciable = Math.max(0, cost - salvage);
+    const annualDepreciation = totalDepreciable / life;
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const endOfLifeDate = new Date(purchaseDate);
+    endOfLifeDate.setFullYear(purchaseDate.getFullYear() + life);
+    const scheduleEndDate = cutoffDate.getTime() < endOfLifeDate.getTime() ? cutoffDate : endOfLifeDate;
+    const purchaseYear = purchaseDate.getFullYear();
+    const currentYear = scheduleEndDate.getFullYear();
+
+    let accumulatedDepreciation = 0;
+
+    for (let year = purchaseYear; year <= currentYear; year++) {
+        const periodStart = new Date(Math.max(purchaseDate.getTime(), new Date(year, 0, 1).getTime()));
+        const periodEnd = new Date(Math.min(scheduleEndDate.getTime(), new Date(year, 11, 31).getTime()));
+        if (periodEnd.getTime() < periodStart.getTime()) continue;
+
+        const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+        const daysInThisYear = isLeapYear ? 366 : 365;
+        const daysUsed = Math.floor((periodEnd.getTime() - periodStart.getTime()) / msPerDay) + 1;
+        let expense = (annualDepreciation / daysInThisYear) * daysUsed;
+
+        if (accumulatedDepreciation + expense > totalDepreciable) {
+            expense = totalDepreciable - accumulatedDepreciation;
+        }
+
+        accumulatedDepreciation += expense;
+        if (accumulatedDepreciation >= totalDepreciable) break;
+    }
+
+    return {
+        annualDepreciation,
+        accumulatedDepreciation,
+        netBookValue: cost - accumulatedDepreciation,
+        totalDepreciable,
+    };
+}
+
 function getImageUrl(url: string | null) {
     if (!url) return null;
     try {
@@ -176,6 +237,68 @@ export default async function AssetsPage({
         skip: (currentPage - 1) * ASSET_REGISTRY_PAGE_SIZE,
         take: ASSET_REGISTRY_PAGE_SIZE,
     });
+
+    const pausedAssetIds = assets
+        .filter((asset) => asset.status === 'DepreciationPaused')
+        .map((asset) => asset.asset_id);
+
+    const pauseHistories = pausedAssetIds.length > 0
+        ? await prisma.tbl_asset_history.findMany({
+            where: {
+                asset_id: { in: pausedAssetIds },
+                action_type: 'DepreciationPause',
+            },
+            orderBy: [{ asset_id: 'asc' }, { action_date: 'desc' }],
+            select: {
+                asset_id: true,
+                action_date: true,
+            },
+        })
+        : [];
+
+    const pauseDateByAsset = new Map<number, Date>();
+    for (const row of pauseHistories) {
+        if (!pauseDateByAsset.has(row.asset_id)) {
+            pauseDateByAsset.set(row.asset_id, new Date(row.action_date));
+        }
+    }
+
+    const now = new Date();
+    const depreciationRows = assets.map((asset) => {
+        const cost = Number(asset.purchase_price || 0);
+        const salvage = Number(asset.salvage_value || 0);
+        const life = Number(asset.useful_life_years || 0);
+        const purchaseDate = new Date(asset.purchase_date);
+        const cutoffDate = asset.status === 'DepreciationPaused'
+            ? (pauseDateByAsset.get(asset.asset_id) || now)
+            : now;
+        const snapshot = calculateAssetDepreciationSnapshot({
+            cost,
+            salvage,
+            life,
+            purchaseDate,
+            cutoffDate,
+        });
+
+        return {
+            asset_id: asset.asset_id,
+            asset_code: asset.asset_code,
+            asset_name: asset.asset_name,
+            status: asset.status,
+            purchaseDate,
+            cutoffDate,
+            cost,
+            salvage,
+            life,
+            ...snapshot,
+        };
+    });
+
+    const totalAccumulatedDepreciationInPage = depreciationRows.reduce(
+        (sum, row) => sum + row.accumulatedDepreciation,
+        0,
+    );
+    const totalNetBookValueInPage = depreciationRows.reduce((sum, row) => sum + row.netBookValue, 0);
 
     const statusCountMap = statusGroups.reduce<Record<string, number>>((acc, row) => {
         acc[row.status || 'Unknown'] = row._count._all;
@@ -594,6 +717,68 @@ export default async function AssetsPage({
                         </Link>
                     </div>
                 </div>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <h2 className="text-base font-semibold text-slate-900">ตารางค่าเสื่อมของรายการสินทรัพย์</h2>
+                            <p className="text-xs text-slate-500">คำนวณแบบ Straight-line ถึงวันที่ปัจจุบัน หรือวันที่หยุดคิดค่าเสื่อม</p>
+                        </div>
+                        <div className="text-right text-xs text-slate-600">
+                            <div>ค่าเสื่อมสะสมรวม (หน้านี้): {totalAccumulatedDepreciationInPage.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                            <div>มูลค่าคงเหลือรวม (หน้านี้): {totalNetBookValueInPage.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        </div>
+                    </div>
+                </div>
+                {depreciationRows.length === 0 ? (
+                    <div className="px-6 py-10 text-center text-slate-500">ไม่มีรายการให้คำนวณค่าเสื่อม</div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="min-w-[1100px] w-full text-left text-sm text-slate-600">
+                            <thead className="bg-white text-xs uppercase text-slate-700">
+                                <tr>
+                                    <th className="px-4 py-3">รหัสทรัพย์สิน</th>
+                                    <th className="px-4 py-3">ชื่อทรัพย์สิน</th>
+                                    <th className="px-4 py-3">วันซื้อ</th>
+                                    <th className="px-4 py-3">คำนวณถึง</th>
+                                    <th className="px-4 py-3 text-right">ราคาซื้อ</th>
+                                    <th className="px-4 py-3 text-right">มูลค่าซาก</th>
+                                    <th className="px-4 py-3 text-right">ค่าเสื่อม/ปี</th>
+                                    <th className="px-4 py-3 text-right">ค่าเสื่อมสะสม</th>
+                                    <th className="px-4 py-3 text-right">มูลค่าคงเหลือ</th>
+                                    <th className="px-4 py-3 text-center">รายละเอียด</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                                {depreciationRows.map((row) => (
+                                    <tr key={`dep-${row.asset_id}`} className="hover:bg-slate-50">
+                                        <td className="px-4 py-3 font-medium text-slate-900">{row.asset_code}</td>
+                                        <td className="px-4 py-3">{row.asset_name}</td>
+                                        <td className="px-4 py-3">{row.purchaseDate.toLocaleDateString('th-TH')}</td>
+                                        <td className="px-4 py-3">
+                                            <div>{row.cutoffDate.toLocaleDateString('th-TH')}</div>
+                                            {row.status === 'DepreciationPaused' && (
+                                                <div className="text-[11px] text-violet-700">หยุดคิดค่าเสื่อม</div>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-right">{row.cost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td className="px-4 py-3 text-right">{row.salvage.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td className="px-4 py-3 text-right">{row.annualDepreciation.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td className="px-4 py-3 text-right">{row.accumulatedDepreciation.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td className="px-4 py-3 text-right font-medium text-slate-900">{row.netBookValue.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td className="px-4 py-3 text-center">
+                                            <Link href={`/assets/${row.asset_id}`} className="text-sm font-medium text-blue-600 hover:text-blue-800">
+                                                ดูตารางรายปี
+                                            </Link>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         </div>
     );
