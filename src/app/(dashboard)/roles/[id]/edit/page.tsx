@@ -1,8 +1,18 @@
 'use client';
 
 import { deleteUser, updateUser } from '@/actions/userActions';
+import { FloatingInput, FloatingSelect } from '@/components/FloatingField';
 import { ROLE_OPTIONS } from '@/lib/roles';
-import { ArrowLeft, Lock, Save, Shield, Trash2, User } from 'lucide-react';
+import {
+    ArrowLeft,
+    Lock,
+    Mail,
+    MessageSquareText,
+    Save,
+    Shield,
+    Trash2,
+    User,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -120,79 +130,65 @@ export default function EditUserPage({ params }: { params: Promise<{ id: string 
                     )}
 
                     <div>
-                        <label htmlFor="username" className="mb-1 block text-sm font-medium text-gray-700">Username</label>
-                        <div className="relative">
-                            <User className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                            <input
-                                id="username"
-                                type="text"
-                                value={userData?.username || ''}
-                                disabled
-                                className="w-full cursor-not-allowed rounded-md border border-gray-300 bg-gray-100 px-3 py-2 pl-10 text-gray-500"
-                            />
-                        </div>
+                        <FloatingInput
+                            id="username"
+                            label="Username"
+                            value={userData?.username || ''}
+                            icon={<User className="h-5 w-5" />}
+                            className="cursor-not-allowed border-gray-200 bg-gray-100 text-gray-500"
+                            disabled
+                        />
                         <p className="mt-1 text-xs text-gray-500">Username เปลี่ยนไม่ได้</p>
                     </div>
 
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">เปลี่ยนรหัสผ่านใหม่ (ถ้าต้องการ)</label>
-                        <div className="relative">
-                            <Lock className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                            <input
-                                type="password"
-                                name="password"
-                                minLength={6}
-                                className="w-full rounded-md border border-gray-300 px-3 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                                placeholder="กรอกรหัสผ่านใหม่..."
-                            />
-                        </div>
-                    </div>
+                    <FloatingInput
+                        label="เปลี่ยนรหัสผ่านใหม่ (ถ้าต้องการ)"
+                        type="password"
+                        name="password"
+                        icon={<Lock className="h-5 w-5" />}
+                        className="focus:ring-orange-500/20"
+                        minLength={6}
+                    />
 
                     <div>
-                        <label htmlFor="role" className="mb-1 block text-sm font-medium text-gray-700">Role</label>
                         {isSelfLockedRole && (
                             <input type="hidden" name="role" value={userData?.role || 'admin'} />
                         )}
-                        <div className="relative">
-                            <Shield className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                            <select
-                                id="role"
-                                name="role"
-                                defaultValue={userData?.role || 'employee'}
-                                disabled={isSelfLockedRole}
-                                className="w-full rounded-md border border-gray-300 px-3 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
-                            >
-                                {ROLE_OPTIONS.map((role) => (
-                                    <option key={role.value} value={role.value}>{role.label}</option>
-                                ))}
-                            </select>
-                        </div>
+                        <FloatingSelect
+                            id="role"
+                            label="Role"
+                            name="role"
+                            icon={<Shield className="h-5 w-5" />}
+                            className="focus:ring-orange-500/20 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
+                            defaultValue={userData?.role || 'employee'}
+                            disabled={isSelfLockedRole}
+                        >
+                            {ROLE_OPTIONS.map((role) => (
+                                <option key={role.value} value={role.value}>{role.label}</option>
+                            ))}
+                        </FloatingSelect>
                         {isSelfLockedRole && (
                             <p className="mt-1 text-xs text-amber-700">ระบบล็อก role `admin` ของบัญชีตัวเองไว้เสมอ</p>
                         )}
                     </div>
 
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
-                        <input
-                            type="email"
-                            name="email"
-                            defaultValue={userData?.email || ''}
-                            className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                            placeholder="example@email.com"
-                        />
-                    </div>
+                    <FloatingInput
+                        label="Email"
+                        type="email"
+                        name="email"
+                        defaultValue={userData?.email || ''}
+                        icon={<Mail className="h-5 w-5" />}
+                        className="focus:ring-orange-500/20"
+                    />
 
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">LINE User ID</label>
-                        <input
-                            type="text"
-                            name="line_user_id"
-                            defaultValue={userData?.line_user_id || ''}
-                            className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                            placeholder="U1234..."
-                        />
-                    </div>
+                    <FloatingInput
+                        label="LINE User ID"
+                        type="text"
+                        name="line_user_id"
+                        defaultValue={userData?.line_user_id || ''}
+                        icon={<MessageSquareText className="h-5 w-5" />}
+                        className="focus:ring-orange-500/20"
+                    />
 
                     <div className="mt-4 flex items-center">
                         <input

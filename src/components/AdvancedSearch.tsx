@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import { Search, Filter, X, Calendar, Tag } from 'lucide-react';
 
 interface FilterOptions {
@@ -68,13 +69,14 @@ export default function AdvancedSearch({
             {/* Main Search Bar */}
             <div className="flex gap-2">
                 <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
+                    <FloatingSearchInput
+                        label={placeholder.replace(/\.\.\.$/, '')}
                         type="text"
                         value={filters.search}
                         onChange={(e) => handleChange('search', e.target.value)}
-                        placeholder={placeholder}
-                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600"
+                        containerClassName="w-full"
+                        className="focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-700"
+                        labelClassName="text-slate-500 dark:text-slate-400"
                     />
                     {filters.search && (
                         <button

@@ -1,8 +1,9 @@
 ﻿import Link from 'next/link';
-import { Building2, MapPin, Search } from 'lucide-react';
+import { Building2, MapPin } from 'lucide-react';
 import { redirect } from 'next/navigation';
 
 import { auth } from '@/auth';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import RoomSelectorField from './RoomSelectorField';
 import RoomScanButton from './RoomScanButton';
 import { prisma } from '@/lib/prisma';
@@ -429,15 +430,14 @@ export default async function RoomAssetsPage({
                     </div>
                     <div>
                         <label className="mb-1 block text-xs text-gray-500">ค้นหา</label>
-                        <div className="relative">
-                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                            <input
-                                name="q"
-                                defaultValue={keyword}
-                                placeholder="รหัส, ชื่อ, หมวดหมู่, S/N..."
-                                className="w-full rounded-md border border-gray-300 py-2 pl-9 pr-3 text-sm"
-                            />
-                        </div>
+                        <FloatingSearchInput
+                            name="q"
+                            label="ค้นหาทรัพย์สิน"
+                            defaultValue={keyword}
+                            placeholder="รหัส, ชื่อ, หมวดหมู่, S/N..."
+                            dense
+                            className="text-sm"
+                        />
                     </div>
                 </div>
 

@@ -12,6 +12,7 @@ import {
 } from '@/actions/maintenanceActions';
 import { getAllVehicles, createVehicle, updateVehicle, deleteVehicle, toggleVehicleActive } from '@/actions/vehicleActions';
 import Swal from 'sweetalert2';
+import { FloatingSearchInput } from '@/components/FloatingField';
 
 // --- Types ---
 interface Room {
@@ -1539,12 +1540,14 @@ export default function RoomManagement({
                     >
                         {/* Toolbar */}
                         <div style={UI.toolbar}>
-                            <div style={UI.inputWrap}>
-                                <span style={UI.inputIcon}>🔍</span>
-                                <input
-                                    value={search} onChange={(e) => setSearch(e.target.value)}
+                            <div style={{ flex: 1, minWidth: 260 }}>
+                                <FloatingSearchInput
+                                    type="text"
+                                    label="ค้นหาห้อง"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
                                     placeholder="ค้นหารหัส, ชื่อ..."
-                                    style={UI.input}
+                                    dense
                                 />
                             </div>
                             <button onClick={() => setExpandAll((v) => !v)} style={UI.btnSecondary}>
@@ -1613,13 +1616,14 @@ export default function RoomManagement({
                         }
                     >
                         <div style={UI.toolbar}>
-                            <div style={UI.inputWrap}>
-                                <span style={UI.inputIcon}>🔍</span>
-                                <input
+                            <div style={{ flex: 1, minWidth: 260 }}>
+                                <FloatingSearchInput
+                                    type="text"
+                                    label="ค้นหาทะเบียนรถ"
                                     value={vehicleSearch}
                                     onChange={(e) => setVehicleSearch(e.target.value)}
                                     placeholder="ค้นหาทะเบียน, ชื่อเจ้าของ, ห้อง..."
-                                    style={UI.input}
+                                    dense
                                 />
                             </div>
                             <button onClick={() => loadData()} style={UI.btnSecondary}>

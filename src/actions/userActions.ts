@@ -46,8 +46,8 @@ export async function createUser(formData: FormData) {
     const password = formData.get('password') as string;
     const role = formData.get('role') as string;
     const email = formData.get('email') as string;
-    const line_user_id = formData.get('line_user_id') as string;
-    const is_approver_form = formData.get('is_approver') === 'true';
+    const lineUserId = formData.get('line_user_id') as string;
+    const isApproverForm = formData.get('is_approver') === 'true';
 
     if (!username || !password || !role) {
         return { error: 'กรุณากรอกข้อมูลที่จำเป็นให้ครบ' };
@@ -63,13 +63,13 @@ export async function createUser(formData: FormData) {
         username: username.trim(),
         role,
         email: email?.trim() === '' ? null : email?.trim(),
-        line_user_id: line_user_id?.trim() === '' ? null : line_user_id?.trim(),
+        line_user_id: lineUserId?.trim() === '' ? null : lineUserId?.trim(),
     };
 
     try {
         const validData = validateData(updateUserSchema, rawData, 'User');
         const hashedPassword = await bcrypt.hash(password, 10);
-        const { role_id, is_approver } = await resolveRoleMetadata(validData.role, is_approver_form);
+        const { role_id, is_approver } = await resolveRoleMetadata(validData.role, isApproverForm);
 
         await prisma.tbl_users.create({
             data: {
@@ -95,7 +95,7 @@ export async function createUser(formData: FormData) {
     } catch (error: unknown) {
         console.error('Create user failed:', error);
         if ((error as { code?: string }).code === 'P2002') {
-        return { error: 'Username นี้มีอยู่ในระบบแล้ว' };
+            return { error: 'Username นี้มีอยู่ในระบบแล้ว' };
         }
         if (error instanceof Error && error.message.includes('Validation Error')) {
             return { error: error.message };
@@ -290,4 +290,3 @@ export async function updateUserPermissions(p_id: number, permissions: Record<st
         return { success: false, error: 'ไม่สามารถอัปเดตสิทธิ์รายบุคคลได้' };
     }
 }
-

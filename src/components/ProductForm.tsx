@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createProduct, generateNextProductId, updateProduct } from '@/actions/productActions';
+import { FloatingInput, FloatingSelect, FloatingTextarea } from '@/components/FloatingField';
 import { Save, X } from 'lucide-react';
 import Image from 'next/image';
 
@@ -168,22 +169,17 @@ export default function ProductForm({
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">รหัสสินค้า SKU (อัตโนมัติ) *</label>
-                        <input
+                        <FloatingInput
+                            label="รหัสสินค้า SKU (อัตโนมัติ) *"
                             type="text"
                             name="p_id"
                             value={product ? product.p_id : autoProductId}
                             readOnly
-                            placeholder={
-                                product
-                                    ? ''
-                                    : ' '
-                            }
-                            className={`mt-1 block w-full rounded-md border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none ${
+                            className={
                                 product
                                     ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-500'
                                     : 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-700'
-                            }`}
+                            }
                             required={!product}
                         />
                         {!product && (
@@ -197,81 +193,66 @@ export default function ProductForm({
                         )}
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">ชื่อสินค้า *</label>
-                        <input
-                            type="text"
-                            name="p_name"
-                            defaultValue={product?.p_name || prefill?.p_name || ''}
-                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                            required
-                        />
-                    </div>
+                    <FloatingInput
+                        label="ชื่อสินค้า *"
+                        type="text"
+                        name="p_name"
+                        defaultValue={product?.p_name || prefill?.p_name || ''}
+                        className="focus:ring-blue-500/20"
+                        required
+                    />
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">หมวดหมู่</label>
-                        <select
-                            name="cat_id"
-                            defaultValue={product?.cat_id || prefill?.cat_id || ''}
-                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                        >
-                            <option value="">-- เลือกหมวดหมู่ --</option>
-                            {categories.map((category) => (
-                                <option key={category.cat_id} value={category.cat_id}>
-                                    {category.cat_name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                    <FloatingSelect
+                        label="หมวดหมู่"
+                        name="cat_id"
+                        defaultValue={product?.cat_id || prefill?.cat_id || ''}
+                        className="focus:ring-blue-500/20"
+                    >
+                        <option value="">-- เลือกหมวดหมู่ --</option>
+                        {categories.map((category) => (
+                            <option key={category.cat_id} value={category.cat_id}>
+                                {category.cat_name}
+                            </option>
+                        ))}
+                    </FloatingSelect>
 
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Code หลัก *</label>
-                            <input
-                                type="text"
-                                name="main_category_code"
-                                value={mainCategoryCode}
-                                onChange={(event) => setMainCategoryCode(event.target.value)}
-                                placeholder=" "
-                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                required={!product}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Code รอง *</label>
-                            <input
-                                type="text"
-                                name="sub_category_code"
-                                value={subCategoryCode}
-                                onChange={(event) => setSubCategoryCode(event.target.value)}
-                                placeholder=" "
-                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                required={!product}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Code ย่อย *</label>
-                            <input
-                                type="text"
-                                name="sub_sub_category_code"
-                                value={subSubCategoryCode}
-                                onChange={(event) => setSubSubCategoryCode(event.target.value)}
-                                placeholder=" "
-                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                                required={!product}
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">ซัพพลายเออร์</label>
-                        <input
+                        <FloatingInput
+                            label="Code หลัก *"
                             type="text"
-                            name="supplier"
-                            defaultValue={product?.supplier || prefill?.supplier || ''}
-                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                            name="main_category_code"
+                            value={mainCategoryCode}
+                            onChange={(event) => setMainCategoryCode(event.target.value)}
+                            className="focus:ring-blue-500/20"
+                            required={!product}
+                        />
+                        <FloatingInput
+                            label="Code รอง *"
+                            type="text"
+                            name="sub_category_code"
+                            value={subCategoryCode}
+                            onChange={(event) => setSubCategoryCode(event.target.value)}
+                            className="focus:ring-blue-500/20"
+                            required={!product}
+                        />
+                        <FloatingInput
+                            label="Code ย่อย *"
+                            type="text"
+                            name="sub_sub_category_code"
+                            value={subSubCategoryCode}
+                            onChange={(event) => setSubSubCategoryCode(event.target.value)}
+                            className="focus:ring-blue-500/20"
+                            required={!product}
                         />
                     </div>
+
+                    <FloatingInput
+                        label="ซัพพลายเออร์"
+                        type="text"
+                        name="supplier"
+                        defaultValue={product?.supplier || prefill?.supplier || ''}
+                        className="focus:ring-blue-500/20"
+                    />
 
                     <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                         <div className="flex items-center gap-2">
@@ -290,13 +271,12 @@ export default function ProductForm({
                         </div>
                         {isAsset && (
                             <div className="mt-3">
-                                <label className="block text-sm font-medium text-gray-700">ที่อยู่ปัจจุบันของทรัพย์สิน</label>
-                                <input
+                                <FloatingInput
+                                    label="ที่อยู่ปัจจุบันของทรัพย์สิน"
                                     type="text"
                                     name="asset_current_location"
                                     defaultValue={product?.asset_current_location || prefill?.asset_current_location || ''}
-                                    placeholder="เช่น อาคาร A / ห้อง 1202"
-                                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                    className="bg-white focus:ring-blue-500/20"
                                 />
                             </div>
                         )}
@@ -304,89 +284,73 @@ export default function ProductForm({
                 </div>
 
                 <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">รายละเอียด</label>
-                        <textarea
-                            name="p_desc"
-                            defaultValue={product?.p_desc || prefill?.p_desc || ''}
-                            rows={3}
-                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                        />
-                    </div>
+                    <FloatingTextarea
+                        label="รายละเอียด"
+                        name="p_desc"
+                        defaultValue={product?.p_desc || prefill?.p_desc || ''}
+                        rows={3}
+                        className="focus:ring-blue-500/20"
+                    />
 
                     <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">ชื่อรุ่น</label>
-                            <input
-                                type="text"
-                                name="model_name"
-                                defaultValue={product?.model_name || prefill?.model_name || ''}
-                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">ขนาด</label>
-                            <input
-                                type="text"
-                                name="size"
-                                defaultValue={product?.size || prefill?.size || ''}
-                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">ชื่อแบรนด์</label>
-                            <input
-                                type="text"
-                                name="brand_name"
-                                defaultValue={product?.brand_name || prefill?.brand_name || ''}
-                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">รหัสแบรนด์</label>
-                            <input
-                                type="text"
-                                name="brand_code"
-                                defaultValue={product?.brand_code || prefill?.brand_code || ''}
-                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">ราคา/หน่วย</label>
-                            <input
-                                type="number"
-                                step="0.01"
-                                name="price_unit"
-                                defaultValue={
-                                    product?.price_unit
-                                        ? Number(product.price_unit)
-                                        : prefill?.price_unit
-                                            ? Number(prefill.price_unit)
-                                            : 0
-                                }
-                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">หน่วยนับ</label>
-                            <input
-                                type="text"
-                                name="p_unit"
-                                defaultValue={product?.p_unit || prefill?.p_unit || 'ชิ้น'}
-                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">จุดสั่งซื้อ (Safety Stock)</label>
-                        <input
+                        <FloatingInput
+                            label="ชื่อรุ่น"
+                            type="text"
+                            name="model_name"
+                            defaultValue={product?.model_name || prefill?.model_name || ''}
+                            className="focus:ring-blue-500/20"
+                        />
+                        <FloatingInput
+                            label="ขนาด"
+                            type="text"
+                            name="size"
+                            defaultValue={product?.size || prefill?.size || ''}
+                            className="focus:ring-blue-500/20"
+                        />
+                        <FloatingInput
+                            label="ชื่อแบรนด์"
+                            type="text"
+                            name="brand_name"
+                            defaultValue={product?.brand_name || prefill?.brand_name || ''}
+                            className="focus:ring-blue-500/20"
+                        />
+                        <FloatingInput
+                            label="รหัสแบรนด์"
+                            type="text"
+                            name="brand_code"
+                            defaultValue={product?.brand_code || prefill?.brand_code || ''}
+                            className="focus:ring-blue-500/20"
+                        />
+                        <FloatingInput
+                            label="ราคา/หน่วย"
                             type="number"
-                            name="safety_stock"
-                            defaultValue={product?.safety_stock || prefill?.safety_stock || 0}
-                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                            step="0.01"
+                            name="price_unit"
+                            defaultValue={
+                                product?.price_unit
+                                    ? Number(product.price_unit)
+                                    : prefill?.price_unit
+                                        ? Number(prefill.price_unit)
+                                        : 0
+                            }
+                            className="focus:ring-blue-500/20"
+                        />
+                        <FloatingInput
+                            label="หน่วยนับ"
+                            type="text"
+                            name="p_unit"
+                            defaultValue={product?.p_unit || prefill?.p_unit || 'ชิ้น'}
+                            className="focus:ring-blue-500/20"
                         />
                     </div>
+
+                    <FloatingInput
+                        label="จุดสั่งซื้อ (Safety Stock)"
+                        type="number"
+                        name="safety_stock"
+                        defaultValue={product?.safety_stock || prefill?.safety_stock || 0}
+                        className="focus:ring-blue-500/20"
+                    />
 
                     <div className="mt-4 flex items-center space-x-2">
                         <input

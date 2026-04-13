@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Search, ChevronDown, Check } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, ChevronDown } from 'lucide-react';
+
+import { FloatingSearchInput } from '@/components/FloatingField';
 
 interface Option {
     value: string;
@@ -16,102 +18,134 @@ interface SearchableSelectProps {
     placeholder?: string;
     className?: string;
     required?: boolean;
+    searchPlaceholder?: string;
+    emptyText?: string;
 }
 
-export default function SearchableSelect({ options, value, onChange, placeholder = 'เลือก...', className = '', required }: SearchableSelectProps) {
+export default function SearchableSelect({
+    options,
+    value,
+    onChange,
+    placeholder = 'เลือก...',
+    className = '',
+    required,
+    searchPlaceholder = 'ค้นหา...',
+    emptyText = 'ไม่พบรายการ',
+}: SearchableSelectProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const wrapperRef = useRef<HTMLDivElement>(null);
 
-    // Close when clicking outside
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
             if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
                 setIsOpen(false);
             }
         }
+
         document.addEventListener('mousedown', handleClickOutside);
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
 
-    const selectedOption = options.find(opt => opt.value === value);
-    const displayValue = selectedOption ? selectedOption.label : '';
-
-    const filteredOptions = options.filter(opt =>
-        opt.label.toLowerCase().includes(searchTerm.toLowerCase())
+    const selectedOption = useMemo(
+        () => options.find((opt) => opt.value === value),
+        [options, value],
     );
+
+    const filteredOptions = useMemo(() => {
+        const keyword = searchTerm.trim().toLowerCase();
+        if (!keyword) return options;
+
+        return options.filter((opt) => {
+            const haystack = `${opt.label} ${opt.value}`.toLowerCase();
+            return haystack.includes(keyword);
+        });
+    }, [options, searchTerm]);
 
     return (
         <div ref={wrapperRef} className={`relative ${className}`}>
-            <div
-                className="w-full border rounded-lg px-3 py-2 bg-white dark:bg-slate-700 dark:border-slate-600 flex items-center justify-between cursor-pointer"
+            <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm text-slate-700 transition hover:border-sky-300 hover:bg-sky-50/40 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
                 onClick={() => {
-                    setIsOpen(!isOpen);
-                    if (!isOpen) setSearchTerm(''); // reset search when opening
+                    setIsOpen((prev) => !prev);
+                    if (!isOpen) setSearchTerm('');
                 }}
             >
-                <div className={`truncate ${!selectedOption ? 'text-gray-500' : ''}`}>
-                    {displayValue || placeholder}
-                </div>
-                <ChevronDown size={16} className="text-gray-400 flex-shrink-0 ml-2" />
-            </div>
+                <span className={`truncate ${selectedOption ? 'text-slate-700 dark:text-slate-100' : 'text-slate-400 dark:text-slate-300'}`}>
+                    {selectedOption?.label || placeholder}
+                </span>
+                <ChevronDown
+                    size={16}
+                    className={`flex-shrink-0 text-slate-400 transition ${isOpen ? 'rotate-180' : ''}`}
+                />
+            </button>
 
-            {/* Hidden native input for required validation */}
             <input
                 type="text"
                 value={value}
-                onChange={() => { }}
+                onChange={() => {}}
                 required={required}
-                className="absolute opacity-0 w-0 h-0 pointer-events-none"
+                className="pointer-events-none absolute h-0 w-0 opacity-0"
                 tabIndex={-1}
+                aria-hidden="true"
+                readOnly
             />
 
             {isOpen && (
-                <div className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border dark:border-slate-600 rounded-lg shadow-xl max-h-60 flex flex-col">
-                    <div className="p-2 border-b dark:border-slate-600">
-                        <div className="relative">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                                type="text"
-                                className="w-full pl-8 pr-3 py-1.5 bg-gray-50 dark:bg-slate-700 border dark:border-slate-600 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                placeholder="ค้นหา..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                                autoFocus
-                            />
-                        </div>
+                <div className="absolute z-50 mt-2 flex max-h-72 w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800">
+                    <div className="border-b border-slate-100 p-2 dark:border-slate-600">
+                        <FloatingSearchInput
+                            type="text"
+                            label="ค้นหา"
+                            dense
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            placeholder={searchPlaceholder}
+                            autoFocus
+                            className="text-sm dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                        />
                     </div>
+
                     <div
-                        className="overflow-y-auto overscroll-contain p-1 flex-1"
+                        className="flex-1 overflow-y-auto overscroll-contain p-1"
                         style={{ WebkitOverflowScrolling: 'touch' }}
                     >
                         {filteredOptions.length > 0 ? (
-                            filteredOptions.map((opt) => (
-                                <div
-                                    key={opt.value}
-                                    className={`px-3 py-2 text-sm rounded-md cursor-pointer flex items-center justify-between
-                                        ${opt.disabled
-                                            ? 'opacity-50 cursor-not-allowed hidden' // hidden completely based on previous logic, or just disabled
-                                            : 'hover:bg-blue-50 dark:hover:bg-blue-900/30'
-                                        }
-                                        ${value === opt.value ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium' : ''}
-                                    `}
-                                    onClick={() => {
-                                        if (opt.disabled) return;
-                                        onChange(opt.value);
-                                        setIsOpen(false);
-                                    }}
-                                >
-                                    <span className="truncate">{opt.label}</span>
-                                    {value === opt.value && <Check size={14} />}
-                                </div>
-                            ))
+                            filteredOptions.map((opt) => {
+                                const isSelected = value === opt.value;
+                                return (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        disabled={opt.disabled}
+                                        className={[
+                                            'flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm transition',
+                                            opt.disabled
+                                                ? 'hidden cursor-not-allowed opacity-50'
+                                                : 'hover:bg-sky-50 dark:hover:bg-sky-900/30',
+                                            isSelected
+                                                ? 'bg-sky-50 font-medium text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+                                                : 'text-slate-700 dark:text-slate-100',
+                                        ].join(' ')}
+                                        onClick={() => {
+                                            if (opt.disabled) return;
+                                            onChange(opt.value);
+                                            setIsOpen(false);
+                                            setSearchTerm('');
+                                        }}
+                                    >
+                                        <span className="truncate">{opt.label}</span>
+                                        {isSelected ? <Check size={14} /> : null}
+                                    </button>
+                                );
+                            })
                         ) : (
-                            <div className="px-3 py-4 text-center text-sm text-gray-500">
-                                ไม่พบรายการ
+                            <div className="px-3 py-4 text-center text-sm text-slate-500 dark:text-slate-300">
+                                {emptyText}
                             </div>
                         )}
                     </div>

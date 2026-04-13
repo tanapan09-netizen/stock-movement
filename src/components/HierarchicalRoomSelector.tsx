@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { FloatingSearchInput } from '@/components/FloatingField';
 
 export interface Room {
     room_id: number;
@@ -321,35 +322,16 @@ export default function HierarchicalRoomSelector({ rooms, value, onChange, place
                 }}
             >
                 <div style={{ padding: 10, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    <div style={{ position: 'relative' }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                            stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                            style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
-                            <circle cx="11" cy="11" r="8" />
-                            <path d="M21 21l-4.35-4.35" />
-                        </svg>
-                        <input
-                            type="text"
-                            placeholder="ค้นหารหัส หรือชื่อห้อง..."
-                            value={query}
-                            onChange={e => setQuery(e.target.value)}
-                            onKeyDown={e => e.stopPropagation()}
-                            style={{
-                                width: '100%',
-                                padding: '8px 12px 8px 32px',
-                                borderRadius: 8,
-                                border: '1.5px solid #e2e8f0',
-                                fontSize: 13,
-                                outline: 'none',
-                                background: '#fff',
-                                color: '#1e293b',
-                                boxSizing: 'border-box',
-                                transition: 'border-color 0.15s',
-                            }}
-                            onFocus={e => (e.currentTarget.style.borderColor = '#6366f1')}
-                            onBlur={e => (e.currentTarget.style.borderColor = '#e2e8f0')}
-                        />
-                    </div>
+                    <FloatingSearchInput
+                        type="text"
+                        label="ค้นหาห้อง"
+                        placeholder="ค้นหารหัส หรือชื่อห้อง..."
+                        value={query}
+                        onChange={e => setQuery(e.target.value)}
+                        onKeyDown={e => e.stopPropagation()}
+                        dense
+                        className="text-sm"
+                    />
                 </div>
 
                 <div style={{ maxHeight: 380, overflowY: query.trim() ? 'auto' : 'visible' }}>

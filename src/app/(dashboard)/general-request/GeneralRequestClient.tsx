@@ -2,6 +2,7 @@
 /* eslint-disable react/no-unescaped-entities */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import { useToast } from '@/components/ToastProvider';
 import {
     Search, Plus, CheckCircle2, Clock, AlertCircle, XCircle,
@@ -521,14 +522,13 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-4">
                 <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
+                    <div className="flex-1">
+                        <FloatingSearchInput
+                            label="ค้นหา"
                             type="text"
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
-                            placeholder="ค้นหา..."
-                            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="focus:ring-blue-500/20"
                         />
                     </div>
 

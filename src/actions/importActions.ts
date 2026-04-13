@@ -79,8 +79,8 @@ const SUB_HEADER_TOKENS = [
 const MOJIBAKE_PATTERNS = [
     /[\u00C2\u00C3]/,
     /\u00E2\u20AC/,
-    /(?:เธ[\u0E00-\u0E7F]?){2,}/,
-    /(?:เน[\u0E00-\u0E7F]?){2,}/,
+    /(?:\u0E40\u0E18[\u0E00-\u0E7F]?){2,}/,
+    /(?:\u0E40\u0E19[\u0E00-\u0E7F]?){2,}/,
 ];
 
 const ENCODING_ERROR_MESSAGE =

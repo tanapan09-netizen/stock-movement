@@ -1,8 +1,9 @@
 'use client';
 
 import { createUser } from '@/actions/userActions';
+import { FloatingInput, FloatingSelect } from '@/components/FloatingField';
 import { ROLE_OPTIONS } from '@/lib/roles';
-import { ArrowLeft, Lock, Shield, User } from 'lucide-react';
+import { ArrowLeft, Lock, Mail, MessageSquareText, Shield, User } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -42,70 +43,51 @@ export default function NewUserPage() {
                 <form action={handleSubmit} className="space-y-6 p-6">
                     {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
 
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Username</label>
-                        <div className="relative">
-                            <User className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                            <input
-                                type="text"
-                                name="username"
-                                required
-                                className="w-full rounded-md border border-gray-300 px-3 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="ตั้งชื่อผู้ใช้งาน..."
-                            />
-                        </div>
-                    </div>
+                    <FloatingInput
+                        label="Username"
+                        name="username"
+                        icon={<User className="h-5 w-5" />}
+                        className="focus:ring-blue-500/20"
+                        required
+                    />
 
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Password</label>
-                        <div className="relative">
-                            <Lock className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                            <input
-                                type="password"
-                                name="password"
-                                required
-                                minLength={6}
-                                className="w-full rounded-md border border-gray-300 px-3 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="รหัสผ่านขั้นต่ำ 6 ตัวอักษร"
-                            />
-                        </div>
-                    </div>
+                    <FloatingInput
+                        label="Password"
+                        type="password"
+                        name="password"
+                        icon={<Lock className="h-5 w-5" />}
+                        className="focus:ring-blue-500/20"
+                        minLength={6}
+                        required
+                    />
 
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Role</label>
-                        <div className="relative">
-                            <Shield className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                            <select
-                                name="role"
-                                className="w-full rounded-md border border-gray-300 px-3 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                defaultValue="employee"
-                            >
-                                {ROLE_OPTIONS.map((role) => (
-                                    <option key={role.value} value={role.value}>{role.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
+                    <FloatingSelect
+                        label="Role"
+                        name="role"
+                        icon={<Shield className="h-5 w-5" />}
+                        className="focus:ring-blue-500/20"
+                        defaultValue="employee"
+                    >
+                        {ROLE_OPTIONS.map((role) => (
+                            <option key={role.value} value={role.value}>{role.label}</option>
+                        ))}
+                    </FloatingSelect>
 
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Email (Optional)</label>
-                        <input
-                            type="email"
-                            name="email"
-                            className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="example@email.com"
-                        />
-                    </div>
+                    <FloatingInput
+                        label="Email (Optional)"
+                        type="email"
+                        name="email"
+                        icon={<Mail className="h-5 w-5" />}
+                        className="focus:ring-blue-500/20"
+                    />
 
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">LINE User ID (Optional)</label>
-                        <input
-                            type="text"
-                            name="line_user_id"
-                            className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="U1234..."
-                        />
-                    </div>
+                    <FloatingInput
+                        label="LINE User ID (Optional)"
+                        type="text"
+                        name="line_user_id"
+                        icon={<MessageSquareText className="h-5 w-5" />}
+                        className="focus:ring-blue-500/20"
+                    />
 
                     <div className="mt-4 flex items-center">
                         <input

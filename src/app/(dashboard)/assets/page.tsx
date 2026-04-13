@@ -1,4 +1,5 @@
-﻿import Link from 'next/link';
+import Link from 'next/link';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import {
     ChevronDown,
     ChevronLeft,
@@ -8,7 +9,6 @@ import {
     MapPin,
     Plus,
     Printer,
-    Search,
 } from 'lucide-react';
 
 import { auth } from '@/auth';
@@ -468,16 +468,15 @@ export default async function AssetsPage({
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
                     <div className="xl:col-span-2">
                         <label className="mb-1 block text-xs font-medium text-slate-600">ค้นหา</label>
-                        <div className="relative">
-                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                            <input
-                                type="text"
-                                name="q"
-                                defaultValue={filters.q}
-                                placeholder="รหัส, ชื่อ, S/N, สถานที่..."
-                                className="w-full rounded-xl border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none"
-                            />
-                        </div>
+                        <FloatingSearchInput
+                            type="text"
+                            name="q"
+                            label="ค้นหาทรัพย์สิน"
+                            defaultValue={filters.q}
+                            placeholder="รหัส, ชื่อ, S/N, สถานที่..."
+                            dense
+                            className="text-sm"
+                        />
                     </div>
 
                     <div>

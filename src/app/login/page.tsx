@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, ArrowRight, Package, UserPlus, Wrench } from 'lucide-react';
+import { FloatingInput } from '@/components/FloatingField';
 
 type Locale = 'th' | 'en' | 'jp';
 type ErrorCodeKey = 'user_not_found' | 'invalid_password' | 'account_locked' | 'configuration' | 'login_failed' | 'exception' | 'lockout_released' | 'wait_more';
@@ -333,28 +334,25 @@ export default function LoginPage() {
                         )}
 
                         <form onSubmit={handleSubmit} className="space-y-5">
-                            <div>
-                                <label className="mb-2 block text-sm font-medium text-slate-700">{t.username}</label>
-                                <input
-                                    type="text"
+                            <div className="space-y-4">
+                                <FloatingInput
+                                    label={t.username}
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value)}
                                     autoComplete="username"
-                                    placeholder={t.usernamePlaceholder}
-                                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none focus:ring-4 focus:ring-cyan-200/70"
+                                    className="border-slate-200 bg-white text-slate-900 focus:border-cyan-500 focus:ring-cyan-200/70"
+                                    labelClassName="text-slate-500"
                                     required
                                 />
-                            </div>
 
-                            <div>
-                                <label className="mb-2 block text-sm font-medium text-slate-700">{t.password}</label>
-                                <input
+                                <FloatingInput
+                                    label={t.password}
                                     type={showPassword ? 'text' : 'password'}
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     autoComplete="current-password"
-                                    placeholder={t.passwordPlaceholder}
-                                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none focus:ring-4 focus:ring-cyan-200/70"
+                                    className="border-slate-200 bg-white text-slate-900 focus:border-cyan-500 focus:ring-cyan-200/70"
+                                    labelClassName="text-slate-500"
                                     required
                                 />
                                 <div className="mt-2 flex items-center">

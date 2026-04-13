@@ -1,9 +1,10 @@
 ﻿'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle, Package, Plus, Search, ShieldCheck, Undo2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Package, Plus, ShieldCheck, Undo2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import SearchableSelect from '@/components/SearchableSelect';
 import { useToast } from '@/components/ToastProvider';
 import { getPartRequests, updatePartRequestStatus } from '@/actions/partRequestActions';
@@ -610,17 +611,17 @@ export default function PartsManagementClient({
 
       <div className="rounded-xl bg-white p-4 shadow-sm dark:bg-slate-800 space-y-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative flex-1">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="ค้นหาอะไหล่, เลขที่แจ้งซ่อม, ชื่อใบงาน, ผู้เบิก..."
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              className="w-full rounded-lg border py-2 pl-10 pr-4 dark:border-slate-600 dark:bg-slate-700"
-              aria-label="ค้นหา"
-            />
-          </div>
+          <FloatingSearchInput
+            type="text"
+            label="ค้นหาอะไหล่"
+            dense
+            containerClassName="flex-1"
+            className="dark:border-slate-600 dark:bg-slate-700"
+            placeholder="ค้นหาอะไหล่, เลขที่แจ้งซ่อม, ชื่อใบงาน, ผู้เบิก..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            aria-label="ค้นหา"
+          />
           <select
             value={partStatusFilter}
             onChange={(e) => setPartStatusFilter(e.target.value)}

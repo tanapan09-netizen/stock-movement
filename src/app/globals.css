@@ -169,6 +169,154 @@ textarea {
   font-size: 0.95rem;
 }
 
+.floating-field {
+  position: relative;
+}
+
+.floating-control {
+  width: 100%;
+  min-height: 3.85rem;
+  border-radius: 1rem !important;
+  border: 1px solid rgba(148, 163, 184, 0.38) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98)) !important;
+  padding: 1.45rem 1rem 0.65rem !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 1px 2px rgba(15, 23, 42, 0.04);
+  transition:
+    border-color 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.floating-control::placeholder {
+  color: transparent !important;
+}
+
+.floating-control--textarea {
+  min-height: 8.25rem;
+  resize: vertical;
+}
+
+.floating-control--select {
+  padding-right: 2.75rem !important;
+}
+
+.floating-field[data-has-icon='true'] .floating-control {
+  padding-left: 2.9rem !important;
+}
+
+.floating-field--dense .floating-control {
+  min-height: 3.2rem;
+  padding-top: 1.15rem !important;
+  padding-bottom: 0.4rem !important;
+}
+
+.floating-field--dense[data-has-icon='true'] .floating-control {
+  padding-left: 2.55rem !important;
+}
+
+.floating-icon {
+  position: absolute;
+  left: 1rem;
+  top: 1.2rem;
+  z-index: 1;
+  color: #94a3b8;
+  pointer-events: none;
+  transition:
+    color 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.floating-field--dense .floating-icon {
+  left: 0.85rem;
+  top: 1rem;
+}
+
+.floating-label {
+  position: absolute;
+  left: 0.82rem;
+  top: 50%;
+  z-index: 1;
+  transform: translateY(-50%);
+  transform-origin: left center;
+  padding: 0 0.42rem;
+  border-radius: 999px;
+  color: #64748b;
+  background: transparent;
+  font-size: 0.96rem;
+  font-weight: 500;
+  line-height: 1;
+  pointer-events: none;
+  transition:
+    top 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.22s ease,
+    letter-spacing 0.22s ease,
+    background-color 0.22s ease,
+    box-shadow 0.22s ease;
+}
+
+.floating-field[data-has-icon='true'] .floating-label {
+  left: 2.72rem;
+}
+
+.floating-field--dense[data-has-icon='true'] .floating-label {
+  left: 2.35rem;
+}
+
+.floating-field:hover .floating-control {
+  border-color: rgba(56, 189, 248, 0.45) !important;
+}
+
+.floating-field:focus-within .floating-control {
+  transform: translateY(-1px);
+  border-color: rgba(8, 145, 178, 0.82) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(240, 249, 255, 0.98)) !important;
+  box-shadow:
+    0 0 0 5px rgba(34, 211, 238, 0.14),
+    0 20px 36px -28px rgba(14, 116, 144, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+
+.floating-field:focus-within .floating-icon,
+.floating-field[data-filled='true'] .floating-icon,
+.floating-field .floating-control:not(:placeholder-shown) ~ .floating-icon {
+  color: #0891b2;
+  transform: translateY(-1px);
+}
+
+.floating-field:focus-within .floating-label,
+.floating-field[data-filled='true'] .floating-label,
+.floating-field .floating-control:not(:placeholder-shown) ~ .floating-label {
+  top: 0.72rem;
+  transform: translateY(0) scale(0.84);
+  color: #0e7490;
+  letter-spacing: 0.01em;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(240, 249, 255, 0.98));
+  box-shadow: 0 0 0 1px rgba(240, 249, 255, 0.98);
+}
+
+.floating-field--dense:focus-within .floating-label,
+.floating-field--dense[data-filled='true'] .floating-label,
+.floating-field--dense .floating-control:not(:placeholder-shown) ~ .floating-label {
+  top: 0.54rem;
+}
+
+.floating-control:disabled,
+.floating-control[readonly] {
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 1), rgba(241, 245, 249, 1)) !important;
+}
+
+.floating-field:has(.floating-control:disabled) .floating-label,
+.floating-field:has(.floating-control[readonly]) .floating-label {
+  color: #64748b;
+}
+
 input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']):focus,
 select:focus,
 textarea:focus {
@@ -405,6 +553,52 @@ main tbody tr:hover {
   background-color: #1f2937 !important;
   border-color: #334155 !important;
   color: #f8fafc !important;
+}
+
+.dark .floating-control {
+  border-color: rgba(71, 85, 105, 0.75) !important;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.96)) !important;
+  color: #f8fafc !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 1px 2px rgba(15, 23, 42, 0.22);
+}
+
+.dark .floating-label {
+  color: #94a3b8;
+}
+
+.dark .floating-icon {
+  color: #64748b;
+}
+
+.dark .floating-field:hover .floating-control {
+  border-color: rgba(56, 189, 248, 0.4) !important;
+}
+
+.dark .floating-field:focus-within .floating-control {
+  border-color: rgba(34, 211, 238, 0.75) !important;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 1), rgba(14, 116, 144, 0.12)) !important;
+  box-shadow:
+    0 0 0 5px rgba(34, 211, 238, 0.14),
+    0 20px 36px -28px rgba(8, 145, 178, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.dark .floating-field:focus-within .floating-label,
+.dark .floating-field[data-filled='true'] .floating-label,
+.dark .floating-field .floating-control:not(:placeholder-shown) ~ .floating-label {
+  color: #67e8f9;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.98));
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.98);
+}
+
+.dark .floating-field:focus-within .floating-icon,
+.dark .floating-field[data-filled='true'] .floating-icon,
+.dark .floating-field .floating-control:not(:placeholder-shown) ~ .floating-icon {
+  color: #67e8f9;
 }
 
 .dark input::placeholder,

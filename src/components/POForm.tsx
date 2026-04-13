@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createPO, updatePO } from '@/actions/poActions';
 import { Search, Trash2, Save, Calculator } from 'lucide-react';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import { useRouter } from 'next/navigation';
 import { useToast } from './ToastProvider';
 import { parsePurchaseOrderItemNote, type PurchaseOrderItemKind } from '@/lib/purchase-order-item';
@@ -426,16 +427,12 @@ export default function POForm({
                 {/* Search Products */}
                 <div className="bg-white p-4 rounded-lg shadow relative">
                     <label className="block text-sm font-medium text-gray-700 mb-2">ค้นหาและเพิ่มสินค้า</label>
-                    <div className="flex items-center border rounded-lg px-3 py-2.5 focus-within:ring-2 focus-within:ring-blue-500">
-                        <Search className="w-5 h-5 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="พิมพ์ชื่อสินค้าหรือรหัส..."
-                            className="flex-1 outline-none ml-2"
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                        />
-                    </div>
+                    <FloatingSearchInput
+                        type="text"
+                        label="ค้นหาสินค้า"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                    />
                     {filteredProducts.length > 0 && (
                         <div className="absolute top-full left-0 right-0 bg-white border shadow-xl z-20 max-h-60 overflow-y-auto mt-1 rounded-lg">
                             {filteredProducts.map(p => (

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import { Trash2, UserCheck, UserX, Search, Copy } from 'lucide-react';
 import {
     deleteLineCustomer,
@@ -136,14 +137,14 @@ export default function LineCustomersClient({ canEdit }: Props) {
                         {copied ? 'คัดลอกแล้ว' : 'คัดลอกลิงก์สมัครลูกค้า'}
                     </button>
                 </div>
-                <div className="mt-4 relative">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
+                <div className="mt-4">
+                    <FloatingSearchInput
+                        label="ค้นหาด้วยชื่อ, เบอร์, LINE User ID"
                         type="text"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="ค้นหาด้วยชื่อ, เบอร์, LINE User ID"
-                        className="w-full border rounded-lg pl-9 pr-3 py-2 dark:bg-slate-700 dark:border-slate-600"
+                        className="dark:border-slate-600 dark:bg-slate-700"
+                        labelClassName="text-slate-500 dark:text-slate-400"
                     />
                 </div>
             </div>

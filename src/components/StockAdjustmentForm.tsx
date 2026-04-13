@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { adjustStock } from '@/actions/movementActions';
 import { ArrowRight, CheckCircle, AlertCircle, Package, X } from 'lucide-react';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import { useRouter } from 'next/navigation';
 
 type Product = {
@@ -118,10 +119,10 @@ export default function StockAdjustmentForm({ products, initialProductId }: Prop
                         เลือกสินค้า
                     </label>
                     <div className="relative">
-                        <input
+                        <FloatingSearchInput
                             type="text"
-                            placeholder="พิมพ์ค้นหารหัส หรือ ชื่อสินค้า..."
-                            className="w-full px-4 pr-12 py-4 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition-all text-gray-900"
+                            label="ค้นหาสินค้า"
+                            className="pr-12 text-gray-900"
                             value={searchTerm}
                             onChange={(e) => {
                                 setSearchTerm(e.target.value);

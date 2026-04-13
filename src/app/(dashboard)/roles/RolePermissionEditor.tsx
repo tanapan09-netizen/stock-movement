@@ -10,13 +10,13 @@ import {
   MinusSquare,
   RotateCcw,
   Save,
-  Search,
   ShieldCheck,
   Square,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { updateRolePermissions } from '@/actions/roleActions';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import { PERMISSION_LIST, PermissionItem } from '@/lib/permissions';
 import { isLockedPermissionRole } from '@/lib/roles';
 
@@ -844,22 +844,19 @@ export default function RolePermissionEditor({ roles }: Props) {
       <div className="border-b border-slate-200 px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center">
-            <div className="relative w-full lg:max-w-sm">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="ค้นหาหน้า, งานที่ใช้ทำ, permission key..."
-                className="
-                  w-full rounded-xl border border-slate-200 bg-white
-                  py-2.5 pl-10 pr-4 text-sm text-slate-700
-                  outline-none transition
-                  placeholder:text-slate-400
-                  focus:border-blue-400 focus:ring-4 focus:ring-blue-100
-                "
-              />
-            </div>
+            <FloatingSearchInput
+              type="text"
+              label="ค้นหา permission"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="ค้นหาหน้า, งานที่ใช้ทำ, permission key..."
+              dense
+              className="
+                text-sm text-slate-700
+                placeholder:text-slate-400
+              "
+              containerClassName="w-full lg:max-w-sm"
+            />
 
             <select
               value={focusedRoleId}

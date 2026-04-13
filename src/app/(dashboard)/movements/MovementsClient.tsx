@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Search, FileSpreadsheet, ChevronLeft, ChevronRight, Loader2, FilterX } from 'lucide-react';
+import { FileSpreadsheet, ChevronLeft, ChevronRight, Loader2, FilterX } from 'lucide-react';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import MovementActions from '@/components/MovementActions';
 import ProductImage from '@/components/ProductImage';
 import { exportToExcel, EXPORT_COLUMNS } from '@/lib/exportUtils';
@@ -142,17 +143,15 @@ export default function MovementsClient({
                     {/* Search */}
                     <div className="flex-1 w-full">
                         <label className="block text-xs font-medium text-gray-700 mb-1">ค้นหา</label>
-                        <div className="relative">
-                            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                            <input
-                                type="text"
-                                placeholder="ชื่อสินค้า, ผู้ทำรายการ..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
+                        <FloatingSearchInput
+                            type="text"
+                            label="ค้นหารายการเคลื่อนไหว"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            dense
+                            className="text-sm"
+                        />
                     </div>
 
                     {/* Date Range */}

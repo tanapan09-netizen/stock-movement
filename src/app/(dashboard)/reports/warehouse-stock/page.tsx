@@ -1,6 +1,7 @@
 import Link from 'next/link';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import { prisma } from '@/lib/prisma';
-import { ArrowLeft, Boxes, CircleAlert, Filter, Search, Warehouse } from 'lucide-react';
+import { ArrowLeft, Boxes, CircleAlert, Filter, Warehouse } from 'lucide-react';
 
 type SearchParams = {
     warehouse_id?: string;
@@ -326,16 +327,15 @@ export default async function WarehouseStockReportPage({ searchParams }: PagePro
                     <label htmlFor="q" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                         ค้นหา
                     </label>
-                    <div className="relative">
-                        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                        <input
-                            id="q"
-                            name="q"
-                            defaultValue={keyword}
-                            placeholder="ค้นหาด้วย SKU, ชื่อสินค้า, หมวดหมู่, Supplier"
-                            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none ring-blue-500 focus:ring-2"
-                        />
-                    </div>
+                    <FloatingSearchInput
+                        id="q"
+                        name="q"
+                        label="ค้นหาสินค้า"
+                        defaultValue={keyword}
+                        placeholder="ค้นหาด้วย SKU, ชื่อสินค้า, หมวดหมู่, Supplier"
+                        dense
+                        className="text-sm"
+                    />
                 </div>
 
                 <div className="md:col-span-2 flex items-end">

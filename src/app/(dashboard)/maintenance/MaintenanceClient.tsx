@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Image from 'next/image';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import WorkflowStepper, { WorkflowStatus } from '@/components/common/WorkflowStepper';
 import MaintenanceRequestCard from '@/components/maintenance/MaintenanceRequestCard';
 import VehicleLicensePlateSelector from '@/components/VehicleLicensePlateSelector';
@@ -2234,18 +2235,18 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     )}
                 </div>
 
-                <div className="flex-1 relative">
-                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                        type="text"
-                        title="Search Requests"
-                        placeholder="ค้นหาใบงาน..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600"
-                        aria-label="ค้นหา"
-                    />
-                </div>
+                <FloatingSearchInput
+                    type="text"
+                    label="ค้นหาใบงาน"
+                    dense
+                    containerClassName="flex-1"
+                    title="Search Requests"
+                    placeholder="ค้นหาใบงาน..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="dark:bg-slate-700 dark:border-slate-600"
+                    aria-label="ค้นหา"
+                />
                 </div>
             </div>
 
@@ -2589,16 +2590,17 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                             <div>
                                 <label className="block text-sm font-medium mb-2 text-gray-700">หมายเลขสินทรัพย์หรือซีเรียล (ถ้ามี)</label>
                                 <div className="relative">
-                                    <input
+                                    <FloatingSearchInput
                                         type="text"
+                                        label="ค้นหาสินทรัพย์"
                                         value={assetSearchQuery}
                                         onChange={(e) => handleAssetSearch(e.target.value)}
                                         onFocus={() => assetResults.length > 0 && setShowAssetDropdown(true)}
-                                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                        className="pr-10"
+                                        dense
                                         placeholder="พิมพ์เพื่อค้นหา รหัส, ชื่อ หรือ S/N..."
                                         title="หมายเลขสินทรัพย์"
                                     />
-                                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
 
                                     {/* Autocomplete Dropdown */}
                                     {showAssetDropdown && assetResults.length > 0 && (
@@ -3426,16 +3428,14 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                     </div>
 
                     <div className="relative">
-                      <Search
-                        size={15}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                      />
-                      <input
+                      <FloatingSearchInput
                         type="text"
+                        label="ค้นหาอะไหล่"
                         placeholder="เช่น ลูกลอย, ปั๊มน้ำ, P-0001"
                         value={modalPartSearch}
                         onChange={(e) => setModalPartSearch(e.target.value)}
-                        className="w-full rounded-2xl border border-slate-300 bg-white py-3 pl-10 pr-24 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                        containerClassName="w-full"
+                        className="pr-24 text-sm"
                       />
                       {modalPartSearch && (
                         <button

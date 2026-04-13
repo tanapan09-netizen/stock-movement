@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import {
     Wrench, Plus, Search, X, History, User, DollarSign, Printer, Clock, CheckCircle, XCircle, BarChart3, PieChart, AlertTriangle, Trash2, CalendarCheck, ArrowRight
 } from 'lucide-react';
@@ -489,15 +490,14 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
             </div>
             {/* Search & Filters */}
             <div className="flex gap-4">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                    <input
+                <div className="flex-1">
+                    <FloatingSearchInput
+                        label="ค้นหางานซ่อม"
                         type="text"
                         title="ค้นหา"
-                        placeholder="ค้นหางานซ่อม..."
-                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                         value={searchText}
                         onChange={(e) => setSearchText(e.target.value)}
+                        className="focus:ring-blue-500/20"
                     />
                 </div>
                 <div className="flex gap-2">
@@ -739,15 +739,16 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                             <div>
                                 <label className="block text-sm font-medium mb-2 text-gray-700">หมายเลขสินทรัพย์หรือซีเรียล (ถ้ามี)</label>
                                 <div className="relative">
-                                    <input
+                                    <FloatingSearchInput
                                         type="text"
                                         value={formData.image_url || ''}
                                         onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 pr-10 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                        label="เลือกจากระบบ"
+                                        className="pr-10"
                                         placeholder="เลือกจากระบบ (ถ้ามี)"
                                         title="หมายเลขสินทรัพย์"
+                                        dense
                                     />
-                                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                                 </div>
                             </div>
 

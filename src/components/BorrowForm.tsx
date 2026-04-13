@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { createBorrowRequest } from '@/actions/borrowActions';
 import { Search, Plus, Trash2, Save, User, FileText, Calendar } from 'lucide-react';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import { useRouter } from 'next/navigation';
 
 type Product = {
@@ -194,18 +195,22 @@ export default function BorrowForm({ products }: { products: Product[] }) {
                             <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs mr-2">+</span>
                             เพิ่มสินค้าเข้ารายการ
                         </label>
-                        <div className="flex items-center border-2 border-gray-200 rounded-xl px-4 py-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
-                            <Search className="w-5 h-5 text-gray-400" />
-                            <input
+                        <div className="relative">
+                            <FloatingSearchInput
                                 type="text"
-                                placeholder="พิมพ์ค้นหาสินค้า..."
-                                className="flex-1 outline-none text-gray-800 ml-2"
+                                label="ค้นหาสินค้า"
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
+                                className="pr-11 text-gray-800"
+                                containerClassName="w-full"
                             />
                             {searchTerm && (
-                                <button type="button" onClick={() => setSearchTerm('')} className="text-gray-400 hover:text-gray-600">
-                                    ✕
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchTerm('')}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition hover:text-gray-600"
+                                >
+                                    X
                                 </button>
                             )}
                         </div>

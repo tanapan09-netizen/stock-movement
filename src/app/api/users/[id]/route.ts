@@ -6,8 +6,8 @@ import { isLockedPermissionRole } from '@/lib/roles';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
 
 export async function GET(
-    request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
+    _request: NextRequest,
+    { params }: { params: Promise<{ id: string }> },
 ) {
     try {
         const session = await auth();
@@ -21,9 +21,9 @@ export async function GET(
         }
 
         const { id } = await params;
-        const userId = parseInt(id);
+        const userId = parseInt(id, 10);
 
-        if (isNaN(userId)) {
+        if (Number.isNaN(userId)) {
             return NextResponse.json({ error: 'รหัสผู้ใช้ไม่ถูกต้อง' }, { status: 400 });
         }
 
@@ -37,7 +37,7 @@ export async function GET(
                 line_user_id: true,
                 is_approver: true,
                 created_at: true,
-            }
+            },
         });
 
         if (!user) {

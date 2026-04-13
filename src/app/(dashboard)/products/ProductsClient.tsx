@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import { FileSpreadsheet, FileText, QrCode, Loader2, LayoutGrid, List, Edit, Trash2, ArrowUpDown, Upload, Gem, AlertTriangle, Columns3, ArrowUp, ArrowDown, RotateCcw, GripVertical } from 'lucide-react';
 import { exportToExcel, exportToPDF, EXPORT_COLUMNS } from '@/lib/exportUtils';
 import BarcodeScanner from '@/components/BarcodeScanner';
@@ -591,12 +592,12 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
             {/* Search Bar with View Toggle */}
             <div className="border-b bg-white p-4 flex flex-wrap items-center gap-4">
                 <div className="flex-1 min-w-[200px]">
-                    <input
+                    <FloatingSearchInput
+                        label="ค้นหารหัส, ชื่อ, code หลัก/รอง/ย่อย, ที่อยู่ทรัพย์สิน"
                         type="text"
-                        placeholder="ค้นหารหัส, ชื่อ, code หลัก/รอง/ย่อย, ที่อยู่ทรัพย์สิน..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full rounded-md border border-gray-300 px-4 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                        className="focus:ring-blue-500/20"
                     />
                 </div>
 

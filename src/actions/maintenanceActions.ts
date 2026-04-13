@@ -48,6 +48,8 @@ type MaintenanceNotificationRequest = {
 };
 
 const MAINTENANCE_DEPARTMENT_ROLE_SET = new Set<string>(DEPARTMENT_BASE_ROLES);
+const MAINTENANCE_FEEDBACK_ENABLED_KEY = 'maintenance_feedback_enabled';
+const CUSTOMER_LINE_TAG_PREFIX = 'line_user_id:';
 
 function resolveDepartmentLeaderRole(department?: string | null): string | null {
     const normalized = normalizeRole(department);
@@ -59,6 +61,88 @@ function resolveDepartmentLeaderRole(department?: string | null): string | null 
     }
 
     return MAINTENANCE_DEPARTMENT_ROLE_SET.has(normalized) ? `leader_${normalized}` : null;
+}
+
+function extractCustomerLineUserIdFromTags(tags?: string | null): string | null {
+    if (!tags) return null;
+    const token = tags
+        .split(',')
+        .map((item) => item.trim())
+        .find((item) => item.startsWith(CUSTOMER_LINE_TAG_PREFIX));
+    if (!token) return null;
+    const value = token.slice(CUSTOMER_LINE_TAG_PREFIX.length).trim();
+    return value || null;
+}
+
+async function isMaintenanceFeedbackEnabled(): Promise<boolean> {
+    const setting = await prisma.tbl_system_settings.findUnique({
+        where: { setting_key: MAINTENANCE_FEEDBACK_ENABLED_KEY },
+        select: { setting_value: true },
+    });
+    if (!setting) return true;
+    return String(setting.setting_value).trim().toLowerCase() !== 'false';
+}
+
+async function resolveCustomerLineUserIdForRequest(
+    reportedBy?: string | null,
+    tags?: string | null,
+): Promise<string | null> {
+    const fromTag = extractCustomerLineUserIdFromTags(tags);
+    if (fromTag) return fromTag;
+    if (!reportedBy) return null;
+
+    const customer = await prisma.tbl_line_customers.findFirst({
+        where: {
+            full_name: reportedBy,
+            is_active: true,
+        },
+        select: { line_user_id: true },
+    });
+    return customer?.line_user_id || null;
+}
+
+async function notifyCompletionToCustomer(params: {
+    request_id: number;
+    request_number: string;
+    title: string;
+    room_code: string;
+    room_name: string;
+    reported_by?: string | null;
+    tags?: string | null;
+    completion_note?: string | null;
+}): Promise<void> {
+    const customerLineUserId = await resolveCustomerLineUserIdForRequest(params.reported_by, params.tags);
+    if (!customerLineUserId) return;
+
+    const feedbackEnabled = await isMaintenanceFeedbackEnabled();
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const feedbackUrl = `${appUrl}/line/repair-feedback?request_id=${params.request_id}&line_user_id=${encodeURIComponent(customerLineUserId)}`;
+
+    const message = [
+        'Maintenance job completed',
+        '',
+        `Request: ${params.request_number}`,
+        `Room: ${params.room_code} - ${params.room_name}`,
+        `Title: ${params.title}`,
+        params.completion_note ? `Note: ${params.completion_note}` : null,
+        '',
+        feedbackEnabled
+            ? `Please rate service: ${feedbackUrl}`
+            : 'Thank you for using maintenance service.',
+    ].filter(Boolean).join('\n');
+
+    const sent = await sendLineMessage(customerLineUserId, message);
+    if (!sent) return;
+
+    await prisma.tbl_maintenance_history.create({
+        data: {
+            request_id: params.request_id,
+            action: 'customer_completion_notified',
+            old_value: null,
+            new_value: feedbackEnabled ? 'completion+feedback_sent' : 'completion_sent',
+            changed_by: 'system',
+        },
+    });
 }
 
 // ==================== ROOMS ====================
@@ -831,10 +915,19 @@ export async function submitCustomerRepairRequest(formData: FormData) {
         const target_role = 'employee';
         const reported_by = customer.full_name;
         
-        const tagsArray = formData.get('tags') ? (formData.get('tags') as string).split(',').map(t=>t.trim()).filter(Boolean) : [];
+        const tagsArray = formData.get('tags')
+            ? (formData.get('tags') as string)
+                .split(',')
+                .map(t => t.trim())
+                .filter((item) => Boolean(item) && !item.startsWith(CUSTOMER_LINE_TAG_PREFIX))
+            : [];
         if (!tagsArray.includes('ลูกค้า')) {
-           tagsArray.push('ลูกค้า');
+            tagsArray.push('ลูกค้า');
         }
+        if (!tagsArray.includes('source:line_customer')) {
+            tagsArray.push('source:line_customer');
+        }
+        tagsArray.push(`${CUSTOMER_LINE_TAG_PREFIX}${line_user_id}`);
         const tags = tagsArray.join(',');
         const requestNumber = generateRequestNumber();
 
@@ -933,6 +1026,166 @@ export async function submitCustomerRepairRequest(formData: FormData) {
     }
 }
 
+export async function getCustomerRepairFeedbackContext(request_id: number, line_user_id: string) {
+    try {
+        const normalizedLineUserId = (line_user_id || '').trim();
+        if (!Number.isFinite(request_id) || request_id <= 0 || !normalizedLineUserId) {
+            return { success: false, error: 'Invalid request' };
+        }
+
+        const feedbackEnabled = await isMaintenanceFeedbackEnabled();
+        if (!feedbackEnabled) {
+            return { success: false, error: 'Feedback is currently disabled' };
+        }
+
+        const request = await prisma.tbl_maintenance_requests.findUnique({
+            where: { request_id },
+            select: {
+                request_id: true,
+                request_number: true,
+                title: true,
+                status: true,
+                reported_by: true,
+                tags: true,
+                tbl_rooms: {
+                    select: {
+                        room_code: true,
+                        room_name: true,
+                    },
+                },
+            },
+        });
+
+        if (!request) return { success: false, error: 'Maintenance request not found' };
+        if (normalizeMaintenanceWorkflowStatus(request.status) !== 'completed') {
+            return { success: false, error: 'This request is not completed yet' };
+        }
+
+        const ownerLineUserId = await resolveCustomerLineUserIdForRequest(request.reported_by, request.tags);
+        if (!ownerLineUserId || ownerLineUserId !== normalizedLineUserId) {
+            return { success: false, error: 'Unauthorized feedback request' };
+        }
+
+        const existingFeedback = await prisma.tbl_maintenance_history.findFirst({
+            where: {
+                request_id,
+                action: 'customer_feedback_rating',
+            },
+            orderBy: { changed_at: 'desc' },
+        });
+
+        return {
+            success: true,
+            data: {
+                request_id: request.request_id,
+                request_number: request.request_number,
+                title: request.title,
+                room_display: request.tbl_rooms ? `${request.tbl_rooms.room_code} - ${request.tbl_rooms.room_name}` : '-',
+                already_rated: Boolean(existingFeedback),
+            },
+        };
+    } catch (error: unknown) {
+        console.error('Error getCustomerRepairFeedbackContext:', error);
+        return { success: false, error: getErrorMessage(error, 'Failed to load feedback form') };
+    }
+}
+
+export async function submitCustomerRepairFeedback(formData: FormData) {
+    try {
+        const lineUserId = (formData.get('line_user_id') as string || '').trim();
+        const requestIdRaw = formData.get('request_id') as string;
+        const ratingRaw = formData.get('rating') as string;
+        const commentRaw = (formData.get('comment') as string || '').trim();
+
+        const request_id = Number(requestIdRaw);
+        const rating = Number(ratingRaw);
+
+        if (!lineUserId || !Number.isFinite(request_id) || request_id <= 0) {
+            return { success: false, error: 'Invalid request data' };
+        }
+        if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+            return { success: false, error: 'Rating must be between 1 and 5' };
+        }
+        if (commentRaw.length > 1000) {
+            return { success: false, error: 'Comment is too long' };
+        }
+
+        const feedbackEnabled = await isMaintenanceFeedbackEnabled();
+        if (!feedbackEnabled) {
+            return { success: false, error: 'Feedback is currently disabled' };
+        }
+
+        const request = await prisma.tbl_maintenance_requests.findUnique({
+            where: { request_id },
+            select: {
+                request_id: true,
+                status: true,
+                reported_by: true,
+                tags: true,
+            },
+        });
+
+        if (!request) return { success: false, error: 'Maintenance request not found' };
+        if (normalizeMaintenanceWorkflowStatus(request.status) !== 'completed') {
+            return { success: false, error: 'This request is not completed yet' };
+        }
+
+        const ownerLineUserId = await resolveCustomerLineUserIdForRequest(request.reported_by, request.tags);
+        if (!ownerLineUserId || ownerLineUserId !== lineUserId) {
+            return { success: false, error: 'Unauthorized feedback submission' };
+        }
+
+        const existingFeedback = await prisma.tbl_maintenance_history.findFirst({
+            where: {
+                request_id,
+                action: 'customer_feedback_rating',
+            },
+            orderBy: { changed_at: 'desc' },
+            select: { history_id: true },
+        });
+        if (existingFeedback) {
+            return { success: false, error: 'Feedback already submitted' };
+        }
+
+        await prisma.$transaction(async (tx) => {
+            await tx.tbl_maintenance_history.create({
+                data: {
+                    request_id,
+                    action: 'customer_feedback_rating',
+                    old_value: null,
+                    new_value: String(Math.round(rating)),
+                    changed_by: `line_customer:${lineUserId}`,
+                },
+            });
+
+            if (commentRaw) {
+                await tx.tbl_maintenance_history.create({
+                    data: {
+                        request_id,
+                        action: 'customer_feedback_comment',
+                        old_value: null,
+                        new_value: commentRaw,
+                        changed_by: `line_customer:${lineUserId}`,
+                    },
+                });
+            }
+
+            await tx.tbl_line_customers.updateMany({
+                where: { line_user_id: lineUserId },
+                data: { last_interaction: new Date() },
+            });
+        });
+
+        revalidatePath('/maintenance');
+        revalidatePath('/maintenance/dashboard');
+        revalidatePath('/reports/maintenance');
+        return { success: true };
+    } catch (error: unknown) {
+        console.error('Error submitCustomerRepairFeedback:', error);
+        return { success: false, error: getErrorMessage(error, 'Failed to submit feedback') };
+    }
+}
+
 export async function updateMaintenanceRequestStatus(request_id: number, new_status: string, changed_by: string, notes?: string) {
     try {
         const authContext = await getMaintenanceAuthContext();
@@ -955,6 +1208,7 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
         const current = await prisma.tbl_maintenance_requests.findUnique({
             where: { request_id },
             select: {
+                request_id: true,
                 request_number: true,
                 title: true,
                 status: true,
@@ -963,6 +1217,7 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
                 reported_by: true,
                 assigned_to: true,
                 department: true,
+                tags: true,
                 tbl_rooms: {
                     select: {
                         room_code: true,
@@ -1118,6 +1373,19 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
                         ? (technicianCompletionNote || undefined)
                         : (notes || undefined),
                 );
+
+                if (normalizedNextStatus === 'completed') {
+                    await notifyCompletionToCustomer({
+                        request_id: current.request_id,
+                        request_number: current.request_number,
+                        title: current.title,
+                        room_code: current.tbl_rooms.room_code,
+                        room_name: current.tbl_rooms.room_name,
+                        reported_by: current.reported_by,
+                        tags: current.tags,
+                        completion_note: notes || current.notes || null,
+                    });
+                }
             }
         } catch (notificationError) {
             console.error('Failed to trigger maintenance status notification:', notificationError);
@@ -1953,22 +2221,32 @@ export async function submitRepairCompletion(formData: FormData) {
 
 export async function getMaintenanceStats() {
     try {
-        const total = await prisma.tbl_maintenance_requests.count();
-        const pending = await prisma.tbl_maintenance_requests.count({ where: { status: 'pending' } });
-        const approved = await prisma.tbl_maintenance_requests.count({ where: { status: 'approved' } });
-        const inProgress = await prisma.tbl_maintenance_requests.count({ where: { status: 'in_progress' } });
-        const completed = await prisma.tbl_maintenance_requests.count({ where: { status: 'completed' } });
-        const recentActivities = await prisma.tbl_maintenance_history.findMany({
-            take: 5,
-            orderBy: { changed_at: 'desc' },
-            select: {
-                history_id: true,
-                action: true,
-                new_value: true,
-                changed_at: true,
-                changed_by: true
-            }
-        });
+        const [total, pending, approved, inProgress, completed, recentActivities, feedbackRows] = await Promise.all([
+            prisma.tbl_maintenance_requests.count(),
+            prisma.tbl_maintenance_requests.count({ where: { status: 'pending' } }),
+            prisma.tbl_maintenance_requests.count({ where: { status: 'approved' } }),
+            prisma.tbl_maintenance_requests.count({ where: { status: 'in_progress' } }),
+            prisma.tbl_maintenance_requests.count({ where: { status: 'completed' } }),
+            prisma.tbl_maintenance_history.findMany({
+                take: 5,
+                orderBy: { changed_at: 'desc' },
+                select: {
+                    history_id: true,
+                    action: true,
+                    new_value: true,
+                    changed_at: true,
+                    changed_by: true
+                }
+            }),
+            prisma.tbl_maintenance_history.findMany({
+                where: { action: 'customer_feedback_rating' },
+                select: {
+                    request_id: true,
+                    new_value: true,
+                },
+                orderBy: { changed_at: 'desc' },
+            }),
+        ]);
 
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
@@ -1989,12 +2267,28 @@ export async function getMaintenanceStats() {
             where: { status: 'completed', actual_cost: { not: null } },
             _sum: { actual_cost: true }
         });
+        const feedbackByRequest = new Map<number, number>();
+        for (const row of feedbackRows) {
+            if (feedbackByRequest.has(row.request_id)) continue;
+            const rating = Number(row.new_value);
+            if (!Number.isFinite(rating) || rating < 1 || rating > 5) continue;
+            feedbackByRequest.set(row.request_id, rating);
+        }
+        const ratedCount = feedbackByRequest.size;
+        const ratingSum = Array.from(feedbackByRequest.values()).reduce((sum, value) => sum + value, 0);
+        const averageRating = ratedCount > 0 ? Number((ratingSum / ratedCount).toFixed(2)) : 0;
+        const responseRatePct = completed > 0 ? Number(((ratedCount * 100) / completed).toFixed(2)) : 0;
 
         return {
             success: true,
             data: {
                 counts: { total, pending, approved, processing: inProgress, completed },
                 totalCost: Number(costAgg._sum.actual_cost || 0),
+                customerFeedback: {
+                    averageRating,
+                    ratedCount,
+                    responseRatePct,
+                },
                 recentActivities,
                 chartData
             }
@@ -2519,6 +2813,19 @@ export async function updateMaintenanceRequest(
                         request.status || '',
                         statusChangeNote,
                     );
+
+                    if (normalizeMaintenanceWorkflowStatus(request.status) === 'completed') {
+                        await notifyCompletionToCustomer({
+                            request_id: request.request_id,
+                            request_number: request.request_number,
+                            title: request.title,
+                            room_code: request.tbl_rooms.room_code,
+                            room_name: request.tbl_rooms.room_name,
+                            reported_by: request.reported_by,
+                            tags: request.tags,
+                            completion_note: statusChangeNote || null,
+                        });
+                    }
                 }
             }
         } catch (notificationError) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import {
     Search, Command, Plus, Home, Package, FileText, Settings,
     ArrowRight, X, Keyboard
@@ -152,23 +153,24 @@ export default function GlobalSearch() {
                 onClick={() => setIsOpen(false)}
             />
 
-            {/* Modal */}
-            <div className="relative w-full max-w-xl bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
-                {/* Search Input */}
-                <div className="flex items-center gap-3 p-4 border-b dark:border-gray-700">
-                    <Search className="w-5 h-5 text-gray-400" />
-                    <input
-                        type="text"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        onKeyDown={handleResultKeyDown}
-                        placeholder="ค้นหาหน้า, สินค้า, หรือคำสั่ง..."
-                        className="flex-1 bg-transparent border-none outline-none text-lg"
-                        autoFocus
-                    />
-                    <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title="ปิด">
-                        <X className="w-5 h-5" />
-                    </button>
+                {/* Modal */}
+                <div className="relative w-full max-w-xl bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
+                    {/* Search Input */}
+                    <div className="flex items-center gap-3 border-b p-4 dark:border-gray-700">
+                        <FloatingSearchInput
+                            label="ค้นหาหน้า, สินค้า, หรือคำสั่ง"
+                            type="text"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            onKeyDown={handleResultKeyDown}
+                            containerClassName="flex-1"
+                            className="border-transparent bg-transparent text-lg shadow-none focus:border-cyan-400 focus:ring-cyan-200/60"
+                            labelClassName="text-slate-500 dark:text-slate-400"
+                            autoFocus
+                        />
+                        <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title="ปิด">
+                            <X className="w-5 h-5" />
+                        </button>
                 </div>
 
                 {/* Results */}

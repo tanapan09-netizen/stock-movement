@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import { UserCog, Plus, Edit2, Trash2, Phone, Mail, X, Search, Users } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -200,14 +201,14 @@ export default function TechniciansClient({ canEdit }: Props) {
             </div>
 
             <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
-                <div className="relative">
-                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
+                <div>
+                    <FloatingSearchInput
+                        label="ค้นหาชื่อ, เบอร์โทร, ความเชี่ยวชาญ"
                         type="text"
-                        placeholder="ค้นหาชื่อ, เบอร์โทร, ความเชี่ยวชาญ..."
                         value={searchText}
                         onChange={(e) => setSearchText(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600"
+                        className="dark:border-slate-600 dark:bg-slate-700"
+                        labelClassName="text-slate-500 dark:text-slate-400"
                         aria-label="ค้นหาช่าง"
                     />
                 </div>

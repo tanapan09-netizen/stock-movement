@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import React, { useMemo, useState } from 'react';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import {
     FileDown, FileText, Plus, Search, CheckCircle2, XCircle,
     Clock, ChevronLeft, ChevronRight, SlidersHorizontal,
@@ -695,14 +696,15 @@ export default function ApprovalClient({
                         {/* View tabs removed, only showing personal requests */}
 
                         {/* Search */}
-                        <div className="flex-1 min-w-[180px] relative">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input
+                        <div className="flex-1 min-w-[180px]">
+                            <FloatingSearchInput
+                                label="ค้นหา"
                                 type="search"
                                 value={searchText}
                                 onChange={(e) => { setSearchText(e.target.value); resetToFirstPage(); }}
-                                placeholder="ค้นหา…"
-                                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition"
+                                dense
+                                className="bg-slate-50 text-slate-800 focus:border-indigo-300 focus:ring-indigo-200"
+                                labelClassName="text-slate-500"
                             />
                         </div>
 

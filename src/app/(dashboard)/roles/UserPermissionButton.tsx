@@ -28,23 +28,26 @@ export default function UserPermissionButton({ user, dbRolePermissions, isLocked
     const [isSaving, setIsSaving] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
 
-    let basePerms: RolePermissions = DEFAULT_PERMISSIONS[user.role] || {};
-    if (dbRolePermissions) {
-        try {
-            basePerms = JSON.parse(dbRolePermissions);
-        } catch {
-            basePerms = DEFAULT_PERMISSIONS[user.role] || {};
+    const basePerms: RolePermissions = useMemo(() => {
+        let resolved = DEFAULT_PERMISSIONS[user.role] || {};
+        if (dbRolePermissions) {
+            try {
+                resolved = JSON.parse(dbRolePermissions);
+            } catch {
+                resolved = DEFAULT_PERMISSIONS[user.role] || {};
+            }
         }
-    }
+        return resolved;
+    }, [dbRolePermissions, user.role]);
 
-    let userPerms: RolePermissions = {};
-    if (user.custom_permissions) {
+    const userPerms: RolePermissions = useMemo(() => {
+        if (!user.custom_permissions) return {};
         try {
-            userPerms = JSON.parse(user.custom_permissions);
+            return JSON.parse(user.custom_permissions);
         } catch {
-            userPerms = {};
+            return {};
         }
-    }
+    }, [user.custom_permissions]);
 
     const [permissions, setPermissions] = useState<RolePermissions>({ ...basePerms, ...userPerms });
 
@@ -56,6 +59,10 @@ export default function UserPermissionButton({ user, dbRolePermissions, isLocked
     useEffect(() => {
         setIsMounted(true);
     }, []);
+
+    useEffect(() => {
+        setPermissions({ ...basePerms, ...userPerms });
+    }, [basePerms, userPerms]);
 
     useEffect(() => {
         if (!isOpen) {
@@ -139,7 +146,7 @@ export default function UserPermissionButton({ user, dbRolePermissions, isLocked
 
                             <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-5 py-3 sm:px-6">
                                 <div className="text-sm text-slate-500">
-                                    {categories.length} หมวดสิทธิ์ • {PERMISSION_LIST.length} รายการ
+                                    {categories.length} หมวดสิทธิ์ โดย {PERMISSION_LIST.length} รายการ
                                 </div>
                                 <div className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
                                     การตั้งค่านี้มีผลเฉพาะผู้ใช้งานรายนี้

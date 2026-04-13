@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import { Plus, CalendarCheck, Edit, Trash2, Calendar, CheckCircle, RefreshCw, X, Search } from 'lucide-react';
 import { getPmPlans, createPmPlan, updatePmPlan, deletePmPlan, generatePmTasks } from '@/actions/pmActions';
 import { getRooms } from '@/actions/maintenanceActions';
@@ -180,14 +181,14 @@ export default function PmClient() {
 
             {/* Filter */}
             <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm flex gap-4">
-                <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                    <input
+                <div className="flex-1">
+                    <FloatingSearchInput
+                        label="ค้นหาแผน PM"
                         type="text"
-                        placeholder="ค้นหาแผน PM..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600"
+                        className="dark:border-slate-600 dark:bg-slate-700"
+                        labelClassName="text-slate-500 dark:text-slate-400"
                     />
                 </div>
             </div>

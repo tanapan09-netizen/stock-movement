@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import { CheckCircle2, CircleSlash, ClipboardList, ExternalLink, FileCheck2, FilePenLine, FileText, Filter, Loader2, Printer, Search, ShoppingCart, X } from 'lucide-react';
 
 import { updateApprovalStatus, updatePurchaseRequest } from '@/actions/approvalActions';
@@ -583,13 +584,14 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                 ทุกคำขอซื้อ
                             </button>
                         </div>
-                        <div className="relative min-w-[260px]">
-                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                            <input
+                        <div className="min-w-[260px]">
+                            <FloatingSearchInput
+                                label="ค้นหาเลขที่คำขอ, ผู้ขอ, งานอ้างอิง"
+                                type="text"
                                 value={search}
                                 onChange={(event) => setSearch(event.target.value)}
-                                placeholder="ค้นหาเลขที่คำขอ, ผู้ขอ, งานอ้างอิง"
-                                className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm text-slate-700 outline-none transition focus:border-emerald-400"
+                                className="text-slate-700 focus:border-emerald-400 focus:ring-emerald-400/20"
+                                labelClassName="text-slate-500"
                             />
                         </div>
                         <div className="relative">

@@ -7,9 +7,10 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "(prisma generate || echo [build] prisma generate failed - continuing) && next build",
+    "build": "npm run check:mojibake && (prisma generate || echo [build] prisma generate failed - continuing) && next build",
     "start": "next start",
     "lint": "eslint",
+    "check:mojibake": "node scripts/check-mojibake.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "uploads:cleanup": "node scripts/cleanup-orphan-uploads.js",

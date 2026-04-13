@@ -2,6 +2,7 @@
 
 import { useState, useRef, useMemo } from 'react';
 import { createAsset, updateAsset } from '@/actions/assetActions';
+import { FloatingInput, FloatingSelect, FloatingTextarea } from '@/components/FloatingField';
 import { Save, X } from 'lucide-react';
 import { useToast } from './ToastProvider';
 import { useRouter } from 'next/navigation';
@@ -341,33 +342,36 @@ export default function AssetForm({
                 {/* Left: General Info */}
                 <div className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">รหัสทรัพย์สิน *</label>
-                        <input
+                        <FloatingInput
+                            label="รหัสทรัพย์สิน *"
                             type="text"
                             name="asset_code"
                             defaultValue={initialAssetCode}
                             required
                             readOnly={isAssetCodeReadOnly}
-                            className={`mt-1 block w-full rounded-md border py-2 px-3 ${isAssetCodeReadOnly ? 'bg-gray-100 text-gray-500' : 'border-gray-300'}`}
+                            className={isAssetCodeReadOnly ? 'bg-gray-100 text-gray-500' : 'focus:ring-blue-500/20'}
                         />
                         {!asset && suggestedAssetCode && (
                             <p className="mt-1 text-xs text-gray-500">สร้างรหัสอัตโนมัติตามนโยบายทะเบียนทรัพย์สิน</p>
                         )}
                     </div>
+                    <FloatingInput
+                        label="ชื่อทรัพย์สิน *"
+                        type="text"
+                        name="asset_name"
+                        defaultValue={asset?.asset_name || prefill?.asset_name || ''}
+                        className="focus:ring-blue-500/20"
+                        required
+                    />
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">ชื่อทรัพย์สิน *</label>
-                        <input type="text" name="asset_name" defaultValue={asset?.asset_name || prefill?.asset_name || ''} required className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">หมวดหมู่ *</label>
-                        <input
+                        <FloatingInput
+                            label="หมวดหมู่ *"
                             type="text"
                             name="category"
                             list="asset-category-options"
                             defaultValue={asset?.category || prefill?.category || 'Other'}
+                            className="focus:ring-blue-500/20"
                             required
-                            placeholder="ระบุหรือเลือกกลุ่มสินทรัพย์"
-                            className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
                         />
                         <datalist id="asset-category-options">
                             {categoryOptions.map((category) => (
@@ -378,14 +382,11 @@ export default function AssetForm({
                     {!asset && (effectiveAcquisitionType === 'purchase' || effectiveAcquisitionType === 'opening') && (
                         <>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">
-                                    {effectiveAcquisitionType === 'opening' ? 'อ้างอิงเอกสารยกมา' : 'อ้างอิงการซื้อ'}
-                                </label>
-                                <input
+                                <FloatingInput
+                                    label={effectiveAcquisitionType === 'opening' ? 'อ้างอิงเอกสารยกมา' : 'อ้างอิงการซื้อ'}
                                     type="text"
                                     name="acquisition_note"
-                                    placeholder={effectiveAcquisitionType === 'opening' ? 'เช่น ทะเบียนยกมา ณ วันเปิดงวด' : 'เช่น PO/Invoice เลขที่ ...'}
-                                    className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                                    className="focus:ring-blue-500/20"
                                 />
                             </div>
                             {effectiveAcquisitionType === 'opening' && (
@@ -399,14 +400,14 @@ export default function AssetForm({
                     {hasRoomReferenceData ? (
                         <>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">สถานที่ตั้ง (อ้างอิงห้อง) *</label>
-                                <select
+                                <FloatingSelect
+                                    label="สถานที่ตั้ง (อ้างอิงห้อง) *"
                                     value={selectedRoomCode}
                                     onChange={(event) => {
                                         setSelectedRoomCode(event.target.value);
                                         setSelectedZoneCode('');
                                     }}
-                                    className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                                    className="focus:ring-blue-500/20"
                                     required
                                 >
                                     <option value="">-- เลือกห้อง --</option>
@@ -415,7 +416,7 @@ export default function AssetForm({
                                             {room.roomLabel}
                                         </option>
                                     ))}
-                                </select>
+                                </FloatingSelect>
                                 <input type="hidden" name="location" value={resolvedLocationValue} />
                                 <p className="mt-1 text-xs text-gray-500">
                                     บันทึกค่า Location จากรหัสห้อง: {resolvedLocationValue || '-'}
@@ -423,11 +424,11 @@ export default function AssetForm({
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">ส่วนของห้องพัก / จุดติดตั้ง (อ้างอิงโซน)</label>
-                                <select
+                                <FloatingSelect
+                                    label="ส่วนของห้องพัก / จุดติดตั้ง (อ้างอิงโซน)"
                                     value={selectedZoneCode}
                                     onChange={(event) => setSelectedZoneCode(event.target.value)}
-                                    className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                                    className="focus:ring-blue-500/20"
                                     disabled={!selectedRoomCode}
                                 >
                                     <option value="">{selectedRoomCode ? '-- เลือกโซน (ถ้ามี) --' : '-- กรุณาเลือกห้องก่อน --'}</option>
@@ -436,7 +437,7 @@ export default function AssetForm({
                                             {zone.zoneLabel}
                                         </option>
                                     ))}
-                                </select>
+                                </FloatingSelect>
                                 <input type="hidden" name="room_section" value={resolvedRoomSectionValue} />
                                 <p className="mt-1 text-xs text-gray-500">
                                     บันทึกค่า Room section จากโซน: {resolvedRoomSectionValue || '-'}
@@ -445,19 +446,21 @@ export default function AssetForm({
                         </>
                     ) : (
                         <>
+                            <FloatingInput
+                                label="สถานที่ตั้ง"
+                                type="text"
+                                name="location"
+                                defaultValue={asset?.location || prefill?.location || ''}
+                                className="focus:ring-blue-500/20"
+                            />
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">สถานที่ตั้ง</label>
-                                <input type="text" name="location" defaultValue={asset?.location || prefill?.location || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">ส่วนของห้องพัก / จุดติดตั้ง</label>
-                                <input
+                                <FloatingInput
+                                    label="ส่วนของห้องพัก / จุดติดตั้ง"
                                     type="text"
                                     name="room_section"
                                     list="room-section-presets"
                                     defaultValue={asset?.room_section || prefill?.room_section || ''}
-                                    placeholder="เช่น โซนเตียงนอน, ห้องน้ำ, ระเบียง"
-                                    className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
+                                    className="focus:ring-blue-500/20"
                                 />
                                 <datalist id="room-section-presets">
                                     {ROOM_SECTION_PRESETS.map((section) => (
@@ -468,85 +471,93 @@ export default function AssetForm({
                         </>
                     )}
                     {asset?.asset_id && (
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Transfer Approval Ref</label>
-                            <input
-                                type="text"
-                                name="transfer_approval_ref"
-                                placeholder="Required if location is changed and policy requires approval (e.g. REQ-YYYYMMDD-001)"
-                                className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
-                            />
-                        </div>
+                        <FloatingInput
+                            label="Transfer Approval Ref"
+                            type="text"
+                            name="transfer_approval_ref"
+                            className="focus:ring-blue-500/20"
+                        />
                     )}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">สถานะ</label>
-                        <select
-                            name="status"
-                            value={selectedStatus}
-                            onChange={(event) => setSelectedStatus(event.target.value)}
-                            className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
-                        >
-                            <option value="Active">Active (ใช้งานปกติ)</option>
-                            <option value="DepreciationPaused">Depreciation Paused (หยุดคิดค่าเสื่อม)</option>
-                            <option value="InRepair">In Repair (ส่งซ่อม)</option>
-                            <option value="Sold">Sold (ขายแล้ว)</option>
-                            <option value="Disposed">Disposed (จำหน่ายออก)</option>
-                            <option value="Lost">Lost (สูญหาย)</option>
-                        </select>
-                    </div>
+                    <FloatingSelect
+                        label="สถานะ"
+                        name="status"
+                        value={selectedStatus}
+                        onChange={(event) => setSelectedStatus(event.target.value)}
+                        className="focus:ring-blue-500/20"
+                    >
+                        <option value="Active">Active (ใช้งานปกติ)</option>
+                        <option value="DepreciationPaused">Depreciation Paused (หยุดคิดค่าเสื่อม)</option>
+                        <option value="InRepair">In Repair (ส่งซ่อม)</option>
+                        <option value="Sold">Sold (ขายแล้ว)</option>
+                        <option value="Disposed">Disposed (จำหน่ายออก)</option>
+                        <option value="Lost">Lost (สูญหาย)</option>
+                    </FloatingSelect>
                     {selectedStatus === 'Disposed' && (
                         <>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">Disposal Reason *</label>
-                                <textarea
-                                    name="disposal_reason"
-                                    rows={2}
-                                    required
-                                    placeholder="Reason for disposal / retirement"
-                                    className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">Secondary Approver</label>
-                                <input
-                                    type="text"
-                                    name="secondary_approver"
-                                    placeholder="Required when dual approval policy is enabled"
-                                    className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"
-                                />
-                            </div>
+                            <FloatingTextarea
+                                label="Disposal Reason *"
+                                name="disposal_reason"
+                                rows={2}
+                                className="focus:ring-blue-500/20"
+                                required
+                            />
+                            <FloatingInput
+                                label="Secondary Approver"
+                                type="text"
+                                name="secondary_approver"
+                                className="focus:ring-blue-500/20"
+                            />
                         </>
                     )}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Serial Number (S/N)</label>
-                        <input type="text" name="serial_number" defaultValue={asset?.serial_number || prefill?.serial_number || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">ยี่ห้อ (Brand)</label>
-                        <input type="text" name="brand" defaultValue={asset?.brand || prefill?.brand || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">รุ่น (Model)</label>
-                        <input type="text" name="model" defaultValue={asset?.model || prefill?.model || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">ร้านค้า/ตัวแทนจำหน่าย (Vendor)</label>
-                        <input type="text" name="vendor" defaultValue={asset?.vendor || prefill?.vendor || ''} placeholder="ระบุชื่อร้านค้าหรือบริษัทที่ซื้อมา" className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">รายละเอียดเพิ่มเติม</label>
-                        <textarea name="description" rows={3} defaultValue={asset?.description || prefill?.description || ''} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3"></textarea>
-                    </div>
+                    <FloatingInput
+                        label="Serial Number (S/N)"
+                        type="text"
+                        name="serial_number"
+                        defaultValue={asset?.serial_number || prefill?.serial_number || ''}
+                        className="focus:ring-blue-500/20"
+                    />
+                    <FloatingInput
+                        label="ยี่ห้อ (Brand)"
+                        type="text"
+                        name="brand"
+                        defaultValue={asset?.brand || prefill?.brand || ''}
+                        className="focus:ring-blue-500/20"
+                    />
+                    <FloatingInput
+                        label="รุ่น (Model)"
+                        type="text"
+                        name="model"
+                        defaultValue={asset?.model || prefill?.model || ''}
+                        className="focus:ring-blue-500/20"
+                    />
+                    <FloatingInput
+                        label="ร้านค้า/ตัวแทนจำหน่าย (Vendor)"
+                        type="text"
+                        name="vendor"
+                        defaultValue={asset?.vendor || prefill?.vendor || ''}
+                        className="focus:ring-blue-500/20"
+                    />
+                    <FloatingTextarea
+                        label="รายละเอียดเพิ่มเติม"
+                        name="description"
+                        rows={3}
+                        defaultValue={asset?.description || prefill?.description || ''}
+                        className="focus:ring-blue-500/20"
+                    />
                 </div>
 
                 {/* Right: Accounting & Image */}
                 <div className="space-y-4">
                     <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 space-y-4">
                         <h3 className="text-sm font-bold text-blue-800 mb-2">ข้อมูลทางบัญชี (สำหรับการคำนวณค่าเสื่อม)</h3>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">วันที่ซื้อ *</label>
-                            <input type="date" name="purchase_date" defaultValue={asset?.purchase_date ? new Date(asset.purchase_date).toISOString().split('T')[0] : ''} required className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
-                        </div>
+                        <FloatingInput
+                            label="วันที่ซื้อ *"
+                            type="date"
+                            name="purchase_date"
+                            defaultValue={asset?.purchase_date ? new Date(asset.purchase_date).toISOString().split('T')[0] : ''}
+                            className="bg-white focus:ring-blue-500/20"
+                            required
+                        />
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">ราคาซื้อ (บาท) *</label>
@@ -557,10 +568,14 @@ export default function AssetForm({
                                 <CurrencyInput name="salvage_value" defaultValue={asset ? Number(asset.salvage_value) : 0} placeholder="0.00" />
                             </div>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">อายุการใช้งาน (ปี) *</label>
-                            <input type="number" name="useful_life_years" defaultValue={asset?.useful_life_years || 5} required className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3" />
-                        </div>
+                        <FloatingInput
+                            label="อายุการใช้งาน (ปี) *"
+                            type="number"
+                            name="useful_life_years"
+                            defaultValue={asset?.useful_life_years || 5}
+                            className="bg-white focus:ring-blue-500/20"
+                            required
+                        />
                     </div>
 
                     <div>
