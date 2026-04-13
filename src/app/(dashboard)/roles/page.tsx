@@ -7,12 +7,12 @@ import { getRoles } from '@/actions/roleActions';
 import { auth } from '@/auth';
 import { canManageAdminRoles } from '@/lib/rbac';
 import {
-    canDeleteUserWithRole,
     getRoleAvatarColorClass,
     getRoleLabel,
     isLockedPermissionRole,
 } from '@/lib/roles';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
+import { resolveUserManagementActionState } from '@/lib/user-management-access';
 
 import RolePermissionEditor from './RolePermissionEditor';
 import UserPermissionButton from './UserPermissionButton';
@@ -57,11 +57,11 @@ export default async function UsersPage() {
                             Role And Access Control
                         </div>
                         <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-                            จัดการผู้ใช้และสิทธิ์การเข้าถึง
+                            เน€เธยเน€เธเธ‘เน€เธโ€เน€เธยเน€เธเธ’เน€เธเธเน€เธยเน€เธเธเน€เธยเน€เธยเน€เธยเน€เธยเน€เธยเน€เธเธ…เน€เธเธเน€เธเธเน€เธเธ”เน€เธโ€”เน€เธยเน€เธเธ”เน€เธยเน€เธยเน€เธเธ’เน€เธเธเน€เธโฌเน€เธยเน€เธยเน€เธเธ’เน€เธโ€“เน€เธเธ–เน€เธย
                         </h1>
                         <p className="text-sm leading-6 text-slate-600 sm:text-[15px]">
-                            รวมการจัดการผู้ใช้, บทบาท, การปลดล็อกบัญชี และการ override สิทธิ์ไว้ในหน้าเดียว
-                            เพื่อให้ตรวจสอบและปรับสิทธิ์ได้ง่ายขึ้น
+                            เน€เธเธเน€เธเธเน€เธเธเน€เธยเน€เธเธ’เน€เธเธเน€เธยเน€เธเธ‘เน€เธโ€เน€เธยเน€เธเธ’เน€เธเธเน€เธยเน€เธเธเน€เธยเน€เธยเน€เธยเน€เธย, เน€เธยเน€เธโ€”เน€เธยเน€เธเธ’เน€เธโ€”, เน€เธยเน€เธเธ’เน€เธเธเน€เธยเน€เธเธ…เน€เธโ€เน€เธเธ…เน€เธยเน€เธเธเน€เธยเน€เธยเน€เธเธ‘เน€เธยเน€เธยเน€เธเธ• เน€เธยเน€เธเธ…เน€เธเธเน€เธยเน€เธเธ’เน€เธเธ override เน€เธเธเน€เธเธ”เน€เธโ€”เน€เธยเน€เธเธ”เน€เธยเน€เธยเน€เธเธเน€เธยเน€เธยเน€เธยเน€เธเธเน€เธยเน€เธยเน€เธเธ’เน€เธโฌเน€เธโ€เน€เธเธ•เน€เธเธเน€เธเธ
+                            เน€เธโฌเน€เธยเน€เธเธ—เน€เธยเน€เธเธเน€เธยเน€เธเธเน€เธยเน€เธโ€ขเน€เธเธเน€เธเธเน€เธยเน€เธเธเน€เธเธเน€เธยเน€เธยเน€เธเธ…เน€เธเธเน€เธยเน€เธเธเน€เธเธ‘เน€เธยเน€เธเธเน€เธเธ”เน€เธโ€”เน€เธยเน€เธเธ”เน€เธยเน€เธยเน€เธโ€เน€เธยเน€เธยเน€เธยเน€เธเธ’เน€เธเธเน€เธยเน€เธเธ–เน€เธยเน€เธย
                         </p>
                     </div>
 
@@ -71,7 +71,7 @@ export default async function UsersPage() {
                             className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
                         >
                             <UserPlus className="mr-2 h-4 w-4" />
-                            เพิ่มผู้ใช้งาน
+                            เน€เธโฌเน€เธยเน€เธเธ”เน€เธยเน€เธเธเน€เธยเน€เธเธเน€เธยเน€เธยเน€เธยเน€เธยเน€เธยเน€เธเธ’เน€เธย
                         </Link>
                     )}
                 </div>
@@ -81,7 +81,7 @@ export default async function UsersPage() {
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
                     <div className="flex items-center justify-between">
                         <div>
-                            <div className="text-sm font-medium text-slate-500">ผู้ใช้ทั้งหมด</div>
+                            <div className="text-sm font-medium text-slate-500">เน€เธยเน€เธเธเน€เธยเน€เธยเน€เธยเน€เธยเน€เธโ€”เน€เธเธ‘เน€เธยเน€เธยเน€เธเธเน€เธเธเน€เธโ€</div>
                             <div className="mt-1 text-2xl font-bold text-slate-900">{userRows.length}</div>
                         </div>
                         <div className="rounded-2xl bg-blue-50 p-3 text-blue-600">
@@ -93,7 +93,7 @@ export default async function UsersPage() {
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
                     <div className="flex items-center justify-between">
                         <div>
-                            <div className="text-sm font-medium text-slate-500">บทบาทในระบบ</div>
+                            <div className="text-sm font-medium text-slate-500">เน€เธยเน€เธโ€”เน€เธยเน€เธเธ’เน€เธโ€”เน€เธยเน€เธยเน€เธเธเน€เธเธเน€เธยเน€เธย</div>
                             <div className="mt-1 text-2xl font-bold text-slate-900">{roles.length}</div>
                         </div>
                         <div className="rounded-2xl bg-violet-50 p-3 text-violet-600">
@@ -105,7 +105,7 @@ export default async function UsersPage() {
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
                     <div className="flex items-center justify-between">
                         <div>
-                            <div className="text-sm font-medium text-slate-500">บัญชีที่ถูกล็อก</div>
+                            <div className="text-sm font-medium text-slate-500">เน€เธยเน€เธเธ‘เน€เธยเน€เธยเน€เธเธ•เน€เธโ€”เน€เธเธ•เน€เธยเน€เธโ€“เน€เธเธเน€เธยเน€เธเธ…เน€เธยเน€เธเธเน€เธย</div>
                             <div className="mt-1 text-2xl font-bold text-slate-900">{lockedUsersCount}</div>
                         </div>
                         <div className="rounded-2xl bg-amber-50 p-3 text-amber-600">
@@ -117,7 +117,7 @@ export default async function UsersPage() {
                 <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
                     <div className="flex items-center justify-between">
                         <div>
-                            <div className="text-sm font-medium text-slate-500">บทบาทที่ล็อกสิทธิ์</div>
+                            <div className="text-sm font-medium text-slate-500">เน€เธยเน€เธโ€”เน€เธยเน€เธเธ’เน€เธโ€”เน€เธโ€”เน€เธเธ•เน€เธยเน€เธเธ…เน€เธยเน€เธเธเน€เธยเน€เธเธเน€เธเธ”เน€เธโ€”เน€เธยเน€เธเธ”เน€เธย</div>
                             <div className="mt-1 text-2xl font-bold text-slate-900">{protectedRolesCount}</div>
                         </div>
                         <div className="rounded-2xl bg-rose-50 p-3 text-rose-600">
@@ -130,9 +130,9 @@ export default async function UsersPage() {
             <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
                 <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
                     <div>
-                        <h2 className="text-lg font-semibold text-slate-900">รายการผู้ใช้งาน</h2>
+                        <h2 className="text-lg font-semibold text-slate-900">เน€เธเธเน€เธเธ’เน€เธเธเน€เธยเน€เธเธ’เน€เธเธเน€เธยเน€เธเธเน€เธยเน€เธยเน€เธยเน€เธยเน€เธยเน€เธเธ’เน€เธย</h2>
                         <p className="mt-1 text-sm text-slate-500">
-                            แสดงข้อมูลสำคัญของผู้ใช้ พร้อมปุ่มจัดการที่เข้าถึงได้ง่ายขึ้นในทุกขนาดหน้าจอ
+                            เน€เธยเน€เธเธเน€เธโ€เน€เธยเน€เธยเน€เธยเน€เธเธเน€เธเธเน€เธเธเน€เธเธ…เน€เธเธเน€เธเธ“เน€เธยเน€เธเธ‘เน€เธยเน€เธยเน€เธเธเน€เธยเน€เธยเน€เธเธเน€เธยเน€เธยเน€เธยเน€เธย เน€เธยเน€เธเธเน€เธยเน€เธเธเน€เธเธเน€เธยเน€เธเธเน€เธยเน€เธเธเน€เธยเน€เธเธ‘เน€เธโ€เน€เธยเน€เธเธ’เน€เธเธเน€เธโ€”เน€เธเธ•เน€เธยเน€เธโฌเน€เธยเน€เธยเน€เธเธ’เน€เธโ€“เน€เธเธ–เน€เธยเน€เธยเน€เธโ€เน€เธยเน€เธยเน€เธยเน€เธเธ’เน€เธเธเน€เธยเน€เธเธ–เน€เธยเน€เธยเน€เธยเน€เธยเน€เธโ€”เน€เธเธเน€เธยเน€เธยเน€เธยเน€เธเธ’เน€เธโ€เน€เธเธเน€เธยเน€เธยเน€เธเธ’เน€เธยเน€เธเธ
                         </p>
                     </div>
                     <div className="inline-flex w-fit items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
@@ -147,15 +147,20 @@ export default async function UsersPage() {
                             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
                                 <Users className="h-6 w-6" />
                             </div>
-                            <h3 className="mt-4 text-lg font-semibold text-slate-900">ยังไม่มีผู้ใช้งานในระบบ</h3>
+                            <h3 className="mt-4 text-lg font-semibold text-slate-900">เน€เธเธเน€เธเธ‘เน€เธยเน€เธยเน€เธเธเน€เธยเน€เธเธเน€เธเธ•เน€เธยเน€เธเธเน€เธยเน€เธยเน€เธยเน€เธยเน€เธยเน€เธเธ’เน€เธยเน€เธยเน€เธยเน€เธเธเน€เธเธเน€เธยเน€เธย</h3>
                             <p className="mt-2 text-sm text-slate-500">
-                                เพิ่มผู้ใช้งานใหม่เพื่อเริ่มกำหนดบทบาทและสิทธิ์การเข้าถึง
+                                เน€เธโฌเน€เธยเน€เธเธ”เน€เธยเน€เธเธเน€เธยเน€เธเธเน€เธยเน€เธยเน€เธยเน€เธยเน€เธยเน€เธเธ’เน€เธยเน€เธยเน€เธเธเน€เธเธเน€เธยเน€เธโฌเน€เธยเน€เธเธ—เน€เธยเน€เธเธเน€เธโฌเน€เธเธเน€เธเธ”เน€เธยเน€เธเธเน€เธยเน€เธเธ“เน€เธเธเน€เธยเน€เธโ€เน€เธยเน€เธโ€”เน€เธยเน€เธเธ’เน€เธโ€”เน€เธยเน€เธเธ…เน€เธเธเน€เธเธเน€เธเธ”เน€เธโ€”เน€เธยเน€เธเธ”เน€เธยเน€เธยเน€เธเธ’เน€เธเธเน€เธโฌเน€เธยเน€เธยเน€เธเธ’เน€เธโ€“เน€เธเธ–เน€เธย
                             </p>
                         </div>
                     ) : (
                         <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
                             {userRows.map((user) => {
-                                const isSelfLockedAdmin = user.p_id === currentUserId && isLockedPermissionRole(user.role);
+                                const actionState = resolveUserManagementActionState({
+                                    targetRole: user.role,
+                                    targetUserId: user.p_id,
+                                    currentUserId,
+                                });
+                                const isSelfLockedAdmin = actionState.isSelfLockedRole;
                                 const isCurrentlyLocked = Boolean(user.locked_until && new Date(user.locked_until) > new Date());
 
                                 return (
@@ -187,21 +192,23 @@ export default async function UsersPage() {
 
                                             {canEdit && (
                                                 <div className="flex shrink-0 items-center gap-1 self-start rounded-full border border-slate-200 bg-slate-50 p-1">
-                                                    {isSelfLockedAdmin ? (
+                                                    <Link
+                                                        href={`/roles/${user.p_id}/edit`}
+                                                        className={isSelfLockedAdmin ? 'rounded-full p-2 text-amber-500 transition hover:bg-blue-50 hover:text-blue-600' : 'rounded-full p-2 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600'}
+                                                        title={isSelfLockedAdmin
+                                                            ? 'เนเธเนเนเธเธเนเธญเธกเธนเธฅเนเธฅเธฐเธฃเธซเธฑเธชเธเนเธฒเธเนเธ”เน เนเธ•เนเน€เธเธฅเธตเนเธขเธ role เธเธญเธเธเธฑเธเธเธต admin เธ•เธฑเธงเน€เธญเธเนเธกเนเนเธ”เน'
+                                                            : 'เนเธเนเนเธเธเธนเนเนเธเน'}
+                                                    >
+                                                        <Edit className="h-4.5 w-4.5" />
+                                                    </Link>
+
+                                                    {isSelfLockedAdmin && (
                                                         <span
                                                             className="rounded-full bg-amber-50 p-2 text-amber-500"
-                                                            title="บัญชี admin ของตัวเองเปลี่ยน role ไม่ได้"
+                                                            title="role เธเธญเธเธเธฑเธเธเธต admin เธ•เธฑเธงเน€เธญเธเธ–เธนเธเธฅเนเธญเธเนเธงเน เนเธ•เนเธขเธฑเธเนเธเนเนเธเธเนเธญเธกเธนเธฅเนเธฅเธฐเธฃเธซเธฑเธชเธเนเธฒเธเนเธ”เน"
                                                         >
                                                             <Lock className="h-4.5 w-4.5" />
                                                         </span>
-                                                    ) : (
-                                                        <Link
-                                                            href={`/roles/${user.p_id}/edit`}
-                                                            className="rounded-full p-2 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600"
-                                                            title="แก้ไขผู้ใช้"
-                                                        >
-                                                            <Edit className="h-4.5 w-4.5" />
-                                                        </Link>
                                                     )}
 
                                                     <UserPermissionButton
@@ -223,7 +230,7 @@ export default async function UsersPage() {
                                                             <button
                                                                 type="submit"
                                                                 className="rounded-full p-2 text-slate-400 transition hover:bg-green-50 hover:text-green-600"
-                                                                title="ปลดล็อกบัญชี"
+                                                                title="เน€เธยเน€เธเธ…เน€เธโ€เน€เธเธ…เน€เธยเน€เธเธเน€เธยเน€เธยเน€เธเธ‘เน€เธยเน€เธยเน€เธเธ•"
                                                             >
                                                                 <Lock className="h-4.5 w-4.5" />
                                                             </button>
@@ -232,15 +239,15 @@ export default async function UsersPage() {
 
                                                     <form action={async () => {
                                                         'use server';
-                                                        if (canDeleteUserWithRole(user.role)) {
+                                                        if (actionState.canDelete) {
                                                             await deleteUser(user.p_id);
                                                         }
                                                     }}>
                                                         <button
                                                             type="submit"
-                                                            disabled={!canDeleteUserWithRole(user.role)}
+                                                            disabled={!actionState.canDelete}
                                                             className="rounded-full p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
-                                                            title="ลบผู้ใช้"
+                                                            title="เน€เธเธ…เน€เธยเน€เธยเน€เธเธเน€เธยเน€เธยเน€เธยเน€เธย"
                                                         >
                                                             <Trash2 className="h-4.5 w-4.5" />
                                                         </button>
@@ -265,7 +272,7 @@ export default async function UsersPage() {
 
                                             {isSelfLockedAdmin && (
                                                 <div className="rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700">
-                                                    บัญชี admin ของตัวเองไม่สามารถเปลี่ยน role ได้
+                                                    เน€เธยเน€เธเธ‘เน€เธยเน€เธยเน€เธเธ• admin เน€เธยเน€เธเธเน€เธยเน€เธโ€ขเน€เธเธ‘เน€เธเธเน€เธโฌเน€เธเธเน€เธยเน€เธยเน€เธเธเน€เธยเน€เธเธเน€เธเธ’เน€เธเธเน€เธเธ’เน€เธเธเน€เธโ€“เน€เธโฌเน€เธยเน€เธเธ…เน€เธเธ•เน€เธยเน€เธเธเน€เธย role เน€เธยเน€เธโ€เน€เธย
                                                 </div>
                                             )}
 
@@ -273,7 +280,7 @@ export default async function UsersPage() {
                                                 <div>
                                                     <span className="inline-flex w-fit items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
                                                         <Lock className="h-3 w-3" />
-                                                        บัญชีถูกล็อก
+                                                        เน€เธยเน€เธเธ‘เน€เธยเน€เธยเน€เธเธ•เน€เธโ€“เน€เธเธเน€เธยเน€เธเธ…เน€เธยเน€เธเธเน€เธย
                                                     </span>
                                                 </div>
                                             )}
