@@ -19,6 +19,9 @@
 
 # production
 /build
+/StockMovement_Install/
+/.npm-cache/
+/.vs/
 
 # misc
 .DS_Store
@@ -57,11 +60,7 @@ next-env.d.ts
 *.sql
 *.log
 /backups/
-prisma/migrations/**/*.sql
-!prisma/migrations/20260321121000_add_created_by_user_id_to_po/migration.sql
-!prisma/migrations/20260328160000_add_room_section_to_assets/migration.sql
-!prisma/migrations/20260330183000_add_product_sub_sub_category_code/migration.sql
-!prisma/migrations/20260331120000_add_notification_reads/migration.sql
+!prisma/migrations/**/*.sql
 
 # deploy tool dist
 /tools/dist/
@@ -78,3 +77,5 @@ prisma/migrations/**/*.sql
 
 # office temporary lock files
 ~$*.xlsx
+*AutoRecovered*.xlsx
+testdata.xlsx

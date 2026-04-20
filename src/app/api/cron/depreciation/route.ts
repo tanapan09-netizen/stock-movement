@@ -3,13 +3,14 @@ import { runMonthlyDepreciationSnapshot } from '@/lib/server/asset-depreciation'
 
 // This route should be called on the last day of every month by a cron job
 // (e.g., Vercel Cron or Google Cloud Scheduler).
-export async function POST() {
+export async function POST(request: Request) {
     try {
-        // Optional: Check for a secret token in the request headers to secure the cron endpoint
-        // const authHeader = request.headers.get('authorization');
-        // if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        //     return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
-        // }
+        const authHeader = request.headers.get('authorization');
+        const cronSecret = process.env.CRON_SECRET;
+        if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+            return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+        }
+
         const result = await runMonthlyDepreciationSnapshot({
             performedBy: 'System Cron',
         });

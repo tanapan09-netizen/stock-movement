@@ -33,10 +33,12 @@ export async function GET(request: Request) {
 
         // 3. Get Low Stock Items
         // Replicating logic from stock reports: where qty <= min_qty
-        const lowStockItems = await prisma.$queryRaw<any[]>`
+        const lowStockItems = await prisma.$queryRaw<Array<{ count: bigint | number }>>`
             SELECT COUNT(*) as count
             FROM tbl_products 
-            WHERE quantity <= min_quantity AND is_active = 1
+            WHERE p_count <= safety_stock
+              AND active = 1
+              AND safety_stock > 0
         `;
         const lowStockCount = Number(lowStockItems[0]?.count || 0);
 

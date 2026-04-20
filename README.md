@@ -82,12 +82,19 @@ A comprehensive stock management and maintenance tracking system built with Next
 
 ## Tech Stack
 
--   **Framework**: Next.js 14 (App Router)
+-   **Framework**: Next.js 16 (App Router)
 -   **Database**: MySQL
 -   **ORM**: Prisma
 -   **Styling**: Tailwind CSS
 -   **Auth**: NextAuth.js (v5)
 -   **Charts**: Recharts
+
+## Quality Checks
+
+-   Lint: `npm run lint`
+-   Type check: `npm run typecheck`
+-   Tests: `npm run test`
+-   Build: `npm run build`
 
 ## License
 

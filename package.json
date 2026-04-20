@@ -7,16 +7,17 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "npm run check:mojibake && (prisma generate || echo [build] prisma generate failed - continuing) && next build",
+    "build": "npm run check:mojibake && prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "check:mojibake": "node scripts/check-mojibake.js",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "uploads:cleanup": "node scripts/cleanup-orphan-uploads.js",
     "uploads:cleanup:execute": "node scripts/cleanup-orphan-uploads.js --execute",
     "prisma:generate": "prisma generate",
-    "postinstall": "prisma generate || echo [postinstall] prisma generate failed - continuing"
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",
