@@ -6,6 +6,8 @@ import threading
 import os
 import sys
 import datetime
+import shlex
+import shutil
 
 # --- Setup CustomTkinter ---
 ctk.set_appearance_mode("Dark")
@@ -25,6 +27,12 @@ class DeployTool(ctk.CTk):
         # Variables
         self.db_push_var = ctk.StringVar(value="on")
         self.status_var = ctk.StringVar(value="Ready")
+        self.compose_file = "docker-compose.prod.yml"
+        self.project_env = self.load_project_env()
+        self.compose_base_cmd = self.detect_compose_base_cmd()
+        self.compose_services = self.detect_compose_services()
+        self.app_service = self.resolve_service_name('DEPLOY_APP_SERVICE', preferred='app')
+        self.db_service = self.resolve_service_name('DEPLOY_DB_SERVICE', preferred='db')
         
         self.setup_ui()
         self.check_docker_status()
@@ -161,15 +169,148 @@ class DeployTool(ctk.CTk):
         self.log_area.see(tk.END)
         self.log_area.config(state='disabled')
 
-    def run_command_process(self, command):
+    def load_project_env(self):
+        env_path = os.path.join(os.getcwd(), '.env')
+        env_data = {}
+        if not os.path.exists(env_path):
+            return env_data
+
+        try:
+            with open(env_path, 'r', encoding='utf-8', errors='replace') as env_file:
+                for raw_line in env_file:
+                    line = raw_line.strip()
+                    if not line or line.startswith('#') or '=' not in line:
+                        continue
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    if value and value[0] == value[-1] and value[0] in ('"', "'"):
+                        value = value[1:-1]
+                    env_data[key] = value
+        except Exception:
+            return {}
+
+        return env_data
+
+    def get_env_value(self, key, default=None):
+        value = os.environ.get(key)
+        if value is not None and value != "":
+            return value
+
+        value = self.project_env.get(key)
+        if value is not None and value != "":
+            return value
+
+        return default
+
+    def detect_compose_base_cmd(self):
+        candidates = [
+            ["docker", "compose"],
+            ["docker-compose"],
+        ]
+        for candidate in candidates:
+            executable = candidate[0]
+            if shutil.which(executable) is None:
+                continue
+            try:
+                result = subprocess.run(
+                    candidate + ["version"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    shell=False,
+                )
+                if result.returncode == 0:
+                    return candidate
+            except Exception:
+                continue
+
+        # Fallback for legacy environments
+        return ["docker-compose"]
+
+    def compose_cmd(self, *args):
+        return [*self.compose_base_cmd, "-f", self.compose_file, *args]
+
+    def detect_compose_services(self):
+        command = self.compose_cmd("config", "--services")
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                check=False,
+                shell=False,
+            )
+            if result.returncode == 0:
+                services = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+                if services:
+                    return services
+        except Exception:
+            pass
+
+        # Fallback parser if docker compose is unavailable during startup
+        services = []
+        compose_path = os.path.join(os.getcwd(), self.compose_file)
+        if not os.path.exists(compose_path):
+            return services
+
+        in_services = False
+        with open(compose_path, 'r', encoding='utf-8', errors='replace') as compose_file:
+            for raw_line in compose_file:
+                line = raw_line.rstrip('\n')
+                stripped = line.strip()
+                if not stripped or stripped.startswith('#'):
+                    continue
+                indent = len(line) - len(line.lstrip(' '))
+                if stripped == "services:" and indent == 0:
+                    in_services = True
+                    continue
+                if in_services:
+                    if indent == 0 and stripped.endswith(':'):
+                        break
+                    if indent == 2 and stripped.endswith(':'):
+                        service_name = stripped[:-1].strip()
+                        if service_name:
+                            services.append(service_name)
+
+        return services
+
+    def resolve_service_name(self, env_key, preferred):
+        override = self.get_env_value(env_key)
+        if override and (not self.compose_services or override in self.compose_services):
+            return override
+
+        if preferred in self.compose_services:
+            return preferred
+
+        if preferred == "db":
+            for service_name in self.compose_services:
+                if "db" in service_name or "mysql" in service_name:
+                    return service_name
+
+        if self.compose_services:
+            return self.compose_services[0]
+
+        return preferred
+
+    def format_command(self, command):
+        if isinstance(command, str):
+            return command
+        return " ".join(shlex.quote(str(part)) for part in command)
+
+    def run_command_process(self, command, shell=None):
         """Helper to run command and pipe output to log_area"""
         return_code = 0
+        if shell is None:
+            shell = isinstance(command, str)
         try:
             process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                shell=True,
+                shell=shell,
                 text=True,
                 bufsize=1,
                 encoding='utf-8',
@@ -192,16 +333,54 @@ class DeployTool(ctk.CTk):
             return True
         try:
             result = subprocess.run(
-                "git rev-parse --is-inside-work-tree",
-                shell=True,
+                ["git", "rev-parse", "--is-inside-work-tree"],
                 capture_output=True,
                 text=True,
                 encoding='utf-8',
-                errors='replace'
+                errors='replace',
+                shell=False,
             )
             return result.returncode == 0 and result.stdout.strip().lower() == 'true'
         except Exception:
             return False
+
+    def get_current_branch(self):
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                check=False,
+                shell=False,
+            )
+            if result.returncode != 0:
+                return None
+            branch = result.stdout.strip()
+            if not branch or branch == "HEAD":
+                return None
+            return branch
+        except Exception:
+            return None
+
+    def get_upstream_ref(self):
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                check=False,
+                shell=False,
+            )
+            if result.returncode != 0:
+                return None
+            upstream = result.stdout.strip()
+            return upstream if upstream else None
+        except Exception:
+            return None
 
     def git_prereq_message(self):
         return (
@@ -209,7 +388,7 @@ class DeployTool(ctk.CTk):
             "Fix options:\n"
             "1) Clone the project with Git (recommended)\n"
             "2) If you copied the folder, copy the hidden .git folder too\n"
-            "3) Or run: git init, git remote add origin <url>, git fetch, git checkout main\n\n"
+            "3) Or run: git init, git remote add origin <url>, git fetch, git checkout <your-branch>\n\n"
             "หมายเหตุ: ถ้าโหลดมาเป็น ZIP จะไม่มีโฟลเดอร์ .git ทำให้ pull/push ไม่ได้"
         )
 
@@ -231,11 +410,17 @@ class DeployTool(ctk.CTk):
     def check_docker_status(self):
         def _target():
             self.after(0, lambda: self.container_list.delete(0, tk.END))
-            cmd = "docker ps --format \"table {{.Names}}\t{{.Status}}\t{{.Ports}}\""
-            self.after(0, lambda: self.log(f"> {cmd}", 'cmd'))
+            cmd = ["docker", "ps", "--format", "table {{.Names}}\t{{.Status}}\t{{.Ports}}"]
+            self.after(0, lambda: self.log(f"> {self.format_command(cmd)}", 'cmd'))
             
             try:
-                output = subprocess.check_output(cmd, shell=True, text=True).strip().split('\n')
+                output = subprocess.check_output(
+                    cmd,
+                    shell=False,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                ).strip().split('\n')
                 for line in output:
                      self.after(0, lambda l=line: self.container_list.insert(tk.END, l))
             except Exception as e:
@@ -255,17 +440,35 @@ class DeployTool(ctk.CTk):
                 self.after(0, lambda: messagebox.showerror("Git Not Found", self.git_prereq_message()))
                 return
             
-            cmd_fetch = "git fetch"
-            self.log(f"> {cmd_fetch}", 'cmd')
+            cmd_fetch = ["git", "fetch"]
+            self.log(f"> {self.format_command(cmd_fetch)}", 'cmd')
             if self.run_command_process(cmd_fetch) != 0:
                 self.log("Failed to fetch updates", 'error')
                 self.status_var.set("Update Check Failed")
                 return
 
-            cmd_log = "git log HEAD..origin/main --oneline"
+            current_branch = self.get_current_branch()
+            if not current_branch:
+                self.log("Cannot determine current git branch (detached HEAD?).", 'error')
+                self.status_var.set("Update Check Failed")
+                return
+
+            upstream_ref = self.get_upstream_ref() or f"origin/{current_branch}"
+            cmd_log = f"git log HEAD..{upstream_ref} --oneline"
             self.log(f"> {cmd_log}", 'cmd')
             try:
-                output = subprocess.check_output(cmd_log, shell=True, text=True).strip()
+                result = subprocess.run(
+                    ["git", "log", f"HEAD..{upstream_ref}", "--oneline"],
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    check=False,
+                    shell=False,
+                )
+                if result.returncode != 0:
+                    raise RuntimeError(result.stderr.strip() or "git log failed")
+                output = result.stdout.strip()
                 if output:
                     self.log(f"New updates available:\n{output}", 'success')
                     self.status_var.set("Updates Available")
@@ -293,16 +496,49 @@ class DeployTool(ctk.CTk):
                 
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             backup_file = f"backups/backup_{timestamp}.sql"
-            
-            cmd = f'docker-compose -f docker-compose.prod.yml exec -T db mysqldump -u root -pstockpassword stock_db > "{backup_file}"'
-            self.log(f"> {cmd}", 'cmd')
-            
-            if self.run_command_process(cmd) == 0:
-                self.log(f"Backup created successfully: {backup_file}", 'success')
-                self.status_var.set("Backup Complete")
-                self.after(0, lambda: messagebox.showinfo("Success", f"Database backed up to:\n{backup_file}"))
-            else:
-                self.log("Backup failed. Check logs.", 'error')
+
+            db_password = self.get_env_value("MYSQL_ROOT_PASSWORD", "stockpassword")
+            db_name = self.get_env_value("MYSQL_DATABASE", "stock_db")
+            db_service = self.db_service
+            cmd = self.compose_cmd(
+                "exec",
+                "-T",
+                db_service,
+                "mysqldump",
+                "-u",
+                "root",
+                f"-p{db_password}",
+                db_name,
+            )
+            self.log(f"> {self.format_command(cmd)} > {backup_file}", 'cmd')
+
+            try:
+                with open(backup_file, 'w', encoding='utf-8', errors='replace') as backup_handle:
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=backup_handle,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        encoding='utf-8',
+                        errors='replace',
+                        shell=False,
+                    )
+                    if process.stderr:
+                        for line in process.stderr:
+                            line = line.strip()
+                            if line:
+                                self.after(0, lambda l=line: self.log(l))
+                    process.wait()
+
+                if process.returncode == 0:
+                    self.log(f"Backup created successfully: {backup_file}", 'success')
+                    self.status_var.set("Backup Complete")
+                    self.after(0, lambda: messagebox.showinfo("Success", f"Database backed up to:\n{backup_file}"))
+                else:
+                    self.log("Backup failed. Check logs.", 'error')
+                    self.status_var.set("Backup Failed")
+            except Exception as e:
+                self.log(f"Backup failed: {e}", 'error')
                 self.status_var.set("Backup Failed")
                 
         threading.Thread(target=_target, daemon=True).start()
@@ -338,7 +574,20 @@ class DeployTool(ctk.CTk):
                 self.log("Nothing to commit or commit failed. Proceeding to push anyway just in case.", 'info')
                 
             self.log("\n[Step 3] Pushing to remote...", 'info')
-            if self.run_command_process("git push origin main") != 0:
+            current_branch = self.get_current_branch()
+            if not current_branch:
+                self.log("Cannot determine current git branch (detached HEAD?). Push aborted.", 'error')
+                self.status_var.set("Upload Failed")
+                return
+
+            upstream_ref = self.get_upstream_ref()
+            if upstream_ref:
+                push_cmd = "git push"
+            else:
+                push_cmd = f"git push -u origin {current_branch}"
+
+            self.log(f"> {push_cmd}", 'cmd')
+            if self.run_command_process(push_cmd) != 0:
                 self.log("Git push failed. Please check network or git status.", 'error')
                 self.status_var.set("Upload Failed")
                 return
@@ -391,26 +640,29 @@ class DeployTool(ctk.CTk):
     def open_ssh(self):
         """Opens a new terminal window connected to the app container"""
         self.log("=" * 50)
-        self.log("Opening SSH connection to 'app' container...", 'info')
-        
-        # Determine the terminal command based on the OS
-        if os.name == 'nt':
-            # Windows: use start cmd configured to run docker exec
-            cmd = 'start cmd /k "docker-compose -f docker-compose.prod.yml exec app sh"'
-        else:
-            # macOS/Linux: we try a few common terminal emulators
-            terminals = [
-                "x-terminal-emulator -e", "gnome-terminal --", "konsole -e", "xfce4-terminal -e", "mac-terminal"
-            ]
-            
-            if sys.platform == "darwin":
-                cmd = "osascript -e 'tell application \"Terminal\" to do script \"cd \\\"" + os.getcwd() + "\\\" && docker-compose -f docker-compose.prod.yml exec app sh\"'"
-            else:
-                cmd = f"x-terminal-emulator -e 'docker-compose -f docker-compose.prod.yml exec app sh'" # simplified default
-                
-        self.log(f"> {cmd}", 'cmd')
+        self.log(f"Opening SSH connection to '{self.app_service}' container...", 'info')
+
+        compose_exec_cmd = self.compose_cmd("exec", self.app_service, "sh")
         try:
-            subprocess.Popen(cmd, shell=True)
+            if os.name == 'nt':
+                compose_exec_line = subprocess.list2cmdline(compose_exec_cmd)
+                launch_cmd = ["cmd.exe", "/k", compose_exec_line]
+                self.log(f"> {self.format_command(launch_cmd)}", 'cmd')
+                subprocess.Popen(
+                    launch_cmd,
+                    shell=False,
+                    creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
+                )
+            elif sys.platform == "darwin":
+                command_line = f"cd {shlex.quote(os.getcwd())} && {self.format_command(compose_exec_cmd)}"
+                escaped = command_line.replace("\\", "\\\\").replace('"', '\\"')
+                launch_cmd = ["osascript", "-e", f'tell application "Terminal" to do script "{escaped}"']
+                self.log(f"> {self.format_command(launch_cmd)}", 'cmd')
+                subprocess.Popen(launch_cmd, shell=False)
+            else:
+                launch_cmd = ["x-terminal-emulator", "-e", *compose_exec_cmd]
+                self.log(f"> {self.format_command(launch_cmd)}", 'cmd')
+                subprocess.Popen(launch_cmd, shell=False)
             self.log("SSH window opened.", 'success')
         except Exception as e:
             self.log(f"Failed to open SSH window: {e}", 'error')
@@ -422,21 +674,38 @@ class DeployTool(ctk.CTk):
             messagebox.showwarning("Warning", "Please enter an SSH connection string.")
             return
 
+        try:
+            ssh_args = shlex.split(ssh_string, posix=True)
+        except ValueError as parse_error:
+            self.log(f"Invalid SSH input: {parse_error}", 'error')
+            messagebox.showerror("Invalid SSH Input", f"Could not parse SSH arguments:\n{parse_error}")
+            return
+
+        if not ssh_args:
+            messagebox.showwarning("Warning", "Please enter a valid SSH connection string.")
+            return
+
+        ssh_cmd = ["ssh", *ssh_args]
         self.log("=" * 50)
         self.log(f"Opening SSH connection to '{ssh_string}'...", 'info')
-        
-        # Determine the terminal command based on the OS
-        if os.name == 'nt':
-            cmd = f'start cmd /k "ssh {ssh_string}"'
-        else:
-            if sys.platform == "darwin":
-                cmd = f"osascript -e 'tell application \"Terminal\" to do script \"ssh {ssh_string}\"'"
-            else:
-                cmd = f"x-terminal-emulator -e 'ssh {ssh_string}'"
-                
-        self.log(f"> {cmd}", 'cmd')
         try:
-            subprocess.Popen(cmd, shell=True)
+            if os.name == 'nt':
+                self.log(f"> {self.format_command(ssh_cmd)}", 'cmd')
+                subprocess.Popen(
+                    ssh_cmd,
+                    shell=False,
+                    creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
+                )
+            elif sys.platform == "darwin":
+                command_line = self.format_command(ssh_cmd)
+                escaped = command_line.replace("\\", "\\\\").replace('"', '\\"')
+                launch_cmd = ["osascript", "-e", f'tell application "Terminal" to do script "{escaped}"']
+                self.log(f"> {self.format_command(launch_cmd)}", 'cmd')
+                subprocess.Popen(launch_cmd, shell=False)
+            else:
+                launch_cmd = ["x-terminal-emulator", "-e", *ssh_cmd]
+                self.log(f"> {self.format_command(launch_cmd)}", 'cmd')
+                subprocess.Popen(launch_cmd, shell=False)
             self.log("Remote SSH window opened.", 'success')
         except Exception as e:
             self.log(f"Failed to open Remote SSH window: {e}", 'error')
@@ -448,8 +717,8 @@ class DeployTool(ctk.CTk):
             self.status_var.set("Starting Server...")
             self.log("=" * 50)
             self.log("Starting Server...", 'info')
-            cmd = "docker-compose -f docker-compose.prod.yml up -d"
-            self.log(f"> {cmd}", 'cmd')
+            cmd = self.compose_cmd("up", "-d")
+            self.log(f"> {self.format_command(cmd)}", 'cmd')
             if self.run_command_process(cmd) == 0:
                 self.log("Server started successfully!", 'success')
                 self.status_var.set("Server Running")
@@ -466,8 +735,8 @@ class DeployTool(ctk.CTk):
             self.status_var.set("Stopping Server...")
             self.log("=" * 50)
             self.log("Stopping Server...", 'info')
-            cmd = "docker-compose -f docker-compose.prod.yml down"
-            self.log(f"> {cmd}", 'cmd')
+            cmd = self.compose_cmd("down")
+            self.log(f"> {self.format_command(cmd)}", 'cmd')
             if self.run_command_process(cmd) == 0:
                 self.log("Server stopped successfully!", 'success')
                 self.status_var.set("Server Stopped")
@@ -484,8 +753,8 @@ class DeployTool(ctk.CTk):
             self.status_var.set("Restarting Server...")
             self.log("=" * 50)
             self.log("Restarting Server...", 'info')
-            cmd = "docker-compose -f docker-compose.prod.yml restart"
-            self.log(f"> {cmd}", 'cmd')
+            cmd = self.compose_cmd("restart")
+            self.log(f"> {self.format_command(cmd)}", 'cmd')
             if self.run_command_process(cmd) == 0:
                 self.log("Server restarted successfully!", 'success')
                 self.status_var.set("Server Running")
@@ -519,36 +788,47 @@ class DeployTool(ctk.CTk):
                 return
             self.log("Skipping git pull (deploying current working tree).", 'info')
         else:
-            if self.run_command_process("git pull") != 0:
+            if self.run_command_process(["git", "pull"]) != 0:
                 self.log("Git pull failed. Aborting.", 'error')
                 self.status_var.set("Deploy Failed")
                 return
 
         self.log("\n[Step 2] Building Docker Image...", 'info')
-        build_cmd = "docker-compose -f docker-compose.prod.yml build app" 
+        build_cmd = self.compose_cmd("build", self.app_service)
+        self.log(f"> {self.format_command(build_cmd)}", 'cmd')
         if self.run_command_process(build_cmd) != 0:
             self.log("Build failed. Aborting.", 'error')
             self.status_var.set("Deploy Failed")
             return
 
-        self.log("\n[Step 3] Restarting Containers...", 'info')
-        up_cmd = "docker-compose -f docker-compose.prod.yml up -d"
-        if self.run_command_process(up_cmd) != 0:
-             self.log("Docker Up failed. Aborting.", 'error')
-             self.status_var.set("Deploy Failed")
-             return
-
         if self.db_push_var.get() == "on":
-             self.log("\n[Step 4] Pushing Database Schema...", 'info')
-             db_url = "mysql://root:stockpassword@db:3306/stock_db?ssl-mode=DISABLED"
-             db_cmd = f"docker-compose -f docker-compose.prod.yml exec -T app sh -c \"export DATABASE_URL={db_url} && npx prisma@5.22.0 db push\""
-             
-             if self.run_command_process(db_cmd) != 0:
-                 self.log("Database schema push failed. Aborting deploy to avoid schema mismatch.", 'error')
-                 self.status_var.set("Deploy Failed")
-                 return
-             else:
-                 self.log("Database Schema Pushed Successfully.", 'success')
+            self.log("\n[Step 3] Pushing Database Schema...", 'info')
+            db_cmd = self.compose_cmd(
+                "run",
+                "--rm",
+                self.app_service,
+                "npx",
+                "prisma@5.22.0",
+                "db",
+                "push",
+            )
+            self.log(f"> {self.format_command(db_cmd)}", 'cmd')
+
+            if self.run_command_process(db_cmd) != 0:
+                self.log("Database schema push failed. Aborting before container restart to avoid half deploy.", 'error')
+                self.status_var.set("Deploy Failed")
+                return
+            self.log("Database Schema Pushed Successfully.", 'success')
+        else:
+            self.log("\n[Step 3] Skipping Database Schema Push (disabled).", 'info')
+
+        self.log("\n[Step 4] Restarting Containers...", 'info')
+        up_cmd = self.compose_cmd("up", "-d")
+        self.log(f"> {self.format_command(up_cmd)}", 'cmd')
+        if self.run_command_process(up_cmd) != 0:
+            self.log("Docker Up failed. Aborting.", 'error')
+            self.status_var.set("Deploy Failed")
+            return
 
         self.log("\nDeployment Complete!", 'success')
         self.status_var.set("Deployed Successfully")
