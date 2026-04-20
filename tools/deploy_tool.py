@@ -112,7 +112,7 @@ class DeployTool(ctk.CTk):
         # --- Main Area ---
         self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.main_frame.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
-        self.main_frame.grid_rowconfigure(2, weight=1)
+        self.main_frame.grid_rowconfigure(3, weight=1)
         self.main_frame.grid_columnconfigure(0, weight=1)
         
         # Status Bar
@@ -125,10 +125,15 @@ class DeployTool(ctk.CTk):
         
         self.btn_refresh = ctk.CTkButton(self.status_frame, text="🔄 Refresh Status", width=120, command=self.check_docker_status, fg_color="#4B5563", hover_color="#374151")
         self.btn_refresh.grid(row=0, column=1, padx=20, pady=10, sticky="e")
+
+        # Progress Bar
+        self.progress_bar = ctk.CTkProgressBar(self.main_frame, mode="determinate")
+        self.progress_bar.grid(row=1, column=0, sticky="ew", pady=(0, 16))
+        self.progress_bar.set(0)
         
         # Docker Containers View
         self.containers_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
-        self.containers_frame.grid(row=1, column=0, sticky="ew", pady=(0, 20))
+        self.containers_frame.grid(row=2, column=0, sticky="ew", pady=(0, 20))
         
         self.containers_label = ctk.CTkLabel(self.containers_frame, text="📦 Docker Containers", font=ctk.CTkFont(weight="bold", size=14))
         self.containers_label.pack(anchor="w", padx=15, pady=(10, 0))
@@ -138,7 +143,7 @@ class DeployTool(ctk.CTk):
         
         # Logs View
         self.logs_frame = ctk.CTkFrame(self.main_frame, corner_radius=10)
-        self.logs_frame.grid(row=2, column=0, sticky="nsew")
+        self.logs_frame.grid(row=3, column=0, sticky="nsew")
         
         self.logs_label = ctk.CTkLabel(self.logs_frame, text="📝 Deployment Logs", font=ctk.CTkFont(weight="bold", size=14))
         self.logs_label.pack(anchor="w", padx=15, pady=(10, 0))
@@ -168,6 +173,26 @@ class DeployTool(ctk.CTk):
         self.log_area.insert(tk.END, message + "\n", tag)
         self.log_area.see(tk.END)
         self.log_area.config(state='disabled')
+
+    def set_progress(self, value):
+        try:
+            progress_value = float(value)
+        except (TypeError, ValueError):
+            progress_value = 0.0
+        progress_value = max(0.0, min(1.0, progress_value))
+
+        def _set():
+            self.progress_bar.stop()
+            self.progress_bar.configure(mode="determinate")
+            self.progress_bar.set(progress_value)
+
+        self.after(0, _set)
+
+    def reset_progress(self):
+        self.set_progress(0.0)
+
+    def complete_progress(self):
+        self.set_progress(1.0)
 
     def load_project_env(self):
         env_path = os.path.join(os.getcwd(), '.env')
@@ -431,12 +456,14 @@ class DeployTool(ctk.CTk):
     def check_updates(self):
         def _target():
             self.status_var.set("Checking for updates...")
+            self.set_progress(0.05)
             self.log("-" * 50)
             self.log("Checking for updates...", 'info')
 
             if not self.is_git_repo():
                 self.log("Not a Git repository. Skipping update check.", 'error')
                 self.status_var.set("Not a Git Repo")
+                self.reset_progress()
                 self.after(0, lambda: messagebox.showerror("Git Not Found", self.git_prereq_message()))
                 return
             
@@ -445,12 +472,15 @@ class DeployTool(ctk.CTk):
             if self.run_command_process(cmd_fetch) != 0:
                 self.log("Failed to fetch updates", 'error')
                 self.status_var.set("Update Check Failed")
+                self.reset_progress()
                 return
+            self.set_progress(0.55)
 
             current_branch = self.get_current_branch()
             if not current_branch:
                 self.log("Cannot determine current git branch (detached HEAD?).", 'error')
                 self.status_var.set("Update Check Failed")
+                self.reset_progress()
                 return
 
             upstream_ref = self.get_upstream_ref() or f"origin/{current_branch}"
@@ -472,13 +502,16 @@ class DeployTool(ctk.CTk):
                 if output:
                     self.log(f"New updates available:\n{output}", 'success')
                     self.status_var.set("Updates Available")
+                    self.complete_progress()
                     self.after(0, lambda: messagebox.showinfo("Updates Available", f"Found new commits:\n{output}"))
                 else:
                     self.log("System is up to date.", 'success')
                     self.status_var.set("Up to Date")
+                    self.complete_progress()
             except Exception as e:
                 self.log(f"Error checking git log: {e}", 'error')
                 self.status_var.set("Error")
+                self.reset_progress()
 
         threading.Thread(target=_target, daemon=True).start()
 
@@ -488,6 +521,7 @@ class DeployTool(ctk.CTk):
             
         def _target():
             self.status_var.set("Backing up data...")
+            self.set_progress(0.10)
             self.log("=" * 50)
             self.log("Starting Database Backup...", 'info')
             
@@ -511,6 +545,7 @@ class DeployTool(ctk.CTk):
                 db_name,
             )
             self.log(f"> {self.format_command(cmd)} > {backup_file}", 'cmd')
+            self.set_progress(0.40)
 
             try:
                 with open(backup_file, 'w', encoding='utf-8', errors='replace') as backup_handle:
@@ -533,13 +568,16 @@ class DeployTool(ctk.CTk):
                 if process.returncode == 0:
                     self.log(f"Backup created successfully: {backup_file}", 'success')
                     self.status_var.set("Backup Complete")
+                    self.complete_progress()
                     self.after(0, lambda: messagebox.showinfo("Success", f"Database backed up to:\n{backup_file}"))
                 else:
                     self.log("Backup failed. Check logs.", 'error')
                     self.status_var.set("Backup Failed")
+                    self.reset_progress()
             except Exception as e:
                 self.log(f"Backup failed: {e}", 'error')
                 self.status_var.set("Backup Failed")
+                self.reset_progress()
                 
         threading.Thread(target=_target, daemon=True).start()
 
@@ -549,12 +587,14 @@ class DeployTool(ctk.CTk):
             
         def _target():
             self.status_var.set("Uploading to Git...")
+            self.set_progress(0.10)
             self.log("=" * 50)
             self.log("Starting Git Upload Process...", 'info')
 
             if not self.is_git_repo():
                 self.log("Not a Git repository. Upload aborted.", 'error')
                 self.status_var.set("Upload Failed")
+                self.reset_progress()
                 self.after(0, lambda: messagebox.showerror("Git Not Found", self.git_prereq_message()))
                 return
             
@@ -562,7 +602,9 @@ class DeployTool(ctk.CTk):
             if self.run_command_process("git add .") != 0:
                 self.log("Git add failed.", 'error')
                 self.status_var.set("Upload Failed")
+                self.reset_progress()
                 return
+            self.set_progress(0.40)
                 
             self.log("\n[Step 2] Committing changes...", 'info')
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -572,12 +614,14 @@ class DeployTool(ctk.CTk):
             return_code = self.run_command_process(cmd_commit)
             if return_code != 0:
                 self.log("Nothing to commit or commit failed. Proceeding to push anyway just in case.", 'info')
+            self.set_progress(0.70)
                 
             self.log("\n[Step 3] Pushing to remote...", 'info')
             current_branch = self.get_current_branch()
             if not current_branch:
                 self.log("Cannot determine current git branch (detached HEAD?). Push aborted.", 'error')
                 self.status_var.set("Upload Failed")
+                self.reset_progress()
                 return
 
             upstream_ref = self.get_upstream_ref()
@@ -590,10 +634,12 @@ class DeployTool(ctk.CTk):
             if self.run_command_process(push_cmd) != 0:
                 self.log("Git push failed. Please check network or git status.", 'error')
                 self.status_var.set("Upload Failed")
+                self.reset_progress()
                 return
                 
             self.log("\nUpload Complete!", 'success')
             self.status_var.set("Upload Complete")
+            self.complete_progress()
             self.after(0, lambda: messagebox.showinfo("Success", "Successfully uploaded to Git!"))
             
         threading.Thread(target=_target, daemon=True).start()
@@ -604,6 +650,7 @@ class DeployTool(ctk.CTk):
             
         def _target():
             self.status_var.set("Pushing to Registry...")
+            self.set_progress(0.10)
             self.log("=" * 50)
             self.log("Starting Registry Push Process...", 'info')
                 
@@ -613,7 +660,9 @@ class DeployTool(ctk.CTk):
             if self.run_command_process(build_cmd) != 0:
                 self.log("Docker build failed.", 'error')
                 self.status_var.set("Push Failed")
+                self.reset_progress()
                 return
+            self.set_progress(0.40)
                 
             self.log("\n[Step 2] Tagging Image...", 'info')
             tag_cmd = "docker tag stock-movement:latest registry.sugoidev.com/nong/stock-movement:latest"
@@ -621,7 +670,9 @@ class DeployTool(ctk.CTk):
             if self.run_command_process(tag_cmd) != 0:
                 self.log("Docker tag failed.", 'error')
                 self.status_var.set("Push Failed")
+                self.reset_progress()
                 return
+            self.set_progress(0.70)
                 
             self.log("\n[Step 3] Pushing to Remote Registry...", 'info')
             push_cmd = "docker push registry.sugoidev.com/nong/stock-movement:latest"
@@ -629,10 +680,12 @@ class DeployTool(ctk.CTk):
             if self.run_command_process(push_cmd) != 0:
                 self.log("Docker push failed. Did you run 'docker login registry.sugoidev.com' in terminal?", 'error')
                 self.status_var.set("Push Failed")
+                self.reset_progress()
                 return
                 
             self.log("\nRegistry Push Complete!", 'success')
             self.status_var.set("Push Complete")
+            self.complete_progress()
             self.after(0, lambda: messagebox.showinfo("Success", "Successfully pushed image to Sugoidev Registry!"))
             
         threading.Thread(target=_target, daemon=True).start()
@@ -715,6 +768,7 @@ class DeployTool(ctk.CTk):
             return
         def _target():
             self.status_var.set("Starting Server...")
+            self.set_progress(0.15)
             self.log("=" * 50)
             self.log("Starting Server...", 'info')
             cmd = self.compose_cmd("up", "-d")
@@ -722,10 +776,12 @@ class DeployTool(ctk.CTk):
             if self.run_command_process(cmd) == 0:
                 self.log("Server started successfully!", 'success')
                 self.status_var.set("Server Running")
+                self.complete_progress()
                 self.check_docker_status()
             else:
                 self.log("Failed to start server.", 'error')
                 self.status_var.set("Error")
+                self.reset_progress()
         threading.Thread(target=_target, daemon=True).start()
 
     def stop_server(self):
@@ -733,6 +789,7 @@ class DeployTool(ctk.CTk):
             return
         def _target():
             self.status_var.set("Stopping Server...")
+            self.set_progress(0.15)
             self.log("=" * 50)
             self.log("Stopping Server...", 'info')
             cmd = self.compose_cmd("down")
@@ -740,10 +797,12 @@ class DeployTool(ctk.CTk):
             if self.run_command_process(cmd) == 0:
                 self.log("Server stopped successfully!", 'success')
                 self.status_var.set("Server Stopped")
+                self.complete_progress()
                 self.check_docker_status()
             else:
                 self.log("Failed to stop server.", 'error')
                 self.status_var.set("Error")
+                self.reset_progress()
         threading.Thread(target=_target, daemon=True).start()
 
     def restart_server(self):
@@ -751,6 +810,7 @@ class DeployTool(ctk.CTk):
             return
         def _target():
             self.status_var.set("Restarting Server...")
+            self.set_progress(0.15)
             self.log("=" * 50)
             self.log("Restarting Server...", 'info')
             cmd = self.compose_cmd("restart")
@@ -758,10 +818,12 @@ class DeployTool(ctk.CTk):
             if self.run_command_process(cmd) == 0:
                 self.log("Server restarted successfully!", 'success')
                 self.status_var.set("Server Running")
+                self.complete_progress()
                 self.check_docker_status()
             else:
                 self.log("Failed to restart server.", 'error')
                 self.status_var.set("Error")
+                self.reset_progress()
         threading.Thread(target=_target, daemon=True).start()
 
     def start_deploy(self):
@@ -772,6 +834,7 @@ class DeployTool(ctk.CTk):
 
     def deploy_process(self):
         self.status_var.set("Deploying...")
+        self.set_progress(0.05)
         self.log("=" * 50)
         self.log("Starting Deployment Process...", 'info')
 
@@ -785,13 +848,16 @@ class DeployTool(ctk.CTk):
             if not proceed:
                 self.log("Deployment aborted (no git repo).", 'error')
                 self.status_var.set("Deploy Failed")
+                self.reset_progress()
                 return
             self.log("Skipping git pull (deploying current working tree).", 'info')
         else:
             if self.run_command_process(["git", "pull"]) != 0:
                 self.log("Git pull failed. Aborting.", 'error')
                 self.status_var.set("Deploy Failed")
+                self.reset_progress()
                 return
+        self.set_progress(0.25)
 
         self.log("\n[Step 2] Building Docker Image...", 'info')
         build_cmd = self.compose_cmd("build", self.app_service)
@@ -799,7 +865,9 @@ class DeployTool(ctk.CTk):
         if self.run_command_process(build_cmd) != 0:
             self.log("Build failed. Aborting.", 'error')
             self.status_var.set("Deploy Failed")
+            self.reset_progress()
             return
+        self.set_progress(0.50)
 
         if self.db_push_var.get() == "on":
             self.log("\n[Step 3] Pushing Database Schema...", 'info')
@@ -811,16 +879,19 @@ class DeployTool(ctk.CTk):
                 "prisma@5.22.0",
                 "db",
                 "push",
+                "--skip-generate",
             )
             self.log(f"> {self.format_command(db_cmd)}", 'cmd')
 
             if self.run_command_process(db_cmd) != 0:
                 self.log("Database schema push failed. Aborting before container restart to avoid half deploy.", 'error')
                 self.status_var.set("Deploy Failed")
+                self.reset_progress()
                 return
             self.log("Database Schema Pushed Successfully.", 'success')
         else:
             self.log("\n[Step 3] Skipping Database Schema Push (disabled).", 'info')
+        self.set_progress(0.75)
 
         self.log("\n[Step 4] Restarting Containers...", 'info')
         up_cmd = self.compose_cmd("up", "-d")
@@ -828,10 +899,12 @@ class DeployTool(ctk.CTk):
         if self.run_command_process(up_cmd) != 0:
             self.log("Docker Up failed. Aborting.", 'error')
             self.status_var.set("Deploy Failed")
+            self.reset_progress()
             return
 
         self.log("\nDeployment Complete!", 'success')
         self.status_var.set("Deployed Successfully")
+        self.complete_progress()
         self.check_docker_status()
         self.after(0, lambda: messagebox.showinfo("Success", "Deployment Completed Successfully!"))
 
