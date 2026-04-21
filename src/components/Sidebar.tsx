@@ -84,6 +84,7 @@ export default function Sidebar(props: SidebarProps) {
     const canManagerDashboardPage = canAccessPage('/manager-dashboard');
     const canStoreDashboardPage = canAccessPage('/store-dashboard');
     const canWarehouseStockReportPage = canAccessPage('/reports/warehouse-stock');
+    const canMovementReportPage = canAccessPage('/reports/movement');
     const canAssetPolicyPage = canAccessPage('/settings/asset-policy');
     const canAssetDepreciationPage = canAccessPage('/assets/depreciation');
     const hasAssetManagementMenu = can(PERMISSIONS.ASSETS) || canAssetPolicyPage || canAssetDepreciationPage;
@@ -621,6 +622,13 @@ export default function Sidebar(props: SidebarProps) {
                             </Link>
                         )}
 
+                        {can(PERMISSIONS.ADMIN_REPORTS) && canMovementReportPage && (
+                            <Link href="/reports/movement" onClick={handleLinkClick} className={getNavItemClass(isActive('/reports/movement'))}>
+                                <ArrowRightLeft className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/reports/movement') && 'group-hover:scale-110 group-hover:text-blue-400'}`} />
+                                {!collapsed && <span className="truncate">Movement รายเดือน</span>}
+                            </Link>
+                        )}
+
                         {can(PERMISSIONS.ADMIN_AUDIT) && (
                             <Link href="/inventory-audit" onClick={handleLinkClick} className={getNavItemClass(isActive('/inventory-audit'))}>
                                 <ClipboardList className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/inventory-audit') && 'group-hover:scale-110 group-hover:text-emerald-400'}`} />
@@ -840,4 +848,3 @@ export default function Sidebar(props: SidebarProps) {
         </>
     );
 }
-

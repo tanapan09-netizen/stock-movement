@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
-import { BarChart3, TrendingUp, Package, DollarSign, AlertTriangle, Warehouse } from 'lucide-react';
+import { endOfMonth, startOfMonth } from 'date-fns';
+import { ArrowRightLeft, BarChart3, TrendingUp, Package, DollarSign, AlertTriangle, Warehouse } from 'lucide-react';
 import Link from 'next/link';
 import ReportsDashboardClient from './ReportsDashboardClient';
 
@@ -48,6 +49,16 @@ export default async function ReportsPage() {
 
     // Low stock products
     const lowStock = products.filter(p => p.p_count <= p.safety_stock);
+    const currentMonthStart = startOfMonth(new Date());
+    const currentMonthEnd = endOfMonth(currentMonthStart);
+    const monthlyMovementCount = await prisma.tbl_product_movements.count({
+        where: {
+            movement_time: {
+                gte: currentMonthStart,
+                lte: currentMonthEnd,
+            },
+        },
+    });
 
     // Category breakdown
     const categoryStats: Record<string, { count: number; value: number }> = {};
@@ -71,7 +82,7 @@ export default async function ReportsPage() {
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
                 <div className="bg-white rounded-xl shadow p-6">
                     <div className="flex items-center justify-between">
                         <div>
@@ -106,6 +117,15 @@ export default async function ReportsPage() {
                             <p className="text-2xl font-bold text-indigo-600">เปิด</p>
                         </div>
                         <Warehouse className="w-10 h-10 text-indigo-500 opacity-50" />
+                    </div>
+                </Link>
+                <Link href="/reports/movement" className="bg-white rounded-xl shadow p-6 hover:shadow-md transition cursor-pointer border border-transparent hover:border-blue-200 block">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-sm text-gray-500">Movement รายเดือน</p>
+                            <p className="text-2xl font-bold text-blue-600">{monthlyMovementCount.toLocaleString()}</p>
+                        </div>
+                        <ArrowRightLeft className="w-10 h-10 text-blue-500 opacity-50" />
                     </div>
                 </Link>
                 <div className="bg-white rounded-xl shadow p-6">

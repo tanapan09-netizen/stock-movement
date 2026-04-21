@@ -117,6 +117,13 @@ function buildDepreciationTable(input: {
     return table;
 }
 
+function getDepreciationFullScheduleEndDate(purchaseDate: Date, life: number): Date {
+    const end = new Date(purchaseDate);
+    end.setFullYear(end.getFullYear() + life);
+    end.setDate(end.getDate() - 1);
+    return end;
+}
+
 export default async function AssetDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
     const session = await auth();
@@ -153,12 +160,15 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
         ? (depreciationPauseEntry ? new Date(depreciationPauseEntry.action_date) : now)
         : now;
     const depreciationStopped = asset.status === 'DepreciationPaused';
+    const depreciationDisplayEndDate = depreciationStopped
+        ? depreciationCutoffDate
+        : getDepreciationFullScheduleEndDate(purchaseDate, life);
     const depreciationTable = buildDepreciationTable({
         cost,
         salvage,
         life,
         purchaseDate,
-        cutoffDate: depreciationCutoffDate,
+        cutoffDate: depreciationDisplayEndDate,
     });
     const currentYear = depreciationCutoffDate.getFullYear();
 

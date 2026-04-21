@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { FloatingSearchInput } from '@/components/FloatingField';
 import {
     Search, Command, Plus, Home, Package, FileText, Settings,
-    ArrowRight, X, Keyboard
+    ArrowRightLeft, ArrowRight, X, Keyboard
 } from 'lucide-react';
 
 interface SearchResult {
@@ -31,6 +31,7 @@ export default function GlobalSearch() {
         { type: 'page', title: 'เพิ่มสินค้าใหม่', description: 'สร้างสินค้าใหม่', href: '/products/new', icon: <Plus className="w-4 h-4" /> },
         { type: 'page', title: 'ใบสั่งซื้อ', description: 'จัดการ PO', href: '/purchase-orders', icon: <FileText className="w-4 h-4" /> },
         { type: 'page', title: 'รายงานขั้นสูง', description: 'ABC Analysis', href: '/reports', icon: <FileText className="w-4 h-4" /> },
+        { type: 'page', title: 'รายงาน Movement รายเดือน', description: 'สรุปเคลื่อนไหว/ไม่เคลื่อนไหว/หมดสต็อก', href: '/reports/movement', icon: <ArrowRightLeft className="w-4 h-4" /> },
         { type: 'page', title: 'ตรวจนับสต็อก', description: 'Inventory Audit', href: '/inventory-audit', icon: <Package className="w-4 h-4" /> },
         { type: 'page', title: 'ตั้งค่า', description: 'ตั้งค่าระบบ', href: '/settings', icon: <Settings className="w-4 h-4" /> },
     ];
