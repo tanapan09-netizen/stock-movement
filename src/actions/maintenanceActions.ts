@@ -17,6 +17,7 @@ import {
 import { validateData, createMaintenanceRequestSchema } from '@/lib/validation';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
 import {
+    canAccessDashboardPage,
     canApproveMaintenanceCompletion,
     canConfirmMaintenancePartUsage,
     canConfirmMaintenanceDefectiveReceipt,
@@ -645,15 +646,28 @@ export async function createMaintenanceRequest(formData: FormData) {
         if (!authContext?.session?.user) {
             return { success: false, error: 'Unauthorized' };
         }
-        if (!canCreateMaintenanceRequest(
+        const targetRole = ((formData.get('target_role') as string) || '').trim().toLowerCase();
+        const canCreateViaGeneralRequestPage =
+            targetRole === 'general'
+            && canAccessDashboardPage(
+                authContext.role,
+                authContext.permissions,
+                '/general-request',
+                { isApprover: authContext.isApprover, level: 'read' },
+            );
+
+        if (
+            !canCreateViaGeneralRequestPage
+            && !canCreateMaintenanceRequest(
             authContext.role,
             authContext.permissions,
             authContext.isApprover,
-        )) {
+            )
+        ) {
             return { success: false, error: 'Permission denied: role cannot create maintenance request' };
         }
 
-        if (normalizeRole(authContext.role) !== 'employee') {
+        if (!canCreateViaGeneralRequestPage && normalizeRole(authContext.role) !== 'employee') {
             return { success: false, error: 'Only employee can create new maintenance requests' };
         }
 
@@ -674,7 +688,7 @@ export async function createMaintenanceRequest(formData: FormData) {
         const department = formData.get('department') as string;
         const contact_info = formData.get('contact_info') as string;
         const tags = formData.get('tags') as string;
-        const target_role = ((formData.get('target_role') as string) || 'technician').trim();
+        const target_role = targetRole || 'technician';
         const sourceRequestIdRaw = formData.get('source_request_id');
         const sourceRequestId = typeof sourceRequestIdRaw === 'string' ? Number.parseInt(sourceRequestIdRaw, 10) : null;
         const hasSourceRequestId = Number.isFinite(sourceRequestId) && (sourceRequestId || 0) > 0;

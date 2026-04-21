@@ -305,16 +305,18 @@ export function resolveGeneralRequestAccess(
   userPermissions: PagePermissionMap,
 ) {
   const pageKey = '/general-request';
-
+  const pageAccess = resolveDashboardPageAccess(role, userPermissions, pageKey, { level: 'read' });
   const pageRead = Boolean(userPermissions[getSafePagePermissionKey(pageKey, 'read')]);
   const pageEdit = Boolean(userPermissions[getSafePagePermissionKey(pageKey, 'edit')]);
 
   const rolePermissions = getGeneralRequestPermissions(role);
+  const canViewPage = pageAccess.hasPageAccess || rolePermissions.canView;
 
   return {
-    canViewPage: rolePermissions.canView || pageRead || pageEdit,
+    canViewPage,
     canEditPage: rolePermissions.canEdit || pageEdit,
-    canCreate: rolePermissions.canCreate && (pageEdit || pageRead),
+    // Users who can access this page should be able to open and submit the create form.
+    canCreate: canViewPage,
     canApprove: rolePermissions.canApprove,
     canDelete: rolePermissions.canDelete,
   };
