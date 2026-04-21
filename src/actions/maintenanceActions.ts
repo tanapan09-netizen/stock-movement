@@ -58,16 +58,25 @@ const MAINTENANCE_DEPARTMENT_ROLE_SET = new Set<string>(DEPARTMENT_BASE_ROLES);
 const MAINTENANCE_FEEDBACK_ENABLED_KEY = 'maintenance_feedback_enabled';
 const CUSTOMER_LINE_TAG_PREFIX = 'line_user_id:';
 
+function buildExcludeGeneralRequestOnlyWhere(): Prisma.tbl_maintenance_requestsWhereInput {
+    return {
+        OR: [
+            { tags: null },
+            { NOT: { tags: { contains: GENERAL_REQUEST_ONLY_TAG } } },
+        ],
+    };
+}
+
 function buildMaintenanceOnlyWhere(
     extra?: Prisma.tbl_maintenance_requestsWhereInput,
 ): Prisma.tbl_maintenance_requestsWhereInput {
     if (!extra) {
-        return { NOT: { tags: { contains: GENERAL_REQUEST_ONLY_TAG } } };
+        return buildExcludeGeneralRequestOnlyWhere();
     }
 
     return {
         AND: [
-            { NOT: { tags: { contains: GENERAL_REQUEST_ONLY_TAG } } },
+            buildExcludeGeneralRequestOnlyWhere(),
             extra,
         ],
     };
@@ -607,8 +616,6 @@ export async function getMaintenanceRequests(filters?: {
                 { tags: { contains: GENERAL_REQUEST_ONLY_TAG } },
                 { category: 'general' },
             ];
-        } else if (scope === 'maintenance') {
-            where.NOT = { tags: { contains: GENERAL_REQUEST_ONLY_TAG } };
         }
 
         if (Array.isArray(filters?.status) && filters.status.length > 0) {
@@ -634,8 +641,12 @@ export async function getMaintenanceRequests(filters?: {
             }
         }
 
+        const finalWhere: Prisma.tbl_maintenance_requestsWhereInput = scope === 'maintenance'
+            ? { AND: [where, buildExcludeGeneralRequestOnlyWhere()] }
+            : where;
+
         const requests = await prisma.tbl_maintenance_requests.findMany({
-            where,
+            where: finalWhere,
             include: {
                 tbl_rooms: true,
                 tbl_maintenance_history: { orderBy: { changed_at: 'desc' }, take: 5 }

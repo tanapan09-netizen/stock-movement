@@ -189,7 +189,12 @@ export async function GET(request: Request) {
             const maintenanceWhere: Prisma.tbl_maintenance_requestsWhereInput = {
                 status: 'pending',
                 category: { not: 'general' },
-                NOT: { tags: { contains: GENERAL_REQUEST_ONLY_TAG } },
+                AND: [{
+                    OR: [
+                        { tags: null },
+                        { NOT: { tags: { contains: GENERAL_REQUEST_ONLY_TAG } } },
+                    ],
+                }],
             };
 
             if (!isManagerView && !isApprover && isTechnicianView) {
