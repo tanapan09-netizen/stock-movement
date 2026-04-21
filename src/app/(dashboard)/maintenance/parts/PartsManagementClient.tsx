@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle, Package, Plus, ShieldCheck, Undo2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
@@ -73,6 +73,7 @@ type PartRequestItem = {
   requested_by: string;
   description?: string | null;
   request_type?: string | null;
+  quotation_link?: string | null;
   tbl_maintenance_requests?: {
     request_number: string;
     title: string;
@@ -151,6 +152,22 @@ const PART_REQUEST_STATUS_LABELS: Record<string, string> = {
   rejected: 'ไม่พร้อมจ่าย',
 };
 
+const MAINTENANCE_WITHDRAW_LINK_PREFIX = 'maintenance-withdraw://';
+
+function resolveMaintenanceWithdrawProductId(quotationLink?: string | null): string | null {
+  const raw = (quotationLink || '').trim();
+  if (!raw.startsWith(MAINTENANCE_WITHDRAW_LINK_PREFIX)) return null;
+
+  const encodedProductId = raw.slice(MAINTENANCE_WITHDRAW_LINK_PREFIX.length);
+  if (!encodedProductId) return null;
+
+  try {
+    return decodeURIComponent(encodedProductId);
+  } catch {
+    return encodedProductId;
+  }
+}
+
 export default function PartsManagementClient({
   canManageParts = false,
   canDirectStockActions = false,
@@ -209,6 +226,13 @@ export default function PartsManagementClient({
   }, []);
 
   const selectedProduct = products.find((product) => product.p_id === withdrawForm.p_id);
+  const productMap = useMemo(() => {
+    const map = new Map<string, Product>();
+    products.forEach((product) => {
+      map.set(product.p_id, product);
+    });
+    return map;
+  }, [products]);
   const availableStock = selectedProduct?.available_stock ?? selectedProduct?.p_count ?? 0;
   const stockWh01 = selectedProduct?.stock_wh01 ?? availableStock;
   const stockWh02 = selectedProduct?.stock_wh02 ?? 0;
@@ -685,6 +709,9 @@ export default function PartsManagementClient({
                   <th className="px-4 py-3 text-center text-sm font-medium text-gray-600 dark:text-gray-300">
                     จำนวน
                   </th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-600 dark:text-gray-300">
+                    คงเหลือ WH-01
+                  </th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-600 dark:text-gray-300">
                     ผู้ขอ
                   </th>
@@ -697,7 +724,16 @@ export default function PartsManagementClient({
                 </tr>
               </thead>
               <tbody className="divide-y dark:divide-slate-700">
-                {filteredPendingPartRequests.map((request) => (
+                {filteredPendingPartRequests.map((request) => {
+                  const productId = resolveMaintenanceWithdrawProductId(request.quotation_link);
+                  const requestProduct = productId ? productMap.get(productId) : null;
+                  const wh01Stock = requestProduct
+                    ? Number(requestProduct.stock_wh01 ?? requestProduct.available_stock ?? requestProduct.p_count ?? 0)
+                    : null;
+                  const unit = requestProduct?.p_unit || 'ชิ้น';
+                  const isStockEnough = wh01Stock !== null && wh01Stock >= request.quantity;
+
+                  return (
                   <tr key={request.request_id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
                     <td className="px-4 py-3">
                       <div className="font-medium">{request.item_name}</div>
@@ -724,6 +760,29 @@ export default function PartsManagementClient({
                       )}
                     </td>
                     <td className="px-4 py-3 text-center font-medium">{request.quantity}</td>
+                    <td className="px-4 py-3 text-center">
+                      {wh01Stock !== null ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <span
+                            className={`rounded px-2 py-1 text-xs font-semibold ${
+                              isStockEnough
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-rose-100 text-rose-700'
+                            }`}
+                          >
+                            {wh01Stock} {unit}
+                          </span>
+                          {productId ? <span className="text-[11px] text-gray-400">{productId}</span> : null}
+                        </div>
+                      ) : productId ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-xs font-medium text-amber-600">ไม่พบข้อมูลสต็อก</span>
+                          <span className="text-[11px] text-gray-400">{productId}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">-</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-600">{request.requested_by}</td>
                     <td className="px-4 py-3">
                       <span
@@ -775,7 +834,8 @@ export default function PartsManagementClient({
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

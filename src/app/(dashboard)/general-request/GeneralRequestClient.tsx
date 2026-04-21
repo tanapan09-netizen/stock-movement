@@ -90,6 +90,8 @@ const hasCustomerTag = (tags?: string | null) =>
         .includes('ลูกค้า');
 
 const ABSOLUTE_URL_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
+const IN_PROGRESS_REQUEST_STATUSES = new Set(['approved', 'in_progress']);
+const FINISHED_REQUEST_STATUSES = new Set(['confirmed', 'completed', 'verified']);
 
 function resolveMaintenanceImageProxyUrl(imageUrl: string): string {
     const trimmed = imageUrl.trim();
@@ -102,7 +104,7 @@ function resolveMaintenanceImageProxyUrl(imageUrl: string): string {
 }
 
 const isFinishedRequestStatus = (status?: string | null) =>
-    ['completed', 'verified'].includes((status || '').toLowerCase());
+    FINISHED_REQUEST_STATUSES.has((status || '').toLowerCase());
 
 const isCancelledRequestStatus = (status?: string | null) =>
     (status || '').toLowerCase() === 'cancelled';
@@ -232,8 +234,9 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             req.request_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
             req.tbl_rooms?.room_name?.toLowerCase().includes(searchQuery.toLowerCase());
 
+        const normalizedStatus = (req.status || '').toLowerCase();
         const matchStatus = statusFilter === 'all'
-            || (statusFilter === 'finished' ? ['completed', 'verified'].includes(req.status) : req.status === statusFilter);
+            || (statusFilter === 'finished' ? isFinishedRequestStatus(normalizedStatus) : normalizedStatus === statusFilter);
         const matchFinishedVisibility =
             showFinishedRequests
             || statusFilter === 'finished'
@@ -504,9 +507,9 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {[
                         { label: 'ทั้งหมด', value: requests.length, color: 'bg-blue-50 border-blue-200 text-blue-700' },
-                        { label: 'รอรับเรื่อง', value: requests.filter(r => r.status === 'pending').length, color: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
-                        { label: 'กำลังดำเนินการ', value: requests.filter(r => r.status === 'in_progress').length, color: 'bg-blue-50 border-blue-200 text-blue-700' },
-                        { label: 'งานเสร็จสิ้น', value: requests.filter(r => r.status === 'completed' || r.status === 'verified').length, color: 'bg-green-50 border-green-200 text-green-700' },
+                        { label: 'รอรับเรื่อง', value: requests.filter(r => (r.status || '').toLowerCase() === 'pending').length, color: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
+                        { label: 'กำลังดำเนินการ', value: requests.filter(r => IN_PROGRESS_REQUEST_STATUSES.has((r.status || '').toLowerCase())).length, color: 'bg-blue-50 border-blue-200 text-blue-700' },
+                        { label: 'งานเสร็จสิ้น', value: requests.filter(r => isFinishedRequestStatus(r.status)).length, color: 'bg-green-50 border-green-200 text-green-700' },
                     ].map(stat => (
                         <div key={stat.label} className={`${stat.color} border rounded-xl p-3 text-center`}>
                             <p className="text-2xl font-bold">{stat.value}</p>
