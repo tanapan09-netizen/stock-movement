@@ -3,11 +3,17 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { Decimal } from '@prisma/client/runtime/library';
+import type { Prisma } from '@prisma/client';
 import { logSystemAction } from '@/lib/logger';
 import { auth } from '@/auth';
 import { uploadFile } from '@/lib/gcs';
 import { notifyRoleViaLine, sendLineMessage, sendLineNotify } from '@/lib/lineNotify';
 import { appendCopiedImageMetadataTags, parseMaintenanceImageUrls } from '@/lib/maintenance-images';
+import {
+    GENERAL_REQUEST_ONLY_TAG,
+    markAsGeneralRequestOnly,
+    unmarkGeneralRequestOnly,
+} from '@/lib/maintenance-request-scope';
 import {
     notifyJobAssignment,
     notifyMaintenanceStatusChange,
@@ -51,6 +57,21 @@ type MaintenanceNotificationRequest = {
 const MAINTENANCE_DEPARTMENT_ROLE_SET = new Set<string>(DEPARTMENT_BASE_ROLES);
 const MAINTENANCE_FEEDBACK_ENABLED_KEY = 'maintenance_feedback_enabled';
 const CUSTOMER_LINE_TAG_PREFIX = 'line_user_id:';
+
+function buildMaintenanceOnlyWhere(
+    extra?: Prisma.tbl_maintenance_requestsWhereInput,
+): Prisma.tbl_maintenance_requestsWhereInput {
+    if (!extra) {
+        return { NOT: { tags: { contains: GENERAL_REQUEST_ONLY_TAG } } };
+    }
+
+    return {
+        AND: [
+            { NOT: { tags: { contains: GENERAL_REQUEST_ONLY_TAG } } },
+            extra,
+        ],
+    };
+}
 
 function resolveDepartmentLeaderRole(department?: string | null): string | null {
     const normalized = normalizeRole(department);
@@ -575,17 +596,21 @@ export async function getMaintenanceRequests(filters?: {
     startDate?: string | Date;
     endDate?: string | Date;
     category?: string;
+    scope?: 'maintenance' | 'general' | 'all';
 }) {
     try {
-        const where: {
-            status?: string | { in: string[] };
-            room_id?: number;
-            category?: string;
-            created_at?: {
-                gte?: Date;
-                lte?: Date;
-            };
-        } = {};
+        const where: Prisma.tbl_maintenance_requestsWhereInput = {};
+        const scope = filters?.scope || 'maintenance';
+
+        if (scope === 'general') {
+            where.OR = [
+                { tags: { contains: GENERAL_REQUEST_ONLY_TAG } },
+                { category: 'general' },
+            ];
+        } else if (scope === 'maintenance') {
+            where.NOT = { tags: { contains: GENERAL_REQUEST_ONLY_TAG } };
+        }
+
         if (Array.isArray(filters?.status) && filters.status.length > 0) {
             where.status = { in: filters.status };
         } else if (typeof filters?.status === 'string' && filters.status !== 'all') {
@@ -647,6 +672,11 @@ export async function createMaintenanceRequest(formData: FormData) {
             return { success: false, error: 'Unauthorized' };
         }
         const targetRole = ((formData.get('target_role') as string) || '').trim().toLowerCase();
+        const requestScope = ((formData.get('request_scope') as string) || '').trim().toLowerCase();
+        const isGeneralOnlyScope = requestScope === 'general_only';
+        if (isGeneralOnlyScope && targetRole !== 'general') {
+            return { success: false, error: 'Invalid request scope for target role' };
+        }
         const canCreateViaGeneralRequestPage =
             targetRole === 'general'
             && canAccessDashboardPage(
@@ -681,7 +711,15 @@ export async function createMaintenanceRequest(formData: FormData) {
         const validData = validateData(createMaintenanceRequestSchema, rawData, 'Maintenance');
 
         const category = formData.get('category') as string;
-        const reported_by = formData.get('reported_by') as string;
+        const reportedByFromForm = ((formData.get('reported_by') as string) || '').trim();
+        const sessionReporter =
+            [authContext.session.user.name, authContext.session.user.email]
+                .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+                ?.trim() || '';
+        const reported_by =
+            targetRole === 'general'
+                ? (sessionReporter || reportedByFromForm)
+                : reportedByFromForm;
         const assigned_to = formData.get('assigned_to') as string;
         const scheduled_date = formData.get('scheduled_date') as string;
         const estimated_cost = parseFloat(formData.get('estimated_cost') as string) || 0;
@@ -738,13 +776,18 @@ export async function createMaintenanceRequest(formData: FormData) {
 
         const existingSourceImageUrls = parseMaintenanceImageUrls(sourceRequest?.image_url);
         const finalImageUrls = Array.from(new Set([...existingSourceImageUrls, ...sourceImageUrls, ...uploadedImageUrls]));
-        const finalTags = appendCopiedImageMetadataTags(
+        let finalTags = appendCopiedImageMetadataTags(
             tags || sourceRequest?.tags || null,
             Number.isFinite(sourceRequestId ?? NaN) ? sourceRequestId : null,
             Number.isFinite(sourceImageCount) ? sourceImageCount : 0,
         );
+        if (isGeneralOnlyScope && !sourceRequest?.request_id) {
+            finalTags = markAsGeneralRequestOnly(finalTags);
+        } else if (sourceRequest?.request_id) {
+            finalTags = unmarkGeneralRequestOnly(finalTags);
+        }
 
-        const initialStatus = target_role ? 'approved' : 'pending';
+        const initialStatus = isGeneralOnlyScope && !sourceRequest?.request_id ? 'pending' : 'approved';
         const actorName = authContext.session.user.name || reported_by || 'System';
 
         const request = await prisma.$transaction(async (tx) => {
@@ -805,51 +848,55 @@ export async function createMaintenanceRequest(formData: FormData) {
             });
         });
 
-        try {
-            const room = await prisma.tbl_rooms.findUnique({
-                where: { room_id: validData.room_id },
-                select: { room_code: true, room_name: true }
-            });
+        if (!isGeneralOnlyScope) {
+            try {
+                const room = await prisma.tbl_rooms.findUnique({
+                    where: { room_id: validData.room_id },
+                    select: { room_code: true, room_name: true }
+                });
 
-            if (room) {
-                console.log(
-                    `[Maintenance] notifying LINE target_role=${target_role} title="${validData.title}" room=${room.room_code}`
-                );
-                await notifyRoleViaLine(
-                    target_role,
-                    validData.title,
-                    room.room_code,
-                    room.room_name,
-                    validData.priority,
-                    reported_by,
-                    {
-                        requestNumber: request.request_number,
-                        status: request.status,
-                        openUrl: `${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')}/maintenance?req=${request.request_number}`,
-                    },
-                );
+                if (room) {
+                    console.log(
+                        `[Maintenance] notifying LINE target_role=${target_role} title="${validData.title}" room=${room.room_code}`
+                    );
+                    await notifyRoleViaLine(
+                        target_role,
+                        validData.title,
+                        room.room_code,
+                        room.room_name,
+                        validData.priority,
+                        reported_by,
+                        {
+                            requestNumber: request.request_number,
+                            status: request.status,
+                            openUrl: `${(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')}/maintenance?req=${request.request_number}`,
+                        },
+                    );
 
-                const notificationPayload: MaintenanceNotificationRequest = {
-                    request_number: request.request_number,
-                    title: request.title,
-                    description: request.description,
-                    priority: request.priority,
-                    room_code: room.room_code,
-                    room_name: room.room_name,
-                    reported_by: request.reported_by,
-                    created_at: request.created_at,
-                    image_url: request.image_url,
-                };
+                    const notificationPayload: MaintenanceNotificationRequest = {
+                        request_number: request.request_number,
+                        title: request.title,
+                        description: request.description,
+                        priority: request.priority,
+                        room_code: room.room_code,
+                        room_name: room.room_name,
+                        reported_by: request.reported_by,
+                        created_at: request.created_at,
+                        image_url: request.image_url,
+                    };
 
-                await notifyNewMaintenanceRequest(notificationPayload, { disableLine: true });
-            } else {
-                console.warn(`[Maintenance] room not found for LINE notification room_id=${validData.room_id}`);
+                    await notifyNewMaintenanceRequest(notificationPayload, { disableLine: true });
+                } else {
+                    console.warn(`[Maintenance] room not found for LINE notification room_id=${validData.room_id}`);
+                }
+            } catch (notifyError) {
+                console.error('Failed to send maintenance LINE notification:', notifyError);
             }
-        } catch (notifyError) {
-            console.error('Failed to send maintenance LINE notification:', notifyError);
         }
 
-        revalidatePath('/maintenance');
+        if (!isGeneralOnlyScope || sourceRequest?.request_id) {
+            revalidatePath('/maintenance');
+        }
         revalidatePath('/general-request');
         return { success: true, data: request };
     } catch (error: unknown) {
@@ -2236,11 +2283,11 @@ export async function submitRepairCompletion(formData: FormData) {
 export async function getMaintenanceStats() {
     try {
         const [total, pending, approved, inProgress, completed, recentActivities, feedbackRows] = await Promise.all([
-            prisma.tbl_maintenance_requests.count(),
-            prisma.tbl_maintenance_requests.count({ where: { status: 'pending' } }),
-            prisma.tbl_maintenance_requests.count({ where: { status: 'approved' } }),
-            prisma.tbl_maintenance_requests.count({ where: { status: 'in_progress' } }),
-            prisma.tbl_maintenance_requests.count({ where: { status: 'completed' } }),
+            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere() }),
+            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'pending' }) }),
+            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'approved' }) }),
+            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'in_progress' }) }),
+            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'completed' }) }),
             prisma.tbl_maintenance_history.findMany({
                 take: 5,
                 orderBy: { changed_at: 'desc' },
@@ -2266,7 +2313,7 @@ export async function getMaintenanceStats() {
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
 
         const recentRequests = await prisma.tbl_maintenance_requests.findMany({
-            where: { created_at: { gte: sixMonthsAgo } },
+            where: buildMaintenanceOnlyWhere({ created_at: { gte: sixMonthsAgo } }),
             select: { created_at: true }
         });
 
@@ -2278,7 +2325,7 @@ export async function getMaintenanceStats() {
 
         const chartData = Object.entries(monthlyData).map(([name, value]) => ({ name, value }));
         const costAgg = await prisma.tbl_maintenance_requests.aggregate({
-            where: { status: 'completed', actual_cost: { not: null } },
+            where: buildMaintenanceOnlyWhere({ status: 'completed', actual_cost: { not: null } }),
             _sum: { actual_cost: true }
         });
         const feedbackByRequest = new Map<number, number>();
@@ -3569,14 +3616,17 @@ export async function getMaintenancePartUsageReports(filters?: {
 export async function getMaintenanceSummary() {
     try {
         const [total, pending, approved, inProgress, confirmed, completed, pendingVerification, costAgg] = await Promise.all([
-            prisma.tbl_maintenance_requests.count(),
-            prisma.tbl_maintenance_requests.count({ where: { status: 'pending' } }),
-            prisma.tbl_maintenance_requests.count({ where: { status: 'approved' } }),
-            prisma.tbl_maintenance_requests.count({ where: { status: 'in_progress' } }),
-            prisma.tbl_maintenance_requests.count({ where: { status: 'confirmed' } }),
-            prisma.tbl_maintenance_requests.count({ where: { status: 'completed' } }),
+            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere() }),
+            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'pending' }) }),
+            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'approved' }) }),
+            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'in_progress' }) }),
+            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'confirmed' }) }),
+            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'completed' }) }),
             prisma.tbl_maintenance_parts.count({ where: { status: 'pending_verification' } }),
-            prisma.tbl_maintenance_requests.aggregate({ _sum: { actual_cost: true } })
+            prisma.tbl_maintenance_requests.aggregate({
+                where: buildMaintenanceOnlyWhere(),
+                _sum: { actual_cost: true },
+            })
         ]);
 
         return {

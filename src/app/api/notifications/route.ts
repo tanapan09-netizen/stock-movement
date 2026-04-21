@@ -4,6 +4,8 @@ import { auth } from '@/auth';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
 import { resolveAuthenticatedUserId } from '@/lib/server/auth-user';
 import { normalizeRole } from '@/lib/roles';
+import type { Prisma } from '@prisma/client';
+import { GENERAL_REQUEST_ONLY_TAG } from '@/lib/maintenance-request-scope';
 import {
     canViewBorrowNotifications,
     canViewGeneralMaintenanceNotifications,
@@ -184,13 +186,10 @@ export async function GET(request: Request) {
             && canViewMaintenanceNotifications(role, permissions, isApprover)
             && (isManagerView || isTechnicianView || isApprover)
         ) {
-            const maintenanceWhere: {
-                status: string;
-                category: { not: string };
-                OR?: Array<{ assigned_to: string | null }>;
-            } = {
+            const maintenanceWhere: Prisma.tbl_maintenance_requestsWhereInput = {
                 status: 'pending',
                 category: { not: 'general' },
+                NOT: { tags: { contains: GENERAL_REQUEST_ONLY_TAG } },
             };
 
             if (!isManagerView && !isApprover && isTechnicianView) {
@@ -244,13 +243,12 @@ export async function GET(request: Request) {
         }
 
         if (shouldLoadModule(requestedModule, 'maintenance') && canViewGeneralMaintenanceNotifications(role) && (isManagerView || isGeneralRequesterView)) {
-            const generalWhere: {
-                category: string;
-                status: string;
-                reported_by?: string;
-            } = {
-                category: 'general',
+            const generalWhere: Prisma.tbl_maintenance_requestsWhereInput = {
                 status: 'pending',
+                OR: [
+                    { tags: { contains: GENERAL_REQUEST_ONLY_TAG } },
+                    { category: 'general' },
+                ],
             };
 
             if (!isManagerView && !isEmployeeReceiverView) {

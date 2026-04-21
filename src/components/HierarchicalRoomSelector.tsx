@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { Building2, ChevronDown, ChevronRight, FolderTree, Home, Layers3, MapPin } from 'lucide-react';
 import { FloatingSearchInput } from '@/components/FloatingField';
 
 export interface Room {
@@ -35,12 +36,37 @@ interface Props {
     closeDelayMs?: number;
 }
 
-export default function HierarchicalRoomSelector({ rooms, value, onChange, placeholder = 'เลือกสถานที่...', closeDelayMs = 0 }: Props) {
+const byCode = <T extends { code: string }>(a: T, b: T) =>
+    a.code.localeCompare(b.code, 'th', { numeric: true, sensitivity: 'base' });
+
+const makeFloorKey = (typeCode: string, floorCode: string) => `${typeCode}::${floorCode}`;
+const makeRoomKey = (typeCode: string, floorCode: string, roomCode: string) =>
+    `${typeCode}::${floorCode}::${roomCode}`;
+
+function toggleSetValue(setter: Dispatch<SetStateAction<Set<string>>>, key: string) {
+    setter((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+    });
+}
+
+export default function HierarchicalRoomSelector({
+    rooms,
+    value,
+    onChange,
+    placeholder = 'Select location...',
+    closeDelayMs = 0,
+}: Props) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
+    const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
+    const [expandedFloors, setExpandedFloors] = useState<Set<string>>(new Set());
+    const [expandedRooms, setExpandedRooms] = useState<Set<string>>(new Set());
+
     const containerRef = useRef<HTMLDivElement>(null);
     const closeTimerRef = useRef<number | null>(null);
-    const flyoutTimers = useRef<Map<HTMLElement, ReturnType<typeof setTimeout>>>(new Map());
 
     const clearCloseTimer = () => {
         if (!closeTimerRef.current) return;
@@ -60,204 +86,163 @@ export default function HierarchicalRoomSelector({ rooms, value, onChange, place
         return () => window.removeEventListener('pointerdown', onPointerDown);
     }, [open]);
 
-    useEffect(() => {
-        return () => clearCloseTimer();
-    }, []);
+    useEffect(() => () => clearCloseTimer(), []);
 
     const { types, flatLocations, selectedText } = useMemo(() => {
-        const realRooms = rooms.filter(r => r.active && !r.room_code.startsWith('T-') && !r.room_code.startsWith('F-'));
+        const realRooms = rooms.filter(
+            (room) => room.active && !room.room_code.startsWith('T-') && !room.room_code.startsWith('F-'),
+        );
 
         const typeNameMap = new Map<string, string>();
         const floorNameMap = new Map<string, string>();
-        for (const r of rooms) {
-            if (!r.active) continue;
-            if (r.room_name.startsWith('[TYPE] ')) typeNameMap.set(r.room_type || '', r.room_name.replace('[TYPE] ', ''));
-            if (r.room_name.startsWith('[FLOOR] ')) floorNameMap.set(`${r.room_type}__${r.floor}`, r.room_name.replace('[FLOOR] ', ''));
+
+        for (const room of rooms) {
+            if (!room.active) continue;
+            if (room.room_name.startsWith('[TYPE] ')) {
+                typeNameMap.set(room.room_type || '', room.room_name.replace('[TYPE] ', ''));
+            }
+            if (room.room_name.startsWith('[FLOOR] ')) {
+                floorNameMap.set(
+                    `${room.room_type || ''}__${room.floor || ''}`,
+                    room.room_name.replace('[FLOOR] ', ''),
+                );
+            }
         }
 
         const typeMap = new Map<string, TreeType>();
-        for (const r of realRooms) {
-            const typeCode = r.room_type || 'GENERAL';
-            const floorCode = r.floor || 'FL-0';
-            if (!typeMap.has(typeCode)) typeMap.set(typeCode, { code: typeCode, name: typeNameMap.get(typeCode) || typeCode, floors: [] });
-            const typeNode = typeMap.get(typeCode)!;
 
-            let floorNode = typeNode.floors.find(f => f.code === floorCode);
+        for (const room of realRooms) {
+            const typeCode = room.room_type || 'GENERAL';
+            const floorCode = room.floor || 'FL-0';
+
+            if (!typeMap.has(typeCode)) {
+                typeMap.set(typeCode, {
+                    code: typeCode,
+                    name: typeNameMap.get(typeCode) || typeCode,
+                    floors: [],
+                });
+            }
+
+            const typeNode = typeMap.get(typeCode)!;
+            let floorNode = typeNode.floors.find((floor) => floor.code === floorCode);
             if (!floorNode) {
-                let floorName = floorNameMap.get(`${typeCode}__${floorCode}`) || floorCode;
+                const floorLookupKey = `${typeCode}__${floorCode}`;
+                let floorName = floorNameMap.get(floorLookupKey) || floorCode;
                 if (floorName.startsWith('ชั้น ชั้น')) floorName = floorName.replace('ชั้น ชั้น', 'ชั้น');
                 floorNode = { code: floorCode, name: floorName, rooms: [] };
                 typeNode.floors.push(floorNode);
             }
 
-            if (r.zone) {
-                const parentCode = r.building || r.room_code;
-                let parentRoom = floorNode.rooms.find(rm => rm.code === parentCode);
+            if (room.zone) {
+                const parentCode = room.building || room.room_code;
+                let parentRoom = floorNode.rooms.find((r) => r.code === parentCode);
                 if (!parentRoom) {
-                    parentRoom = { id: r.room_id, code: parentCode, name: parentCode, zones: [] };
+                    parentRoom = {
+                        id: room.room_id,
+                        code: parentCode,
+                        name: parentCode,
+                        zones: [],
+                    };
                     floorNode.rooms.push(parentRoom);
                 }
-                parentRoom.zones.push({ id: r.room_id, code: r.room_code, name: r.room_name });
-            } else {
-                if (!floorNode.rooms.find(rm => rm.code === r.room_code)) {
-                    floorNode.rooms.push({ id: r.room_id, code: r.room_code, name: r.room_name, zones: [] });
+                if (!parentRoom.zones.some((zone) => zone.id === room.room_id)) {
+                    parentRoom.zones.push({ id: room.room_id, code: room.room_code, name: room.room_name });
                 }
+                continue;
+            }
+
+            if (!floorNode.rooms.some((r) => r.code === room.room_code)) {
+                floorNode.rooms.push({
+                    id: room.room_id,
+                    code: room.room_code,
+                    name: room.room_name,
+                    zones: [],
+                });
             }
         }
 
-        const treeTypes = Array.from(typeMap.values());
+        const treeTypes = Array.from(typeMap.values())
+            .map((typeNode) => ({
+                ...typeNode,
+                floors: typeNode.floors
+                    .map((floorNode) => ({
+                        ...floorNode,
+                        rooms: floorNode.rooms
+                            .map((roomNode) => ({
+                                ...roomNode,
+                                zones: [...roomNode.zones].sort(byCode),
+                            }))
+                            .sort(byCode),
+                    }))
+                    .sort(byCode),
+            }))
+            .sort(byCode);
 
         const flat: FlatLocation[] = [];
-        for (const t of treeTypes) {
-            for (const f of t.floors) {
-                for (const rm of f.rooms) {
-                    const roomPath = `${t.name} › ${f.name}`;
-                    flat.push({ id: rm.id, code: rm.code, name: rm.name, type: 'room', path: roomPath });
-                    for (const z of rm.zones) {
-                        flat.push({ id: z.id, code: z.code, name: z.name, type: 'zone', path: `${roomPath} › ${rm.name}` });
+        for (const typeNode of treeTypes) {
+            for (const floorNode of typeNode.floors) {
+                for (const roomNode of floorNode.rooms) {
+                    const basePath = `${typeNode.name} > ${floorNode.name}`;
+                    if (roomNode.zones.length === 0) {
+                        flat.push({
+                            id: roomNode.id,
+                            code: roomNode.code,
+                            name: roomNode.name,
+                            type: 'room',
+                            path: basePath,
+                        });
+                    }
+                    for (const zone of roomNode.zones) {
+                        flat.push({
+                            id: zone.id,
+                            code: zone.code,
+                            name: zone.name,
+                            type: 'zone',
+                            path: `${basePath} > ${roomNode.code}`,
+                        });
                     }
                 }
             }
         }
 
-        const text = value
+        const selected = value ? rooms.find((room) => room.room_id === value) : null;
+        const selectedValue = selected
             ? (() => {
-                const r = rooms.find(rm => rm.room_id === value);
-                if (!r) return '';
-                const locInfo = [r.building || '', r.floor || ''].filter(Boolean).join(' ');
-                const namePart = (!r.room_name || r.room_name === r.room_code) ? r.room_code : `${r.room_name} (${r.room_code})`;
-                return locInfo ? `${locInfo} › ${namePart}` : namePart;
-            })()
+                  const roomLabel =
+                      !selected.room_name || selected.room_name === selected.room_code
+                          ? selected.room_code
+                          : `${selected.room_code} - ${selected.room_name}`;
+                  const scope = [selected.room_type, selected.floor].filter(Boolean).join(' / ');
+                  return scope ? `${scope} / ${roomLabel}` : roomLabel;
+              })()
             : '';
 
-        return { types: treeTypes, flatLocations: flat, selectedText: text };
+        return { types: treeTypes, flatLocations: flat, selectedText: selectedValue };
     }, [rooms, value]);
+
+    useEffect(() => {
+        if (!open || types.length === 0 || expandedTypes.size > 0) return;
+        setExpandedTypes(new Set([types[0].code]));
+    }, [open, types, expandedTypes.size]);
 
     const searchResults = useMemo(() => {
         const q = query.trim().toLowerCase();
         if (!q) return [];
         return flatLocations
-            .filter(loc => loc.code.toLowerCase().includes(q) || loc.name.toLowerCase().includes(q))
-            .slice(0, 15);
+            .filter(
+                (location) =>
+                    location.code.toLowerCase().includes(q) ||
+                    location.name.toLowerCase().includes(q) ||
+                    location.path.toLowerCase().includes(q),
+            )
+            .slice(0, 30);
     }, [flatLocations, query]);
 
-    const PANEL: React.CSSProperties = useMemo(() => ({
-        background: '#fff',
-        border: '1px solid #e2e8f0',
-        borderRadius: 14,
-        boxShadow: '0 8px 32px -4px rgba(15,23,42,0.18), 0 2px 8px -2px rgba(15,23,42,0.08)',
-        minWidth: 280,
-        overflow: 'hidden',
-    }), []);
-
-    const ROW_BASE: React.CSSProperties = useMemo(() => ({
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '9px 14px',
-        borderBottom: '1px solid #f1f5f9',
-        cursor: 'pointer',
-        fontSize: 13,
-        lineHeight: 1.4,
-        gap: 8,
-        transition: 'background 0.13s',
-        whiteSpace: 'nowrap',
-    }), []);
-
-    const FLYOUT_BASE: React.CSSProperties = useMemo(() => ({
-        display: 'none',
-        position: 'fixed',
-        ...PANEL,
-        maxHeight: 400,
-        overflowY: 'auto',
-    }), [PANEL]);
-
-    const positionFlyout = (triggerEl: HTMLElement, flyoutEl: HTMLElement, offsetX = 4) => {
-        const rect = triggerEl.getBoundingClientRect();
-        const vpW = window.innerWidth;
-        const vpH = window.innerHeight;
-        const fw = flyoutEl.offsetWidth || 280;
-        const fh = flyoutEl.offsetHeight || 200;
-
-        let left = rect.right + offsetX;
-        let top = rect.top;
-
-        if (left + fw > vpW - 12) left = rect.left - fw - offsetX;
-        if (top + fh > vpH - 12) top = Math.max(8, vpH - fh - 12);
-
-        flyoutEl.style.left = `${left}px`;
-        flyoutEl.style.top = `${top}px`;
-    };
-
-    const showFlyout = (triggerEl: HTMLElement, selector: string) => {
-        // ยกเลิก timer ซ่อนที่ค้างอยู่ก่อน
-        const existing = flyoutTimers.current.get(triggerEl);
-        if (existing) { clearTimeout(existing); flyoutTimers.current.delete(triggerEl); }
-
-        const flyout = triggerEl.querySelector<HTMLElement>(selector);
-        if (!flyout) return;
-        flyout.style.display = 'block';
-        requestAnimationFrame(() => positionFlyout(triggerEl, flyout));
-    };
-
-    const hideFlyout = (triggerEl: HTMLElement, selector: string, delay = 300) => {
-        // หนวงเวลากอนซอน ใหเมาสมเวลาเลอนเขา submenu ได
-        const existing = flyoutTimers.current.get(triggerEl);
-        if (existing) clearTimeout(existing);
-
-        const timer = setTimeout(() => {
-            const flyout = triggerEl.querySelector<HTMLElement>(selector);
-            if (flyout) flyout.style.display = 'none';
-            flyoutTimers.current.delete(triggerEl);
-        }, delay);
-        flyoutTimers.current.set(triggerEl, timer);
-    };
-
-    const Badge = ({ label, type = 'default' }: { label: string; type?: 'type' | 'floor' | 'room' | 'zone' | 'default' }) => {
-        const colors = {
-            type: { bg: '#eff6ff', fg: '#1e40af', border: '#dbeafe' },
-            floor: { bg: '#f0fdf4', fg: '#166534', border: '#dcfce7' },
-            room: { bg: '#fff7ed', fg: '#9a3412', border: '#ffedd5' },
-            zone: { bg: '#faf5ff', fg: '#6b21a8', border: '#f3e8ff' },
-            default: { bg: '#f1f5f9', fg: '#64748b', border: '#e2e8f0' }
-        }[type];
-        return (
-            <span style={{
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: '0.02em',
-                background: colors.bg,
-                color: colors.fg,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 4,
-                padding: '1px 5px',
-                marginLeft: 4,
-                textTransform: 'uppercase',
-                flexShrink: 0
-            }}>{label}</span>
-        );
-    };
-
-    const Chevron = () => (
-        <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#94a3b8"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ flexShrink: 0 }}
-        >
-            <path d="M9 5l7 7-7 7" />
-        </svg>
-    );
-
-    const selectRoom = (id: number) => {
-        onChange(id);
+    const selectRoom = (roomId: number) => {
+        onChange(roomId);
         setQuery('');
         clearCloseTimer();
+
         if (closeDelayMs > 0) {
             closeTimerRef.current = window.setTimeout(() => {
                 setOpen(false);
@@ -265,277 +250,279 @@ export default function HierarchicalRoomSelector({ rooms, value, onChange, place
             }, closeDelayMs);
             return;
         }
+
         setOpen(false);
     };
 
     return (
-        <div ref={containerRef} style={{ position: 'relative' }}>
+        <div ref={containerRef} className="relative">
             <button
                 type="button"
                 onClick={() => {
                     clearCloseTimer();
-                    setOpen(o => !o);
                     setQuery('');
+                    setOpen((prev) => !prev);
                 }}
-                style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 8,
-                    padding: '11px 16px',
-                    border: '1.5px solid ' + (selectedText ? '#6366f1' : '#e2e8f0'),
-                    borderRadius: 12,
-                    background: selectedText ? 'linear-gradient(to right, #f8fafc, #eff6ff)' : '#fff',
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    fontWeight: selectedText ? 600 : 400,
-                    color: selectedText ? '#1e293b' : '#64748b',
-                    outline: 'none',
-                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                    boxShadow: selectedText ? '0 4px 12px -2px rgba(99,102,241,0.12), 0 0 0 3px rgba(99,102,241,0.06)' : 'none',
-                }}
+                className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                    selectedText
+                        ? 'border-indigo-300 bg-gradient-to-r from-slate-50 to-indigo-50 shadow-sm'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+                aria-expanded={open}
             >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                        stroke={selectedText ? '#6366f1' : '#94a3b8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-                        <polyline points="9 22 9 12 15 12 15 22" />
-                    </svg>
-                    {selectedText || placeholder}
+                <span className="flex items-center justify-between gap-3">
+                    <span className="flex min-w-0 items-center gap-2">
+                        <Home className={`h-4 w-4 ${selectedText ? 'text-indigo-600' : 'text-slate-400'}`} />
+                        <span className={`truncate text-sm ${selectedText ? 'font-medium text-slate-900' : 'text-slate-500'}`}>
+                            {selectedText || placeholder}
+                        </span>
+                    </span>
+                    <ChevronDown
+                        className={`h-4 w-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+                    />
                 </span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                    stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                    <path d="M6 9l6 6 6-6" />
-                </svg>
             </button>
 
-            <div
-                style={{
-                    display: open ? 'block' : 'none',
-                    position: 'absolute',
-                    top: 'calc(100% + 6px)',
-                    left: 0,
-                    right: 0,
-                    ...PANEL,
-                    zIndex: 99999,
-                }}
-            >
-                <div style={{ padding: 10, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                    <FloatingSearchInput
-                        type="text"
-                        label="ค้นหาห้อง"
-                        placeholder="ค้นหารหัส หรือชื่อห้อง..."
-                        value={query}
-                        onChange={e => setQuery(e.target.value)}
-                        onKeyDown={e => e.stopPropagation()}
-                        dense
-                        className="text-sm"
-                    />
-                </div>
+            {open && (
+                <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-[99999] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                    <div className="border-b border-slate-200 bg-slate-50 p-3">
+                        <FloatingSearchInput
+                            type="text"
+                            label="ค้นหาห้อง"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            dense
+                            className="text-sm"
+                        />
+                    </div>
 
-                <div style={{ maxHeight: 380, overflowY: query.trim() ? 'auto' : 'visible' }}>
-                    {query.trim() ? (
-                        searchResults.length === 0 ? (
-                            <div style={{ padding: '20px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
-                                ไม่พบรายการที่ค้นหา
-                            </div>
-                        ) : (
-                            searchResults.map(loc => (
-                                <div
-                                    key={`${loc.type}-${loc.id}-${loc.code}`}
-                                    onClick={() => selectRoom(loc.id)}
-                                    style={{ ...ROW_BASE, flexDirection: 'column', alignItems: 'flex-start', gap: 2, padding: '10px 14px' }}
-                                    onMouseEnter={e => (e.currentTarget.style.background = '#f0f9ff')}
-                                    onMouseLeave={e => (e.currentTarget.style.background = '')}
-                                >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, color: '#1e293b', fontSize: 13 }}>
-                                        <span>{loc.code === loc.name ? loc.code : `${loc.code} – ${loc.name}`}</span>
-                                        <Badge label={loc.type === 'zone' ? 'ZONE' : 'RM'} type={loc.type} />
-                                    </div>
-                                    <div style={{ fontSize: 10, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
-                                            <circle cx="12" cy="10" r="3" />
-                                        </svg>
-                                        {loc.path.replace(/ชั้น ชั้น/g, 'ชั้น')}
-                                    </div>
+                    <div className="max-h-[420px] overflow-y-auto">
+                        {query.trim() ? (
+                            searchResults.length === 0 ? (
+                                <div className="px-4 py-8 text-center text-sm text-slate-400">
+                                    ไม่พบรายการที่ค้นหา
                                 </div>
-                            ))
-                        )
-                    ) : (
-                        <>
-                            {types.length === 0 && (
-                                <div style={{ padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>ไม่พบข้อมูลห้อง</div>
-                            )}
-
-                            {types.length > 0 && (
-                                <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: '#94a3b8', textTransform: 'uppercase' }}>
-                                    ประเภทสถานที่
-                                </div>
-                            )}
-
-                            {types.map((t, tIdx) => (
-                                <div key={t.code} style={{ position: 'relative' }}>
-                                    <div
-                                        style={{ ...ROW_BASE, color: '#1e3a5f', fontWeight: 600, fontSize: 13.5, position: 'relative' }}
-                                        onMouseEnter={e => {
-                                            e.currentTarget.style.background = '#eff6ff';
-                                            showFlyout(e.currentTarget, '.sub-floor');
-                                        }}
-                                        onMouseLeave={e => {
-                                            e.currentTarget.style.background = '';
-                                            hideFlyout(e.currentTarget, '.sub-floor');
-                                        }}
-                                    >
-                                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
-                                            <span style={{
-                                                width: 28,
-                                                height: 28,
-                                                borderRadius: 8,
-                                                background: 'linear-gradient(135deg,#dbeafe,#bfdbfe)',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                fontSize: 14,
-                                                flexShrink: 0,
-                                            }}>🏢</span>
-                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
-                                            <Badge label={t.code} type="type" />
-                                        </span>
-                                        <Chevron />
-
-                                        <div className="sub-floor" style={{ ...FLYOUT_BASE, zIndex: 100100 + tIdx }}>
-                                            <div style={{ padding: '8px 12px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: '#94a3b8', textTransform: 'uppercase' }}>
-                                                ชั้น
-                                            </div>
-                                            {t.floors.map((f, fIdx) => (
-                                                <div
-                                                    key={f.code}
-                                                    style={{ ...ROW_BASE, color: '#374151', fontWeight: 500, position: 'relative' }}
-                                                    onMouseEnter={e => {
-                                                        e.currentTarget.style.background = '#f0fdf4';
-                                                        showFlyout(e.currentTarget, '.sub-room');
-                                                    }}
-                                                    onMouseLeave={e => {
-                                                        e.currentTarget.style.background = '';
-                                                        hideFlyout(e.currentTarget, '.sub-room');
-                                                    }}
+                            ) : (
+                                <div className="py-1">
+                                    {searchResults.map((location) => (
+                                        <button
+                                            key={`${location.type}-${location.id}-${location.code}`}
+                                            type="button"
+                                            onClick={() => selectRoom(location.id)}
+                                            className={`w-full px-4 py-2.5 text-left transition hover:bg-sky-50 ${
+                                                value === location.id ? 'bg-indigo-50' : ''
+                                            }`}
+                                        >
+                                            <span className="flex items-center gap-2">
+                                                <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                                                <span className="truncate text-sm font-medium text-slate-800">
+                                                    {location.code === location.name
+                                                        ? location.code
+                                                        : `${location.code} - ${location.name}`}
+                                                </span>
+                                                <span
+                                                    className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                                                        location.type === 'zone'
+                                                            ? 'bg-violet-100 text-violet-700'
+                                                            : 'bg-amber-100 text-amber-700'
+                                                    }`}
                                                 >
-                                                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
-                                                        <span style={{
-                                                            width: 24,
-                                                            height: 24,
-                                                            borderRadius: 6,
-                                                            background: 'linear-gradient(135deg,#dcfce7,#bbf7d0)',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            fontSize: 12,
-                                                            flexShrink: 0,
-                                                        }}>📁</span>
-                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</span>
-                                                        <Badge label={f.code} type="floor" />
+                                                    {location.type === 'zone' ? 'ZONE' : 'ROOM'}
+                                                </span>
+                                            </span>
+                                            <span className="mt-0.5 block truncate pl-5 text-[11px] text-slate-500">
+                                                {location.path}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )
+                        ) : (
+                            <div className="py-2">
+                                {types.length === 0 && (
+                                    <div className="px-4 py-8 text-center text-sm text-slate-400">
+                                        ไม่พบข้อมูลห้อง
+                                    </div>
+                                )}
+
+                                {types.map((typeNode) => {
+                                    const typeOpen = expandedTypes.has(typeNode.code);
+                                    return (
+                                        <div key={typeNode.code} className="border-b border-slate-100 last:border-b-0">
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleSetValue(setExpandedTypes, typeNode.code)}
+                                                className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left hover:bg-slate-50"
+                                                aria-expanded={typeOpen}
+                                            >
+                                                <span className="flex min-w-0 items-center gap-2">
+                                                    <span className="rounded-lg bg-blue-100 p-1.5 text-blue-700">
+                                                        <Building2 className="h-3.5 w-3.5" />
                                                     </span>
-                                                    <Chevron />
+                                                    <span className="truncate text-sm font-semibold text-slate-800">
+                                                        {typeNode.name}
+                                                    </span>
+                                                    <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                                                        {typeNode.code}
+                                                    </span>
+                                                </span>
+                                                {typeOpen ? (
+                                                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                                                ) : (
+                                                    <ChevronRight className="h-4 w-4 text-slate-400" />
+                                                )}
+                                            </button>
 
-                                                    <div className="sub-room" style={{ ...FLYOUT_BASE, zIndex: 100200 + tIdx * 20 + fIdx }}>
-                                                        <div style={{ padding: '8px 12px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: '#94a3b8', textTransform: 'uppercase' }}>
-                                                            ห้อง
-                                                        </div>
-                                                        {f.rooms.map((rm, rmIdx) => (
-                                                            <div key={rm.code} style={{ position: 'relative' }}>
-                                                                {rm.zones.length > 0 ? (
-                                                                    <div
-                                                                        style={{ ...ROW_BASE, color: '#374151', position: 'relative' }}
-                                                                        onMouseEnter={e => {
-                                                                            e.currentTarget.style.background = '#fff7ed';
-                                                                            showFlyout(e.currentTarget, '.sub-zone');
-                                                                        }}
-                                                                        onMouseLeave={e => {
-                                                                            e.currentTarget.style.background = '';
-                                                                            hideFlyout(e.currentTarget, '.sub-zone');
-                                                                        }}
-                                                                    >
-                                                                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
-                                                                            <span style={{
-                                                                                width: 22,
-                                                                                height: 22,
-                                                                                borderRadius: 6,
-                                                                                background: 'linear-gradient(135deg,#ffedd5,#fed7aa)',
-                                                                                display: 'flex',
-                                                                                alignItems: 'center',
-                                                                                justifyContent: 'center',
-                                                                                fontSize: 11,
-                                                                                flexShrink: 0,
-                                                                            }}>🚪</span>
-                                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                                {rm.code === rm.name ? rm.code : `${rm.code} – ${rm.name}`}
-                                                                            </span>
-                                                                            <Badge label="RM" type="room" />
+                                            {typeOpen && (
+                                                <div className="space-y-1 pb-2 pl-4 pr-2">
+                                                    {typeNode.floors.map((floorNode) => {
+                                                        const floorKey = makeFloorKey(typeNode.code, floorNode.code);
+                                                        const floorOpen = expandedFloors.has(floorKey);
+                                                        return (
+                                                            <div key={floorKey}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleSetValue(setExpandedFloors, floorKey)}
+                                                                    className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left hover:bg-emerald-50"
+                                                                    aria-expanded={floorOpen}
+                                                                >
+                                                                    <span className="flex min-w-0 items-center gap-2">
+                                                                        <span className="rounded-md bg-emerald-100 p-1.5 text-emerald-700">
+                                                                            <Layers3 className="h-3.5 w-3.5" />
                                                                         </span>
-                                                                        <Chevron />
+                                                                        <span className="truncate text-sm text-slate-700">
+                                                                            {floorNode.name}
+                                                                        </span>
+                                                                        <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                                                            {floorNode.code}
+                                                                        </span>
+                                                                    </span>
+                                                                    {floorOpen ? (
+                                                                        <ChevronDown className="h-4 w-4 text-slate-400" />
+                                                                    ) : (
+                                                                        <ChevronRight className="h-4 w-4 text-slate-400" />
+                                                                    )}
+                                                                </button>
 
-                                                                        <div className="sub-zone" style={{ ...FLYOUT_BASE, zIndex: 100400 + tIdx * 100 + fIdx * 10 + rmIdx }}>
-                                                                            <div style={{ padding: '8px 12px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: '#94a3b8', textTransform: 'uppercase' }}>
-                                                                                โซน
-                                                                            </div>
-                                                                            {rm.zones.map(z => (
-                                                                                <div
-                                                                                    key={z.id}
-                                                                                    onClick={() => selectRoom(z.id)}
-                                                                                    style={{ ...ROW_BASE, color: '#6d28d9', fontWeight: 500 }}
-                                                                                    onMouseEnter={e => (e.currentTarget.style.background = '#faf5ff')}
-                                                                                    onMouseLeave={e => (e.currentTarget.style.background = '')}
-                                                                                >
-                                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                                        {z.code === z.name ? z.code : `${z.code} – ${z.name}`}
-                                                                                    </span>
-                                                                                    <Badge label="ZONE" type="zone" />
+                                                                {floorOpen && (
+                                                                    <div className="space-y-1 pb-1 pl-4">
+                                                                        {floorNode.rooms.map((roomNode) => {
+                                                                            if (roomNode.zones.length === 0) {
+                                                                                const selected = value === roomNode.id;
+                                                                                return (
+                                                                                    <button
+                                                                                        key={`${floorKey}::${roomNode.code}`}
+                                                                                        type="button"
+                                                                                        onClick={() => selectRoom(roomNode.id)}
+                                                                                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition ${
+                                                                                            selected
+                                                                                                ? 'bg-indigo-50 text-indigo-700'
+                                                                                                : 'hover:bg-amber-50'
+                                                                                        }`}
+                                                                                    >
+                                                                                        <span className="flex min-w-0 items-center gap-2">
+                                                                                            <span className="rounded-md bg-amber-100 p-1.5 text-amber-700">
+                                                                                                <Home className="h-3.5 w-3.5" />
+                                                                                            </span>
+                                                                                            <span className="truncate text-sm">
+                                                                                                {roomNode.code === roomNode.name
+                                                                                                    ? roomNode.code
+                                                                                                    : `${roomNode.code} - ${roomNode.name}`}
+                                                                                            </span>
+                                                                                        </span>
+                                                                                        <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                                                                                            ROOM
+                                                                                        </span>
+                                                                                    </button>
+                                                                                );
+                                                                            }
+
+                                                                            const roomKey = makeRoomKey(
+                                                                                typeNode.code,
+                                                                                floorNode.code,
+                                                                                roomNode.code,
+                                                                            );
+                                                                            const roomOpen = expandedRooms.has(roomKey);
+                                                                            return (
+                                                                                <div key={roomKey}>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => toggleSetValue(setExpandedRooms, roomKey)}
+                                                                                        className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left hover:bg-amber-50"
+                                                                                        aria-expanded={roomOpen}
+                                                                                    >
+                                                                                        <span className="flex min-w-0 items-center gap-2">
+                                                                                            <span className="rounded-md bg-amber-100 p-1.5 text-amber-700">
+                                                                                                <FolderTree className="h-3.5 w-3.5" />
+                                                                                            </span>
+                                                                                            <span className="truncate text-sm text-slate-700">
+                                                                                                {roomNode.code === roomNode.name
+                                                                                                    ? roomNode.code
+                                                                                                    : `${roomNode.code} - ${roomNode.name}`}
+                                                                                            </span>
+                                                                                            <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                                                                                                {roomNode.zones.length} ZONES
+                                                                                            </span>
+                                                                                        </span>
+                                                                                        {roomOpen ? (
+                                                                                            <ChevronDown className="h-4 w-4 text-slate-400" />
+                                                                                        ) : (
+                                                                                            <ChevronRight className="h-4 w-4 text-slate-400" />
+                                                                                        )}
+                                                                                    </button>
+
+                                                                                    {roomOpen && (
+                                                                                        <div className="space-y-1 pl-4">
+                                                                                            {roomNode.zones.map((zoneNode) => {
+                                                                                                const selected = value === zoneNode.id;
+                                                                                                return (
+                                                                                                    <button
+                                                                                                        key={`${roomKey}::${zoneNode.id}`}
+                                                                                                        type="button"
+                                                                                                        onClick={() => selectRoom(zoneNode.id)}
+                                                                                                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition ${
+                                                                                                            selected
+                                                                                                                ? 'bg-indigo-50 text-indigo-700'
+                                                                                                                : 'hover:bg-violet-50'
+                                                                                                        }`}
+                                                                                                    >
+                                                                                                        <span className="flex min-w-0 items-center gap-2">
+                                                                                                            <span className="rounded-md bg-violet-100 p-1.5 text-violet-700">
+                                                                                                                <MapPin className="h-3.5 w-3.5" />
+                                                                                                            </span>
+                                                                                                            <span className="truncate text-sm">
+                                                                                                                {zoneNode.code === zoneNode.name
+                                                                                                                    ? zoneNode.code
+                                                                                                                    : `${zoneNode.code} - ${zoneNode.name}`}
+                                                                                                            </span>
+                                                                                                        </span>
+                                                                                                        <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                                                                                                            ZONE
+                                                                                                        </span>
+                                                                                                    </button>
+                                                                                                );
+                                                                                            })}
+                                                                                        </div>
+                                                                                    )}
                                                                                 </div>
-                                                                            ))}
-                                                                        </div>
-                                                                    </div>
-                                                                ) : (
-                                                                    <div
-                                                                        onClick={() => selectRoom(rm.id)}
-                                                                        style={{ ...ROW_BASE, color: '#374151' }}
-                                                                        onMouseEnter={e => (e.currentTarget.style.background = '#fff7ed')}
-                                                                        onMouseLeave={e => (e.currentTarget.style.background = '')}
-                                                                    >
-                                                                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
-                                                                            <span style={{
-                                                                                width: 22,
-                                                                                height: 22,
-                                                                                borderRadius: 6,
-                                                                                background: 'linear-gradient(135deg,#ffedd5,#fed7aa)',
-                                                                                display: 'flex',
-                                                                                alignItems: 'center',
-                                                                                justifyContent: 'center',
-                                                                                fontSize: 11,
-                                                                                flexShrink: 0,
-                                                                            }}>🚪</span>
-                                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                                {rm.code === rm.name ? rm.code : `${rm.code} – ${rm.name}`}
-                                                                            </span>
-                                                                            <Badge label="RM" type="room" />
-                                                                        </span>
+                                                                            );
+                                                                        })}
                                                                     </div>
                                                                 )}
                                                             </div>
-                                                        ))}
-                                                    </div>
+                                                        );
+                                                    })}
                                                 </div>
-                                            ))}
+                                            )}
                                         </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </>
-                    )}
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }
-

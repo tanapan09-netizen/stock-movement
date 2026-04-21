@@ -89,6 +89,18 @@ const hasCustomerTag = (tags?: string | null) =>
         .map((tag) => tag.trim().toLowerCase())
         .includes('ลูกค้า');
 
+const ABSOLUTE_URL_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
+
+function resolveMaintenanceImageProxyUrl(imageUrl: string): string {
+    const trimmed = imageUrl.trim();
+    if (!trimmed) return '';
+    if (ABSOLUTE_URL_PATTERN.test(trimmed)) return trimmed;
+
+    const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+    if (!normalized.startsWith('/uploads/')) return normalized;
+    return `/api/maintenance/image-proxy?path=${encodeURIComponent(normalized)}`;
+}
+
 const isFinishedRequestStatus = (status?: string | null) =>
     ['completed', 'verified'].includes((status || '').toLowerCase());
 
@@ -103,6 +115,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
     const currentUser = session?.user as SessionUserLike | undefined;
     const currentRole = (currentUser?.role || '').toLowerCase();
+    const loggedInReporter = (currentUser?.name || currentUser?.email || '').trim();
 
     const access = useMemo(
         () => resolveGeneralRequestAccess(currentRole, userPermissions),
@@ -161,7 +174,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         setLoading(true);
         try {
             const [reqResult, roomResult, vehicleResult] = await Promise.all([
-                getMaintenanceRequests(),
+                getMaintenanceRequests({ scope: 'general' }),
                 getRooms(),
                 getAllVehicles()
             ]);
@@ -192,12 +205,11 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
     useEffect(() => {
         void loadData();
+    }, [loadData]);
 
-        if (currentUser) {
-            const user = currentUser;
-            setFormData(f => ({ ...f, reported_by: user.name || user.email || '' }));
-        }
-    }, [currentUser, loadData]);
+    useEffect(() => {
+        setFormData((prev) => ({ ...prev, reported_by: loggedInReporter }));
+    }, [loggedInReporter]);
 
     useEffect(() => {
         if (!reqQueryParam || requests.length === 0 || hasOpenedFromUrl) return;
@@ -213,24 +225,6 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         url.searchParams.delete('req');
         window.history.replaceState({}, '', url.toString());
     }, [reqQueryParam, requests, hasOpenedFromUrl]);
-
-    useEffect(() => {
-        const handleSubmenuPosition = (e: MouseEvent) => {
-            const target = e.target as HTMLElement;
-            const parent = target.closest('.room-type-item, .floor-item, [data-has-submenu]');
-            if (!parent) return;
-
-            const submenu = parent.querySelector<HTMLElement>('.submenu-floor, .submenu-room, .submenu-zone');
-            if (submenu && submenu.style.display === 'block') {
-                const rect = parent.getBoundingClientRect();
-                submenu.style.left = (rect.right + 5) + 'px';
-                submenu.style.top = rect.top + 'px';
-            }
-        };
-
-        document.addEventListener('mouseenter', handleSubmenuPosition, true);
-        return () => document.removeEventListener('mouseenter', handleSubmenuPosition, true);
-    }, []);
 
     const filteredRequests = requests.filter(req => {
         const matchSearch =
@@ -286,7 +280,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             return;
         }
 
-        if (!formData.reported_by.trim()) {
+        const reportedBy = loggedInReporter || formData.reported_by.trim();
+        if (!reportedBy) {
             showToast('กรุณาระบุชื่อผู้แจ้ง', 'warning');
             return;
         }
@@ -329,7 +324,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             data.append('description', formData.description);
             data.append('category', formData.category);
             data.append('priority', formData.priority);
-            data.append('reported_by', formData.reported_by);
+            data.append('reported_by', reportedBy);
             data.append('contact_info', formData.contact_info);
             data.append('department', formData.department);
 
@@ -354,6 +349,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 data.append('vehicle_plate', vehiclePlate);
             }
             data.append('target_role', 'general');
+            data.append('request_scope', 'general_only');
             data.set('priority', priorityToSend);
 
             if (selectedFile) {
@@ -372,7 +368,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                     description: '',
                     category: 'general',
                     priority: 'normal',
-                    reported_by: currentUser?.name || '',
+                    reported_by: loggedInReporter,
                     contact_info: '',
                     department: '',
                     tags: '',
@@ -457,10 +453,10 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         <div>
                             <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                 <ClipboardList className="w-6 h-6 text-blue-600" />
-                                รับแจ้งซ่อม (ธุรการ)
+                                รับแจ้งซ่อม
                             </h1>
                             <p className="text-sm text-gray-500 mt-0.5">
-                                ส่งคำขอซ่อม - ระบบจะแจ้งเตือนฝ่ายธุรการโดยตรง
+                                ส่งคำขอซ่อม -
                             </p>
                         </div>
 
@@ -866,22 +862,31 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 <p className="text-xs text-gray-500 mb-2">รูปภาพประกอบ</p>
                                 {selectedRequestImageUrls.length > 0 ? (
                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                        {selectedRequestImageUrls.map((src, idx) => (
-                                            <a
-                                                key={`${src}-${idx}`}
-                                                href={src}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="group rounded-lg border border-gray-200 overflow-hidden bg-gray-50"
-                                            >
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img
-                                                    src={src}
-                                                    alt={`maintenance-${idx + 1}`}
-                                                    className="w-full h-32 object-cover transition-transform group-hover:scale-[1.02]"
-                                                />
-                                            </a>
-                                        ))}
+                                        {selectedRequestImageUrls.map((src, idx) => {
+                                            const resolvedSrc = resolveMaintenanceImageProxyUrl(src);
+                                            return (
+                                                <a
+                                                    key={`${src}-${idx}`}
+                                                    href={resolvedSrc}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="group rounded-lg border border-gray-200 overflow-hidden bg-gray-50"
+                                                >
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img
+                                                        src={resolvedSrc}
+                                                        alt={`maintenance-${idx + 1}`}
+                                                        className="w-full h-32 object-cover transition-transform group-hover:scale-[1.02]"
+                                                        onError={(event) => {
+                                                            const target = event.currentTarget;
+                                                            if (target.dataset.fallbackApplied === '1') return;
+                                                            target.dataset.fallbackApplied = '1';
+                                                            target.src = resolveMaintenanceImageProxyUrl(src);
+                                                        }}
+                                                    />
+                                                </a>
+                                            );
+                                        })}
                                     </div>
                                 ) : (
                                     <p className="text-sm text-gray-500">ไม่มีรูปภาพแนบ</p>
@@ -957,7 +962,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                         rooms={rooms}
                                         value={formData.room_id}
                                         onChange={(roomId) => setFormData(prev => ({ ...prev, room_id: roomId }))}
-                                        closeDelayMs={2500}
+                                        placeholder="เลือกสถานที่..."
+                                        closeDelayMs={120}
                                     />
                                 </div>
                             ) : (
@@ -1061,11 +1067,11 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                     <input
                                         type="text"
                                         value={formData.reported_by}
-                                        onChange={e => setFormData({ ...formData, reported_by: e.target.value })}
-                                        placeholder="ชื่อ-นามสกุล"
-                                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        readOnly
+                                        className="w-full border border-gray-200 bg-gray-100 text-gray-700 rounded-lg px-4 py-2.5 outline-none cursor-not-allowed"
                                         required
                                     />
+                                    <p className="mt-1 text-xs text-gray-500">ระบบดึงชื่อจากบัญชีที่ล็อกอินอัตโนมัติ</p>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium mb-1.5 text-gray-700">เบอร์ติดต่อ</label>

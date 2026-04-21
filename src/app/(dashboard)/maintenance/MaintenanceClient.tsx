@@ -623,7 +623,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         setFetchingGeneral(true);
         try {
             const result = await getMaintenanceRequests({
-                category: 'general',
+                scope: 'general',
                 status: 'pending'
             });
             if (result && result.success) {

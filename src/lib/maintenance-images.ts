@@ -6,11 +6,44 @@ function normalizeMaintenanceImageUrl(url: string): string {
     const trimmed = url.trim();
     if (!trimmed) return '';
 
-    if (ABSOLUTE_URL_PATTERN.test(trimmed) || trimmed.startsWith('/')) {
-        return trimmed;
+    const normalized = trimmed.replace(/\\/g, '/');
+
+    if (ABSOLUTE_URL_PATTERN.test(normalized)) {
+        return normalized;
     }
 
-    return `/uploads/${trimmed.replace(/^\/+/, '')}`;
+    if (normalized.startsWith('/public/uploads/')) {
+        return normalized.replace(/^\/public\//, '/');
+    }
+
+    if (normalized.startsWith('/uploads/')) {
+        return normalized;
+    }
+
+    if (normalized.startsWith('/')) {
+        return normalized;
+    }
+
+    if (normalized.startsWith('public/uploads/')) {
+        return `/${normalized.replace(/^public\//, '')}`;
+    }
+
+    if (normalized.startsWith('uploads/')) {
+        return `/${normalized}`;
+    }
+
+    const uploadsIndex = normalized.indexOf('/uploads/');
+    if (uploadsIndex >= 0) {
+        return normalized.slice(uploadsIndex);
+    }
+
+    const publicUploadsIndex = normalized.indexOf('public/uploads/');
+    if (publicUploadsIndex >= 0) {
+        const fromPublic = normalized.slice(publicUploadsIndex);
+        return `/${fromPublic.replace(/^public\//, '')}`;
+    }
+
+    return `/uploads/${normalized.replace(/^\/+/, '')}`;
 }
 
 export function parseMaintenanceImageUrls(value?: string | null): string[] {
