@@ -7,7 +7,6 @@
 
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 // Types
 export interface ExportColumn {
@@ -55,75 +54,150 @@ export function exportToExcel(
 /**
  * Export data to PDF file
  */
-export function exportToPDF(
+export async function exportToPDF(
     data: ExportData[],
     columns: ExportColumn[],
     title: string = 'Report',
     filename: string = 'export'
-): void {
-    // Create PDF document
+): Promise<void> {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+        return;
+    }
+
     const doc = new jsPDF({
         orientation: 'landscape',
         unit: 'mm',
         format: 'a4'
     });
 
-    // Add Thai font support note
-    doc.setFont('helvetica');
-
-    // Title
-    doc.setFontSize(18);
-    doc.text(title, 14, 20);
-
-    // Date
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Generated: ${new Date().toLocaleString('th-TH')}`, 14, 28);
-
-    // Prepare table data
-    const headers = columns.map(col => col.header);
+    const headers = columns.map(col => escapeHtml(col.header));
     const rows = data.map(item =>
         columns.map(col => {
             const value = item[col.key];
-            return value !== null && value !== undefined ? String(value) : '';
+            return value !== null && value !== undefined ? escapeHtml(String(value)) : '';
         })
     );
 
-    // Add table
-    autoTable(doc, {
-        head: [headers],
-        body: rows,
-        startY: 35,
-        styles: {
-            fontSize: 9,
-            cellPadding: 3,
-        },
-        headStyles: {
-            fillColor: [59, 130, 246], // Blue
-            textColor: 255,
-            fontStyle: 'bold',
-        },
-        alternateRowStyles: {
-            fillColor: [245, 247, 250],
-        },
-    });
+    const container = document.createElement('div');
+    container.style.position = 'fixed';
+    container.style.left = '-99999px';
+    container.style.top = '0';
+    container.style.width = '1120px';
+    container.style.padding = '0';
+    container.style.margin = '0';
+    container.style.background = '#ffffff';
+    container.style.zIndex = '-1';
 
-    // Footer
-    const pageCount = doc.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        doc.text(
-            `Page ${i} of ${pageCount} - Stock Movement Pro`,
-            doc.internal.pageSize.width / 2,
-            doc.internal.pageSize.height - 10,
-            { align: 'center' }
-        );
+    const headerCells = headers.map((header) => `<th>${header}</th>`).join('');
+    const bodyRows = rows.map((row, rowIndex) => {
+        const cells = row.map((cell) => `<td>${cell}</td>`).join('');
+        return `<tr class="${rowIndex % 2 === 1 ? 'alt-row' : ''}">${cells}</tr>`;
+    }).join('');
+
+    const renderedTitle = escapeHtml(title);
+    const renderedDate = escapeHtml(new Date().toLocaleString('th-TH'));
+    container.innerHTML = `
+        <style>
+            .pdf-export-root {
+                width: 1120px;
+                color: #111827;
+                background: #ffffff;
+                font-family: 'Sarabun', 'Noto Sans Thai', 'IBM Plex Sans Thai', 'Tahoma', 'Segoe UI', sans-serif;
+                box-sizing: border-box;
+                padding: 28px 32px 24px;
+            }
+            .pdf-export-title {
+                font-size: 28px;
+                font-weight: 700;
+                margin: 0 0 4px 0;
+                line-height: 1.25;
+            }
+            .pdf-export-date {
+                font-size: 14px;
+                color: #6b7280;
+                margin: 0 0 18px 0;
+            }
+            .pdf-export-table {
+                width: 100%;
+                border-collapse: collapse;
+                table-layout: fixed;
+                font-size: 12px;
+                line-height: 1.35;
+            }
+            .pdf-export-table th,
+            .pdf-export-table td {
+                border: 1px solid #d1d5db;
+                padding: 6px 8px;
+                text-align: left;
+                vertical-align: top;
+                word-break: break-word;
+                overflow-wrap: anywhere;
+            }
+            .pdf-export-table th {
+                background: #3b82f6;
+                color: #ffffff;
+                font-weight: 700;
+            }
+            .pdf-export-table .alt-row td {
+                background: #f8fafc;
+            }
+        </style>
+        <div class="pdf-export-root">
+            <h1 class="pdf-export-title">${renderedTitle}</h1>
+            <p class="pdf-export-date">Generated: ${renderedDate}</p>
+            <table class="pdf-export-table">
+                <thead>
+                    <tr>${headerCells}</tr>
+                </thead>
+                <tbody>
+                    ${bodyRows}
+                </tbody>
+            </table>
+        </div>
+    `;
+    document.body.appendChild(container);
+
+    try {
+        await doc.html(container, {
+            x: 6,
+            y: 6,
+            width: 285,
+            windowWidth: 1120,
+            autoPaging: 'text',
+            html2canvas: {
+                scale: 0.72,
+                useCORS: true,
+                backgroundColor: '#ffffff',
+            },
+            margin: [6, 6, 12, 6],
+        });
+
+        const pageCount = doc.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFontSize(8);
+            doc.setTextColor(150);
+            doc.text(
+                `Page ${i} of ${pageCount} - Stock Movement Pro`,
+                doc.internal.pageSize.width / 2,
+                doc.internal.pageSize.height - 6,
+                { align: 'center' }
+            );
+        }
+    } finally {
+        container.remove();
     }
 
-    // Download
     doc.save(`${filename}_${formatDate(new Date())}.pdf`);
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 /**

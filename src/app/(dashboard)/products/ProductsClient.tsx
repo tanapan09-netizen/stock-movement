@@ -5,7 +5,7 @@
  * Export, Scanner, และ View Mode integration
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type MouseEvent as ReactMouseEvent } from 'react';
 import { FloatingSearchInput } from '@/components/FloatingField';
 import { FileSpreadsheet, FileText, QrCode, Loader2, LayoutGrid, List, Edit, Trash2, ArrowUpDown, Upload, Gem, AlertTriangle, Columns3, ArrowUp, ArrowDown, RotateCcw, GripVertical, Package, X, Image as ImageIcon } from 'lucide-react';
 import { exportToExcel, exportToPDF, EXPORT_COLUMNS } from '@/lib/exportUtils';
@@ -33,6 +33,13 @@ interface Product {
     p_image?: string | null;
     tbl_categories?: { cat_name: string } | null;
     is_luxury?: boolean | null;
+}
+
+interface ImagePreviewState {
+    src: string;
+    alt: string;
+    left: number;
+    top: number;
 }
 
 function isBelowSafetyStock(product: Pick<Product, 'p_count' | 'safety_stock'>): boolean {
@@ -196,6 +203,25 @@ function getProductImageSrc(imagePath?: string | null): string | null {
     return `/uploads/products/${normalized}`;
 }
 
+const IMAGE_PREVIEW_WIDTH = 288;
+const IMAGE_PREVIEW_HEIGHT = 320;
+const IMAGE_PREVIEW_MARGIN = 14;
+
+function getImagePreviewPosition(targetRect: DOMRect) {
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const prefersRight = targetRect.right + IMAGE_PREVIEW_MARGIN + IMAGE_PREVIEW_WIDTH <= viewportWidth - 8;
+    const left = prefersRight
+        ? targetRect.right + IMAGE_PREVIEW_MARGIN
+        : Math.max(8, targetRect.left - IMAGE_PREVIEW_WIDTH - IMAGE_PREVIEW_MARGIN);
+    const centeredTop = targetRect.top + targetRect.height / 2 - IMAGE_PREVIEW_HEIGHT / 2;
+    const top = Math.min(
+        Math.max(8, centeredTop),
+        Math.max(8, viewportHeight - IMAGE_PREVIEW_HEIGHT - 8),
+    );
+    return { left, top };
+}
+
 interface ProductsToolbarProps {
     products: Product[];
     canImport: boolean;
@@ -239,7 +265,7 @@ export function ProductsToolbar({ products, canImport }: ProductsToolbarProps) {
         setExporting('pdf');
         try {
             await new Promise(r => setTimeout(r, 200));
-            exportToPDF(exportData, EXPORT_COLUMNS.products, 'รายการสินค้าทั้งหมด', 'products');
+            await exportToPDF(exportData, EXPORT_COLUMNS.products, 'รายการสินค้าทั้งหมด', 'products');
         } finally {
             setExporting(null);
         }
@@ -341,6 +367,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
     const [columnOrder, setColumnOrder] = useState<ProductColumnId[]>(() => getDefaultColumnOrder(isAdmin));
     const [draggingColumn, setDraggingColumn] = useState<ProductColumnId | null>(null);
     const [dragOverColumn, setDragOverColumn] = useState<ProductColumnId | null>(null);
+    const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
     const columnStorageKey = `products_column_order_${isAdmin ? 'admin' : 'user'}`;
     const lowStockCount = products.filter(isBelowSafetyStock).length;
     const outOfStockCount = products.filter(isOutOfStock).length;
@@ -383,6 +410,16 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
 
         return () => window.clearTimeout(timeoutId);
     }, [columnStorageKey, isAdmin]);
+
+    useEffect(() => {
+        const closePreview = () => setImagePreview(null);
+        window.addEventListener('scroll', closePreview, true);
+        window.addEventListener('resize', closePreview);
+        return () => {
+            window.removeEventListener('scroll', closePreview, true);
+            window.removeEventListener('resize', closePreview);
+        };
+    }, []);
 
     
     const filteredProducts = products.filter(p => {
@@ -492,20 +529,26 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
 
     const renderCellValue = (columnId: ProductColumnId, product: Product) => {
         switch (columnId) {
-            case 'image':
+            case 'image': {
+                const imageSrc = getProductImageSrc(product.p_image);
                 return (
-                    <div className="h-12 w-12 overflow-hidden rounded-lg bg-gray-100 flex items-center justify-center">
-                        {getProductImageSrc(product.p_image) ? (
+                    <div
+                        className="h-12 w-12 overflow-hidden rounded-lg bg-gray-100 flex items-center justify-center"
+                        onMouseEnter={imageSrc ? (event) => handleImageMouseEnter(event, imageSrc, product.p_name) : undefined}
+                        onMouseLeave={imageSrc ? handleImageMouseLeave : undefined}
+                    >
+                        {imageSrc ? (
                             <ProductImage
-                                src={getProductImageSrc(product.p_image)!}
+                                src={imageSrc}
                                 alt={product.p_name}
-                                className="h-full w-full object-cover"
+                                className="h-full w-full object-cover cursor-zoom-in"
                             />
                         ) : (
                             <span className="text-xs text-gray-400">NO IMG</span>
                         )}
                     </div>
                 );
+            }
             case 'p_id':
                 return <span className="font-medium text-gray-900">{product.p_id}</span>;
             case 'p_name':
@@ -617,6 +660,24 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
         setShowOutOfStockOnly(false);
         setShowAssetOnly(false);
         setShowHasImageOnly(false);
+    };
+
+    const handleImageMouseEnter = (
+        event: ReactMouseEvent<HTMLElement>,
+        imageSrc: string,
+        imageAlt: string,
+    ) => {
+        const { left, top } = getImagePreviewPosition(event.currentTarget.getBoundingClientRect());
+        setImagePreview({
+            src: imageSrc,
+            alt: imageAlt,
+            left,
+            top,
+        });
+    };
+
+    const handleImageMouseLeave = () => {
+        setImagePreview(null);
     };
 
     return (
@@ -951,17 +1012,26 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                         sortedProducts.map((product) => (
                             <div key={product.p_id} className="bg-white border rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden">
                                 {/* Image */}
-                                <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
-                                    {getProductImageSrc(product.p_image) ? (
-                                        <ProductImage
-                                            src={getProductImageSrc(product.p_image)!}
-                                            alt={product.p_name}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    ) : (
-                                        <span className="text-gray-300 text-sm">NO IMAGE</span>
-                                    )}
-                                </div>
+                                {(() => {
+                                    const imageSrc = getProductImageSrc(product.p_image);
+                                    return (
+                                        <div
+                                            className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden"
+                                            onMouseEnter={imageSrc ? (event) => handleImageMouseEnter(event, imageSrc, product.p_name) : undefined}
+                                            onMouseLeave={imageSrc ? handleImageMouseLeave : undefined}
+                                        >
+                                            {imageSrc ? (
+                                                <ProductImage
+                                                    src={imageSrc}
+                                                    alt={product.p_name}
+                                                    className="w-full h-full object-cover cursor-zoom-in"
+                                                />
+                                            ) : (
+                                                <span className="text-gray-300 text-sm">NO IMAGE</span>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
 
                                 {/* Info */}
                                 <div className="p-3">
@@ -1032,6 +1102,24 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                             </div>
                         ))
                     )}
+                </div>
+            )}
+
+            {imagePreview && (
+                <div
+                    className="pointer-events-none fixed z-[120] w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl"
+                    style={{ left: imagePreview.left, top: imagePreview.top }}
+                    role="status"
+                    aria-live="polite"
+                >
+                    <div className="h-64 w-full overflow-hidden rounded-lg bg-slate-100">
+                        <ProductImage
+                            src={imagePreview.src}
+                            alt={imagePreview.alt}
+                            className="h-full w-full object-contain"
+                        />
+                    </div>
+                    <p className="mt-1 truncate text-xs text-slate-500">{imagePreview.alt}</p>
                 </div>
             )}
 

@@ -34,7 +34,7 @@ export default function ExportButtons({ data, columns, filename, title }: Export
         setExporting('pdf');
         try {
             await new Promise(resolve => setTimeout(resolve, 300));
-            exportToPDF(data, columns, title || filename, filename);
+            await exportToPDF(data, columns, title || filename, filename);
         } finally {
             setExporting(null);
         }
@@ -87,7 +87,7 @@ export function ExportDropdown({ data, columns, filename, title }: ExportButtons
             if (type === 'excel') {
                 exportToExcel(data, columns, filename);
             } else {
-                exportToPDF(data, columns, title || filename, filename);
+                await exportToPDF(data, columns, title || filename, filename);
             }
         } finally {
             setExporting(false);
