@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { FloatingSearchInput } from '@/components/FloatingField';
-import { UserCog, Plus, Edit2, Trash2, Phone, Mail, X, Search, Users } from 'lucide-react';
+import { UserCog, Plus, Edit2, Trash2, Phone, Mail, X, Users } from 'lucide-react';
 import Link from 'next/link';
 import {
     getTechnicians,
@@ -42,6 +42,8 @@ interface Props {
     canEdit: boolean;
 }
 
+type TechnicianTab = 'technician' | 'leader_technician';
+
 export default function TechniciansClient({ canEdit }: Props) {
     const [technicians, setTechnicians] = useState<Technician[]>([]);
     const [lineTechnicians, setLineTechnicians] = useState<LineTechnician[]>([]);
@@ -49,6 +51,7 @@ export default function TechniciansClient({ canEdit }: Props) {
     const [showForm, setShowForm] = useState(false);
     const [editingTech, setEditingTech] = useState<Technician | null>(null);
     const [searchText, setSearchText] = useState('');
+    const [activeTab, setActiveTab] = useState<TechnicianTab>('technician');
 
     const [formData, setFormData] = useState({
         name: '',
@@ -164,6 +167,62 @@ export default function TechniciansClient({ canEdit }: Props) {
 
     const totalCount = lineTechnicians.length + technicians.length;
     const activeCount = lineTechnicians.filter(lt => lt.is_active).length + technicians.filter(t => t.status === 'active').length;
+    const isLineHeadTechnician = (role?: string | null) =>
+        ['leader_technician', 'head_technician'].includes((role || '').toLowerCase());
+    const getLineRoleLabel = (role?: string | null) =>
+        isLineHeadTechnician(role) ? 'หัวหน้าช่าง' : 'ช่าง';
+
+    const activeTabLabel = activeTab === 'leader_technician' ? 'หัวหน้าช่าง' : 'ช่าง';
+    const activeTabDescription = activeTab === 'leader_technician'
+        ? 'จัดกลุ่มหัวหน้าช่างทีม / ผู้ควบคุมงาน'
+        : 'จัดกลุ่มช่างซ่อมทั่วไป';
+
+    const normalizeValue = (value?: string | null) => (value || '').trim().toLowerCase();
+    const isManualHeadTechnician = (tech: Technician) => {
+        const normalizedLineId = normalizeValue(tech.line_user_id);
+        const hasLeaderLineRole = lineTechnicians.some((lt) =>
+            isLineHeadTechnician(lt.role) && normalizeValue(lt.line_user_id) === normalizedLineId
+        );
+        if (hasLeaderLineRole) return true;
+
+        const nameMatchesLeader = lineTechnicians.some((lt) => {
+            if (!isLineHeadTechnician(lt.role)) return false;
+            const normalizedTechName = normalizeValue(tech.name);
+            return (
+                normalizedTechName !== '' &&
+                (normalizedTechName === normalizeValue(lt.full_name) || normalizedTechName === normalizeValue(lt.display_name))
+            );
+        });
+        if (nameMatchesLeader) return true;
+
+        const specialtyText = normalizeValue(tech.specialty);
+        const noteText = normalizeValue(tech.notes);
+        return (
+            specialtyText.includes('หัวหน้าช่าง')
+            || noteText.includes('หัวหน้าช่าง')
+            || specialtyText.includes('leader technician')
+            || noteText.includes('leader technician')
+            || specialtyText.includes('head technician')
+            || noteText.includes('head technician')
+        );
+    };
+
+    const lineTechniciansInTab = filteredLineTechnicians.filter((lt) =>
+        activeTab === 'leader_technician' ? isLineHeadTechnician(lt.role) : !isLineHeadTechnician(lt.role)
+    );
+    const manualTechniciansInTab = filteredTechnicians.filter((tech) =>
+        activeTab === 'leader_technician' ? isManualHeadTechnician(tech) : !isManualHeadTechnician(tech)
+    );
+    const getManualRoleLabel = (tech: Technician) =>
+        isManualHeadTechnician(tech) ? 'หัวหน้าช่าง' : 'ช่าง';
+    const getManualRoleBadgeClass = (tech: Technician) =>
+        isManualHeadTechnician(tech)
+            ? 'bg-blue-100 text-blue-700'
+            : 'bg-green-100 text-green-700';
+
+    const headCountAll = lineTechnicians.filter((lt) => isLineHeadTechnician(lt.role)).length
+        + technicians.filter((tech) => isManualHeadTechnician(tech)).length;
+    const technicianCountAll = Math.max(totalCount - headCountAll, 0);
 
     return (
         <div className="space-y-6">
@@ -214,18 +273,69 @@ export default function TechniciansClient({ canEdit }: Props) {
                 </div>
             </div>
 
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                    <div>
+                        <div className="text-sm font-semibold text-gray-900 dark:text-white">ประเภทบุคลากร</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">{activeTabDescription}</div>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('technician')}
+                        aria-pressed={activeTab === 'technician'}
+                        className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                            activeTab === 'technician'
+                                ? 'bg-green-100 text-green-700 ring-1 ring-green-300'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-700 dark:text-slate-300'
+                        }`}
+                    >
+                        <div className="flex items-center justify-between gap-2">
+                            <span>ช่าง</span>
+                            <span className="rounded-full bg-white/80 px-2 py-0.5 text-xs font-semibold text-gray-700">
+                                {technicianCountAll}
+                            </span>
+                        </div>
+                        <div className="mt-0.5 text-left text-[11px] font-normal opacity-90">
+                            ช่างซ่อมทั่วไป
+                        </div>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('leader_technician')}
+                        aria-pressed={activeTab === 'leader_technician'}
+                        className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                            activeTab === 'leader_technician'
+                                ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-700 dark:text-slate-300'
+                        }`}
+                    >
+                        <div className="flex items-center justify-between gap-2">
+                            <span>หัวหน้าช่าง</span>
+                            <span className="rounded-full bg-white/80 px-2 py-0.5 text-xs font-semibold text-gray-700">
+                                {headCountAll}
+                            </span>
+                        </div>
+                        <div className="mt-0.5 text-left text-[11px] font-normal opacity-90">
+                            หัวหน้าทีม / ผู้ควบคุมงาน
+                        </div>
+                    </button>
+                </div>
+            </div>
+
             {loading ? (
                 <div className="text-center text-gray-500 py-8">กำลังโหลด...</div>
             ) : (
                 <>
-                    {filteredLineTechnicians.length > 0 && (
+                    {lineTechniciansInTab.length > 0 && (
                         <div className="space-y-4">
                             <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2">
                                 <Users size={20} className="text-green-500" />
-                                ช่างจาก LINE ({filteredLineTechnicians.length})
+                                {activeTabLabel}จาก LINE ({lineTechniciansInTab.length})
                             </h2>
                             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                                {filteredLineTechnicians.map(lt => (
+                                {lineTechniciansInTab.map(lt => (
                                     <div key={lt.id} className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border-l-4 border-green-400">
                                         <div className="flex justify-between items-start">
                                             <div className="flex items-center gap-3">
@@ -248,6 +358,17 @@ export default function TechniciansClient({ canEdit }: Props) {
                                                     {lt.display_name && lt.full_name && (
                                                         <div className="text-xs text-gray-500">LINE: {lt.display_name}</div>
                                                     )}
+                                                    <div className="mt-1">
+                                                        <span
+                                                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                                                isLineHeadTechnician(lt.role)
+                                                                    ? 'bg-blue-100 text-blue-700'
+                                                                    : 'bg-green-100 text-green-700'
+                                                            }`}
+                                                        >
+                                                            {getLineRoleLabel(lt.role)}
+                                                        </span>
+                                                    </div>
                                                     <div className="text-[11px] text-gray-400 font-mono mt-0.5">{lt.line_user_id.slice(0, 12)}...</div>
                                                 </div>
                                             </div>
@@ -266,16 +387,16 @@ export default function TechniciansClient({ canEdit }: Props) {
                         </div>
                     )}
 
-                    {filteredTechnicians.length > 0 && (
+                    {manualTechniciansInTab.length > 0 && (
                         <div className="space-y-4">
-                            {filteredLineTechnicians.length > 0 && (
+                            {lineTechniciansInTab.length > 0 && (
                                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2">
                                     <UserCog size={20} className="text-blue-500" />
-                                    ช่างที่เพิ่มด้วยตนเอง ({filteredTechnicians.length})
+                                    {activeTabLabel}ที่เพิ่มด้วยตนเอง ({manualTechniciansInTab.length})
                                 </h2>
                             )}
                             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                                {filteredTechnicians.map(tech => (
+                                {manualTechniciansInTab.map(tech => (
                                     <div key={tech.tech_id} className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm">
                                         <div className="flex justify-between items-start">
                                             <div className="flex items-center gap-3">
@@ -287,6 +408,11 @@ export default function TechniciansClient({ canEdit }: Props) {
                                                     {tech.specialty && (
                                                         <div className="text-sm text-gray-500">{tech.specialty}</div>
                                                     )}
+                                                    <div className="mt-1">
+                                                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${getManualRoleBadgeClass(tech)}`}>
+                                                            {getManualRoleLabel(tech)}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                             <span className={`px-2 py-1 rounded text-xs ${tech.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
@@ -329,8 +455,8 @@ export default function TechniciansClient({ canEdit }: Props) {
                         </div>
                     )}
 
-                    {filteredLineTechnicians.length === 0 && filteredTechnicians.length === 0 && (
-                        <div className="text-center text-gray-500 py-8">ไม่พบข้อมูลช่าง</div>
+                    {lineTechniciansInTab.length === 0 && manualTechniciansInTab.length === 0 && (
+                        <div className="text-center text-gray-500 py-8">ไม่พบข้อมูล{activeTabLabel}</div>
                     )}
                 </>
             )}

@@ -6,6 +6,8 @@ import { canManageMaintenanceTechnicians, canViewMaintenanceTechnicians } from '
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { revalidatePath } from 'next/cache';
 
+const MAINTENANCE_LINE_TECH_ROLES = ['technician', 'leader_technician', 'head_technician'] as const;
+
 async function getTechnicianAuthContext(level: 'read' | 'edit' = 'read') {
     const session = await auth();
     if (!session?.user) {
@@ -49,7 +51,11 @@ export async function getLineTechnicians() {
         }
 
         const lineUsers = await prisma.tbl_line_users.findMany({
-            where: { role: 'technician' },
+            where: {
+                role: {
+                    in: [...MAINTENANCE_LINE_TECH_ROLES],
+                },
+            },
             orderBy: { created_at: 'desc' }
         });
         return { success: true, data: lineUsers };
