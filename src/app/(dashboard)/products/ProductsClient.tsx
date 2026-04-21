@@ -207,14 +207,14 @@ const IMAGE_PREVIEW_WIDTH = 288;
 const IMAGE_PREVIEW_HEIGHT = 320;
 const IMAGE_PREVIEW_MARGIN = 14;
 
-function getImagePreviewPosition(targetRect: DOMRect) {
+function getImagePreviewPositionFromPointer(clientX: number, clientY: number) {
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    const prefersRight = targetRect.right + IMAGE_PREVIEW_MARGIN + IMAGE_PREVIEW_WIDTH <= viewportWidth - 8;
+    const prefersRight = clientX + IMAGE_PREVIEW_MARGIN + IMAGE_PREVIEW_WIDTH <= viewportWidth - 8;
     const left = prefersRight
-        ? targetRect.right + IMAGE_PREVIEW_MARGIN
-        : Math.max(8, targetRect.left - IMAGE_PREVIEW_WIDTH - IMAGE_PREVIEW_MARGIN);
-    const centeredTop = targetRect.top + targetRect.height / 2 - IMAGE_PREVIEW_HEIGHT / 2;
+        ? clientX + IMAGE_PREVIEW_MARGIN
+        : Math.max(8, clientX - IMAGE_PREVIEW_WIDTH - IMAGE_PREVIEW_MARGIN);
+    const centeredTop = clientY - IMAGE_PREVIEW_HEIGHT / 2;
     const top = Math.min(
         Math.max(8, centeredTop),
         Math.max(8, viewportHeight - IMAGE_PREVIEW_HEIGHT - 8),
@@ -535,6 +535,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                     <div
                         className="h-12 w-12 overflow-hidden rounded-lg bg-gray-100 flex items-center justify-center"
                         onMouseEnter={imageSrc ? (event) => handleImageMouseEnter(event, imageSrc, product.p_name) : undefined}
+                        onMouseMove={imageSrc ? (event) => handleImageMouseMove(event, imageSrc, product.p_name) : undefined}
                         onMouseLeave={imageSrc ? handleImageMouseLeave : undefined}
                     >
                         {imageSrc ? (
@@ -662,18 +663,34 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
         setShowHasImageOnly(false);
     };
 
-    const handleImageMouseEnter = (
+    const showImagePreview = (
         event: ReactMouseEvent<HTMLElement>,
         imageSrc: string,
         imageAlt: string,
     ) => {
-        const { left, top } = getImagePreviewPosition(event.currentTarget.getBoundingClientRect());
+        const { left, top } = getImagePreviewPositionFromPointer(event.clientX, event.clientY);
         setImagePreview({
             src: imageSrc,
             alt: imageAlt,
             left,
             top,
         });
+    };
+
+    const handleImageMouseEnter = (
+        event: ReactMouseEvent<HTMLElement>,
+        imageSrc: string,
+        imageAlt: string,
+    ) => {
+        showImagePreview(event, imageSrc, imageAlt);
+    };
+
+    const handleImageMouseMove = (
+        event: ReactMouseEvent<HTMLElement>,
+        imageSrc: string,
+        imageAlt: string,
+    ) => {
+        showImagePreview(event, imageSrc, imageAlt);
     };
 
     const handleImageMouseLeave = () => {
@@ -1018,6 +1035,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                         <div
                                             className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden"
                                             onMouseEnter={imageSrc ? (event) => handleImageMouseEnter(event, imageSrc, product.p_name) : undefined}
+                                            onMouseMove={imageSrc ? (event) => handleImageMouseMove(event, imageSrc, product.p_name) : undefined}
                                             onMouseLeave={imageSrc ? handleImageMouseLeave : undefined}
                                         >
                                             {imageSrc ? (
@@ -1107,7 +1125,7 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
 
             {imagePreview && (
                 <div
-                    className="pointer-events-none fixed z-[120] w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl"
+                    className="pointer-events-none fixed z-[9999] w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl"
                     style={{ left: imagePreview.left, top: imagePreview.top }}
                     role="status"
                     aria-live="polite"
