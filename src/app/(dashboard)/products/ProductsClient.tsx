@@ -5,7 +5,7 @@
  * Export, Scanner, และ View Mode integration
  */
 
-import { useState, useEffect, useMemo, type MouseEvent as ReactMouseEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 import { FloatingSearchInput } from '@/components/FloatingField';
 import { FileSpreadsheet, FileText, QrCode, Loader2, LayoutGrid, List, Edit, Trash2, ArrowUpDown, Upload, Gem, AlertTriangle, Columns3, ArrowUp, ArrowDown, RotateCcw, GripVertical, Package, X, Image as ImageIcon, Eye, EyeOff, Check } from 'lucide-react';
 import { exportToExcel, exportToPDF, EXPORT_COLUMNS, type ExportColumn } from '@/lib/exportUtils';
@@ -41,6 +41,7 @@ interface ImagePreviewState {
     alt: string;
     left: number;
     top: number;
+    isVisible: boolean;
 }
 
 function isBelowSafetyStock(product: Pick<Product, 'p_count' | 'safety_stock'>): boolean {
@@ -411,6 +412,7 @@ const getProductImageSrc = resolveProductImageSrc;
 const IMAGE_PREVIEW_WIDTH = 288;
 const IMAGE_PREVIEW_HEIGHT = 320;
 const IMAGE_PREVIEW_MARGIN = 14;
+const IMAGE_PREVIEW_EXIT_DELAY_MS = 180;
 
 function getImagePreviewPositionFromPointer(clientX: number, clientY: number) {
     const viewportWidth = window.innerWidth;
@@ -621,6 +623,8 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
     const [draggingColumn, setDraggingColumn] = useState<ProductColumnId | null>(null);
     const [dragOverColumn, setDragOverColumn] = useState<ProductColumnId | null>(null);
     const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
+    const imagePreviewHideTimeoutRef = useRef<number | null>(null);
+    const imagePreviewRevealFrameRef = useRef<number | null>(null);
     const manageableColumns = useMemo(
         () => columnOrder.filter((columnId) => isAdmin || columnId !== 'actions'),
         [columnOrder, isAdmin],
@@ -687,12 +691,33 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
     }, [defaultPreferences, isAdmin, preferenceStorageKey, viewerRole]);
 
     useEffect(() => {
-        const closePreview = () => setImagePreview(null);
+        const closePreview = () => {
+            if (imagePreviewHideTimeoutRef.current !== null) {
+                window.clearTimeout(imagePreviewHideTimeoutRef.current);
+                imagePreviewHideTimeoutRef.current = null;
+            }
+            if (imagePreviewRevealFrameRef.current !== null) {
+                window.cancelAnimationFrame(imagePreviewRevealFrameRef.current);
+                imagePreviewRevealFrameRef.current = null;
+            }
+            setImagePreview(null);
+        };
         window.addEventListener('scroll', closePreview, true);
         window.addEventListener('resize', closePreview);
         return () => {
             window.removeEventListener('scroll', closePreview, true);
             window.removeEventListener('resize', closePreview);
+        };
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (imagePreviewHideTimeoutRef.current !== null) {
+                window.clearTimeout(imagePreviewHideTimeoutRef.current);
+            }
+            if (imagePreviewRevealFrameRef.current !== null) {
+                window.cancelAnimationFrame(imagePreviewRevealFrameRef.current);
+            }
         };
     }, []);
 
@@ -996,12 +1021,49 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
         imageSrc: string,
         imageAlt: string,
     ) => {
+        if (imagePreviewHideTimeoutRef.current !== null) {
+            window.clearTimeout(imagePreviewHideTimeoutRef.current);
+            imagePreviewHideTimeoutRef.current = null;
+        }
+        if (imagePreviewRevealFrameRef.current !== null) {
+            window.cancelAnimationFrame(imagePreviewRevealFrameRef.current);
+            imagePreviewRevealFrameRef.current = null;
+        }
+
         const { left, top } = getImagePreviewPositionFromPointer(event.clientX, event.clientY);
-        setImagePreview({
-            src: imageSrc,
-            alt: imageAlt,
-            left,
-            top,
+        setImagePreview((current) => {
+            if (!current || current.src !== imageSrc || current.alt !== imageAlt) {
+                return {
+                    src: imageSrc,
+                    alt: imageAlt,
+                    left,
+                    top,
+                    isVisible: false,
+                };
+            }
+
+            if (current.left === left && current.top === top && current.isVisible) {
+                return current;
+            }
+
+            return {
+                ...current,
+                left,
+                top,
+            };
+        });
+
+        imagePreviewRevealFrameRef.current = window.requestAnimationFrame(() => {
+            setImagePreview((current) => {
+                if (!current) return null;
+                if (current.src !== imageSrc || current.alt !== imageAlt) return current;
+                if (current.isVisible) return current;
+                return {
+                    ...current,
+                    isVisible: true,
+                };
+            });
+            imagePreviewRevealFrameRef.current = null;
         });
     };
 
@@ -1022,7 +1084,26 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
     };
 
     const handleImageMouseLeave = () => {
-        setImagePreview(null);
+        if (imagePreviewRevealFrameRef.current !== null) {
+            window.cancelAnimationFrame(imagePreviewRevealFrameRef.current);
+            imagePreviewRevealFrameRef.current = null;
+        }
+
+        setImagePreview((current) => {
+            if (!current) return null;
+            return {
+                ...current,
+                isVisible: false,
+            };
+        });
+
+        if (imagePreviewHideTimeoutRef.current !== null) {
+            window.clearTimeout(imagePreviewHideTimeoutRef.current);
+        }
+        imagePreviewHideTimeoutRef.current = window.setTimeout(() => {
+            setImagePreview(null);
+            imagePreviewHideTimeoutRef.current = null;
+        }, IMAGE_PREVIEW_EXIT_DELAY_MS);
     };
 
     return (
@@ -1578,7 +1659,9 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
 
             {imagePreview && (
                 <div
-                    className="pointer-events-none fixed z-[9999] w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl"
+                    className={`pointer-events-none fixed z-[9999] w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl transition-[opacity,transform] duration-200 ease-out ${
+                        imagePreview.isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+                    }`}
                     style={{ left: imagePreview.left, top: imagePreview.top }}
                     role="status"
                     aria-live="polite"
