@@ -90,8 +90,26 @@ const hasCustomerTag = (tags?: string | null) =>
         .includes('ลูกค้า');
 
 const ABSOLUTE_URL_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
-const IN_PROGRESS_REQUEST_STATUSES = new Set(['approved', 'in_progress']);
+const ACKNOWLEDGED_REQUEST_STATUSES = new Set(['approved']);
+const IN_PROGRESS_REQUEST_STATUSES = new Set(['in_progress']);
 const FINISHED_REQUEST_STATUSES = new Set(['confirmed', 'completed', 'verified']);
+
+const normalizeRequestStatus = (status?: string | null) => (status || '').toLowerCase();
+const isPendingRequestStatus = (status?: string | null) => normalizeRequestStatus(status) === 'pending';
+const isAcknowledgedRequestStatus = (status?: string | null) =>
+    ACKNOWLEDGED_REQUEST_STATUSES.has(normalizeRequestStatus(status));
+const isInProgressRequestStatus = (status?: string | null) =>
+    IN_PROGRESS_REQUEST_STATUSES.has(normalizeRequestStatus(status));
+const getRequestStatusMeta = (status?: string | null) =>
+    GENERAL_REQUEST_STATUS_CONFIG[normalizeRequestStatus(status)]
+    || GENERAL_REQUEST_STATUS_CONFIG.pending;
+const getStatusHint = (status?: string | null) => {
+    const normalized = normalizeRequestStatus(status);
+    if (normalized === 'pending') return 'รอฝ่ายธุรการรับเรื่อง';
+    if (normalized === 'approved') return 'ฝ่ายธุรการรับเรื่องแล้ว';
+    if (normalized === 'in_progress') return 'ช่างกำลังดำเนินการ';
+    return '';
+};
 
 function resolveMaintenanceImageProxyUrl(imageUrl: string): string {
     const trimmed = imageUrl.trim();
@@ -104,10 +122,10 @@ function resolveMaintenanceImageProxyUrl(imageUrl: string): string {
 }
 
 const isFinishedRequestStatus = (status?: string | null) =>
-    FINISHED_REQUEST_STATUSES.has((status || '').toLowerCase());
+    FINISHED_REQUEST_STATUSES.has(normalizeRequestStatus(status));
 
 const isCancelledRequestStatus = (status?: string | null) =>
-    (status || '').toLowerCase() === 'cancelled';
+    normalizeRequestStatus(status) === 'cancelled';
 
 export default function GeneralRequestClient({ userPermissions }: Props) {
     const { data: session } = useSession();
@@ -434,6 +452,49 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         ].filter(Boolean).join(' / ')
         : '';
 
+    const pendingCount = requests.filter((request) => isPendingRequestStatus(request.status)).length;
+    const acknowledgedCount = requests.filter((request) => isAcknowledgedRequestStatus(request.status)).length;
+    const inProgressCount = requests.filter((request) => isInProgressRequestStatus(request.status)).length;
+    const finishedCount = requests.filter((request) => isFinishedRequestStatus(request.status)).length;
+
+    const statusSummaryCards = [
+        {
+            label: 'ทั้งหมด',
+            value: requests.length,
+            helper: 'รวมทุกสถานะ',
+            color: 'bg-blue-50 border-blue-200 text-blue-700',
+            filterValue: 'all',
+        },
+        {
+            label: GENERAL_REQUEST_STATUS_CONFIG.pending.label,
+            value: pendingCount,
+            helper: 'รอฝ่ายธุรการรับเรื่อง',
+            color: 'bg-yellow-50 border-yellow-200 text-yellow-800',
+            filterValue: 'pending',
+        },
+        {
+            label: GENERAL_REQUEST_STATUS_CONFIG.approved.label,
+            value: acknowledgedCount,
+            helper: 'รับเรื่องแล้ว รอมอบหมายงาน',
+            color: 'bg-cyan-50 border-cyan-200 text-cyan-800',
+            filterValue: 'approved',
+        },
+        {
+            label: GENERAL_REQUEST_STATUS_CONFIG.in_progress.label,
+            value: inProgressCount,
+            helper: 'ช่างกำลังดำเนินการ',
+            color: 'bg-blue-50 border-blue-200 text-blue-700',
+            filterValue: 'in_progress',
+        },
+        {
+            label: 'งานเสร็จสิ้น',
+            value: finishedCount,
+            helper: 'ปิดงานแล้ว',
+            color: 'bg-green-50 border-green-200 text-green-700',
+            filterValue: 'finished',
+        },
+    ] as const;
+
     if (!canViewGeneralRequest) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -504,18 +565,26 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             </div>
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                        { label: 'ทั้งหมด', value: requests.length, color: 'bg-blue-50 border-blue-200 text-blue-700' },
-                        { label: 'รอรับเรื่อง', value: requests.filter(r => (r.status || '').toLowerCase() === 'pending').length, color: 'bg-yellow-50 border-yellow-200 text-yellow-700' },
-                        { label: 'กำลังดำเนินการ', value: requests.filter(r => IN_PROGRESS_REQUEST_STATUSES.has((r.status || '').toLowerCase())).length, color: 'bg-blue-50 border-blue-200 text-blue-700' },
-                        { label: 'งานเสร็จสิ้น', value: requests.filter(r => isFinishedRequestStatus(r.status)).length, color: 'bg-green-50 border-green-200 text-green-700' },
-                    ].map(stat => (
-                        <div key={stat.label} className={`${stat.color} border rounded-xl p-3 text-center`}>
-                            <p className="text-2xl font-bold">{stat.value}</p>
-                            <p className="text-xs font-medium mt-0.5">{stat.label}</p>
-                        </div>
-                    ))}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    {statusSummaryCards.map((stat) => {
+                        const isActive = statusFilter === stat.filterValue;
+                        return (
+                            <button
+                                key={stat.label}
+                                type="button"
+                                onClick={() => setStatusFilter(stat.filterValue)}
+                                className={`${stat.color} border rounded-xl p-3 text-center transition-all ${
+                                    isActive ? 'ring-2 ring-offset-1 ring-blue-300 shadow-sm' : 'hover:shadow-sm'
+                                }`}
+                                aria-pressed={isActive}
+                                title={`กรองสถานะ ${stat.label}`}
+                            >
+                                <p className="text-2xl font-bold">{stat.value}</p>
+                                <p className="text-xs font-semibold mt-0.5">{stat.label}</p>
+                                <p className="mt-0.5 text-[10px] opacity-80">{stat.helper}</p>
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
@@ -539,7 +608,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                     >
                         <option value="all">ทุกสถานะ</option>
                         <option value="finished">งานเสร็จสิ้น</option>
-                        {Object.entries(GENERAL_REQUEST_STATUS_CONFIG).map(([key, cfg]) => (
+                        {Object.entries(GENERAL_REQUEST_STATUS_CONFIG).filter(([key]) => key !== 'urgent').map(([key, cfg]) => (
                             <option key={key} value={key}>{cfg.label}</option>
                         ))}
                     </select>
@@ -588,6 +657,14 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         </span>
                     </button>
                 </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                    <span className="inline-flex items-center rounded-full border border-yellow-200 bg-yellow-50 px-2.5 py-1 text-yellow-800">
+                        รอรับเรื่อง: รอฝ่ายธุรการรับเรื่อง
+                    </span>
+                    <span className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-cyan-800">
+                        รับเรื่องแล้ว: ฝ่ายธุรการรับเรื่องแล้ว
+                    </span>
+                </div>
             </div>
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
@@ -616,13 +693,19 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {filteredRequests.map(req => {
-                                        const statusCfg = GENERAL_REQUEST_STATUS_CONFIG[req.status] || GENERAL_REQUEST_STATUS_CONFIG.pending;
+                                        const statusCfg = getRequestStatusMeta(req.status);
+                                        const statusHint = getStatusHint(req.status);
                                         const priorityCfg = GENERAL_REQUEST_PRIORITY_CONFIG[req.priority] || GENERAL_REQUEST_PRIORITY_CONFIG.normal;
+                                        const rowToneClass = isPendingRequestStatus(req.status)
+                                            ? 'bg-yellow-50/20'
+                                            : isAcknowledgedRequestStatus(req.status)
+                                                ? 'bg-cyan-50/20'
+                                                : '';
 
                                         return (
                                             <tr
                                                 key={req.request_id}
-                                                className="hover:bg-gray-50/80 transition-colors cursor-pointer"
+                                                className={`${rowToneClass} hover:bg-gray-50/80 transition-colors cursor-pointer`}
                                                 onClick={() => {
                                                     setSelectedRequest(req);
                                                     setShowDetail(true);
@@ -661,7 +744,10 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border ${statusCfg.color}`}>
                                                             {statusCfg.label}
                                                         </span>
-                                                        {req.tags?.includes('ลูกค้า') && (
+                                                        {statusHint && (
+                                                            <span className="text-[10px] text-gray-500">{statusHint}</span>
+                                                        )}
+                                                        {hasCustomerTag(req.tags) && (
                                                             <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-bold bg-pink-100 text-pink-700 border border-pink-200">
                                                                 แจ้งโดยลูกค้า
                                                             </span>
@@ -690,14 +776,22 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {filteredRequests.map(req => {
-                            const statusCfg = GENERAL_REQUEST_STATUS_CONFIG[req.status] || GENERAL_REQUEST_STATUS_CONFIG.pending;
+                            const statusCfg = getRequestStatusMeta(req.status);
+                            const statusHint = getStatusHint(req.status);
                             const priorityCfg = GENERAL_REQUEST_PRIORITY_CONFIG[req.priority] || GENERAL_REQUEST_PRIORITY_CONFIG.normal;
                             const StatusIcon = statusCfg.icon;
+                            const statusToneClass = isPendingRequestStatus(req.status)
+                                ? 'border-l-4 border-l-yellow-400 bg-yellow-50/30'
+                                : isAcknowledgedRequestStatus(req.status)
+                                    ? 'border-l-4 border-l-cyan-500 bg-cyan-50/30'
+                                    : isInProgressRequestStatus(req.status)
+                                        ? 'border-l-4 border-l-blue-500 bg-blue-50/30'
+                                        : '';
 
                             return (
                                 <div
                                     key={req.request_id}
-                                    className="bg-white rounded-xl border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer group"
+                                    className={`bg-white rounded-xl border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer group ${statusToneClass}`}
                                     onClick={() => {
                                         setSelectedRequest(req);
                                         setShowDetail(true);
@@ -711,10 +805,15 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                                     <StatusIcon className="w-3 h-3" />
                                                     {statusCfg.label}
                                                 </span>
+                                                {statusHint && (
+                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                                                        {statusHint}
+                                                    </span>
+                                                )}
                                                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${priorityCfg.color}`}>
                                                     {priorityCfg.label}
                                                 </span>
-                                                {req.tags?.includes('ลูกค้า') && (
+                                                {hasCustomerTag(req.tags) && (
                                                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 text-pink-700 border border-pink-200">
                                                         แจ้งโดยลูกค้า
                                                     </span>
@@ -779,8 +878,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         <div className="space-y-5">
                             <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-mono text-sm text-gray-600">{selectedRequest.request_number}</span>
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-medium border ${GENERAL_REQUEST_STATUS_CONFIG[selectedRequest.status]?.color}`}>
-                                    {GENERAL_REQUEST_STATUS_CONFIG[selectedRequest.status]?.label}
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-medium border ${getRequestStatusMeta(selectedRequest.status).color}`}>
+                                    {getRequestStatusMeta(selectedRequest.status).label}
                                 </span>
                                 <span className={`px-2.5 py-1 rounded-full text-sm font-medium ${GENERAL_REQUEST_PRIORITY_CONFIG[selectedRequest.priority]?.color}`}>
                                     {GENERAL_REQUEST_PRIORITY_CONFIG[selectedRequest.priority]?.label}

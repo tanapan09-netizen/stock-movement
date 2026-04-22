@@ -291,6 +291,7 @@ export async function updateAsset(formData: FormData) {
     const location = formData.get('location') as string;
     const room_section = ((formData.get('room_section') as string) || '').trim();
     const status = formData.get('status') as string;
+    const purchaseDateRaw = String(formData.get('purchase_date') || '').trim();
 
     // Note: Purchase details usually not edited often due to depreciation, allowing here though.
     const purchase_price = parseFloat(formData.get('purchase_price') as string);
@@ -305,6 +306,11 @@ export async function updateAsset(formData: FormData) {
     const transfer_approval_ref = ((formData.get('transfer_approval_ref') as string) || '').trim();
 
     const imageFile = formData.get('image') as File;
+    const purchase_date = new Date(purchaseDateRaw);
+
+    if (!purchaseDateRaw || Number.isNaN(purchase_date.getTime())) {
+        throw new Error('วันที่ซื้อไม่ถูกต้อง');
+    }
 
     const data: Prisma.tbl_assetsUpdateInput = {
         asset_name,
@@ -313,6 +319,7 @@ export async function updateAsset(formData: FormData) {
         location,
         room_section: room_section || null,
         status,
+        purchase_date,
         purchase_price,
         useful_life_years,
         salvage_value,
@@ -399,6 +406,7 @@ export async function updateAsset(formData: FormData) {
                 asset_name: 'ชื่อทรัพย์สิน',
                 description: 'รายละเอียด',
                 category: 'หมวดหมู่',
+                purchase_date: 'วันที่ซื้อ',
                 location: 'สถานที่',
                 room_section: 'Room Section',
                 status: 'สถานะ',
@@ -479,6 +487,8 @@ export async function updateAsset(formData: FormData) {
 
     revalidatePath('/assets');
     revalidatePath(`/assets/${asset_id}`);
+    revalidatePath(`/assets/${asset_id}/edit`);
+    revalidatePath('/assets/depreciation');
     // Redirect handled by client to avoid NEXT_REDIRECT error
 }
 

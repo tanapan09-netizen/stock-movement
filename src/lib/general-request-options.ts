@@ -2,8 +2,8 @@ import type { LucideIcon } from 'lucide-react';
 import { AlertCircle, CheckCircle2, Clock, Loader2, ShieldCheck, XCircle } from 'lucide-react';
 
 export const GENERAL_REQUEST_STATUS_CONFIG: Record<string, { label: string; color: string; icon: LucideIcon }> = {
-    pending: { label: 'รอรับเรื่อง', color: 'bg-yellow-100 text-yellow-700 border-yellow-200', icon: Clock },
-    approved: { label: 'รับเรื่องแล้ว', color: 'bg-amber-100 text-amber-700 border-amber-200', icon: Clock },
+    pending: { label: 'รอรับเรื่อง', color: 'bg-yellow-100 text-yellow-800 border-yellow-300', icon: Clock },
+    approved: { label: 'รับเรื่องแล้ว', color: 'bg-cyan-100 text-cyan-700 border-cyan-200', icon: CheckCircle2 },
     in_progress: { label: 'กำลังดำเนินการ', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Loader2 },
     confirmed: { label: 'ยืนยันงานเสร็จ', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: CheckCircle2 },
     completed: { label: 'เสร็จสิ้น', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle2 },
