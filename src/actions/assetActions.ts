@@ -93,6 +93,34 @@ function formatCurrency(value: number) {
     });
 }
 
+function formatAssetFieldValueForHistory(key: string, value: unknown) {
+    if (value === null || value === undefined) return '-';
+
+    if (key === 'purchase_date') {
+        const dateValue = value instanceof Date ? value : new Date(String(value));
+        if (Number.isFinite(dateValue.getTime())) {
+            return dateValue.toLocaleDateString('th-TH');
+        }
+    }
+
+    if (key === 'purchase_price' || key === 'salvage_value') {
+        const numberValue = Number(value);
+        if (Number.isFinite(numberValue)) {
+            return `${formatCurrency(numberValue)} บาท`;
+        }
+    }
+
+    if (key === 'useful_life_years') {
+        const numberValue = Number(value);
+        if (Number.isFinite(numberValue)) {
+            return `${numberValue} ปี`;
+        }
+    }
+
+    const textValue = String(value).trim();
+    return textValue || '-';
+}
+
 async function getTransferApprovalByRef(reference: string) {
     const requestNumber = reference.trim();
     if (!requestNumber) return null;
@@ -430,7 +458,9 @@ export async function updateAsset(formData: FormData) {
                 const newStr = newVal === null || newVal === undefined ? '' : String(newVal);
 
                 if (oldStr !== newStr) {
-                    changes.push(`${label}: "${oldStr || '-'}" -> "${newStr || '-'}"`);
+                    const oldDisplay = formatAssetFieldValueForHistory(key, oldVal);
+                    const newDisplay = formatAssetFieldValueForHistory(key, newVal);
+                    changes.push(`${label}: จาก ${oldDisplay} เป็น ${newDisplay}`);
                 }
             }
 

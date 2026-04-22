@@ -59,6 +59,30 @@ function getStatusBadgeClass(status: string) {
     return 'bg-gray-100 text-gray-800';
 }
 
+function formatDateStringToThaiDate(raw: string) {
+    const parsed = new Date(raw);
+    if (!Number.isFinite(parsed.getTime())) return null;
+    return parsed.toLocaleDateString('th-TH');
+}
+
+function simplifyAssetHistoryDescription(description: string | null) {
+    if (!description) return '-';
+
+    let text = description;
+
+    text = text.replace(/"([^"]*GMT[+-]\d{4}[^"]*)"/g, (fullMatch, rawDate) => {
+        const thaiDate = formatDateStringToThaiDate(rawDate);
+        return thaiDate ? `"${thaiDate}"` : fullMatch;
+    });
+
+    text = text.replace(/^แก้ไข:\s*/u, 'ปรับปรุงข้อมูล: ');
+    text = text.replace(/:\s*([^,]+?)\s*->\s*([^,]+?)(?=,\s|$)/g, ': จาก $1 เป็น $2');
+    text = text.replace(/\s*->\s*/g, ' เป็น ');
+    text = text.replace(/"/g, '');
+
+    return text;
+}
+
 function buildDepreciationTable(input: {
     cost: number;
     salvage: number;
@@ -441,7 +465,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
                                                     <span className="font-bold text-gray-900 mr-2">{translateActionType(history.action_type)}</span>
                                                     <span className="text-gray-500 text-xs">{new Date(history.action_date).toLocaleString('th-TH')}</span>
                                                 </div>
-                                                <p className="text-sm text-gray-700">{history.description || '-'}</p>
+                                                <p className="text-sm text-gray-700">{simplifyAssetHistoryDescription(history.description)}</p>
                                                 {(history.cost && Number(history.cost) > 0) && (
                                                     <p className="text-sm text-red-600 mt-1">
                                                         มูลค่ารายการ: {Number(history.cost).toLocaleString()} บาท
