@@ -9,6 +9,7 @@ import { useState, useEffect, useMemo, type MouseEvent as ReactMouseEvent } from
 import { FloatingSearchInput } from '@/components/FloatingField';
 import { FileSpreadsheet, FileText, QrCode, Loader2, LayoutGrid, List, Edit, Trash2, ArrowUpDown, Upload, Gem, AlertTriangle, Columns3, ArrowUp, ArrowDown, RotateCcw, GripVertical, Package, X, Image as ImageIcon, Eye, EyeOff, Check } from 'lucide-react';
 import { exportToExcel, exportToPDF, EXPORT_COLUMNS, type ExportColumn } from '@/lib/exportUtils';
+import { resolveProductImageSrc } from '@/lib/product-image';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import Link from 'next/link';
 import ProductImage from '@/components/ProductImage';
@@ -405,52 +406,7 @@ function getProductStockStatus(product: Pick<Product, 'p_count' | 'safety_stock'
     return 'พร้อมขาย';
 }
 
-function getProductImageSrc(imagePath?: string | null): string | null {
-    if (!imagePath) return null;
-    const normalizedInput = imagePath.trim().replace(/\\/g, '/');
-    if (!normalizedInput) return null;
-
-    if (
-        normalizedInput.startsWith('http://') ||
-        normalizedInput.startsWith('https://') ||
-        normalizedInput.startsWith('data:image/')
-    ) {
-        return normalizedInput;
-    }
-
-    if (normalizedInput.startsWith('storage.googleapis.com/')) {
-        return `https://${normalizedInput}`;
-    }
-
-    if (normalizedInput.startsWith('/uploads/')) {
-        return normalizedInput;
-    }
-
-    if (normalizedInput.startsWith('uploads/')) {
-        return `/${normalizedInput}`;
-    }
-
-    if (normalizedInput.startsWith('public/uploads/')) {
-        return `/${normalizedInput.replace(/^public\//, '')}`;
-    }
-
-    const uploadsIndex = normalizedInput.indexOf('/uploads/');
-    if (uploadsIndex >= 0) {
-        return normalizedInput.slice(uploadsIndex);
-    }
-
-    const publicUploadsIndex = normalizedInput.indexOf('public/uploads/');
-    if (publicUploadsIndex >= 0) {
-        return `/${normalizedInput.slice(publicUploadsIndex).replace(/^public\//, '')}`;
-    }
-
-    // Legacy values may store only file name or folder/file without leading slash.
-    const normalized = normalizedInput.replace(/^\/+/, '');
-    if (normalized.includes('/')) {
-        return `/${normalized}`;
-    }
-    return `/uploads/products/${normalized}`;
-}
+const getProductImageSrc = resolveProductImageSrc;
 
 const IMAGE_PREVIEW_WIDTH = 288;
 const IMAGE_PREVIEW_HEIGHT = 320;

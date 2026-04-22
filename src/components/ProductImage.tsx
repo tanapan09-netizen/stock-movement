@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useMemo } from 'react';
+import { getProductImageFallbackCandidates, resolveProductImageSrc } from '@/lib/product-image';
 
 interface ProductImageProps {
     src: string;
@@ -9,8 +10,11 @@ interface ProductImageProps {
 }
 
 export default function ProductImage({ src, alt, className }: ProductImageProps) {
-    const [imgSrc, setImgSrc] = useState(src);
-    const [retryStage, setRetryStage] = useState(0);
+    const normalizedSource = useMemo(() => resolveProductImageSrc(src) ?? src, [src]);
+    const fallbackCandidates = useMemo(
+        () => getProductImageFallbackCandidates(normalizedSource),
+        [normalizedSource],
+    );
     const fallbackSvg =
         "data:image/svg+xml;utf8," +
         encodeURIComponent(
@@ -21,21 +25,28 @@ export default function ProductImage({ src, alt, className }: ProductImageProps)
             </svg>`,
         );
 
+    const handleError = (event: React.SyntheticEvent<HTMLImageElement>) => {
+        const imgElement = event.currentTarget;
+        if (imgElement.src === fallbackSvg) return;
+
+        const currentIndex = Number(imgElement.dataset.fallbackIndex || '0');
+        const nextCandidate =
+            currentIndex < fallbackCandidates.length
+                ? fallbackCandidates[currentIndex]
+                : fallbackSvg;
+
+        imgElement.dataset.fallbackIndex = String(currentIndex + 1);
+        imgElement.src = nextCandidate;
+    };
+
     return (
         <img
-            src={imgSrc}
+            src={normalizedSource}
             alt={alt}
             className={className}
-            onError={() => {
-                // Retry with legacy uploads root path if current path points to /uploads/products/*
-                if (retryStage === 0 && imgSrc.includes('/uploads/products/')) {
-                    const legacyRootPath = imgSrc.replace('/uploads/products/', '/uploads/');
-                    setRetryStage(1);
-                    setImgSrc(legacyRootPath);
-                    return;
-                }
-                setImgSrc(fallbackSvg);
-            }}
+            loading="lazy"
+            data-fallback-index="0"
+            onError={handleError}
         />
     );
 }

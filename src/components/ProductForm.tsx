@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { createProduct, generateNextProductId, updateProduct } from '@/actions/productActions';
 import { FloatingInput, FloatingSelect, FloatingTextarea } from '@/components/FloatingField';
+import ProductImage from '@/components/ProductImage';
+import { resolveProductImageSrc } from '@/lib/product-image';
 import { Save, X } from 'lucide-react';
-import Image from 'next/image';
 
 type Category = {
     cat_id: number;
@@ -57,8 +58,8 @@ export default function ProductForm({
     const [isGeneratingCode, setIsGeneratingCode] = useState(false);
     const [codeError, setCodeError] = useState<string | null>(null);
     const formRef = useRef<HTMLFormElement>(null);
-    const [preview, setPreview] = useState<string | null>(
-        product?.p_image ? `/uploads/${product.p_image}` : null,
+    const [preview, setPreview] = useState<string | null>(() =>
+        resolveProductImageSrc(product?.p_image ?? prefill?.p_image ?? null),
     );
 
     useEffect(() => {
@@ -371,12 +372,10 @@ export default function ProductForm({
                         <div className="flex items-center space-x-4">
                             <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
                                 {preview ? (
-                                    <Image
+                                    <ProductImage
                                         src={preview}
-                                        alt="Preview"
-                                        fill
-                                        unoptimized
-                                        className="object-cover"
+                                        alt={product?.p_name || prefill?.p_name || 'Preview'}
+                                        className="h-full w-full object-cover"
                                     />
                                 ) : (
                                     <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">No Image</div>
