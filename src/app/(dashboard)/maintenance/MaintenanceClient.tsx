@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Swal from 'sweetalert2';
 import { useToast } from '@/components/ToastProvider';
@@ -37,6 +37,7 @@ import {
     getRooms,
     createRoom,
     getMaintenanceSummary,
+    getMaintenanceDepartmentAssignees,
     getMaintenanceHistory,
     getMaintenanceParts,
     confirmPartsUsed,
@@ -53,7 +54,6 @@ import SignaturePad from '@/components/SignaturePad';
 import { searchAssets } from '@/actions/assetActions';
 import { createPartRequest } from '@/actions/partRequestActions';
 import { getActiveTechnicians } from '@/actions/technicianActions';
-import { getLineUsers } from '@/actions/lineUserActions';
 import { format } from 'date-fns';
 import {
     canApproveMaintenanceCompletion,
@@ -184,6 +184,18 @@ interface LineTechnician {
     display_name: string;
     role?: string | null;
     is_active?: boolean | null;
+}
+
+interface DepartmentRoleUser {
+    username: string;
+    role: string;
+    display_name: string | null;
+    full_name: string | null;
+}
+
+interface DepartmentAssigneeOption {
+    value: string;
+    label: string;
 }
 
 interface ProductOption {
@@ -325,6 +337,7 @@ interface MaintenanceClientProps {
 const resolveDepartmentFromRole = (role: string) => role.trim().toLowerCase();
 const ALLOWED_NEW_MAINTENANCE_ROLES = new Set([
     'employee',
+    'gardener',
 ]);
 const normalizePersonName = (value?: string | null) => (value || '').trim().toLowerCase();
 const MAINTENANCE_DEPARTMENT_ROLE_SET = new Set<string>(DEPARTMENT_BASE_ROLES);
@@ -343,6 +356,9 @@ const FALLBACK_TECHNICIAN_TARGET_ROLE_OPTION = {
     value: 'technician',
     label: 'Technician (ช่างซ่อมบำรุง)',
 } as const;
+// Temporarily hide assignee selector in create form.
+// Keep logic/data path intact so it can be enabled later by changing to `true`.
+const SHOW_DEPARTMENT_ASSIGNEE_SELECTOR = false;
 
 const VALID_MAINTENANCE_STATUS_FILTERS = new Set([
     'all',
@@ -382,6 +398,30 @@ function resolveMaintenanceImageProxyUrl(imageUrl: string): string {
     const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
     if (!normalized.startsWith('/uploads/')) return normalized;
     return `/api/maintenance/image-proxy?path=${encodeURIComponent(normalized)}`;
+}
+
+function resolveAssignableRolesForTargetRole(targetRole?: string | null): Set<string> {
+    const normalizedTargetRole = normalizeRole(targetRole);
+    if (!normalizedTargetRole) return new Set<string>();
+
+    if (normalizedTargetRole === 'general') {
+        return new Set(['general', 'leader_general', 'employee', 'leader_employee']);
+    }
+
+    if (normalizedTargetRole === 'admin') {
+        return new Set(['admin', 'owner']);
+    }
+
+    if (normalizedTargetRole === 'manager') {
+        return new Set(['manager']);
+    }
+
+    if (normalizedTargetRole.startsWith('leader_')) {
+        const baseRole = normalizedTargetRole.slice('leader_'.length);
+        return new Set([normalizedTargetRole, baseRole]);
+    }
+
+    return new Set([normalizedTargetRole, `leader_${normalizedTargetRole}`]);
 }
 
 export default function MaintenanceClient({ userPermissions = {}, canEditPage = false }: MaintenanceClientProps) {
@@ -484,6 +524,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     // Dynamic technicians list from database
     const [technicians, setTechnicians] = useState<Technician[]>([]);
     const [lineTechnicians, setLineTechnicians] = useState<LineTechnician[]>([]);
+    const [departmentRoleUsers, setDepartmentRoleUsers] = useState<DepartmentRoleUser[]>([]);
 
     // Parts Verification State
     const [products, setProducts] = useState<ProductOption[]>([]);
@@ -619,6 +660,52 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             .slice(0, 10)
         : [];
 
+    const departmentAssigneeOptions = useMemo<DepartmentAssigneeOption[]>(() => {
+        const allowedRoles = resolveAssignableRolesForTargetRole(formData.target_role);
+        if (allowedRoles.size === 0) return [];
+
+        const optionsMap = new Map<string, string>();
+
+        departmentRoleUsers.forEach((lineUser) => {
+            const normalizedRole = normalizeRole(lineUser.role);
+            if (!allowedRoles.has(normalizedRole)) return;
+
+            const username = (lineUser.username || '').trim();
+            const displayName = (lineUser.full_name || lineUser.display_name || '').trim();
+            const value = username || displayName;
+            if (!value) return;
+
+            const labelBase = displayName || username;
+            const label = username && labelBase !== username
+                ? `${labelBase} (${username})`
+                : labelBase;
+
+            if (!optionsMap.has(value)) {
+                optionsMap.set(value, label);
+            }
+        });
+
+        if (allowedRoles.has('technician') || allowedRoles.has('leader_technician')) {
+            technicians.forEach((technician) => {
+                const technicianName = (technician.name || '').trim();
+                if (!technicianName) return;
+                if (!optionsMap.has(technicianName)) {
+                    optionsMap.set(technicianName, `${technicianName} (ช่าง)`);
+                }
+            });
+        }
+
+        return Array.from(optionsMap.entries())
+            .map(([value, label]) => ({ value, label }))
+            .sort((left, right) => left.label.localeCompare(right.label, 'th'));
+    }, [departmentRoleUsers, formData.target_role, technicians]);
+
+    useEffect(() => {
+        if (!formData.assigned_to) return;
+        if (departmentAssigneeOptions.some((option) => option.value === formData.assigned_to)) return;
+        setFormData((prev) => ({ ...prev, assigned_to: '' }));
+    }, [departmentAssigneeOptions, formData.assigned_to]);
+
     const fetchGeneralRequests = async () => {
         setFetchingGeneral(true);
         try {
@@ -688,7 +775,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     async function loadData() {
         setLoading(true);
         try {
-            const [reqResult, roomResult, summaryResult, techResult, lineUserResult, productResult, vehicleResult] = await Promise.all([
+            const [reqResult, roomResult, summaryResult, techResult, departmentAssigneeResult, productResult, vehicleResult] = await Promise.all([
                 getMaintenanceRequests({
                     status: filterStatus !== 'all' ? filterStatus : undefined,
                     room_id: filterRoom || undefined,
@@ -698,7 +785,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 getRooms(),
                 getMaintenanceSummary(),
                 getActiveTechnicians(),
-                getLineUsers(),
+                getMaintenanceDepartmentAssignees(),
                 getProducts(),
                 getAllVehicles()
             ]);
@@ -719,12 +806,24 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             if (techResult.success) setTechnicians(Array.isArray(techResult.data) ? techResult.data as Technician[] : []);
             else setTechnicians([]);
             
-            if (lineUserResult.success) {
-                const lineTechs = Array.isArray(lineUserResult.data)
-                    ? (lineUserResult.data as LineTechnician[]).filter((u) => isMaintenanceTechnician(u.role || '') && u.display_name && u.is_active)
+            if (departmentAssigneeResult.success) {
+                const departmentUsers = Array.isArray(departmentAssigneeResult.data)
+                    ? (departmentAssigneeResult.data as DepartmentRoleUser[])
                     : [];
+                setDepartmentRoleUsers(departmentUsers);
+                const lineTechs = departmentUsers
+                    .filter((u) => isMaintenanceTechnician(u.role || ''))
+                    .map((u) => ({
+                        display_name: (u.full_name || u.display_name || u.username || '').trim(),
+                        role: u.role,
+                        is_active: true,
+                    }))
+                    .filter((u) => u.display_name.length > 0);
                 setLineTechnicians(lineTechs);
-            } else setLineTechnicians([]);
+            } else {
+                setDepartmentRoleUsers([]);
+                setLineTechnicians([]);
+            }
             
             if (productResult && productResult.success) {
                 setProducts(Array.isArray(productResult.data) ? productResult.data as ProductOption[] : []);
@@ -739,6 +838,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             setRequests([]);
             setRooms([]);
             setTechnicians([]);
+            setDepartmentRoleUsers([]);
             setLineTechnicians([]);
             setProducts([]);
             setVehicles([]);
@@ -911,7 +1011,9 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         data.append('category', formData.category);
         data.append('priority', formData.priority);
         data.append('reported_by', formData.reported_by);
-        // data.append('assigned_to', formData.assigned_to); // Not used in creation
+        if (formData.assigned_to.trim()) {
+            data.append('assigned_to', formData.assigned_to.trim());
+        }
         // data.append('scheduled_date', formData.scheduled_date); // Not used in creation
         data.append('estimated_cost', formData.estimated_cost.toString());
         data.append('department', formData.department);
@@ -948,6 +1050,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             maintenanceTargetRoleOptions.find((option) => option.value === formData.target_role)?.label
             || formData.target_role
             || '-';
+        const selectedAssigneeLabel =
+            departmentAssigneeOptions.find((option) => option.value === formData.assigned_to)?.label
+            || formData.assigned_to
+            || '-';
         const confirmed = await showConfirm({
             title: isUpdateFromGeneralRequest ? 'ยืนยันอัปเดตใบงานจากการรับเรื่อง' : 'ยืนยันส่งคำขอซ่อม',
             message: [
@@ -958,6 +1064,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 `ผู้แจ้ง: ${formData.reported_by}`,
                 `สถานที่: ${selectedRoomForSubmit?.room_code || '-'} - ${selectedRoomForSubmit?.room_name || '-'}`,
                 `แผนกงานที่ต้องการแจ้งไปหา: ${selectedTargetRoleLabel}`,
+                `พนักงานที่ระบุ: ${selectedAssigneeLabel}`,
                 '',
                 'ยืนยันดำเนินการต่อหรือไม่?',
             ].join('\n'),
@@ -2547,22 +2654,27 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                                 </p>
                                                 <div className="grid grid-cols-2 gap-2">
                                                     {selectedPulledRequestImageUrls.map((imageUrl, index) => (
-                                                        <a
-                                                            key={`${selectedPulledRequest?.request_id ?? 'general'}-${index}`}
-                                                            href={imageUrl}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="block overflow-hidden rounded-lg border border-blue-100"
-                                                        >
-                                                            <Image
-                                                                src={imageUrl}
-                                                                alt={`รูปแนบจากเคสด่วน ${index + 1}`}
-                                                                width={320}
-                                                                height={96}
-                                                                unoptimized
-                                                                className="h-24 w-full object-cover"
-                                                            />
-                                                        </a>
+                                                        (() => {
+                                                            const resolvedImageUrl = resolveMaintenanceImageProxyUrl(imageUrl);
+                                                            return (
+                                                                <a
+                                                                    key={`${selectedPulledRequest?.request_id ?? 'general'}-${index}`}
+                                                                    href={resolvedImageUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="block overflow-hidden rounded-lg border border-blue-100"
+                                                                >
+                                                                    <Image
+                                                                        src={resolvedImageUrl}
+                                                                        alt={`รูปแนบจากเคสด่วน ${index + 1}`}
+                                                                        width={320}
+                                                                        height={96}
+                                                                        unoptimized
+                                                                        className="h-24 w-full object-cover"
+                                                                    />
+                                                                </a>
+                                                            );
+                                                        })()
                                                     ))}
                                                 </div>
                                             </div>
@@ -2716,6 +2828,35 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                     </select>
                                 </div>
                             </div>
+
+                            {SHOW_DEPARTMENT_ASSIGNEE_SELECTOR && (
+                                <div>
+                                    <label className="block text-sm font-medium mb-2 text-gray-700">
+                                        ระบุพนักงานในแผนกที่ต้องการแจ้ง
+                                    </label>
+                                    <select
+                                        value={formData.assigned_to}
+                                        onChange={(e) => setFormData({ ...formData, assigned_to: e.target.value })}
+                                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none dark:bg-slate-700 dark:border-slate-600"
+                                    >
+                                        <option value="">-- ไม่ระบุ (แจ้งทั้งแผนก) --</option>
+                                        {departmentAssigneeOptions.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
+                                        {formData.assigned_to
+                                            && !departmentAssigneeOptions.some((option) => option.value === formData.assigned_to) && (
+                                                <option value={formData.assigned_to}>{formData.assigned_to}</option>
+                                            )}
+                                    </select>
+                                    {departmentAssigneeOptions.length === 0 && (
+                                        <p className="mt-1 text-xs text-slate-500">
+                                            ยังไม่พบพนักงานในแผนกที่เลือก
+                                        </p>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Contact Method and Location */}
                             <div className="grid grid-cols-2 gap-4">
@@ -3135,36 +3276,35 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {selectedRequestImageUrls.map((imageUrl, index) => (
-                    <a
-                      key={`${selectedRequest.request_id}-${index}`}
-                      href={imageUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group relative block overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50"
-                    >
-                      {index < selectedRequestCopiedImageMeta.copiedImageCount && (
-                        <span className="absolute left-3 top-3 z-10 rounded-full bg-blue-600 px-2.5 py-1 text-[11px] font-medium text-white shadow">
-                          {selectedRequestCopiedImageMeta.sourceRequestId
-                            ? `คัดลอกจากเคสด่วน #${selectedRequestCopiedImageMeta.sourceRequestId}`
-                            : 'คัดลอกจากเคสด่วนออนไลน์'}
-                        </span>
-                      )}
+                    (() => {
+                      const resolvedImageUrl = resolveMaintenanceImageProxyUrl(imageUrl);
+                      return (
+                        <a
+                          key={`${selectedRequest.request_id}-${index}`}
+                          href={resolvedImageUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group relative block overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50"
+                        >
+                          {index < selectedRequestCopiedImageMeta.copiedImageCount && (
+                            <span className="absolute left-3 top-3 z-10 rounded-full bg-blue-600 px-2.5 py-1 text-[11px] font-medium text-white shadow">
+                              {selectedRequestCopiedImageMeta.sourceRequestId
+                                ? `คัดลอกจากเคสด่วน #${selectedRequestCopiedImageMeta.sourceRequestId}`
+                                : 'คัดลอกจากเคสด่วนออนไลน์'}
+                            </span>
+                          )}
 
-                      {/* Use native img for robust fallback to proxy when /uploads path is unavailable on this node */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={imageUrl}
-                        alt={`รูปภาพปัญหา ${index + 1}`}
-                        loading="lazy"
-                        className="h-48 w-full object-cover transition duration-200 group-hover:scale-[1.02] group-hover:opacity-95"
-                        onError={(event) => {
-                            const target = event.currentTarget;
-                            if (target.dataset.fallbackApplied === '1') return;
-                            target.dataset.fallbackApplied = '1';
-                            target.src = resolveMaintenanceImageProxyUrl(imageUrl);
-                        }}
-                      />
-                    </a>
+                          {/* Use native img for robust rendering across both direct and proxied upload paths */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={resolvedImageUrl}
+                            alt={`รูปภาพปัญหา ${index + 1}`}
+                            loading="lazy"
+                            className="h-48 w-full object-cover transition duration-200 group-hover:scale-[1.02] group-hover:opacity-95"
+                          />
+                        </a>
+                      );
+                    })()
                   ))}
                 </div>
               </div>

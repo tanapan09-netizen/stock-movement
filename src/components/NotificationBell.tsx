@@ -183,7 +183,7 @@ export default function NotificationBell() {
     const isAccounting = ['accounting', 'leader_accounting'].includes(normalizedRole);
     const isStore = ['store', 'leader_store'].includes(normalizedRole);
     const isTechnician = ['technician', 'leader_technician', 'head_technician'].includes(normalizedRole);
-    const isGeneralRequester = ['general', 'leader_general', 'employee', 'leader_employee'].includes(normalizedRole);
+    const isGeneralRequester = ['general', 'leader_general', 'employee', 'leader_employee', 'gardener', 'leader_gardener'].includes(normalizedRole);
 
     if (isOperation || isPurchasing || isStore) allowed.add('products');
     if (isPurchasing || isAccounting) allowed.add('purchase_orders');

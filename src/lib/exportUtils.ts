@@ -80,13 +80,15 @@ export async function exportToPDF(
 
     const container = document.createElement('div');
     container.style.position = 'fixed';
-    container.style.left = '-99999px';
+    container.style.left = '0';
     container.style.top = '0';
     container.style.width = '1120px';
     container.style.padding = '0';
     container.style.margin = '0';
     container.style.background = '#ffffff';
-    container.style.zIndex = '-1';
+    container.style.opacity = '0';
+    container.style.pointerEvents = 'none';
+    container.style.zIndex = '-9999';
 
     const headerCells = headers.map((header) => `<th>${header}</th>`).join('');
     const bodyRows = rows.map((row, rowIndex) => {
@@ -158,6 +160,10 @@ export async function exportToPDF(
     document.body.appendChild(container);
 
     try {
+        await new Promise<void>((resolve) => {
+            window.requestAnimationFrame(() => resolve());
+        });
+
         await doc.html(container, {
             x: 6,
             y: 6,
@@ -168,6 +174,7 @@ export async function exportToPDF(
                 scale: 0.72,
                 useCORS: true,
                 backgroundColor: '#ffffff',
+                logging: false,
             },
             margin: [6, 6, 12, 6],
         });

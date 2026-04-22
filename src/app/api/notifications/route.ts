@@ -83,7 +83,7 @@ export async function GET(request: Request) {
         const isTechnicianView = isMaintenanceTechnician(normalizedRole) || normalizedRole === 'leader_technician';
         const isStoreView = ['store', 'leader_store'].includes(normalizedRole);
         const isPurchasingView = ['purchasing', 'leader_purchasing'].includes(normalizedRole);
-        const isGeneralRequesterView = ['general', 'leader_general', 'employee', 'leader_employee'].includes(normalizedRole);
+        const isGeneralRequesterView = ['general', 'leader_general', 'employee', 'leader_employee', 'gardener', 'leader_gardener'].includes(normalizedRole);
         const isEmployeeReceiverView = ['employee', 'leader_employee'].includes(normalizedRole);
 
         const notifications: NotificationItem[] = [];

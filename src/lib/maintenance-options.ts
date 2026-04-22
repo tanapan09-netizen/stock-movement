@@ -25,7 +25,7 @@ export const MAINTENANCE_WORKFLOW_STATUS_OPTIONS = [
 export const MAINTENANCE_CATEGORY_OPTIONS = [
     { value: 'electrical', label: 'ไฟฟ้า' },
     { value: 'plumbing', label: 'ประปา' },
-    { value: 'internet', label: 'อินเตอร์เน็ต' },
+    { value: 'internet', label: 'อินเทอร์เน็ต' },
     { value: 'furniture', label: 'เฟอร์นิเจอร์' },
     { value: 'other', label: 'อื่นๆ' },
 ] as const;
@@ -34,6 +34,7 @@ export const MAINTENANCE_TARGET_ROLE_OPTIONS = [
     { value: 'general', label: 'General (ทั่วไป)' },
     { value: 'technician', label: 'Technician (ช่างซ่อมบำรุง)' },
     { value: 'maid', label: 'Maid (แม่บ้าน)' },
+    { value: 'gardener', label: 'Gardener (คนสวน)' },
     { value: 'driver', label: 'Driver (คนขับรถ)' },
     { value: 'purchasing', label: 'Purchasing (จัดซื้อ)' },
     { value: 'store', label: 'Store (คลังสินค้า)' },

@@ -21,6 +21,8 @@ export type AppRole =
   | 'leader_general'
   | 'maid'
   | 'leader_maid'
+  | 'gardener'
+  | 'leader_gardener'
   | 'driver'
   | 'leader_driver'
   | 'accounting'
@@ -78,7 +80,7 @@ const OPERATION_ROLES = new Set(['operation', 'leader_operation']);
 const PURCHASING_ROLES = new Set(['purchasing', 'leader_purchasing']);
 const ACCOUNTING_ROLES = new Set(['accounting', 'leader_accounting']);
 const STORE_ROLES = new Set(['store', 'leader_store']);
-const GENERAL_ROLES = new Set(['general', 'leader_general', 'employee', 'leader_employee']);
+const GENERAL_ROLES = new Set(['general', 'leader_general', 'employee', 'leader_employee', 'gardener', 'leader_gardener']);
 const ROLE_SCOPED_DASHBOARD_ROUTES = new Set([
   '/manager-dashboard',
   '/accounting-dashboard',
@@ -173,6 +175,16 @@ export const RBAC_MATRIX: PermissionMatrix = {
   },
   maid: {
     general_request: ['read', 'create'],
+    maintenance: ['read'],
+    dashboard: ['read'],
+  },
+  gardener: {
+    general_request: ['read', 'create'],
+    maintenance: ['read'],
+    dashboard: ['read'],
+  },
+  leader_gardener: {
+    general_request: ['read', 'create', 'edit'],
     maintenance: ['read'],
     dashboard: ['read'],
   },
@@ -365,6 +377,8 @@ export function canViewBorrowNotifications(role: string | null | undefined) {
     || GENERAL_ROLES.has(normalized)
     || normalized === 'maid'
     || normalized === 'leader_maid'
+    || normalized === 'gardener'
+    || normalized === 'leader_gardener'
     || normalized === 'driver'
     || normalized === 'leader_driver';
 }

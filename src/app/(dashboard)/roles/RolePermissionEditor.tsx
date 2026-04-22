@@ -126,6 +126,9 @@ function getRoleColor(roleName: string) {
     case 'leader_maid':
     case 'maid':
       return 'from-pink-400 to-rose-500';
+    case 'leader_gardener':
+    case 'gardener':
+      return 'from-lime-500 to-green-600';
     case 'leader_driver':
     case 'driver':
       return 'from-indigo-500 to-blue-600';
@@ -216,6 +219,8 @@ const ROUTE_SEGMENT_LABELS: Record<string, string> = {
   leader_general: 'หัวหน้าทั่วไป',
   leader_driver: 'หัวหน้าคนขับรถ',
   leader_maid: 'หัวหน้าแม่บ้าน',
+  leader_gardener: 'หัวหน้าคนสวน',
+  gardener: 'คนสวน',
 };
 
 function humanizeRouteSegment(segment: string): string {

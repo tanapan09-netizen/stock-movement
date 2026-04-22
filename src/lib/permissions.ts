@@ -550,6 +550,20 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissions> = {
         [PERMISSIONS.BORROW]: true,
         [PERMISSIONS.APPROVALS]: true,
     }),
+    gardener: buildRolePermissions({
+        [PERMISSIONS.DASHBOARD]: true,
+        [PERMISSIONS.GENERAL_REQUEST]: true,
+        [PERMISSIONS.MAINTENANCE]: true,
+        [PERMISSIONS.BORROW]: true,
+        [PERMISSIONS.APPROVALS]: true,
+    }),
+    leader_gardener: buildRolePermissions({
+        [PERMISSIONS.DASHBOARD]: true,
+        [PERMISSIONS.GENERAL_REQUEST]: true,
+        [PERMISSIONS.MAINTENANCE]: true,
+        [PERMISSIONS.BORROW]: true,
+        [PERMISSIONS.APPROVALS]: true,
+    }),
     driver: buildRolePermissions({
         [PERMISSIONS.DASHBOARD]: true,
         [PERMISSIONS.GENERAL_REQUEST]: true,

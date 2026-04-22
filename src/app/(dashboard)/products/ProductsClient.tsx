@@ -5,10 +5,10 @@
  * Export, Scanner, และ View Mode integration
  */
 
-import { useState, useEffect, type MouseEvent as ReactMouseEvent } from 'react';
+import { useState, useEffect, useMemo, type MouseEvent as ReactMouseEvent } from 'react';
 import { FloatingSearchInput } from '@/components/FloatingField';
-import { FileSpreadsheet, FileText, QrCode, Loader2, LayoutGrid, List, Edit, Trash2, ArrowUpDown, Upload, Gem, AlertTriangle, Columns3, ArrowUp, ArrowDown, RotateCcw, GripVertical, Package, X, Image as ImageIcon } from 'lucide-react';
-import { exportToExcel, exportToPDF, EXPORT_COLUMNS } from '@/lib/exportUtils';
+import { FileSpreadsheet, FileText, QrCode, Loader2, LayoutGrid, List, Edit, Trash2, ArrowUpDown, Upload, Gem, AlertTriangle, Columns3, ArrowUp, ArrowDown, RotateCcw, GripVertical, Package, X, Image as ImageIcon, Eye, EyeOff, Check } from 'lucide-react';
+import { exportToExcel, exportToPDF, EXPORT_COLUMNS, type ExportColumn } from '@/lib/exportUtils';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import Link from 'next/link';
 import ProductImage from '@/components/ProductImage';
@@ -73,6 +73,15 @@ type ProductColumnId =
     | 'status'
     | 'actions';
 
+type ProductColumnPresetId = 'general' | 'store' | 'finance' | 'asset' | 'full' | 'custom';
+
+interface ProductTablePreferences {
+    version: number;
+    columnOrder: ProductColumnId[];
+    hiddenColumns: ProductColumnId[];
+    presetId: ProductColumnPresetId;
+}
+
 const BASE_PRODUCT_COLUMN_ORDER: ProductColumnId[] = [
     'image',
     'p_id',
@@ -132,6 +141,106 @@ const SORTABLE_COLUMNS = new Set<ProductColumnId>([
     'status',
 ]);
 
+const PRODUCT_TABLE_PREFERENCES_VERSION = 2;
+const LOCKED_VISIBLE_COLUMNS = new Set<ProductColumnId>(['p_id', 'p_name', 'p_count']);
+const PRODUCT_PRESET_IDS = new Set<ProductColumnPresetId>(['general', 'store', 'finance', 'asset', 'full', 'custom']);
+
+const PRODUCT_COLUMN_GROUPS: Array<{
+    id: string;
+    label: string;
+    helperText: string;
+    columns: ProductColumnId[];
+}> = [
+    {
+        id: 'core',
+        label: 'ข้อมูลหลัก',
+        helperText: 'คอลัมน์ที่ใช้งานบ่อยในทุกแผนก',
+        columns: ['image', 'p_id', 'p_name', 'category', 'p_count', 'status', 'price_unit'],
+    },
+    {
+        id: 'reference',
+        label: 'รายละเอียดสินค้า',
+        helperText: 'ข้อมูลรุ่น แบรนด์ และขนาด',
+        columns: ['model_name', 'brand_name', 'brand_code', 'size'],
+    },
+    {
+        id: 'category_codes',
+        label: 'รหัสหมวด',
+        helperText: 'ใช้กับงานคลัง/จัดซื้อที่ต้องอ้างอิงโค้ด',
+        columns: ['main_category_code', 'sub_category_code', 'sub_sub_category_code'],
+    },
+    {
+        id: 'asset',
+        label: 'งานทรัพย์สิน',
+        helperText: 'สถานะทรัพย์สินและตำแหน่งปัจจุบัน',
+        columns: ['is_asset', 'asset_current_location'],
+    },
+    {
+        id: 'management',
+        label: 'จัดการ',
+        helperText: 'ปุ่มแก้ไข/ลบ สำหรับผู้มีสิทธิ์',
+        columns: ['actions'],
+    },
+];
+
+const PRODUCT_COLUMN_PRESETS: Array<{
+    id: Exclude<ProductColumnPresetId, 'custom'>;
+    label: string;
+    description: string;
+    visibleColumns: ProductColumnId[];
+}> = [
+    {
+        id: 'general',
+        label: 'ทั่วไป',
+        description: 'โฟกัสข้อมูลหลัก อ่านง่าย',
+        visibleColumns: ['image', 'p_id', 'p_name', 'category', 'p_count', 'status', 'price_unit'],
+    },
+    {
+        id: 'store',
+        label: 'คลังสินค้า',
+        description: 'เน้นหมวดและรหัสโครงสร้าง',
+        visibleColumns: ['image', 'p_id', 'p_name', 'category', 'main_category_code', 'sub_category_code', 'sub_sub_category_code', 'p_count', 'status', 'price_unit'],
+    },
+    {
+        id: 'finance',
+        label: 'บัญชี/จัดซื้อ',
+        description: 'เน้นราคา รุ่น และแบรนด์',
+        visibleColumns: ['image', 'p_id', 'p_name', 'category', 'price_unit', 'p_count', 'status', 'model_name', 'brand_name', 'brand_code'],
+    },
+    {
+        id: 'asset',
+        label: 'ทรัพย์สิน',
+        description: 'ดูตำแหน่งและสถานะทรัพย์สิน',
+        visibleColumns: ['image', 'p_id', 'p_name', 'category', 'is_asset', 'asset_current_location', 'p_count', 'status', 'price_unit'],
+    },
+    {
+        id: 'full',
+        label: 'เต็มทั้งหมด',
+        description: 'แสดงคอลัมน์ครบทุกช่อง',
+        visibleColumns: [...BASE_PRODUCT_COLUMN_ORDER, 'actions'],
+    },
+];
+
+const PRODUCT_EXPORT_COLUMNS_BY_COLUMN: Partial<Record<ProductColumnId, ExportColumn>> = {
+    p_id: { header: 'รหัสสินค้า', key: 'p_code', width: 15 },
+    p_name: { header: 'ชื่อสินค้า', key: 'p_name', width: 30 },
+    model_name: { header: 'ชื่อรุ่น', key: 'model_name', width: 20 },
+    brand_name: { header: 'ชื่อแบรนด์', key: 'brand_name', width: 20 },
+    brand_code: { header: 'รหัสแบรนด์', key: 'brand_code', width: 14 },
+    size: { header: 'ขนาด', key: 'size', width: 14 },
+    category: { header: 'หมวดหมู่', key: 'category_name', width: 20 },
+    main_category_code: { header: 'Code หมวดหลัก', key: 'main_category_code', width: 14 },
+    sub_category_code: { header: 'Code หมวดรอง', key: 'sub_category_code', width: 14 },
+    sub_sub_category_code: { header: 'Code ย่อย', key: 'sub_sub_category_code', width: 14 },
+    is_asset: { header: 'เป็นทรัพย์สิน', key: 'is_asset', width: 12 },
+    asset_current_location: { header: 'ตำแหน่งทรัพย์สิน', key: 'asset_current_location', width: 20 },
+    price_unit: { header: 'ราคา/หน่วย', key: 'p_price', width: 12 },
+    p_count: { header: 'คงเหลือ', key: 'p_count', width: 12 },
+    status: { header: 'สถานะสินค้า', key: 'stock_status', width: 14 },
+};
+
+const UNIT_EXPORT_COLUMN: ExportColumn = { header: 'หน่วย', key: 'p_unit', width: 10 };
+
 function getDefaultColumnOrder(isAdmin: boolean): ProductColumnId[] {
     return isAdmin ? ADMIN_PRODUCT_COLUMN_ORDER : BASE_PRODUCT_COLUMN_ORDER;
 }
@@ -154,6 +263,146 @@ function normalizeColumnOrder(raw: unknown, isAdmin: boolean): ProductColumnId[]
         if (!seen.has(id)) ordered.push(id);
     }
     return ordered;
+}
+
+function normalizeHiddenColumns(raw: unknown, isAdmin: boolean): ProductColumnId[] {
+    const defaultOrder = getDefaultColumnOrder(isAdmin);
+    const validSet = new Set(
+        defaultOrder.filter((columnId) => !LOCKED_VISIBLE_COLUMNS.has(columnId)),
+    );
+    if (!Array.isArray(raw)) return [];
+
+    const seen = new Set<ProductColumnId>();
+    return raw
+        .filter((id): id is ProductColumnId => typeof id === 'string' && validSet.has(id as ProductColumnId))
+        .filter((id) => {
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        });
+}
+
+function getProductsPreferenceStorageKey(
+    viewerId: string | null | undefined,
+    viewerRole: string | null | undefined,
+    isAdmin: boolean,
+) {
+    const normalizedRole = (viewerRole ?? 'unknown').trim().toLowerCase() || 'unknown';
+    const normalizedViewerId = (viewerId ?? 'anonymous').toString().trim() || 'anonymous';
+    return `products_table_preferences_v${PRODUCT_TABLE_PREFERENCES_VERSION}_${normalizedRole}_${normalizedViewerId}_${isAdmin ? 'edit' : 'read'}`;
+}
+
+function getSuggestedPresetIdByRole(
+    viewerRole: string | null | undefined,
+    isAdmin: boolean,
+): Exclude<ProductColumnPresetId, 'custom'> {
+    const normalizedRole = (viewerRole ?? '').trim().toLowerCase();
+    if (isAdmin || normalizedRole === 'owner' || normalizedRole === 'admin' || normalizedRole === 'manager') {
+        return 'full';
+    }
+    if (normalizedRole.includes('store')) {
+        return 'store';
+    }
+    if (normalizedRole.includes('accounting') || normalizedRole.includes('purchasing')) {
+        return 'finance';
+    }
+    return 'general';
+}
+
+function getHiddenColumnsFromVisibleColumns(
+    visibleColumns: ProductColumnId[],
+    isAdmin: boolean,
+): ProductColumnId[] {
+    const defaultOrder = getDefaultColumnOrder(isAdmin);
+    const visibleSet = new Set<ProductColumnId>(visibleColumns);
+    if (isAdmin) {
+        visibleSet.add('actions');
+    }
+    for (const lockedColumn of LOCKED_VISIBLE_COLUMNS) {
+        visibleSet.add(lockedColumn);
+    }
+
+    return defaultOrder.filter(
+        (columnId) => !visibleSet.has(columnId) && !LOCKED_VISIBLE_COLUMNS.has(columnId),
+    );
+}
+
+function getDefaultProductPreferences(
+    isAdmin: boolean,
+    viewerRole: string | null | undefined,
+): ProductTablePreferences {
+    const presetId = getSuggestedPresetIdByRole(viewerRole, isAdmin);
+    const preset = PRODUCT_COLUMN_PRESETS.find((item) => item.id === presetId) ?? PRODUCT_COLUMN_PRESETS[0];
+    const columnOrder = getDefaultColumnOrder(isAdmin);
+    const hiddenColumns = getHiddenColumnsFromVisibleColumns(preset.visibleColumns, isAdmin);
+
+    return {
+        version: PRODUCT_TABLE_PREFERENCES_VERSION,
+        columnOrder,
+        hiddenColumns,
+        presetId,
+    };
+}
+
+function normalizeProductPreferences(
+    raw: unknown,
+    isAdmin: boolean,
+    viewerRole: string | null | undefined,
+): ProductTablePreferences {
+    const defaults = getDefaultProductPreferences(isAdmin, viewerRole);
+    if (!raw || typeof raw !== 'object') {
+        return defaults;
+    }
+
+    const candidate = raw as Partial<ProductTablePreferences>;
+    const presetId = PRODUCT_PRESET_IDS.has(candidate.presetId as ProductColumnPresetId)
+        ? (candidate.presetId as ProductColumnPresetId)
+        : defaults.presetId;
+
+    return {
+        version: PRODUCT_TABLE_PREFERENCES_VERSION,
+        columnOrder: normalizeColumnOrder(candidate.columnOrder, isAdmin),
+        hiddenColumns: normalizeHiddenColumns(candidate.hiddenColumns, isAdmin),
+        presetId,
+    };
+}
+
+function getVisibleColumnsFromPreferences(
+    preferences: ProductTablePreferences,
+    isAdmin: boolean,
+): ProductColumnId[] {
+    const hiddenColumns = new Set(preferences.hiddenColumns);
+    return preferences.columnOrder.filter(
+        (columnId) => (isAdmin || columnId !== 'actions') && !hiddenColumns.has(columnId),
+    );
+}
+
+function getExportColumnsForVisibleColumns(visibleColumns: ProductColumnId[]): ExportColumn[] {
+    const resolvedColumns: ExportColumn[] = [];
+    const seenKeys = new Set<string>();
+
+    const appendColumn = (column?: ExportColumn) => {
+        if (!column || seenKeys.has(column.key)) return;
+        seenKeys.add(column.key);
+        resolvedColumns.push(column);
+    };
+
+    for (const columnId of visibleColumns) {
+        appendColumn(PRODUCT_EXPORT_COLUMNS_BY_COLUMN[columnId]);
+    }
+
+    if (visibleColumns.includes('p_count')) {
+        appendColumn(UNIT_EXPORT_COLUMN);
+    }
+
+    return resolvedColumns.length > 0 ? resolvedColumns : EXPORT_COLUMNS.products;
+}
+
+function getProductStockStatus(product: Pick<Product, 'p_count' | 'safety_stock'>): string {
+    if (isOutOfStock(product)) return 'สินค้าหมด';
+    if (isAtSafetyStock(product)) return 'เท่าจุดสั่งซื้อ';
+    if (isBelowSafetyStock(product)) return 'ต่ำกว่าจุดสั่งซื้อ';
+    return 'พร้อมขาย';
 }
 
 function getProductImageSrc(imagePath?: string | null): string | null {
@@ -225,11 +474,23 @@ function getImagePreviewPositionFromPointer(clientX: number, clientY: number) {
 interface ProductsToolbarProps {
     products: Product[];
     canImport: boolean;
+    canEditPage: boolean;
+    viewerRole?: string | null;
+    viewerId?: string | null;
 }
 
-export function ProductsToolbar({ products, canImport }: ProductsToolbarProps) {
+export function ProductsToolbar({ products, canImport, canEditPage, viewerRole, viewerId }: ProductsToolbarProps) {
     const [exporting, setExporting] = useState<string | null>(null);
     const [showScanner, setShowScanner] = useState(false);
+    const preferenceStorageKey = useMemo(
+        () => getProductsPreferenceStorageKey(viewerId, viewerRole, canEditPage),
+        [canEditPage, viewerId, viewerRole],
+    );
+    const defaultExportColumns = useMemo(() => {
+        const defaults = getDefaultProductPreferences(canEditPage, viewerRole);
+        const visibleColumns = getVisibleColumnsFromPreferences(defaults, canEditPage);
+        return getExportColumnsForVisibleColumns(visibleColumns);
+    }, [canEditPage, viewerRole]);
 
     // Prepare data for export
     const exportData = products.map(p => ({
@@ -242,20 +503,43 @@ export function ProductsToolbar({ products, canImport }: ProductsToolbarProps) {
         is_asset: p.is_asset ? 'ใช่' : 'ไม่ใช่',
         asset_current_location: p.asset_current_location ?? '',
         p_count: p.p_count,
-        p_unit: p.p_unit,
+        p_unit: p.p_unit ?? '',
         p_price: Number(p.price_unit).toLocaleString('th-TH', { minimumFractionDigits: 2 }),
         safety_stock: p.safety_stock,
         model_name: p.model_name ?? '',
         brand_name: p.brand_name ?? '',
         brand_code: p.brand_code ?? '',
         size: p.size ?? '',
+        stock_status: getProductStockStatus(p),
     }));
+
+    const resolveExportColumns = (): ExportColumn[] => {
+        if (typeof window === 'undefined') {
+            return defaultExportColumns;
+        }
+
+        try {
+            const savedPreferences = localStorage.getItem(preferenceStorageKey);
+            if (!savedPreferences) {
+                return defaultExportColumns;
+            }
+
+            const parsed = JSON.parse(savedPreferences);
+            const normalized = normalizeProductPreferences(parsed, canEditPage, viewerRole);
+            const visibleColumns = getVisibleColumnsFromPreferences(normalized, canEditPage);
+            return getExportColumnsForVisibleColumns(visibleColumns);
+        } catch (error) {
+            console.error('Unable to read product table preferences for export:', error);
+            return defaultExportColumns;
+        }
+    };
 
     const handleExportExcel = async () => {
         setExporting('excel');
         try {
             await new Promise(r => setTimeout(r, 200));
-            exportToExcel(exportData, EXPORT_COLUMNS.products, 'products');
+            const exportColumns = resolveExportColumns();
+            exportToExcel(exportData, exportColumns, 'products');
         } finally {
             setExporting(null);
         }
@@ -265,7 +549,8 @@ export function ProductsToolbar({ products, canImport }: ProductsToolbarProps) {
         setExporting('pdf');
         try {
             await new Promise(r => setTimeout(r, 200));
-            await exportToPDF(exportData, EXPORT_COLUMNS.products, 'รายการสินค้าทั้งหมด', 'products');
+            const exportColumns = resolveExportColumns();
+            await exportToPDF(exportData, exportColumns, 'รายการสินค้าทั้งหมด', 'products');
         } finally {
             setExporting(null);
         }
@@ -354,9 +639,11 @@ export function ProductsToolbar({ products, canImport }: ProductsToolbarProps) {
 interface ProductsViewProps {
     products: Product[];
     isAdmin: boolean;
+    viewerRole?: string | null;
+    viewerId?: string | null;
 }
 
-export function ProductsView({ products, isAdmin }: ProductsViewProps) {
+export function ProductsView({ products, isAdmin, viewerRole, viewerId }: ProductsViewProps) {
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
     const [searchTerm, setSearchTerm] = useState('');
     const [showLowStock, setShowLowStock] = useState(false);
@@ -364,11 +651,29 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
     const [showAssetOnly, setShowAssetOnly] = useState(false);
     const [showHasImageOnly, setShowHasImageOnly] = useState(false);
     const [showColumnManager, setShowColumnManager] = useState(false);
-    const [columnOrder, setColumnOrder] = useState<ProductColumnId[]>(() => getDefaultColumnOrder(isAdmin));
+    const defaultPreferences = useMemo(
+        () => getDefaultProductPreferences(isAdmin, viewerRole),
+        [isAdmin, viewerRole],
+    );
+    const preferenceStorageKey = useMemo(
+        () => getProductsPreferenceStorageKey(viewerId, viewerRole, isAdmin),
+        [isAdmin, viewerId, viewerRole],
+    );
+    const [columnOrder, setColumnOrder] = useState<ProductColumnId[]>(() => defaultPreferences.columnOrder);
+    const [hiddenColumns, setHiddenColumns] = useState<ProductColumnId[]>(() => defaultPreferences.hiddenColumns);
+    const [activePresetId, setActivePresetId] = useState<ProductColumnPresetId>(defaultPreferences.presetId);
     const [draggingColumn, setDraggingColumn] = useState<ProductColumnId | null>(null);
     const [dragOverColumn, setDragOverColumn] = useState<ProductColumnId | null>(null);
     const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
-    const columnStorageKey = `products_column_order_${isAdmin ? 'admin' : 'user'}`;
+    const manageableColumns = useMemo(
+        () => columnOrder.filter((columnId) => isAdmin || columnId !== 'actions'),
+        [columnOrder, isAdmin],
+    );
+    const hiddenColumnSet = useMemo(() => new Set(hiddenColumns), [hiddenColumns]);
+    const visibleColumns = useMemo(
+        () => manageableColumns.filter((columnId) => !hiddenColumnSet.has(columnId)),
+        [manageableColumns, hiddenColumnSet],
+    );
     const lowStockCount = products.filter(isBelowSafetyStock).length;
     const outOfStockCount = products.filter(isOutOfStock).length;
     const assetCount = products.filter((product) => Boolean(product.is_asset)).length;
@@ -377,10 +682,24 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
     const hasActiveQuickFilters = showOutOfStockOnly || showAssetOnly || showHasImageOnly;
     const hasActiveFilters = hasSearchFilter || showLowStock || hasActiveQuickFilters;
 
+    const persistPreferences = (
+        nextOrder: ProductColumnId[],
+        nextHiddenColumns: ProductColumnId[],
+        nextPresetId: ProductColumnPresetId,
+    ) => {
+        if (typeof window === 'undefined') return;
+        localStorage.setItem(preferenceStorageKey, JSON.stringify({
+            version: PRODUCT_TABLE_PREFERENCES_VERSION,
+            columnOrder: nextOrder,
+            hiddenColumns: nextHiddenColumns,
+            presetId: nextPresetId,
+        }));
+    };
+
     // Read default view from localStorage on mount
     useEffect(() => {
         let nextViewMode: 'list' | 'grid' | null = null;
-        let nextColumnOrder: ProductColumnId[] | null = null;
+        let nextPreferences = defaultPreferences;
 
         try {
             const savedSettings = localStorage.getItem('systemSettings');
@@ -390,10 +709,10 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                     nextViewMode = settings.defaultView;
                 }
             }
-            const savedColumns = localStorage.getItem(columnStorageKey);
-            if (savedColumns) {
-                const parsed = JSON.parse(savedColumns);
-                nextColumnOrder = normalizeColumnOrder(parsed, isAdmin);
+            const savedPreferences = localStorage.getItem(preferenceStorageKey);
+            if (savedPreferences) {
+                const parsed = JSON.parse(savedPreferences);
+                nextPreferences = normalizeProductPreferences(parsed, isAdmin, viewerRole);
             }
         } catch (e) {
             console.error('Error reading settings:', e);
@@ -403,13 +722,13 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
             if (nextViewMode) {
                 setViewMode(nextViewMode);
             }
-            if (nextColumnOrder) {
-                setColumnOrder(nextColumnOrder);
-            }
+            setColumnOrder(nextPreferences.columnOrder);
+            setHiddenColumns(nextPreferences.hiddenColumns);
+            setActivePresetId(nextPreferences.presetId);
         }, 0);
 
         return () => window.clearTimeout(timeoutId);
-    }, [columnStorageKey, isAdmin]);
+    }, [defaultPreferences, isAdmin, preferenceStorageKey, viewerRole]);
 
     useEffect(() => {
         const closePreview = () => setImagePreview(null);
@@ -501,7 +820,8 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
 
             const next = [...current];
             [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
-            localStorage.setItem(columnStorageKey, JSON.stringify(next));
+            persistPreferences(next, hiddenColumns, 'custom');
+            setActivePresetId('custom');
             return next;
         });
     };
@@ -516,15 +836,65 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
             const next = [...current];
             const [moved] = next.splice(fromIndex, 1);
             next.splice(toIndex, 0, moved);
-            localStorage.setItem(columnStorageKey, JSON.stringify(next));
+            persistPreferences(next, hiddenColumns, 'custom');
+            setActivePresetId('custom');
             return next;
         });
     };
 
+    const toggleColumnVisibility = (columnId: ProductColumnId) => {
+        if (LOCKED_VISIBLE_COLUMNS.has(columnId)) return;
+        setHiddenColumns((current) => {
+            const exists = current.includes(columnId);
+            const next = exists
+                ? current.filter((item) => item !== columnId)
+                : normalizeHiddenColumns([...current, columnId], isAdmin);
+            persistPreferences(columnOrder, next, 'custom');
+            setActivePresetId('custom');
+            return next;
+        });
+    };
+
+    const setGroupVisibility = (groupColumns: ProductColumnId[], visible: boolean) => {
+        const toggledColumns = groupColumns.filter((columnId) => !LOCKED_VISIBLE_COLUMNS.has(columnId));
+        if (toggledColumns.length === 0) return;
+
+        setHiddenColumns((current) => {
+            const currentSet = new Set(current);
+            for (const columnId of toggledColumns) {
+                if (visible) currentSet.delete(columnId);
+                else currentSet.add(columnId);
+            }
+            const next = normalizeHiddenColumns(Array.from(currentSet), isAdmin);
+            persistPreferences(columnOrder, next, 'custom');
+            setActivePresetId('custom');
+            return next;
+        });
+    };
+
+    const applyPreset = (presetId: Exclude<ProductColumnPresetId, 'custom'>) => {
+        const preset = PRODUCT_COLUMN_PRESETS.find((item) => item.id === presetId);
+        if (!preset) return;
+
+        const nextOrder = getDefaultColumnOrder(isAdmin);
+        const nextHiddenColumns = getHiddenColumnsFromVisibleColumns(preset.visibleColumns, isAdmin);
+        setColumnOrder(nextOrder);
+        setHiddenColumns(nextHiddenColumns);
+        setActivePresetId(presetId);
+        persistPreferences(nextOrder, nextHiddenColumns, presetId);
+    };
+
     const resetColumnOrder = () => {
-        const defaultOrder = getDefaultColumnOrder(isAdmin);
-        setColumnOrder(defaultOrder);
-        localStorage.setItem(columnStorageKey, JSON.stringify(defaultOrder));
+        const nextOrder = getDefaultColumnOrder(isAdmin);
+        setColumnOrder(nextOrder);
+        persistPreferences(nextOrder, hiddenColumns, activePresetId);
+    };
+
+    const showAllColumns = () => {
+        const nextHiddenColumns: ProductColumnId[] = [];
+        setHiddenColumns(nextHiddenColumns);
+        setActivePresetId('custom');
+        persistPreferences(columnOrder, nextHiddenColumns, 'custom');
     };
 
     const renderCellValue = (columnId: ProductColumnId, product: Product) => {
@@ -612,6 +982,10 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                     <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
                         เท่าจุดสั่งซื้อ
                     </span>
+                ) : isBelowSafetyStock(product) ? (
+                    <span className="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-orange-800">
+                        ต่ำกว่าจุดสั่งซื้อ
+                    </span>
                 ) : (
                     <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
                         พร้อมขาย
@@ -645,8 +1019,6 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
         if (columnId === 'is_asset' || columnId === 'status') return 'px-4 py-3 text-center';
         return 'px-4 py-3';
     };
-
-    const visibleColumns = columnOrder.filter((columnId) => isAdmin || columnId !== 'actions');
 
     const handleViewModeChange = (mode: 'list' | 'grid') => {
         setViewMode(mode);
@@ -755,90 +1127,215 @@ export function ProductsView({ products, isAdmin }: ProductsViewProps) {
                                     ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                                     : 'cursor-not-allowed border-slate-100 bg-slate-100 text-slate-400'
                                 }`}
-                            title={viewMode === 'list' ? 'สลับลำดับคอลัมน์' : 'สลับคอลัมน์ได้เฉพาะมุมมองตาราง'}
+                            title={viewMode === 'list' ? 'จัดคอลัมน์สำหรับการใช้งานหน้านี้' : 'สลับคอลัมน์ได้เฉพาะมุมมองตาราง'}
                         >
                             <Columns3 className="h-4 w-4" />
                             <span className="hidden sm:inline">คอลัมน์</span>
                         </button>
 
                         {showColumnManager && viewMode === 'list' && (
-                            <div className="absolute right-0 top-full z-30 mt-2 w-72 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
-                                <div className="flex items-center justify-between border-b bg-gray-50 px-3 py-2">
-                                    <p className="text-sm font-semibold text-gray-700">สลับลำดับคอลัมน์</p>
-                                    <button
-                                        type="button"
-                                        onClick={resetColumnOrder}
-                                        className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
-                                    >
-                                        <RotateCcw className="h-3.5 w-3.5" />
-                                        รีเซ็ต
-                                    </button>
-                                </div>
-                                <div className="max-h-80 space-y-1 overflow-y-auto p-2">
-                                    {visibleColumns.map((columnId, index) => (
-                                        <div
-                                            key={columnId}
-                                            draggable
-                                            onDragStart={(event) => {
-                                                setDraggingColumn(columnId);
-                                                event.dataTransfer.effectAllowed = 'move';
-                                            }}
-                                            onDragOver={(event) => {
-                                                event.preventDefault();
-                                                if (dragOverColumn !== columnId) {
-                                                    setDragOverColumn(columnId);
-                                                }
-                                            }}
-                                            onDragLeave={() => {
-                                                if (dragOverColumn === columnId) {
-                                                    setDragOverColumn(null);
-                                                }
-                                            }}
-                                            onDrop={(event) => {
-                                                event.preventDefault();
-                                                if (draggingColumn) {
-                                                    reorderColumns(draggingColumn, columnId);
-                                                }
-                                                setDraggingColumn(null);
-                                                setDragOverColumn(null);
-                                            }}
-                                            onDragEnd={() => {
-                                                setDraggingColumn(null);
-                                                setDragOverColumn(null);
-                                            }}
-                                            className={`flex items-center justify-between rounded-lg border px-2 py-1.5 transition-colors ${dragOverColumn === columnId
-                                                ? 'border-blue-300 bg-blue-50'
-                                                : 'border-gray-100 bg-white'
-                                                } ${draggingColumn === columnId ? 'opacity-60' : ''}`}
-                                        >
-                                            <div className="flex min-w-0 items-center gap-2 pr-2">
-                                                <GripVertical className="h-4 w-4 flex-shrink-0 text-gray-400" />
-                                                <span className="truncate text-sm text-gray-700">
-                                                    {index + 1}. {COLUMN_LABELS[columnId]}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => moveColumn(columnId, 'up')}
-                                                    disabled={index === 0}
-                                                    className="rounded border border-gray-200 p-1 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                                    title="เลื่อนขึ้น"
-                                                >
-                                                    <ArrowUp className="h-3.5 w-3.5" />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => moveColumn(columnId, 'down')}
-                                                    disabled={index === visibleColumns.length - 1}
-                                                    className="rounded border border-gray-200 p-1 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                                    title="เลื่อนลง"
-                                                >
-                                                    <ArrowDown className="h-3.5 w-3.5" />
-                                                </button>
-                                            </div>
+                            <div className="absolute right-0 top-full z-30 mt-2 w-[31rem] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
+                                <div className="border-b bg-gray-50 px-4 py-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-sm font-semibold text-gray-800">จัดคอลัมน์หน้า /products</p>
+                                            <p className="text-xs text-gray-500">แสดงอยู่ {visibleColumns.length} จาก {manageableColumns.length} คอลัมน์</p>
                                         </div>
-                                    ))}
+                                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${activePresetId === 'custom'
+                                                ? 'bg-violet-100 text-violet-700'
+                                                : 'bg-blue-100 text-blue-700'
+                                            }`}>
+                                            {activePresetId === 'custom' ? 'กำหนดเอง' : `Preset: ${PRODUCT_COLUMN_PRESETS.find((preset) => preset.id === activePresetId)?.label ?? '-'}`}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3 p-3">
+                                    <div>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">มุมมองแนะนำ</p>
+                                        <div className="mt-2 grid grid-cols-2 gap-2">
+                                            {PRODUCT_COLUMN_PRESETS.map((preset) => {
+                                                const isActive = activePresetId === preset.id;
+                                                return (
+                                                    <button
+                                                        key={preset.id}
+                                                        type="button"
+                                                        onClick={() => applyPreset(preset.id)}
+                                                        className={`rounded-lg border px-2.5 py-2 text-left transition-colors ${isActive
+                                                                ? 'border-blue-300 bg-blue-50'
+                                                                : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50'
+                                                            }`}
+                                                    >
+                                                        <span className="inline-flex items-center gap-1 text-sm font-semibold text-slate-700">
+                                                            {preset.label}
+                                                            {isActive && <Check className="h-3.5 w-3.5 text-blue-600" />}
+                                                        </span>
+                                                        <p className="mt-0.5 text-xs text-slate-500">{preset.description}</p>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={showAllColumns}
+                                            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                        >
+                                            <Eye className="h-3.5 w-3.5" />
+                                            แสดงทั้งหมด
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => applyPreset('general')}
+                                            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                        >
+                                            <EyeOff className="h-3.5 w-3.5" />
+                                            ซ่อนคอลัมน์ขั้นสูง
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={resetColumnOrder}
+                                            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                        >
+                                            <RotateCcw className="h-3.5 w-3.5" />
+                                            รีเซ็ตลำดับ
+                                        </button>
+                                    </div>
+
+                                    <div className="max-h-[24rem] space-y-2 overflow-y-auto border-t border-slate-100 pt-2">
+                                        {PRODUCT_COLUMN_GROUPS.map((group) => {
+                                            const orderedGroupColumns = manageableColumns.filter((columnId) => group.columns.includes(columnId));
+                                            if (orderedGroupColumns.length === 0) return null;
+
+                                            const hideableColumns = orderedGroupColumns.filter((columnId) => !LOCKED_VISIBLE_COLUMNS.has(columnId));
+                                            const visibleCount = orderedGroupColumns.filter((columnId) => !hiddenColumnSet.has(columnId)).length;
+                                            const allVisible = hideableColumns.length > 0 && hideableColumns.every((columnId) => !hiddenColumnSet.has(columnId));
+                                            const allHidden = hideableColumns.length > 0 && hideableColumns.every((columnId) => hiddenColumnSet.has(columnId));
+
+                                            return (
+                                                <div key={group.id} className="rounded-lg border border-slate-200 bg-slate-50/40 p-2">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-slate-700">{group.label}</p>
+                                                            <p className="text-[11px] text-slate-500">{group.helperText}</p>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] text-slate-600">
+                                                                {visibleCount}/{orderedGroupColumns.length}
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setGroupVisibility(orderedGroupColumns, true)}
+                                                                disabled={hideableColumns.length === 0 || allVisible}
+                                                                className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                            >
+                                                                แสดง
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setGroupVisibility(orderedGroupColumns, false)}
+                                                                disabled={hideableColumns.length === 0 || allHidden}
+                                                                className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                            >
+                                                                ซ่อน
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="mt-2 space-y-1">
+                                                        {orderedGroupColumns.map((columnId) => {
+                                                            const index = manageableColumns.indexOf(columnId);
+                                                            const isVisible = !hiddenColumnSet.has(columnId);
+                                                            const isLocked = LOCKED_VISIBLE_COLUMNS.has(columnId);
+                                                            return (
+                                                                <div
+                                                                    key={columnId}
+                                                                    draggable
+                                                                    onDragStart={(event) => {
+                                                                        setDraggingColumn(columnId);
+                                                                        event.dataTransfer.effectAllowed = 'move';
+                                                                    }}
+                                                                    onDragOver={(event) => {
+                                                                        event.preventDefault();
+                                                                        if (dragOverColumn !== columnId) {
+                                                                            setDragOverColumn(columnId);
+                                                                        }
+                                                                    }}
+                                                                    onDragLeave={() => {
+                                                                        if (dragOverColumn === columnId) {
+                                                                            setDragOverColumn(null);
+                                                                        }
+                                                                    }}
+                                                                    onDrop={(event) => {
+                                                                        event.preventDefault();
+                                                                        if (draggingColumn) {
+                                                                            reorderColumns(draggingColumn, columnId);
+                                                                        }
+                                                                        setDraggingColumn(null);
+                                                                        setDragOverColumn(null);
+                                                                    }}
+                                                                    onDragEnd={() => {
+                                                                        setDraggingColumn(null);
+                                                                        setDragOverColumn(null);
+                                                                    }}
+                                                                    className={`flex items-center justify-between rounded-lg border px-2 py-1.5 transition-colors ${dragOverColumn === columnId
+                                                                            ? 'border-blue-300 bg-blue-50'
+                                                                            : 'border-gray-100 bg-white'
+                                                                        } ${draggingColumn === columnId ? 'opacity-60' : ''}`}
+                                                                >
+                                                                    <div className="flex min-w-0 items-center gap-2 pr-2">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => toggleColumnVisibility(columnId)}
+                                                                            disabled={isLocked}
+                                                                            className={`rounded border p-1 ${isVisible
+                                                                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                                                    : 'border-slate-200 bg-slate-100 text-slate-500'
+                                                                                } disabled:cursor-not-allowed disabled:opacity-50`}
+                                                                            title={isLocked ? 'คอลัมน์จำเป็น ไม่สามารถซ่อน' : isVisible ? 'ซ่อนคอลัมน์นี้' : 'แสดงคอลัมน์นี้'}
+                                                                        >
+                                                                            {isVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                                                                        </button>
+                                                                        <GripVertical className="h-4 w-4 flex-shrink-0 text-gray-400" />
+                                                                        <span className="truncate text-sm text-gray-700">
+                                                                            {COLUMN_LABELS[columnId]}
+                                                                        </span>
+                                                                        {isLocked && (
+                                                                            <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                                                                                จำเป็น
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => moveColumn(columnId, 'up')}
+                                                                            disabled={index === 0}
+                                                                            className="rounded border border-gray-200 p-1 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                                            title="เลื่อนขึ้น"
+                                                                        >
+                                                                            <ArrowUp className="h-3.5 w-3.5" />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => moveColumn(columnId, 'down')}
+                                                                            disabled={index === manageableColumns.length - 1}
+                                                                            className="rounded border border-gray-200 p-1 text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                                            title="เลื่อนลง"
+                                                                        >
+                                                                            <ArrowDown className="h-3.5 w-3.5" />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             </div>
                         )}

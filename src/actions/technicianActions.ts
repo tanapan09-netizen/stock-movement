@@ -58,7 +58,116 @@ export async function getLineTechnicians() {
             },
             orderBy: { created_at: 'desc' }
         });
-        return { success: true, data: lineUsers };
+
+        if (lineUsers.length === 0) {
+            return { success: true, data: lineUsers };
+        }
+
+        const lineUserIds = lineUsers.map((user) => user.line_user_id).filter(Boolean);
+        const linkedUsers = await prisma.tbl_users.findMany({
+            where: {
+                line_user_id: {
+                    in: lineUserIds,
+                },
+            },
+            select: {
+                p_id: true,
+                line_user_id: true,
+                username: true,
+            },
+        });
+
+        const userIdByLineId = new Map<string, number>();
+        const usernameByLineId = new Map<string, string>();
+
+        for (const lineUser of lineUsers) {
+            if (typeof lineUser.user_id === 'number') {
+                userIdByLineId.set(lineUser.line_user_id, lineUser.user_id);
+            }
+        }
+
+        for (const linkedUser of linkedUsers) {
+            if (!linkedUser.line_user_id) continue;
+            if (!userIdByLineId.has(linkedUser.line_user_id)) {
+                userIdByLineId.set(linkedUser.line_user_id, linkedUser.p_id);
+            }
+            if (linkedUser.username) {
+                usernameByLineId.set(linkedUser.line_user_id, linkedUser.username);
+            }
+        }
+
+        const linkedUserIds = Array.from(new Set(Array.from(userIdByLineId.values())));
+        const linkedUsernames = Array.from(
+            new Set(
+                Array.from(usernameByLineId.values())
+                    .map((username) => (username || '').trim())
+                    .filter(Boolean),
+            ),
+        );
+
+        const latestLogByUserId = new Map<number, Date>();
+        if (linkedUserIds.length > 0) {
+            const groupedByUserId = await prisma.tbl_system_logs.groupBy({
+                by: ['user_id'],
+                where: {
+                    user_id: {
+                        in: linkedUserIds,
+                    },
+                },
+                _max: {
+                    created_at: true,
+                },
+            });
+
+            groupedByUserId.forEach((row) => {
+                if (typeof row.user_id === 'number' && row._max.created_at) {
+                    latestLogByUserId.set(row.user_id, row._max.created_at);
+                }
+            });
+        }
+
+        const latestLogByUsername = new Map<string, Date>();
+        if (linkedUsernames.length > 0) {
+            const groupedByUsername = await prisma.tbl_system_logs.groupBy({
+                by: ['username'],
+                where: {
+                    user_id: null,
+                    username: {
+                        in: linkedUsernames,
+                    },
+                },
+                _max: {
+                    created_at: true,
+                },
+            });
+
+            groupedByUsername.forEach((row) => {
+                if (row.username && row._max.created_at) {
+                    latestLogByUsername.set(row.username, row._max.created_at);
+                }
+            });
+        }
+
+        const enrichedLineUsers = lineUsers.map((lineUser) => {
+            const linkedUserId = userIdByLineId.get(lineUser.line_user_id);
+            const linkedUsername = usernameByLineId.get(lineUser.line_user_id);
+            const systemLastByUserId = typeof linkedUserId === 'number' ? latestLogByUserId.get(linkedUserId) : undefined;
+            const systemLastByUsername = linkedUsername ? latestLogByUsername.get(linkedUsername) : undefined;
+
+            const timestamps = [lineUser.last_interaction, systemLastByUserId, systemLastByUsername]
+                .filter((value): value is Date => value instanceof Date);
+
+            const latestInteraction = timestamps.length > 0
+                ? new Date(Math.max(...timestamps.map((value) => value.getTime())))
+                : null;
+
+            return {
+                ...lineUser,
+                last_interaction: latestInteraction,
+            };
+        });
+
+        return { success: true, data: enrichedLineUsers };
     } catch (error) {
         console.error('Error fetching LINE technicians:', error);
         return { success: false, error: 'Failed to fetch LINE technicians' };

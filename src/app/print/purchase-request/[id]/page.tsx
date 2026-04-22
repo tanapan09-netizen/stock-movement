@@ -111,6 +111,8 @@ function formatRoleLabel(role: string) {
         admin: 'Admin',
         manager: 'Manager',
         employee: 'Employee',
+        gardener: 'Gardener',
+        leader_gardener: 'Leader Gardener',
         purchasing: 'Purchasing',
         leader_purchasing: 'Leader Purchasing',
         accounting: 'Accounting',

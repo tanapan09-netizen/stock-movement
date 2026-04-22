@@ -708,8 +708,8 @@ export async function createMaintenanceRequest(formData: FormData) {
             return { success: false, error: 'Permission denied: role cannot create maintenance request' };
         }
 
-        if (!canCreateViaGeneralRequestPage && normalizeRole(authContext.role) !== 'employee') {
-            return { success: false, error: 'Only employee can create new maintenance requests' };
+        if (!canCreateViaGeneralRequestPage && !['employee', 'gardener'].includes(normalizeRole(authContext.role))) {
+            return { success: false, error: 'Only employee or gardener can create new maintenance requests' };
         }
 
         const rawData = {
@@ -3656,6 +3656,79 @@ export async function getMaintenanceSummary() {
     } catch (error: unknown) {
         console.error('Error fetching maintenance summary:', error);
         return { success: false, error: getErrorMessage(error, 'Failed to fetch summary') };
+    }
+}
+
+export async function getMaintenanceDepartmentAssignees() {
+    try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        const canViewMaintenancePage = canAccessDashboardPage(
+            authContext.role,
+            authContext.permissions,
+            '/maintenance',
+            { isApprover: authContext.isApprover, level: 'read' },
+        );
+        if (!canViewMaintenancePage) {
+            return { success: false, error: 'Permission denied: cannot access maintenance assignees' };
+        }
+
+        const users = await prisma.tbl_users.findMany({
+            where: {
+                deleted_at: null,
+            },
+            select: {
+                username: true,
+                role: true,
+                line_user_id: true,
+            },
+            orderBy: [
+                { role: 'asc' },
+                { username: 'asc' },
+            ],
+        });
+
+        const lineUserIds = users
+            .map((user) => (user.line_user_id || '').trim())
+            .filter((value): value is string => value.length > 0);
+
+        const lineProfiles = lineUserIds.length > 0
+            ? await prisma.tbl_line_users.findMany({
+                where: {
+                    line_user_id: {
+                        in: lineUserIds,
+                    },
+                },
+                select: {
+                    line_user_id: true,
+                    display_name: true,
+                    full_name: true,
+                },
+            })
+            : [];
+
+        const lineProfileById = new Map(
+            lineProfiles.map((profile) => [profile.line_user_id, profile]),
+        );
+
+        const data = users.map((user) => {
+            const lineId = (user.line_user_id || '').trim();
+            const lineProfile = lineId ? lineProfileById.get(lineId) : null;
+            return {
+                username: user.username,
+                role: user.role,
+                display_name: lineProfile?.display_name || null,
+                full_name: lineProfile?.full_name || null,
+            };
+        });
+
+        return { success: true, data };
+    } catch (error) {
+        console.error('Error fetching maintenance department assignees:', error);
+        return { success: false, error: 'Failed to fetch maintenance assignees' };
     }
 }
 

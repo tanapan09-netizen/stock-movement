@@ -16,6 +16,8 @@ export default async function ProductsPage() {
         { isApprover: permissionContext.isApprover, level: 'edit' },
     );
     const canImportProducts = permissionContext.role === 'admin';
+    const viewerRole = permissionContext.role;
+    const viewerId = session?.user?.id ?? null;
 
     const products = await prisma.tbl_products.findMany({
         include: {
@@ -42,7 +44,13 @@ export default async function ProductsPage() {
                         <p className="text-sm text-slate-500">จัดการข้อมูลสินค้า ค้นหาได้เร็ว และส่งออกข้อมูลได้ทันที</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                        <ProductsToolbar products={serializedProducts} canImport={canImportProducts} />
+                        <ProductsToolbar
+                            products={serializedProducts}
+                            canImport={canImportProducts}
+                            canEditPage={canEditPage}
+                            viewerRole={viewerRole}
+                            viewerId={viewerId}
+                        />
                         <Link
                             href="/reports/low-stock"
                             className="inline-flex items-center rounded-lg border border-red-200 bg-red-100 px-4 py-2 font-medium text-red-700 hover:bg-red-200"
@@ -81,7 +89,12 @@ export default async function ProductsPage() {
             </section>
 
             {/* Products View with Grid/List Toggle */}
-            <ProductsView products={serializedProducts} isAdmin={canEditPage} />
+            <ProductsView
+                products={serializedProducts}
+                isAdmin={canEditPage}
+                viewerRole={viewerRole}
+                viewerId={viewerId}
+            />
         </div>
     );
 }

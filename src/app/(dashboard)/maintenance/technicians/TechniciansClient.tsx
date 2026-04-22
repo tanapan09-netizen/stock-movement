@@ -378,7 +378,15 @@ export default function TechniciansClient({ canEdit }: Props) {
                                         </div>
                                         <div className="mt-3 text-xs text-gray-500">
                                             {lt.last_interaction && (
-                                                <span>ใช้งานล่าสุด: {new Date(lt.last_interaction).toLocaleDateString('th-TH')}</span>
+                                                <span>
+                                                    ใช้งานล่าสุด: {new Date(lt.last_interaction).toLocaleString('th-TH', {
+                                                        year: 'numeric',
+                                                        month: 'numeric',
+                                                        day: 'numeric',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit',
+                                                    })}
+                                                </span>
                                             )}
                                         </div>
                                     </div>

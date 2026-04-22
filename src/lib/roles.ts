@@ -3,6 +3,7 @@ export const DEPARTMENT_BASE_ROLES = [
     'employee',
     'technician',
     'maid',
+    'gardener',
     'driver',
     'store',
     'accounting',
@@ -25,6 +26,8 @@ export const ROLE_OPTIONS = [
     { value: 'technician', label: 'Technician (ช่าง)' },
     { value: 'leader_maid', label: 'Leader Maid (หัวหน้าแม่บ้าน)' },
     { value: 'maid', label: 'Maid (แม่บ้าน)' },
+    { value: 'leader_gardener', label: 'Leader Gardener (Head Gardener)' },
+    { value: 'gardener', label: 'Gardener' },
     { value: 'leader_driver', label: 'Leader Driver (หัวหน้าคนขับรถ)' },
     { value: 'driver', label: 'Driver (คนขับรถ)' },
     { value: 'leader_store', label: 'Leader Store (หัวหน้าคลังสินค้า)' },
@@ -91,6 +94,10 @@ export const getRoleAvatarColorClass = (role?: string | null) => {
             return 'bg-indigo-700';
         case 'store':
             return 'bg-indigo-500';
+        case 'leader_gardener':
+            return 'bg-lime-700';
+        case 'gardener':
+            return 'bg-lime-500';
         case 'operation':
             return 'bg-teal-500';
         default:

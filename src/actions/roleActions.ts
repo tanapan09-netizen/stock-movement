@@ -27,6 +27,8 @@ const DEFAULT_ROLES = [
     { name: 'general', desc: 'General', is_system: false },
     { name: 'leader_maid', desc: 'Leader Maid', is_system: false },
     { name: 'maid', desc: 'Maid', is_system: false },
+    { name: 'leader_gardener', desc: 'Leader Gardener', is_system: false },
+    { name: 'gardener', desc: 'Gardener', is_system: false },
     { name: 'leader_driver', desc: 'Leader Driver', is_system: false },
     { name: 'driver', desc: 'Driver', is_system: false },
     { name: 'leader_purchasing', desc: 'Leader Purchasing', is_system: false },
