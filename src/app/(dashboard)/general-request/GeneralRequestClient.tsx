@@ -17,6 +17,8 @@ import {
     getMaintenanceRequests,
     createMaintenanceRequest,
     acknowledgeGeneralRequest,
+    updateMaintenanceRequest,
+    deleteAcknowledgedGeneralRequest,
     getRooms
 } from '@/actions/maintenanceActions';
 import { getAllVehicles } from '@/actions/vehicleActions';
@@ -64,6 +66,17 @@ interface MaintenanceRequestItem {
     tags?: string | null;
 }
 
+type GeneralRequestEditFormState = {
+    title: string;
+    description: string;
+    category: string;
+    priority: string;
+    department: string;
+    contact_info: string;
+    notes: string;
+    edit_reason: string;
+};
+
 interface Vehicle {
     vehicle_id: number;
     license_plate: string;
@@ -95,6 +108,8 @@ const ACKNOWLEDGED_REQUEST_STATUSES = new Set(['approved']);
 const IN_PROGRESS_REQUEST_STATUSES = new Set(['in_progress']);
 const FINISHED_REQUEST_STATUSES = new Set(['confirmed', 'completed', 'verified']);
 const INFORMATIONAL_REQUEST_CATEGORIES = new Set(['general']);
+const GENERAL_REQUEST_EDIT_ROLE_SET = new Set(['leader_employee', 'manager', 'admin']);
+const GENERAL_REQUEST_CANCEL_ALLOWED_STATUS_SET = new Set(['pending', 'approved', 'in_progress']);
 
 const normalizeRequestStatus = (status?: string | null) => (status || '').toLowerCase();
 const normalizeRequestCategory = (category?: string | null) => (category || '').trim().toLowerCase();
@@ -162,7 +177,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
     const canApproveGeneralRequest = access.canApprove;
     const canDeleteGeneralRequest = access.canDelete;
     const canAcknowledgeFromGeneralRequest =
-        ['employee', 'admin', 'manager'].includes(currentRole);
+        ['employee', 'leader_employee', 'admin', 'manager'].includes(currentRole);
     // Data
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
     const [rooms, setRooms] = useState<Room[]>([]);
@@ -182,9 +197,25 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
     const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
     const [hasOpenedFromUrl, setHasOpenedFromUrl] = useState(false);
     const [locationMode, setLocationMode] = useState<'location' | 'vehicle'>('location');
+    const [isEditingDetail, setIsEditingDetail] = useState(false);
+    const [savingDetail, setSavingDetail] = useState(false);
+    const [showCancelForm, setShowCancelForm] = useState(false);
+    const [cancelReason, setCancelReason] = useState('');
+    const [cancellingDetail, setCancellingDetail] = useState(false);
+    const [deletingAcknowledgedDetail, setDeletingAcknowledgedDetail] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [detailEditForm, setDetailEditForm] = useState<GeneralRequestEditFormState>({
+        title: '',
+        description: '',
+        category: 'general',
+        priority: 'normal',
+        department: '',
+        contact_info: '',
+        notes: '',
+        edit_reason: '',
+    });
 
     // Form
     const [formData, setFormData] = useState({
@@ -263,6 +294,23 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         window.history.replaceState({}, '', url.toString());
     }, [reqQueryParam, requests, hasOpenedFromUrl]);
 
+    useEffect(() => {
+        if (!selectedRequest) return;
+        setDetailEditForm({
+            title: selectedRequest.title || '',
+            description: selectedRequest.description || '',
+            category: selectedRequest.category || 'general',
+            priority: selectedRequest.priority || 'normal',
+            department: selectedRequest.department || '',
+            contact_info: selectedRequest.contact_info || '',
+            notes: selectedRequest.notes || '',
+            edit_reason: '',
+        });
+        setIsEditingDetail(false);
+        setShowCancelForm(false);
+        setCancelReason('');
+    }, [selectedRequest]);
+
     const filteredRequests = requests.filter(req => {
         const matchSearch =
             req.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -301,6 +349,17 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         && isInformationalRequestCategory(request.category)
         && isPendingRequestStatus(request.status);
 
+    const canEditGeneralRequestDetail =
+        canEditGeneralRequest && GENERAL_REQUEST_EDIT_ROLE_SET.has(currentRole);
+    const canCancelGeneralRequestDetail =
+        Boolean(selectedRequest)
+        && canEditGeneralRequestDetail
+        && GENERAL_REQUEST_CANCEL_ALLOWED_STATUS_SET.has(normalizeRequestStatus(selectedRequest?.status));
+    const canDeleteAcknowledgedGeneralRequestDetail =
+        Boolean(selectedRequest)
+        && canEditGeneralRequestDetail
+        && (selectedRequest ? isAcknowledgedInformationalRequest(selectedRequest) : false);
+
     const handleAcknowledgeRequest = async (request: MaintenanceRequestItem) => {
         if (!canShowAcknowledgeAction(request)) return;
         setAcknowledgingRequestId(request.request_id);
@@ -323,6 +382,165 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             showToast('เกิดข้อผิดพลาดในการรับทราบรายการ', 'error');
         } finally {
             setAcknowledgingRequestId(null);
+        }
+    };
+
+    const handleSaveDetail = async () => {
+        if (!selectedRequest) return;
+        if (!canEditGeneralRequestDetail) {
+            showToast('คุณไม่มีสิทธิ์แก้ไขรายการนี้', 'warning');
+            return;
+        }
+
+        const nextTitle = detailEditForm.title.trim();
+        if (!nextTitle) {
+            showToast('กรุณาระบุหัวเรื่อง', 'warning');
+            return;
+        }
+
+        const editReason = detailEditForm.edit_reason.trim();
+        if (editReason.length < 8) {
+            showToast('กรุณาระบุเหตุผลการแก้ไขอย่างน้อย 8 ตัวอักษร', 'warning');
+            return;
+        }
+
+        const currentDescription = (selectedRequest.description || '').trim();
+        const nextDescription = detailEditForm.description.trim();
+        const currentDepartment = (selectedRequest.department || '').trim();
+        const nextDepartment = detailEditForm.department.trim();
+        const currentContactInfo = (selectedRequest.contact_info || '').trim();
+        const nextContactInfo = detailEditForm.contact_info.trim();
+        const currentNotes = (selectedRequest.notes || '').trim();
+        const nextNotes = detailEditForm.notes.trim();
+        const nextCategory = (detailEditForm.category || 'general').trim() || 'general';
+        const nextPriority = (detailEditForm.priority || 'normal').trim() || 'normal';
+
+        const updateData = {
+            title: nextTitle !== (selectedRequest.title || '').trim() ? nextTitle : undefined,
+            description: nextDescription !== currentDescription ? nextDescription : undefined,
+            category: nextCategory !== (selectedRequest.category || 'general') ? nextCategory : undefined,
+            priority: nextPriority !== (selectedRequest.priority || 'normal') ? nextPriority : undefined,
+            department: nextDepartment !== currentDepartment ? nextDepartment : undefined,
+            contact_info: nextContactInfo !== currentContactInfo ? nextContactInfo : undefined,
+            notes: nextNotes !== currentNotes ? nextNotes : undefined,
+            edit_reason: editReason,
+        };
+
+        const changedFields = Object.values(updateData).filter((value) => value !== undefined);
+        if (changedFields.length <= 1) {
+            showToast('ไม่มีข้อมูลที่เปลี่ยนแปลง', 'info');
+            return;
+        }
+
+        setSavingDetail(true);
+        try {
+            const result = await updateMaintenanceRequest(
+                selectedRequest.request_id,
+                updateData,
+                loggedInReporter || 'System',
+            );
+
+            if (!result.success) {
+                showToast(result.error || 'ไม่สามารถบันทึกการแก้ไขได้', 'error');
+                return;
+            }
+
+            showToast('บันทึกการแก้ไขเรียบร้อยแล้ว', 'success');
+            setShowDetail(false);
+            setSelectedRequest(null);
+            setShowCancelForm(false);
+            setCancelReason('');
+            await loadData();
+        } catch {
+            showToast('เกิดข้อผิดพลาดในการบันทึกการแก้ไข', 'error');
+        } finally {
+            setSavingDetail(false);
+        }
+    };
+
+    const handleCancelDetail = async () => {
+        if (!selectedRequest) return;
+        if (!canCancelGeneralRequestDetail) {
+            showToast('คุณไม่มีสิทธิ์ยกเลิกรายการนี้', 'warning');
+            return;
+        }
+
+        const reason = cancelReason.trim();
+        if (reason.length < 8) {
+            showToast('กรุณาระบุเหตุผลการยกเลิกอย่างน้อย 8 ตัวอักษร', 'warning');
+            return;
+        }
+
+        setCancellingDetail(true);
+        try {
+            const result = await updateMaintenanceRequest(
+                selectedRequest.request_id,
+                {
+                    status: 'cancelled',
+                    notes: reason,
+                    edit_reason: reason,
+                },
+                loggedInReporter || 'System',
+            );
+
+            if (!result.success) {
+                showToast(result.error || 'ไม่สามารถยกเลิกรายการได้', 'error');
+                return;
+            }
+
+            showToast('ยกเลิกรายการเรียบร้อยแล้ว', 'success');
+            setShowDetail(false);
+            setSelectedRequest(null);
+            setShowCancelForm(false);
+            setCancelReason('');
+            await loadData();
+        } catch {
+            showToast('เกิดข้อผิดพลาดในการยกเลิกรายการ', 'error');
+        } finally {
+            setCancellingDetail(false);
+        }
+    };
+
+    const handleDeleteAcknowledgedDetail = async () => {
+        if (!selectedRequest) return;
+        if (!canDeleteAcknowledgedGeneralRequestDetail) {
+            showToast('คุณไม่มีสิทธิ์ลบรายการนี้', 'warning');
+            return;
+        }
+
+        const reasonInput = window.prompt('กรุณาระบุเหตุผลการลบรายการนี้ (อย่างน้อย 8 ตัวอักษร)');
+        if (reasonInput === null) return;
+
+        const reason = reasonInput.trim();
+        if (reason.length < 8) {
+            showToast('กรุณาระบุเหตุผลการลบอย่างน้อย 8 ตัวอักษร', 'warning');
+            return;
+        }
+
+        setDeletingAcknowledgedDetail(true);
+        try {
+            const result = await deleteAcknowledgedGeneralRequest(
+                selectedRequest.request_id,
+                reason,
+                loggedInReporter || 'System',
+            );
+
+            if (!result.success) {
+                showToast(result.error || 'ไม่สามารถลบรายการได้', 'error');
+                return;
+            }
+
+            showToast('ลบรายการรับทราบเรียบร้อยแล้ว', 'success');
+            setShowDetail(false);
+            setSelectedRequest(null);
+            setIsEditingDetail(false);
+            setShowCancelForm(false);
+            setCancelReason('');
+            await loadData();
+        } catch {
+            showToast('เกิดข้อผิดพลาดในการลบรายการ', 'error');
+        } finally {
+            setDeletingAcknowledgedDetail(false);
         }
     };
 
@@ -992,9 +1210,18 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 <h2 className="text-lg font-bold text-gray-900">รายละเอียดคำขอแจ้งซ่อม</h2>
                                 <p className="text-sm text-gray-500 mt-1">ตรวจสอบข้อมูลก่อนเริ่มดำเนินงาน</p>
                             </div>
-                            <button onClick={() => setShowDetail(false)} className="p-2 hover:bg-gray-100 rounded-lg">
-    <X className="w-5 h-5" />
-</button>
+                            <button
+                                onClick={() => {
+                                    setShowDetail(false);
+                                    setSelectedRequest(null);
+                                    setIsEditingDetail(false);
+                                    setShowCancelForm(false);
+                                    setCancelReason('');
+                                }}
+                                className="p-2 hover:bg-gray-100 rounded-lg"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
                         </div>
 
                         <div className="space-y-5">
@@ -1013,11 +1240,38 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 )}
                             </div>
 
-                            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                                <h3 className="text-xl font-bold text-gray-900">{selectedRequest.title}</h3>
-                                <p className="text-gray-600 text-sm leading-relaxed mt-2 whitespace-pre-line">
-                                    {selectedRequest.description?.trim() || 'ไม่มีรายละเอียดเพิ่มเติม'}
-                                </p>
+                            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                                {isEditingDetail ? (
+                                    <>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                                                หัวเรื่อง <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={detailEditForm.title}
+                                                onChange={(event) => setDetailEditForm((prev) => ({ ...prev, title: event.target.value }))}
+                                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-600 mb-1">รายละเอียด</label>
+                                            <textarea
+                                                value={detailEditForm.description}
+                                                onChange={(event) => setDetailEditForm((prev) => ({ ...prev, description: event.target.value }))}
+                                                rows={4}
+                                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                            />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <h3 className="text-xl font-bold text-gray-900">{selectedRequest.title}</h3>
+                                        <p className="text-gray-600 text-sm leading-relaxed mt-2 whitespace-pre-line">
+                                            {selectedRequest.description?.trim() || 'ไม่มีรายละเอียดเพิ่มเติม'}
+                                        </p>
+                                    </>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1030,13 +1284,55 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 </div>
                                 <div className="bg-white border border-gray-200 rounded-lg p-3">
                                     <p className="text-xs text-gray-500 mb-1">หมวดหมู่ / แผนก</p>
-                                    <p className="text-sm font-semibold text-gray-900">{selectedRequestCategoryLabel}</p>
-                                    <p className="text-xs text-gray-500 mt-1">{selectedRequest.department || '-'}</p>
+                                    {isEditingDetail ? (
+                                        <div className="space-y-2">
+                                            <select
+                                                value={detailEditForm.category}
+                                                onChange={(event) => setDetailEditForm((prev) => ({ ...prev, category: event.target.value }))}
+                                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                            >
+                                                {GENERAL_REQUEST_CATEGORY_OPTIONS.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </select>
+                                            <select
+                                                value={detailEditForm.priority}
+                                                onChange={(event) => setDetailEditForm((prev) => ({ ...prev, priority: event.target.value }))}
+                                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                            >
+                                                {GENERAL_REQUEST_PRIORITY_OPTIONS.map((option) => (
+                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                ))}
+                                            </select>
+                                            <input
+                                                type="text"
+                                                value={detailEditForm.department}
+                                                onChange={(event) => setDetailEditForm((prev) => ({ ...prev, department: event.target.value }))}
+                                                placeholder="ระบุแผนก (ถ้ามี)"
+                                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <p className="text-sm font-semibold text-gray-900">{selectedRequestCategoryLabel}</p>
+                                            <p className="text-xs text-gray-500 mt-1">{selectedRequest.department || '-'}</p>
+                                        </>
+                                    )}
                                 </div>
                                 <div className="bg-white border border-gray-200 rounded-lg p-3">
                                     <p className="text-xs text-gray-500 mb-1">ผู้แจ้ง</p>
                                     <p className="text-sm font-semibold text-gray-900">{selectedRequest.reported_by || '-'}</p>
-                                    <p className="text-xs text-gray-500 mt-1">{selectedRequest.contact_info || '-'}</p>
+                                    {isEditingDetail ? (
+                                        <input
+                                            type="text"
+                                            value={detailEditForm.contact_info}
+                                            onChange={(event) => setDetailEditForm((prev) => ({ ...prev, contact_info: event.target.value }))}
+                                            placeholder="เบอร์โทร / อีเมล / ไลน์"
+                                            className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                    ) : (
+                                        <p className="text-xs text-gray-500 mt-1">{selectedRequest.contact_info || '-'}</p>
+                                    )}
                                 </div>
                                 <div className="bg-white border border-gray-200 rounded-lg p-3">
                                     <p className="text-xs text-gray-500 mb-1">ผู้รับผิดชอบ</p>
@@ -1064,8 +1360,33 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
                             <div className="rounded-xl border border-gray-200 p-4">
                                 <p className="text-xs text-gray-500 mb-1">บันทึกช่าง / หมายเหตุ</p>
-                                <p className="text-sm text-gray-800 whitespace-pre-line">{selectedRequest.notes?.trim() || '-'}</p>
+                                {isEditingDetail ? (
+                                    <textarea
+                                        value={detailEditForm.notes}
+                                        onChange={(event) => setDetailEditForm((prev) => ({ ...prev, notes: event.target.value }))}
+                                        rows={4}
+                                        placeholder="เพิ่มหมายเหตุ (ถ้ามี)"
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                    />
+                                ) : (
+                                    <p className="text-sm text-gray-800 whitespace-pre-line">{selectedRequest.notes?.trim() || '-'}</p>
+                                )}
                             </div>
+
+                            {isEditingDetail && (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                    <label className="block text-xs font-medium text-amber-800 mb-1">
+                                        เหตุผลการแก้ไข <span className="text-red-500">*</span>
+                                    </label>
+                                    <textarea
+                                        value={detailEditForm.edit_reason}
+                                        onChange={(event) => setDetailEditForm((prev) => ({ ...prev, edit_reason: event.target.value }))}
+                                        rows={3}
+                                        placeholder="ระบุเหตุผลการแก้ไขอย่างน้อย 8 ตัวอักษร"
+                                        className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+                                    />
+                                </div>
+                            )}
 
                             <div className="rounded-xl border border-gray-200 p-4">
                                 <p className="text-xs text-gray-500 mb-2">แท็ก</p>
@@ -1118,9 +1439,113 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                             </div>
                         </div>
 
+                        {showCancelForm && canCancelGeneralRequestDetail && !isEditingDetail && (
+                            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4">
+                                <label className="block text-xs font-medium text-rose-800 mb-1">
+                                    เหตุผลการยกเลิก <span className="text-red-500">*</span>
+                                </label>
+                                <textarea
+                                    value={cancelReason}
+                                    onChange={(event) => setCancelReason(event.target.value)}
+                                    rows={3}
+                                    placeholder="ระบุเหตุผลการยกเลิกอย่างน้อย 8 ตัวอักษร"
+                                    className="w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-rose-400 resize-none"
+                                />
+                                <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleCancelDetail}
+                                        disabled={cancellingDetail}
+                                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border border-rose-600 bg-rose-600 text-white hover:bg-rose-700 transition-colors disabled:opacity-60"
+                                    >
+                                        {cancellingDetail ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                                        ยืนยันยกเลิกรายการ
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowCancelForm(false);
+                                            setCancelReason('');
+                                        }}
+                                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+                                    >
+                                        ปิดส่วนยกเลิก
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="mt-6 pt-4 border-t">
     <div className="flex flex-col sm:flex-row gap-2">
-        {canShowAcknowledgeAction(selectedRequest) && (
+        {canEditGeneralRequestDetail && !isEditingDetail && !showCancelForm && (
+            <button
+                type="button"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                onClick={() => {
+                    setIsEditingDetail(true);
+                    setShowCancelForm(false);
+                    setCancelReason('');
+                }}
+            >
+                แก้ไขรายการ
+            </button>
+        )}
+        {isEditingDetail && (
+            <>
+                <button
+                    type="button"
+                    onClick={handleSaveDetail}
+                    disabled={savingDetail}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border border-blue-600 bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-60"
+                >
+                    {savingDetail ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    บันทึกการแก้ไข
+                </button>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setIsEditingDetail(false);
+                        setDetailEditForm({
+                            title: selectedRequest.title || '',
+                            description: selectedRequest.description || '',
+                            category: selectedRequest.category || 'general',
+                            priority: selectedRequest.priority || 'normal',
+                            department: selectedRequest.department || '',
+                            contact_info: selectedRequest.contact_info || '',
+                            notes: selectedRequest.notes || '',
+                            edit_reason: '',
+                        });
+                    }}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                    ยกเลิกการแก้ไข
+                </button>
+            </>
+        )}
+        {canCancelGeneralRequestDetail && !isEditingDetail && (
+            <button
+                type="button"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition-colors"
+                onClick={() => {
+                    setShowCancelForm((prev) => !prev);
+                    if (showCancelForm) setCancelReason('');
+                }}
+            >
+                ยกเลิกรายการ
+            </button>
+        )}
+        {canDeleteAcknowledgedGeneralRequestDetail && !isEditingDetail && !showCancelForm && (
+            <button
+                type="button"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors disabled:opacity-60"
+                onClick={handleDeleteAcknowledgedDetail}
+                disabled={deletingAcknowledgedDetail}
+            >
+                {deletingAcknowledgedDetail ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                ลบรายการ
+            </button>
+        )}
+        {canShowAcknowledgeAction(selectedRequest) && !isEditingDetail && !showCancelForm && (
             <button
                 type="button"
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-60"
@@ -1138,7 +1563,13 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             </button>
         )}
         <button
-            onClick={() => setShowDetail(false)}
+            onClick={() => {
+                setShowDetail(false);
+                setSelectedRequest(null);
+                setIsEditingDetail(false);
+                setShowCancelForm(false);
+                setCancelReason('');
+            }}
             className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
         >
             ปิด

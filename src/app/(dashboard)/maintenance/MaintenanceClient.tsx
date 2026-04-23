@@ -269,6 +269,8 @@ const getHistoryActionLabel = (action: string): string => {
             return 'เหตุผลการเปิดงานใหม่';
         case 'cancel_reason':
             return 'เหตุผลการยกเลิกใบงาน';
+        case 'edit_reason':
+            return 'เหตุผลการแก้ไขใบงาน';
         default:
             return action;
     }
@@ -352,6 +354,15 @@ const resolveDepartmentLeaderRole = (department?: string | null) => {
 
     return MAINTENANCE_DEPARTMENT_ROLE_SET.has(normalized) ? `leader_${normalized}` : null;
 };
+const MAINTENANCE_EDIT_CANCEL_ROLE_SET = new Set([
+    'owner',
+    'admin',
+    'manager',
+    'leader_employee',
+    'leader_technician',
+]);
+const canRoleEditOrCancelMaintenance = (role?: string | null) =>
+    MAINTENANCE_EDIT_CANCEL_ROLE_SET.has(normalizeRole(role));
 const FALLBACK_TECHNICIAN_TARGET_ROLE_OPTION = {
     value: 'technician',
     label: 'Technician (ช่างซ่อมบำรุง)',
@@ -434,7 +445,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const canAssignMaintenance = canReassignMaintenanceRequest(loggedInRole, userPermissions, sessionIsApprover);
     const canVerifyParts = canVerifyMaintenanceParts(loggedInRole, userPermissions);
     const canApproveCompletion = canApproveMaintenanceCompletion(loggedInRole, userPermissions, sessionIsApprover);
-    const canManageMaintenanceStatus = canManageMaintenanceEdit(loggedInRole, userPermissions, sessionIsApprover);
+    const canManageMaintenanceStatus =
+        canManageMaintenanceEdit(loggedInRole, userPermissions, sessionIsApprover)
+        || canRoleEditOrCancelMaintenance(loggedInRole);
+    const hasMaintenanceEditAccess = canEditPage || canManageMaintenanceStatus;
     const searchParams = useSearchParams();
     const reqQueryParam = searchParams.get('req');
     const statusQueryParam = searchParams.get('status');
@@ -444,12 +458,12 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const [hasOpenedFromUrl, setHasOpenedFromUrl] = useState(false);
     const { showToast, showConfirm } = useToast();
     const ensureCanEditPage = () => {
-        if (canEditPage) return true;
+        if (hasMaintenanceEditAccess) return true;
         showToast('คุณมีสิทธิ์อ่านอย่างเดียวในหน้านี้', 'warning');
         return false;
     };
     const canCreateNewRequestByRole = ALLOWED_NEW_MAINTENANCE_ROLES.has(loggedInRole);
-    const canCreateNewMaintenanceRequest = canEditPage && canCreateNewRequestByRole;
+    const canCreateNewMaintenanceRequest = hasMaintenanceEditAccess && canCreateNewRequestByRole;
     const allowGeneralRequestPull = canCreateNewMaintenanceRequest;
     const maintenanceTargetRoleOptions = MAINTENANCE_TARGET_ROLE_OPTIONS.some((option) => option.value === 'technician')
         ? MAINTENANCE_TARGET_ROLE_OPTIONS
@@ -491,6 +505,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         pending: 0,
         approved: 0,
         in_progress: 0,
+        confirmed: 0,
         completed: 0,
         total_cost: 0,
         pending_verification: 0
@@ -1245,6 +1260,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             assigned_to?: string;
             scheduled_date?: string;
             notes?: string;
+            edit_reason?: string;
             completed_at?: Date;
         } = {
             status: statusChangeData.newStatus
@@ -1268,6 +1284,27 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         if (statusChangeData.newStatus === 'confirmed') {
             updateData.notes = statusChangeData.completionNotes || 'ซ่อมเสร็จเรียบร้อย';
         }
+
+        const reasonResult = await Swal.fire({
+            title: 'เหตุผลการแก้ไขใบงาน',
+            text: 'กรุณาระบุเหตุผลอย่างน้อย 8 ตัวอักษร',
+            input: 'textarea',
+            inputPlaceholder: 'เช่น ปรับสถานะตามการดำเนินงานจริง',
+            showCancelButton: true,
+            confirmButtonText: 'ยืนยัน',
+            cancelButtonText: 'ยกเลิก',
+            preConfirm: (value) => {
+                const reason = String(value || '').trim();
+                if (reason.length < 8) {
+                    Swal.showValidationMessage('กรุณาระบุเหตุผลอย่างน้อย 8 ตัวอักษร');
+                    return false;
+                }
+                return reason;
+            },
+        });
+
+        if (!reasonResult.isConfirmed) return;
+        updateData.edit_reason = String(reasonResult.value || '').trim();
 
         const result = await updateMaintenanceRequest(
             statusChangeData.request.request_id,
@@ -1521,7 +1558,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             return;
         }
         const isStatusChanged = editData.status !== selectedRequest.status;
-        if (!canEditPage && !(canEditDetailStatus && isStatusChanged)) {
+        if (!hasMaintenanceEditAccess && !(canEditDetailStatus && isStatusChanged)) {
             showToast('อ่านได้อย่างเดียวจ้า', 'warning');
             return;
         }
@@ -1571,7 +1608,17 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             && nextAssignedTo !== ''
             && editData.status === 'approved';
 
-        const submitData = {
+        const submitData: {
+            status?: string;
+            priority?: string;
+            assigned_to?: string;
+            scheduled_date?: string;
+            actual_cost?: number;
+            actual_cost_reason?: string;
+            reopen_reason?: string;
+            notes?: string;
+            edit_reason?: string;
+        } = {
             status: !isAutoAssignmentStatusChange && editData.status !== selectedRequest.status ? editData.status : undefined,
             priority: editData.priority !== selectedRequest.priority ? editData.priority : undefined,
             assigned_to: nextAssignedTo !== currentAssignedTo ? nextAssignedTo : undefined,
@@ -1602,13 +1649,10 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
         const isCancellingRequest = submitData.status === 'cancelled';
         if (isCancellingRequest) {
-            const requestDepartmentLeaderRole = resolveDepartmentLeaderRole(selectedRequest.department);
-            const canConfirmCancel =
-                isManagerRole(loggedInRole)
-                || Boolean(requestDepartmentLeaderRole && loggedInRole === requestDepartmentLeaderRole);
+            const canConfirmCancel = canRoleEditOrCancelMaintenance(loggedInRole);
 
             if (!canConfirmCancel) {
-                showToast('ต้องให้หัวหน้าฝ่ายของผู้แจ้งหรือผู้จัดการเป็นผู้ยืนยันยกเลิกใบงาน', 'warning');
+                showToast('สิทธิ์ไม่เพียงพอสำหรับการยกเลิกใบงาน', 'warning');
                 return;
             }
 
@@ -1673,6 +1717,31 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             return;
         }
 
+        if (isCancellingRequest) {
+            submitData.edit_reason = nextNotes.trim();
+        } else {
+            const reasonResult = await Swal.fire({
+                title: 'เหตุผลการแก้ไขใบงาน',
+                text: 'กรุณาระบุเหตุผลอย่างน้อย 8 ตัวอักษร',
+                input: 'textarea',
+                inputPlaceholder: 'เช่น ปรับข้อมูลตามการตรวจสอบหน้างาน',
+                showCancelButton: true,
+                confirmButtonText: 'ยืนยัน',
+                cancelButtonText: 'ยกเลิก',
+                preConfirm: (value) => {
+                    const reason = String(value || '').trim();
+                    if (reason.length < 8) {
+                        Swal.showValidationMessage('กรุณาระบุเหตุผลอย่างน้อย 8 ตัวอักษร');
+                        return false;
+                    }
+                    return reason;
+                },
+            });
+
+            if (!reasonResult.isConfirmed) return;
+            submitData.edit_reason = String(reasonResult.value || '').trim();
+        }
+
         const result = await updateMaintenanceRequest(
             selectedRequest.request_id,
             submitData,
@@ -1719,7 +1788,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             selectedRequest.request_id,
             {
                 status: 'completed',
-                notes: editData.notes || selectedRequest.notes || 'หัวหน้าช่างตรวจรับงานแล้ว'
+                notes: editData.notes || selectedRequest.notes || 'หัวหน้าช่างตรวจรับงานแล้ว',
+                edit_reason: 'หัวหน้าช่างตรวจรับงานและปิดงานแล้ว',
             },
             session.user.name
         );
@@ -1749,11 +1819,11 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
 
         const departmentLeaderRole = resolveDepartmentLeaderRole(selectedRequest.department);
         const canConfirmCancel =
-            isManagerRole(loggedInRole)
+            canRoleEditOrCancelMaintenance(loggedInRole)
             || Boolean(departmentLeaderRole && loggedInRole === departmentLeaderRole);
 
         if (!canConfirmCancel) {
-            showToast('ต้องให้หัวหน้าฝ่ายของผู้แจ้งหรือผู้จัดการเป็นผู้ยืนยันยกเลิกใบงาน', 'warning');
+            showToast('สิทธิ์ไม่เพียงพอสำหรับการยกเลิกใบงาน', 'warning');
             return;
         }
 
@@ -2028,7 +2098,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         { key: 'approved', label: 'แจ้งเรื่องต่อ', value: summary.approved, className: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700', accent: 'text-orange-600', helper: 'รอเริ่มงาน', status: 'approved' },
         { key: 'in_progress', label: 'ดำเนินการ', value: summary.in_progress, className: 'bg-blue-50 dark:bg-blue-900/20 text-blue-700', accent: 'text-blue-600', helper: 'กำลังซ่อม', status: 'in_progress' },
         { key: 'completed', label: 'ปิดงานแล้ว', value: summary.completed, className: 'bg-green-50 dark:bg-green-900/20 text-green-700', accent: 'text-green-600', helper: 'ตรวจรับเสร็จสิ้น', status: 'completed' },
-        { key: 'confirmed', label: 'รอหัวหน้าช่างตรวจรับ', value: summary.pending_verification || 0, className: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700', accent: 'text-orange-600', helper: 'งานเสร็จแล้ว รอยืนยันรับงาน', status: 'confirmed' },
+        { key: 'confirmed', label: 'รอหัวหน้าช่างตรวจรับ', value: summary.confirmed || 0, className: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700', accent: 'text-orange-600', helper: 'งานเสร็จแล้ว รอยืนยันรับงาน', status: 'confirmed' },
         { key: 'reopened', label: 'Reopened', value: reopenedCount, className: 'bg-amber-50 dark:bg-amber-900/20 text-amber-700', accent: 'text-amber-600', helper: `อัตรา ${reopenedRate.toFixed(1)}%`, status: null },
         { key: 'cost', label: 'ค่าใช้จ่ายรวม', value: `฿${summary.total_cost.toLocaleString()}`, className: 'bg-purple-50 dark:bg-purple-900/20 text-purple-700', accent: 'text-purple-600', helper: 'รวมทุกใบงาน', status: null },
     ] as const;
@@ -2054,14 +2124,21 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const isHeadTechnicianRole = loggedInRole === 'leader_technician';
     const isSelectedRequestAwaitingHeadApproval = selectedWorkflowStatus === 'confirmed';
     const selectedRequestDepartmentLeaderRole = resolveDepartmentLeaderRole(selectedRequest?.department);
-    const canRoleEditMaintenanceStatus = new Set(['technician', 'leader_technician', 'manager', 'admin', 'owner']).has(loggedInRole);
+    const canRoleEditMaintenanceStatus = new Set([
+        'technician',
+        'leader_technician',
+        'leader_employee',
+        'manager',
+        'admin',
+        'owner',
+    ]).has(loggedInRole);
     const canEditDetailStatusByRole = canRoleEditMaintenanceStatus || canManageMaintenanceStatus || canApproveCompletion;
     const canRoleConfirmCancelRequest =
         Boolean(selectedRequest)
-        && canEditPage
+        && hasMaintenanceEditAccess
         && ['pending', 'approved', 'in_progress'].includes(selectedWorkflowStatus || '')
         && (
-            isManagerRole(loggedInRole)
+            canRoleEditOrCancelMaintenance(loggedInRole)
             || Boolean(selectedRequestDepartmentLeaderRole && loggedInRole === selectedRequestDepartmentLeaderRole)
         );
     const canShowCancelRequestButton = canRoleConfirmCancelRequest;
@@ -2069,8 +2146,8 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         Boolean(selectedRequest)
         && isManagerRole(loggedInRole)
         && isMaintenanceWorkflowClosed(selectedRequest?.status);
-    const isSelectedRequestReadOnly = !canEditPage || isEmployeeRole;
-    const isDetailReadOnly = !canEditPage || isEmployeeRole;
+    const isSelectedRequestReadOnly = !hasMaintenanceEditAccess || isEmployeeRole;
+    const isDetailReadOnly = !hasMaintenanceEditAccess || isEmployeeRole;
     const managerClosedReopenStatusOptions: MaintenanceWorkflowStatus[] = ['pending', 'approved', 'in_progress'];
     const allowedDetailStatusTransitions = selectedRequest && canEditDetailStatusByRole
         ? (
@@ -2106,7 +2183,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
         && isMaintenanceTechnician(loggedInRole)
         && editData.status === 'confirmed'
         && editData.status !== selectedRequest?.status;
-    const canShowPartsAddSection = canEditPage && !isSelectedRequestReadOnly && editData.status === 'confirmed';
+    const canShowPartsAddSection = hasMaintenanceEditAccess && !isSelectedRequestReadOnly && editData.status === 'confirmed';
     const isAssignedTechnicianInputDisabled =
         isDetailReadOnly
         || shouldLockAssignedTechnician
@@ -3077,7 +3154,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={!canEditPage}
+                                    disabled={!hasMaintenanceEditAccess}
                                     className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3149,7 +3226,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={!canEditPage}
+                                    disabled={!hasMaintenanceEditAccess}
                                     className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     บันทึก
@@ -4141,7 +4218,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                   setReworkRequest(selectedRequest);
                   setShowReworkModal(true);
                 }}
-                disabled={!canEditPage}
+                disabled={!hasMaintenanceEditAccess}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-500 px-5 py-4 text-lg font-medium text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <AlertTriangle size={18} />
@@ -4152,7 +4229,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             {canShowHeadTechnicianActions && (
               <button
                 onClick={handleHeadTechnicianApproval}
-                disabled={!canEditPage}
+                disabled={!hasMaintenanceEditAccess}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-4 text-lg font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <CheckCircle2 size={18} />
@@ -4174,7 +4251,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
             {canShowDetailSaveButton && !canShowHeadTechnicianActions && (
                 <button
                   onClick={handleUpdateRequest}
-                  disabled={!canEditPage && !canEditDetailStatus}
+                  disabled={!hasMaintenanceEditAccess && !canEditDetailStatus}
                   className="inline-flex min-w-[280px] items-center justify-center rounded-2xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   บันทึกการเปลี่ยนแปลง
@@ -4458,7 +4535,7 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                                 </button>
                                 <button
                                     onClick={confirmStatusChange}
-                                    disabled={!canEditPage}
+                                    disabled={!hasMaintenanceEditAccess}
                                     className={`flex-1 px-4 py-2.5 text-white rounded-lg font-medium transition flex items-center justify-center gap-2 ${statusChangeData.newStatus === 'in_progress'
                                         ? 'bg-blue-600 hover:bg-blue-700'
                                         : statusChangeData.newStatus === 'approved'

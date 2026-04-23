@@ -342,7 +342,8 @@ export default function MaintenanceClient({ initialRole = 'reporter' }: Maintena
                 assigned_to: editData.assigned_to,
                 scheduled_date: editData.scheduled_date || undefined,
                 actual_cost: editData.actual_cost || undefined,
-                notes: editData.notes || undefined
+                notes: editData.notes || undefined,
+                edit_reason: (editData.notes || '').trim() || 'แก้ไขข้อมูลใบงานผ่านหน้า dashboard',
             },
             'Admin' // In real app, use session.user.name
         );

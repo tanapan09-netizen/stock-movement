@@ -3,9 +3,8 @@ import AssetForm from '@/components/AssetForm';
 import { notFound, redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { canAccessDashboardPage } from '@/lib/rbac';
+import { listAssetPolicyCategoryNames } from '@/lib/server/asset-category-service';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
-
-const ASSET_GROUP_DESC_PREFIX = 'ASSET_GROUP:';
 
 export default async function EditAssetPage({ params }: { params: Promise<{ id: string }> }) {
     const session = await auth();
@@ -22,7 +21,7 @@ export default async function EditAssetPage({ params }: { params: Promise<{ id: 
     }
 
     const { id } = await params;
-    const [asset, roomReferences, categoryRows, groupRows] = await Promise.all([
+    const [asset, roomReferences, policyCategoryNames] = await Promise.all([
         prisma.tbl_assets.findUnique({
             where: { asset_id: parseInt(id, 10) },
         }),
@@ -40,16 +39,7 @@ export default async function EditAssetPage({ params }: { params: Promise<{ id: 
             },
             orderBy: [{ room_code: 'asc' }],
         }),
-        prisma.tbl_assets.findMany({
-            distinct: ['category'],
-            select: { category: true },
-            orderBy: { category: 'asc' },
-        }),
-        prisma.tbl_categories.findMany({
-            where: { cat_desc: { startsWith: ASSET_GROUP_DESC_PREFIX } },
-            select: { cat_name: true },
-            orderBy: { cat_name: 'asc' },
-        }),
+        listAssetPolicyCategoryNames(),
     ]);
 
     if (!asset) {
@@ -64,8 +54,8 @@ export default async function EditAssetPage({ params }: { params: Promise<{ id: 
     };
     const assetGroups = Array.from(
         new Set([
-            ...categoryRows.map((row) => row.category),
-            ...groupRows.map((row) => row.cat_name),
+            ...policyCategoryNames,
+            asset.category,
         ]),
     )
         .filter((value): value is string => Boolean(value))

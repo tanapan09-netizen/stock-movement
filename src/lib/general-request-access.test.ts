@@ -19,6 +19,15 @@ describe('resolveGeneralRequestAccess', () => {
 
         expect(access.canViewPage).toBe(true);
         expect(access.canCreate).toBe(true);
+        expect(access.canEditPage).toBe(true);
+    });
+
+    it('allows leader_employee to edit general request page', () => {
+        const access = resolveGeneralRequestAccess('leader_employee', {});
+
+        expect(access.canViewPage).toBe(true);
+        expect(access.canCreate).toBe(true);
+        expect(access.canEditPage).toBe(true);
     });
 
     it('denies create when role and page permissions do not allow page access', () => {

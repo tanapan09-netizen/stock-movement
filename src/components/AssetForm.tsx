@@ -70,7 +70,7 @@ const ROOM_SECTION_PRESETS = [
     'ครัว/แพนทรี',
 ];
 
-const DEFAULT_ASSET_CATEGORIES = ['Furniture', 'Electronics', 'Vehicle', 'Machinery', 'Other'];
+const DEFAULT_ASSET_CATEGORIES = ['Other'];
 
 const normalizeText = (value?: string | null) => (value || '').trim().toLowerCase();
 
@@ -108,17 +108,18 @@ export default function AssetForm({
     const effectiveAcquisitionType: AcquisitionType = asset ? 'register' : acquisitionType;
     const initialLocationText = (asset?.location || prefill?.location || '').trim();
     const initialRoomSectionText = (asset?.room_section || prefill?.room_section || '').trim();
-    const categoryOptions = useMemo(
-        () => Array.from(
+    const categoryOptions = useMemo(() => {
+        const sourceCategories = assetGroups.length > 0 ? assetGroups : DEFAULT_ASSET_CATEGORIES;
+        return Array.from(
             new Set([
-                ...DEFAULT_ASSET_CATEGORIES,
-                ...assetGroups,
+                ...sourceCategories,
                 asset?.category || '',
                 prefill?.category || '',
             ]),
-        ).filter((value): value is string => Boolean(value)).sort((left, right) => left.localeCompare(right)),
-        [asset?.category, assetGroups, prefill?.category],
-    );
+        )
+            .filter((value): value is string => Boolean(value))
+            .sort((left, right) => left.localeCompare(right));
+    }, [asset?.category, assetGroups, prefill?.category]);
 
     const { roomOptions, zoneOptionsByRoom } = useMemo(() => {
         const activeReferences = roomReferences

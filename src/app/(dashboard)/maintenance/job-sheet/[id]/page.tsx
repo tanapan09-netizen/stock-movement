@@ -100,6 +100,7 @@ export default function JobSheetPage() {
                     assigned_to: assignedName,
                     scheduled_date: new Date().toISOString().split('T')[0],
                     notes: request?.notes || 'Technician accepted this job from job-sheet page',
+                    edit_reason: 'ช่างรับงานจากหน้า job sheet',
                 },
                 assignedName
             );

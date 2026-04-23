@@ -165,7 +165,14 @@ export default function MaintenanceDashboardClient({
     }, []);
 
     async function handleQuickStatusChange(request_id: number, newStatus: string) {
-        const result = await updateMaintenanceRequest(request_id, { status: newStatus }, user?.name || 'System');
+        const result = await updateMaintenanceRequest(
+            request_id,
+            {
+                status: newStatus,
+                edit_reason: `ปรับสถานะเป็น ${newStatus} จากหน้า maintenance dashboard`,
+            },
+            user?.name || 'System',
+        );
         if (result.success) {
             loadData();
         }

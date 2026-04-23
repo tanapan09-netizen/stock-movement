@@ -2,6 +2,7 @@
 import { auth } from '@/auth';
 import { canAccessDashboardPage } from '@/lib/rbac';
 import { generateNextAssetCodeByPolicy } from '@/lib/server/asset-code-service';
+import { listAssetPolicyCategoryNames } from '@/lib/server/asset-category-service';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
@@ -11,8 +12,6 @@ type SearchParams = {
 };
 
 type NewAssetMode = 'register' | 'purchase' | 'opening';
-
-const ASSET_GROUP_DESC_PREFIX = 'ASSET_GROUP:';
 
 function getSingleParam(value: string | string[] | undefined) {
     if (Array.isArray(value)) return value[0] || '';
@@ -67,7 +66,7 @@ export default async function NewAssetPage({
         status: getSingleParam(params.status).trim() || 'Active',
     };
 
-    const [roomReferences, categoryRows, groupRows] = await Promise.all([
+    const [roomReferences, policyCategoryNames] = await Promise.all([
         prisma.tbl_rooms.findMany({
             where: { active: true },
             select: {
@@ -82,22 +81,13 @@ export default async function NewAssetPage({
             },
             orderBy: [{ room_code: 'asc' }],
         }),
-        prisma.tbl_assets.findMany({
-            distinct: ['category'],
-            select: { category: true },
-            orderBy: { category: 'asc' },
-        }),
-        prisma.tbl_categories.findMany({
-            where: { cat_desc: { startsWith: ASSET_GROUP_DESC_PREFIX } },
-            select: { cat_name: true },
-            orderBy: { cat_name: 'asc' },
-        }),
+        listAssetPolicyCategoryNames(),
     ]);
 
     const assetGroups = Array.from(
         new Set([
-            ...categoryRows.map((row) => row.category),
-            ...groupRows.map((row) => row.cat_name),
+            ...policyCategoryNames,
+            prefill.category,
         ]),
     )
         .filter((value): value is string => Boolean(value))

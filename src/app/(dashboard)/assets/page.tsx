@@ -21,6 +21,7 @@ import {
     buildAssetRegistryWhere,
     normalizeAssetRegistryFilters,
 } from '@/lib/server/asset-registry-query';
+import { listAssetPolicyCategoryNames } from '@/lib/server/asset-category-service';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { prisma } from '@/lib/prisma';
 
@@ -204,7 +205,7 @@ export default async function AssetsPage({
         totalAssets,
         totalValueAggregate,
         statusGroups,
-        categoryRows,
+        policyCategoryNames,
         locationRows,
     ] = await Promise.all([
         prisma.tbl_assets.count({ where }),
@@ -215,11 +216,7 @@ export default async function AssetsPage({
             where: statusScopeWhere,
             _count: { _all: true },
         }),
-        prisma.tbl_assets.findMany({
-            distinct: ['category'],
-            select: { category: true },
-            orderBy: { category: 'asc' },
-        }),
+        listAssetPolicyCategoryNames(),
         prisma.tbl_assets.findMany({
             distinct: ['location'],
             select: { location: true },
@@ -312,9 +309,12 @@ export default async function AssetsPage({
     const totalValue = Number(totalValueAggregate._sum.purchase_price || 0);
     const statusScopeTotal = statusGroups.reduce((sum, row) => sum + row._count._all, 0);
 
-    const categories = categoryRows
-        .map((row) => row.category)
-        .filter((value): value is string => Boolean(value));
+    const categories = Array.from(
+        new Set([
+            ...policyCategoryNames,
+            filters.category !== 'all' ? filters.category : '',
+        ]),
+    ).filter((value): value is string => Boolean(value));
 
     const locations = locationRows
         .map((row) => row.location)

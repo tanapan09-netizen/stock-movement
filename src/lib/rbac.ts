@@ -173,6 +173,13 @@ export const RBAC_MATRIX: PermissionMatrix = {
     purchase_order: [],
     dashboard: ['read'],
   },
+  leader_employee: {
+    general_request: ['read', 'create', 'edit', 'approve'],
+    maintenance: ['read'],
+    vehicle: ['read'],
+    purchase_order: [],
+    dashboard: ['read'],
+  },
   maid: {
     general_request: ['read', 'create'],
     maintenance: ['read'],

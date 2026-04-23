@@ -11,6 +11,7 @@ import { notifyRoleViaLine, sendLineMessage, sendLineNotify } from '@/lib/lineNo
 import { appendCopiedImageMetadataTags, parseMaintenanceImageUrls } from '@/lib/maintenance-images';
 import {
     GENERAL_REQUEST_ONLY_TAG,
+    hasGeneralRequestOnlyTag,
     markAsGeneralRequestOnly,
     unmarkGeneralRequestOnly,
 } from '@/lib/maintenance-request-scope';
@@ -57,6 +58,34 @@ type MaintenanceNotificationRequest = {
 const MAINTENANCE_DEPARTMENT_ROLE_SET = new Set<string>(DEPARTMENT_BASE_ROLES);
 const MAINTENANCE_FEEDBACK_ENABLED_KEY = 'maintenance_feedback_enabled';
 const CUSTOMER_LINE_TAG_PREFIX = 'line_user_id:';
+const MAINTENANCE_EDIT_CANCEL_ROLE_SET = new Set([
+    'owner',
+    'admin',
+    'manager',
+    'leader_employee',
+    'leader_technician',
+]);
+const ACKNOWLEDGED_GENERAL_REQUEST_STATUS_SET = new Set(['confirmed', 'completed', 'verified']);
+const ACKNOWLEDGED_GENERAL_REQUEST_MANAGE_ROLE_SET = new Set(['leader_employee', 'manager', 'admin']);
+
+function canRoleEditOrCancelMaintenance(role?: string | null) {
+    return MAINTENANCE_EDIT_CANCEL_ROLE_SET.has(normalizeRole(role));
+}
+
+function canManageAcknowledgedGeneralRequest(role?: string | null) {
+    return ACKNOWLEDGED_GENERAL_REQUEST_MANAGE_ROLE_SET.has(normalizeRole(role));
+}
+
+function isGeneralRequestRecord(entry: { category?: string | null; tags?: string | null }) {
+    return hasGeneralRequestOnlyTag(entry.tags) || (entry.category || '').trim().toLowerCase() === 'general';
+}
+
+function isAcknowledgedGeneralRequestRecord(entry: { status?: string | null; category?: string | null; tags?: string | null }) {
+    const normalizedStatus = normalizeMaintenanceWorkflowStatus(entry.status);
+    if (!normalizedStatus) return false;
+    return ACKNOWLEDGED_GENERAL_REQUEST_STATUS_SET.has(normalizedStatus)
+        && isGeneralRequestRecord(entry);
+}
 
 function buildExcludeGeneralRequestOnlyWhere(): Prisma.tbl_maintenance_requestsWhereInput {
     return {
@@ -608,7 +637,7 @@ export async function getMaintenanceRequests(filters?: {
     scope?: 'maintenance' | 'general' | 'all';
 }) {
     try {
-        const where: Prisma.tbl_maintenance_requestsWhereInput = {};
+        const where: Prisma.tbl_maintenance_requestsWhereInput = { deleted_at: null };
         const scope = filters?.scope || 'maintenance';
 
         if (scope === 'general') {
@@ -1270,6 +1299,7 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
             authContext.permissions,
             authContext.isApprover,
         );
+        const canEditOrCancelByRole = canRoleEditOrCancelMaintenance(authContext.role);
         const canApproveCompletion = canApproveMaintenanceCompletion(
             authContext.role,
             authContext.permissions,
@@ -1289,6 +1319,7 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
                 reported_by: true,
                 assigned_to: true,
                 department: true,
+                category: true,
                 tags: true,
                 tbl_rooms: {
                     select: {
@@ -1303,9 +1334,14 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
             return { success: false, error: 'Maintenance request not found' };
         }
 
+        const isGeneralRequestEntry = hasGeneralRequestOnlyTag(current.tags) || current.category === 'general';
         const canManagerEditClosedRequest = isMaintenanceWorkflowClosed(current.status) && isManagerRole(authContext.role);
+        const canLeaderEditClosedGeneralRequest =
+            isMaintenanceWorkflowClosed(current.status)
+            && isGeneralRequestEntry
+            && canEditOrCancelByRole;
 
-        if (isMaintenanceWorkflowClosed(current.status) && !canManagerEditClosedRequest) {
+        if (isMaintenanceWorkflowClosed(current.status) && !canManagerEditClosedRequest && !canLeaderEditClosedGeneralRequest) {
             return { success: false, error: 'This maintenance request is closed and cannot be updated' };
         }
 
@@ -1320,13 +1356,13 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
         const normalizedRole = normalizeRole(authContext.role);
         const departmentLeaderRole = resolveDepartmentLeaderRole(current.department);
         const canDepartmentLeaderConfirmCancel = Boolean(departmentLeaderRole) && normalizedRole === departmentLeaderRole;
-        const canConfirmCancel = isManagerRole(authContext.role) || canDepartmentLeaderConfirmCancel;
+        const canConfirmCancel = canEditOrCancelByRole || canDepartmentLeaderConfirmCancel;
         const isCancelTransitionFromActive =
             ['pending', 'approved', 'in_progress'].includes(normalizedCurrentStatus)
             && normalizedNextStatus === 'cancelled';
         const cancelReason = (notes || '').trim();
 
-        if (!canEditMaintenance && !canApproveCompletion && !(isCancelTransitionFromActive && canConfirmCancel)) {
+        if (!canEditMaintenance && !canEditOrCancelByRole && !canApproveCompletion && !(isCancelTransitionFromActive && canConfirmCancel)) {
             return { success: false, error: 'Permission denied' };
         }
 
@@ -1351,14 +1387,14 @@ export async function updateMaintenanceRequestStatus(request_id: number, new_sta
         }
 
         if (isCancelTransitionFromActive && !canConfirmCancel) {
-            return { success: false, error: 'Only the requester department head can confirm cancellation' };
+            return { success: false, error: 'Only authorized maintenance leaders can confirm cancellation' };
         }
 
         if (isCancelTransitionFromActive && cancelReason.length < 8) {
             return { success: false, error: 'Please provide a cancellation reason (at least 8 characters)' };
         }
 
-        if (!canEditMaintenance && !isHeadTechCompletion && !isDirectCancelFromActive) {
+        if (!canEditMaintenance && !canEditOrCancelByRole && !isHeadTechCompletion && !isDirectCancelFromActive) {
             return { success: false, error: 'Permission denied' };
         }
 
@@ -2587,7 +2623,7 @@ export async function clearAllReservedParts(adminName: string, reason: string) {
 export async function getGeneralRequests() {
     try {
         const requests = await prisma.tbl_maintenance_requests.findMany({
-            where: { category: 'general', status: 'pending' },
+            where: { category: 'general', status: 'pending', deleted_at: null },
             orderBy: { created_at: 'desc' }
         });
         return { success: true, data: requests };
@@ -2668,14 +2704,19 @@ export async function acknowledgeGeneralRequest(
 export async function updateMaintenanceRequest(
     request_id: number,
     data: {
+        title?: string;
+        description?: string;
         status?: string;
         priority?: string;
         category?: string;
+        department?: string;
+        contact_info?: string;
         assigned_to?: string;
         scheduled_date?: string;
         estimated_cost?: number;
         actual_cost?: number;
         actual_cost_reason?: string;
+        edit_reason?: string;
         notes?: string;
         reopen_reason?: string;
         completed_at?: Date;
@@ -2700,6 +2741,7 @@ export async function updateMaintenanceRequest(
             authContext.permissions,
             authContext.isApprover,
         );
+        const canEditOrCancelByRole = canRoleEditOrCancelMaintenance(authContext.role);
         const canReassignRequest = canReassignMaintenanceRequest(
             authContext.role,
             authContext.permissions,
@@ -2711,7 +2753,7 @@ export async function updateMaintenanceRequest(
             authContext.isApprover,
         );
 
-        if (!canEditMaintenance && !(isAssignmentOnlyUpdate && canReassignRequest) && !canApproveCompletion) {
+        if (!canEditMaintenance && !canEditOrCancelByRole && !(isAssignmentOnlyUpdate && canReassignRequest) && !canApproveCompletion) {
             return { success: false, error: 'Permission denied' };
         }
 
@@ -2723,9 +2765,17 @@ export async function updateMaintenanceRequest(
             return { success: false, error: 'Maintenance request not found' };
         }
 
-        const canManagerEditClosedRequest = isMaintenanceWorkflowClosed(current.status) && isManagerRole(authContext.role);
+        if (current.deleted_at) {
+            return { success: false, error: 'Maintenance request not found' };
+        }
 
-        if (isMaintenanceWorkflowClosed(current.status) && !canManagerEditClosedRequest) {
+        const canManagerEditClosedRequest = isMaintenanceWorkflowClosed(current.status) && isManagerRole(authContext.role);
+        const canRoleEditClosedAcknowledgedGeneralRequest =
+            isMaintenanceWorkflowClosed(current.status)
+            && isAcknowledgedGeneralRequestRecord(current)
+            && canManageAcknowledgedGeneralRequest(authContext.role);
+
+        if (isMaintenanceWorkflowClosed(current.status) && !canManagerEditClosedRequest && !canRoleEditClosedAcknowledgedGeneralRequest) {
             return { success: false, error: 'This maintenance request is closed and cannot be updated' };
         }
 
@@ -2734,14 +2784,20 @@ export async function updateMaintenanceRequest(
         const normalizedRole = normalizeRole(authContext.role);
         const departmentLeaderRole = resolveDepartmentLeaderRole(current.department);
         const canDepartmentLeaderConfirmCancel = Boolean(departmentLeaderRole) && normalizedRole === departmentLeaderRole;
-        const canConfirmCancel = isManagerRole(authContext.role) || canDepartmentLeaderConfirmCancel;
+        const canConfirmCancel = canEditOrCancelByRole || canDepartmentLeaderConfirmCancel;
         const isCancelTransitionFromActive =
             ['pending', 'approved', 'in_progress'].includes(normalizedCurrentStatus || '')
             && normalizedNextStatus === 'cancelled';
         const cancellationReason = (data.notes || '').trim();
 
         const isHeadTechApproval = normalizedCurrentStatus === 'confirmed' && normalizedNextStatus === 'completed';
-        if (normalizedCurrentStatus === 'confirmed' && !isHeadTechApproval) {
+        const canEditConfirmedAcknowledgedGeneralRequest =
+            normalizedCurrentStatus === 'confirmed'
+            && !data.status
+            && isAcknowledgedGeneralRequestRecord(current)
+            && canManageAcknowledgedGeneralRequest(authContext.role);
+
+        if (normalizedCurrentStatus === 'confirmed' && !isHeadTechApproval && !canEditConfirmedAcknowledgedGeneralRequest) {
             return { success: false, error: 'This maintenance request is locked while awaiting head technician approval' };
         }
         if (!canEditMaintenance && canApproveCompletion && !isHeadTechApproval) {
@@ -2752,7 +2808,7 @@ export async function updateMaintenanceRequest(
         }
 
         if (isCancelTransitionFromActive && !canConfirmCancel) {
-            return { success: false, error: 'Only the requester department head can confirm cancellation' };
+            return { success: false, error: 'Only authorized maintenance leaders can confirm cancellation' };
         }
 
         if (isCancelTransitionFromActive && (data.notes === undefined || cancellationReason.length < 8)) {
@@ -2821,6 +2877,34 @@ export async function updateMaintenanceRequest(
             }
         }
 
+        if (data.title !== undefined) {
+            const nextTitle = (data.title || '').trim();
+            if (nextTitle.length === 0) {
+                return { success: false, error: 'Title is required' };
+            }
+            if (nextTitle !== (current.title || '').trim()) {
+                updateData.title = nextTitle;
+                historyActions.push({
+                    action: 'title_change',
+                    old_value: current.title || '',
+                    new_value: nextTitle,
+                });
+            }
+        }
+
+        if (data.description !== undefined) {
+            const currentDescription = (current.description || '').trim();
+            const nextDescription = (data.description || '').trim();
+            if (nextDescription !== currentDescription) {
+                updateData.description = nextDescription || null;
+                historyActions.push({
+                    action: 'description_change',
+                    old_value: current.description || '',
+                    new_value: nextDescription,
+                });
+            }
+        }
+
         if (data.priority && data.priority !== current.priority) {
             updateData.priority = data.priority;
             historyActions.push({
@@ -2837,6 +2921,32 @@ export async function updateMaintenanceRequest(
                 old_value: current.category || '',
                 new_value: data.category
             });
+        }
+
+        if (data.department !== undefined) {
+            const currentDepartment = (current.department || '').trim();
+            const nextDepartment = (data.department || '').trim();
+            if (nextDepartment !== currentDepartment) {
+                updateData.department = nextDepartment || null;
+                historyActions.push({
+                    action: 'department_change',
+                    old_value: current.department || '',
+                    new_value: nextDepartment,
+                });
+            }
+        }
+
+        if (data.contact_info !== undefined) {
+            const currentContactInfo = (current.contact_info || '').trim();
+            const nextContactInfo = (data.contact_info || '').trim();
+            if (nextContactInfo !== currentContactInfo) {
+                updateData.contact_info = nextContactInfo || null;
+                historyActions.push({
+                    action: 'contact_info_change',
+                    old_value: current.contact_info || '',
+                    new_value: nextContactInfo,
+                });
+            }
         }
 
         if (data.assigned_to !== undefined && data.assigned_to !== current.assigned_to) {
@@ -2902,6 +3012,20 @@ export async function updateMaintenanceRequest(
         if (data.notes !== undefined) {
             const trimmedNote = (data.notes || '').trim();
             updateData.notes = trimmedNote || null;
+        }
+
+        const hasAnyUpdateChanges = Object.keys(updateData).length > 0;
+        if (hasAnyUpdateChanges) {
+            const providedEditReason = (data.edit_reason || '').trim();
+            const effectiveEditReason = providedEditReason || (isCancelTransitionFromActive ? cancellationReason : '');
+            if (effectiveEditReason.length < 8) {
+                return { success: false, error: 'Please provide an edit reason (at least 8 characters)' };
+            }
+            historyActions.push({
+                action: 'edit_reason',
+                old_value: '',
+                new_value: effectiveEditReason,
+            });
         }
 
         const request = await prisma.tbl_maintenance_requests.update({
@@ -2975,6 +3099,7 @@ export async function updateMaintenanceRequest(
 
         revalidatePath('/maintenance');
         revalidatePath('/maintenance/dashboard');
+        revalidatePath('/general-request');
         return { success: true, data: request };
     } catch (error: unknown) {
         console.error('Error updating maintenance request:', error);
@@ -3695,13 +3820,12 @@ export async function getMaintenancePartUsageReports(filters?: {
 
 export async function getMaintenanceSummary() {
     try {
-        const [total, pending, approved, inProgress, confirmed, completed, pendingVerification, costAgg] = await Promise.all([
-            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere() }),
-            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'pending' }) }),
-            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'approved' }) }),
-            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'in_progress' }) }),
-            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'confirmed' }) }),
-            prisma.tbl_maintenance_requests.count({ where: buildMaintenanceOnlyWhere({ status: 'completed' }) }),
+        const [statusGroups, pendingVerification, costAgg] = await Promise.all([
+            prisma.tbl_maintenance_requests.groupBy({
+                by: ['status'],
+                where: buildMaintenanceOnlyWhere(),
+                _count: { _all: true },
+            }),
             prisma.tbl_maintenance_parts.count({ where: { status: 'pending_verification' } }),
             prisma.tbl_maintenance_requests.aggregate({
                 where: buildMaintenanceOnlyWhere(),
@@ -3709,15 +3833,27 @@ export async function getMaintenanceSummary() {
             })
         ]);
 
+        const countsByStatus = statusGroups.reduce<Record<string, number>>((acc, row) => {
+            const normalizedStatus = normalizeMaintenanceWorkflowStatus(row.status);
+            if (!normalizedStatus) return acc;
+
+            acc[normalizedStatus] = (acc[normalizedStatus] || 0) + (row._count._all || 0);
+            return acc;
+        }, {});
+
+        const total = statusGroups.reduce((sum, row) => sum + (row._count._all || 0), 0);
+        const completed = (countsByStatus.completed || 0) + (countsByStatus.verified || 0);
+
         return {
             success: true,
             data: {
                 total,
-                pending,
-                approved,
-                in_progress: inProgress,
-                confirmed,
+                pending: countsByStatus.pending || 0,
+                approved: countsByStatus.approved || 0,
+                in_progress: countsByStatus.in_progress || 0,
+                confirmed: countsByStatus.confirmed || 0,
                 completed,
+                cancelled: countsByStatus.cancelled || 0,
                 total_cost: Number(costAgg._sum.actual_cost || 0),
                 pending_verification: pendingVerification
             }
@@ -3725,6 +3861,90 @@ export async function getMaintenanceSummary() {
     } catch (error: unknown) {
         console.error('Error fetching maintenance summary:', error);
         return { success: false, error: getErrorMessage(error, 'Failed to fetch summary') };
+    }
+}
+
+export async function deleteAcknowledgedGeneralRequest(
+    request_id: number,
+    delete_reason: string,
+    changed_by: string,
+) {
+    try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        if (!canManageAcknowledgedGeneralRequest(authContext.role)) {
+            return { success: false, error: 'Permission denied' };
+        }
+
+        const actorName = authContext.session.user.name || changed_by || 'System';
+        const reason = (delete_reason || '').trim();
+        if (reason.length < 8) {
+            return { success: false, error: 'Please provide a delete reason (at least 8 characters)' };
+        }
+
+        const current = await prisma.tbl_maintenance_requests.findUnique({
+            where: { request_id },
+            select: {
+                request_id: true,
+                status: true,
+                category: true,
+                tags: true,
+                deleted_at: true,
+            }
+        });
+
+        if (!current) {
+            return { success: false, error: 'Maintenance request not found' };
+        }
+
+        if (current.deleted_at) {
+            return { success: true };
+        }
+
+        if (!isAcknowledgedGeneralRequestRecord(current)) {
+            return { success: false, error: 'Only acknowledged general requests can be deleted' };
+        }
+
+        await prisma.$transaction(async (tx) => {
+            await tx.tbl_maintenance_requests.update({
+                where: { request_id },
+                data: {
+                    deleted_at: new Date(),
+                    updated_at: new Date(),
+                },
+            });
+
+            await tx.tbl_maintenance_history.create({
+                data: {
+                    request_id,
+                    action: 'acknowledged_general_request_deleted',
+                    old_value: current.status || '',
+                    new_value: 'deleted',
+                    changed_by: actorName,
+                }
+            });
+
+            await tx.tbl_maintenance_history.create({
+                data: {
+                    request_id,
+                    action: 'delete_reason',
+                    old_value: '',
+                    new_value: reason,
+                    changed_by: actorName,
+                }
+            });
+        });
+
+        revalidatePath('/general-request');
+        revalidatePath('/maintenance');
+        revalidatePath('/maintenance/dashboard');
+        return { success: true };
+    } catch (error: unknown) {
+        console.error('Error deleting acknowledged general request:', error);
+        return { success: false, error: getErrorMessage(error, 'Failed to delete acknowledged general request') };
     }
 }
 
