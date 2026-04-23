@@ -2630,7 +2630,7 @@ export async function acknowledgeGeneralRequest(
             return { success: false, error: 'Only general requests can be acknowledged from this page' };
         }
 
-        const currentStatus = normalizeMaintenanceWorkflowStatus(current.status);
+        const currentStatus = normalizeMaintenanceWorkflowStatus(current.status) || '';
         if (['approved', 'confirmed', 'completed', 'verified'].includes(currentStatus)) {
             return { success: true, message: 'Request already acknowledged' };
         }
