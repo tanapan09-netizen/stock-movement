@@ -16,6 +16,7 @@ import VehicleLicensePlateSelector from '@/components/VehicleLicensePlateSelecto
 import {
     getMaintenanceRequests,
     createMaintenanceRequest,
+    acknowledgeGeneralRequest,
     getRooms
 } from '@/actions/maintenanceActions';
 import { getAllVehicles } from '@/actions/vehicleActions';
@@ -93,8 +94,10 @@ const ABSOLUTE_URL_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
 const ACKNOWLEDGED_REQUEST_STATUSES = new Set(['approved']);
 const IN_PROGRESS_REQUEST_STATUSES = new Set(['in_progress']);
 const FINISHED_REQUEST_STATUSES = new Set(['confirmed', 'completed', 'verified']);
+const INFORMATIONAL_REQUEST_CATEGORIES = new Set(['general']);
 
 const normalizeRequestStatus = (status?: string | null) => (status || '').toLowerCase();
+const normalizeRequestCategory = (category?: string | null) => (category || '').trim().toLowerCase();
 const isPendingRequestStatus = (status?: string | null) => normalizeRequestStatus(status) === 'pending';
 const isAcknowledgedRequestStatus = (status?: string | null) =>
     ACKNOWLEDGED_REQUEST_STATUSES.has(normalizeRequestStatus(status));
@@ -127,6 +130,17 @@ const isFinishedRequestStatus = (status?: string | null) =>
 const isCancelledRequestStatus = (status?: string | null) =>
     normalizeRequestStatus(status) === 'cancelled';
 
+const isInformationalRequestCategory = (category?: string | null) =>
+    INFORMATIONAL_REQUEST_CATEGORIES.has(normalizeRequestCategory(category));
+
+const isAcknowledgedInformationalRequest = (request: Pick<MaintenanceRequestItem, 'category' | 'status'>) =>
+    isInformationalRequestCategory(request.category)
+    && isFinishedRequestStatus(request.status);
+
+const isOperationalFinishedRequest = (request: Pick<MaintenanceRequestItem, 'category' | 'status'>) =>
+    !isInformationalRequestCategory(request.category)
+    && isFinishedRequestStatus(request.status);
+
 export default function GeneralRequestClient({ userPermissions }: Props) {
     const { data: session } = useSession();
     const { showToast } = useToast();
@@ -147,12 +161,15 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
     const canEditGeneralRequest = access.canEditPage;
     const canApproveGeneralRequest = access.canApprove;
     const canDeleteGeneralRequest = access.canDelete;
+    const canAcknowledgeFromGeneralRequest =
+        ['employee', 'admin', 'manager'].includes(currentRole);
     // Data
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
     const [rooms, setRooms] = useState<Room[]>([]);
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    const [acknowledgingRequestId, setAcknowledgingRequestId] = useState<number | null>(null);
 
     // UI State
     const [showForm, setShowForm] = useState(false);
@@ -252,12 +269,18 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             req.request_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
             req.tbl_rooms?.room_name?.toLowerCase().includes(searchQuery.toLowerCase());
 
-        const normalizedStatus = (req.status || '').toLowerCase();
-        const matchStatus = statusFilter === 'all'
-            || (statusFilter === 'finished' ? isFinishedRequestStatus(normalizedStatus) : normalizedStatus === statusFilter);
+        const normalizedStatus = normalizeRequestStatus(req.status);
+        const matchStatus = (() => {
+            if (statusFilter === 'all') return true;
+            if (statusFilter === 'finished') return isOperationalFinishedRequest(req);
+            if (statusFilter === 'approved') return isAcknowledgedRequestStatus(normalizedStatus);
+            if (statusFilter === 'acknowledged_info') return isAcknowledgedInformationalRequest(req);
+            return normalizedStatus === statusFilter;
+        })();
         const matchFinishedVisibility =
             showFinishedRequests
             || statusFilter === 'finished'
+            || statusFilter === 'acknowledged_info'
             || !isFinishedRequestStatus(req.status);
         const matchCancelledVisibility =
             showCancelledRequests
@@ -266,6 +289,42 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
         return matchSearch && matchStatus && matchFinishedVisibility && matchCancelledVisibility;
     });
+
+    const acknowledgedInfoRequests = filteredRequests.filter((request) => isAcknowledgedInformationalRequest(request));
+    const primaryFilteredRequests = statusFilter === 'acknowledged_info'
+        ? []
+        : filteredRequests.filter((request) => !isAcknowledgedInformationalRequest(request));
+    const hasVisibleRequests = primaryFilteredRequests.length > 0 || acknowledgedInfoRequests.length > 0;
+
+    const canShowAcknowledgeAction = (request: MaintenanceRequestItem) =>
+        canAcknowledgeFromGeneralRequest
+        && isInformationalRequestCategory(request.category)
+        && isPendingRequestStatus(request.status);
+
+    const handleAcknowledgeRequest = async (request: MaintenanceRequestItem) => {
+        if (!canShowAcknowledgeAction(request)) return;
+        setAcknowledgingRequestId(request.request_id);
+        try {
+            const result = await acknowledgeGeneralRequest(
+                request.request_id,
+                loggedInReporter || 'System',
+            );
+            if (result.success) {
+                showToast('รับทราบเรื่องเรียบร้อยแล้ว', 'success');
+                await loadData();
+                if (selectedRequest?.request_id === request.request_id) {
+                    setShowDetail(false);
+                    setSelectedRequest(null);
+                }
+            } else {
+                showToast(result.error || 'ไม่สามารถรับทราบรายการได้', 'error');
+            }
+        } catch {
+            showToast('เกิดข้อผิดพลาดในการรับทราบรายการ', 'error');
+        } finally {
+            setAcknowledgingRequestId(null);
+        }
+    };
 
     const handleAddTag = () => {
         const tag = formData.tagInput.trim();
@@ -454,8 +513,9 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
     const pendingCount = requests.filter((request) => isPendingRequestStatus(request.status)).length;
     const acknowledgedCount = requests.filter((request) => isAcknowledgedRequestStatus(request.status)).length;
+    const acknowledgedInfoCount = requests.filter((request) => isAcknowledgedInformationalRequest(request)).length;
     const inProgressCount = requests.filter((request) => isInProgressRequestStatus(request.status)).length;
-    const finishedCount = requests.filter((request) => isFinishedRequestStatus(request.status)).length;
+    const finishedCount = requests.filter((request) => isOperationalFinishedRequest(request)).length;
 
     const statusSummaryCards = [
         {
@@ -475,16 +535,24 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         {
             label: GENERAL_REQUEST_STATUS_CONFIG.approved.label,
             value: acknowledgedCount,
-            helper: 'รับเรื่องแล้ว รอมอบหมายงาน',
+            helper: 'รับเรื่องไปแล้ว รอมอบหมายงาน',
             color: 'bg-cyan-50 border-cyan-200 text-cyan-800',
             filterValue: 'approved',
         },
+       
         {
             label: GENERAL_REQUEST_STATUS_CONFIG.in_progress.label,
             value: inProgressCount,
             helper: 'ช่างกำลังดำเนินการ',
             color: 'bg-blue-50 border-blue-200 text-blue-700',
             filterValue: 'in_progress',
+        },
+         {
+            label: 'รับทราบเรื่องเรียบร้อยแล้ว',
+            value: acknowledgedInfoCount,
+            helper: 'รับทราบแล้ว (ไม่สร้างใบงานซ่อม)',
+            color: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+            filterValue: 'acknowledged_info',
         },
         {
             label: 'งานเสร็จสิ้น',
@@ -565,7 +633,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             </div>
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                     {statusSummaryCards.map((stat) => {
                         const isActive = statusFilter === stat.filterValue;
                         return (
@@ -607,10 +675,12 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         aria-label="กรองตามสถานะ"
                     >
                         <option value="all">ทุกสถานะ</option>
+                        <option value="acknowledged_info">รับทราบเรื่องเรียบร้อยแล้ว</option>
                         <option value="finished">งานเสร็จสิ้น</option>
-                        {Object.entries(GENERAL_REQUEST_STATUS_CONFIG).filter(([key]) => key !== 'urgent').map(([key, cfg]) => (
+                        {Object.entries(GENERAL_REQUEST_STATUS_CONFIG).filter(([key]) => key !== 'urgent' && key !== 'approved').map(([key, cfg]) => (
                             <option key={key} value={key}>{cfg.label}</option>
                         ))}
+                        <option value="approved">รับเรื่องแล้ว</option>
                     </select>
 
                     <button
@@ -672,11 +742,16 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                     <div className="flex items-center justify-center py-20">
                         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
                     </div>
-                ) : filteredRequests.length === 0 ? (
+                ) : !hasVisibleRequests ? (
                     <div className="text-center py-20 text-gray-500 border-2 border-dashed border-gray-200 rounded-2xl">
                         <ClipboardList className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                         <p className="font-medium">ยังไม่มีรายการแจ้งซ่อม / รายการแจ้งซ่อมทั้งหมดได้รับการแก้ไขเรียบร้อยแล้ว</p>
                         
+                    </div>
+                ) : primaryFilteredRequests.length === 0 ? (
+                    <div className="text-center py-12 text-gray-500 border border-dashed border-gray-200 rounded-2xl bg-white">
+                        <ClipboardList className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                        <p className="font-medium">ไม่มีรายการแจ้งซ่อมที่ต้องติดตามในส่วนนี้</p>
                     </div>
                 ) : viewMode === 'table' ? (
                     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -692,7 +767,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {filteredRequests.map(req => {
+                                    {primaryFilteredRequests.map(req => {
                                         const statusCfg = getRequestStatusMeta(req.status);
                                         const statusHint = getStatusHint(req.status);
                                         const priorityCfg = GENERAL_REQUEST_PRIORITY_CONFIG[req.priority] || GENERAL_REQUEST_PRIORITY_CONFIG.normal;
@@ -775,7 +850,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {filteredRequests.map(req => {
+                        {primaryFilteredRequests.map(req => {
                             const statusCfg = getRequestStatusMeta(req.status);
                             const statusHint = getStatusHint(req.status);
                             const priorityCfg = GENERAL_REQUEST_PRIORITY_CONFIG[req.priority] || GENERAL_REQUEST_PRIORITY_CONFIG.normal;
@@ -862,6 +937,53 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 )}
             </div>
 
+            {acknowledgedInfoRequests.length > 0 && (
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <div>
+                                <h2 className="text-base sm:text-lg font-bold text-emerald-900">รับทราบเรื่องเรียบร้อยแล้ว</h2>
+                                <p className="text-sm text-emerald-700 mt-0.5">
+                                    แยกรายการแจ้งเพื่อรับทราบออกจากงานแจ้งซ่อม เพื่อให้ติดตามได้ง่ายขึ้น
+                                </p>
+                            </div>
+                            <span className="inline-flex items-center rounded-full bg-emerald-600 text-white px-3 py-1 text-sm font-semibold">
+                                {acknowledgedInfoRequests.length} รายการ
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {acknowledgedInfoRequests.map((req) => {
+                            return (
+                                <div
+                                    key={`ack-info-${req.request_id}`}
+                                    className="bg-white rounded-xl border border-emerald-200 p-4 hover:border-emerald-300 hover:shadow-sm transition-all cursor-pointer"
+                                    onClick={() => {
+                                        setSelectedRequest(req);
+                                        setShowDetail(true);
+                                    }}
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-mono text-gray-400">{req.request_number}</p>
+                                            <h3 className="mt-1 font-semibold text-gray-900 line-clamp-2">{req.title}</h3>
+                                            <p className="mt-2 text-xs text-gray-500">
+                                                [{req.tbl_rooms?.room_code}] {req.tbl_rooms?.room_name}
+                                            </p>
+                                            <p className="mt-1 text-xs text-gray-500">{formatDate(req.created_at)}</p>
+                                        </div>
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap bg-emerald-100 text-emerald-700 border-emerald-200">
+                                            รับทราบแล้ว
+                                        </span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
             {showDetail && selectedRequest && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -871,8 +993,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 <p className="text-sm text-gray-500 mt-1">ตรวจสอบข้อมูลก่อนเริ่มดำเนินงาน</p>
                             </div>
                             <button onClick={() => setShowDetail(false)} className="p-2 hover:bg-gray-100 rounded-lg">
-                                <X className="w-5 h-5" />
-                            </button>
+    <X className="w-5 h-5" />
+</button>
                         </div>
 
                         <div className="space-y-5">
@@ -997,13 +1119,32 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         </div>
 
                         <div className="mt-6 pt-4 border-t">
-                            <button
-                                onClick={() => setShowDetail(false)}
-                                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
-                            >
-                                ปิด
-                            </button>
-                        </div>
+    <div className="flex flex-col sm:flex-row gap-2">
+        {canShowAcknowledgeAction(selectedRequest) && (
+            <button
+                type="button"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-60"
+                onClick={async () => {
+                    await handleAcknowledgeRequest(selectedRequest);
+                }}
+                disabled={acknowledgingRequestId === selectedRequest.request_id}
+            >
+                {acknowledgingRequestId === selectedRequest.request_id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                    <CheckCircle2 className="w-4 h-4" />
+                )}
+                รับทราบเรื่องเรียบร้อยแล้ว
+            </button>
+        )}
+        <button
+            onClick={() => setShowDetail(false)}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
+        >
+            ปิด
+        </button>
+    </div>
+</div>
                     </div>
                 </div>
             )}

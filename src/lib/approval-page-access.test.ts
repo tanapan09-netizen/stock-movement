@@ -4,7 +4,7 @@ import { getPagePermissionKey, PERMISSIONS } from '@/lib/permissions';
 import { getApprovalsEntryRedirect, resolveApprovalsManagePageAccess } from '@/lib/approval-page-access';
 
 describe('getApprovalsEntryRedirect', () => {
-    it('redirects to manage page when user has manage page access but cannot approve', () => {
+    it('does not redirect non-manager roles to manage page even if permission key exists', () => {
         const redirectTarget = getApprovalsEntryRedirect({
             role: 'employee',
             permissions: {
@@ -13,10 +13,10 @@ describe('getApprovalsEntryRedirect', () => {
             isApprover: false,
         });
 
-        expect(redirectTarget).toBe('/approvals/manage');
+        expect(redirectTarget).toBeNull();
     });
 
-    it('redirects purchasing users without general approval rights to purchase workflow', () => {
+    it('keeps non-manager purchasing users on requester page', () => {
         const redirectTarget = getApprovalsEntryRedirect({
             role: 'purchasing',
             permissions: {
@@ -25,7 +25,7 @@ describe('getApprovalsEntryRedirect', () => {
             isApprover: false,
         });
 
-        expect(redirectTarget).toBe('/purchase-request/manage');
+        expect(redirectTarget).toBeNull();
     });
 
     it('keeps regular users on report page when they only have personal approval access', () => {
@@ -42,7 +42,25 @@ describe('getApprovalsEntryRedirect', () => {
 });
 
 describe('resolveApprovalsManagePageAccess', () => {
-    it('allows create on manage page for users with page access even without approval permission', () => {
+    it('allows manager role to stay on manage page', () => {
+        const access = resolveApprovalsManagePageAccess({
+            role: 'manager',
+            permissions: {
+                [getPagePermissionKey('/approvals/manage', 'read')]: true,
+                [PERMISSIONS.APPROVALS]: true,
+            },
+            isApprover: false,
+        });
+
+        expect(access).toMatchObject({
+            canAccessManagePage: true,
+            canApprove: true,
+            allowCreate: true,
+            redirectTo: null,
+        });
+    });
+
+    it('forces non-manager roles back to requester page even if permission key exists', () => {
         const access = resolveApprovalsManagePageAccess({
             role: 'employee',
             permissions: {
@@ -52,14 +70,14 @@ describe('resolveApprovalsManagePageAccess', () => {
         });
 
         expect(access).toMatchObject({
-            canAccessManagePage: true,
+            canAccessManagePage: false,
             canApprove: false,
-            allowCreate: true,
-            redirectTo: null,
+            allowCreate: false,
+            redirectTo: '/approvals',
         });
     });
 
-    it('sends purchasing users without manage-page access to purchase workflow', () => {
+    it('sends purchasing users without manager role back to requester page', () => {
         const access = resolveApprovalsManagePageAccess({
             role: 'purchasing',
             permissions: {
@@ -68,7 +86,7 @@ describe('resolveApprovalsManagePageAccess', () => {
             isApprover: false,
         });
 
-        expect(access.redirectTo).toBe('/purchase-request/manage');
+        expect(access.redirectTo).toBe('/approvals');
         expect(access.allowCreate).toBe(false);
     });
 });

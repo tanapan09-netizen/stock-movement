@@ -59,6 +59,21 @@ const defaultFormData = (requestType = 'ot'): ApprovalFormData => ({
     reference_job: ''
 });
 
+const STATUS_FILTER_OPTIONS = [
+    { value: 'all', label: 'ทั้งหมด' },
+    { value: 'pending', label: 'รอพิจารณา' },
+    { value: 'approved', label: 'อนุมัติแล้ว' },
+    { value: 'rejected', label: 'ไม่อนุมัติ' },
+    { value: 'returned', label: 'ตีกลับแก้ไข' },
+] as const;
+
+const STATUS_SORT_RANK: Record<string, number> = {
+    pending: 0,
+    returned: 1,
+    approved: 2,
+    rejected: 3,
+};
+
 // ── Card ─────────────────────────────────────────────────────────────────────
 
 function ApprovalCard({
@@ -439,12 +454,13 @@ export default function ApprovalClient({
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Force viewing only personal requests
+    const [actorView, setActorView] = useState<'requester' | 'approver'>('requester');
     const [filterStatus, setFilterStatus] = useState<string>('all');
     const [filterRequestType, setFilterRequestType] = useState(lockedRequestType || initialRequestType);
     const [searchText, setSearchText] = useState('');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
+    const [sortMode, setSortMode] = useState<'latest' | 'oldest' | 'status'>('latest');
     const [filtersOpen, setFiltersOpen] = useState(false);
 
     const [currentPage, setCurrentPage] = useState(1);
@@ -474,12 +490,22 @@ export default function ApprovalClient({
         [activeJobs]
     );
 
-    const filteredRequests = useMemo(() => {
-        const q = searchText.trim().toLowerCase();
+    const requesterRequests = useMemo(() => {
         return requests.filter((r) => {
             const ownerId = r.requested_by || r.tbl_users?.p_id || 0;
-            if (ownerId !== currentUserId) return false;
+            return ownerId === currentUserId;
+        });
+    }, [requests, currentUserId]);
 
+    const approverRequests = useMemo(() => {
+        return requests.filter((r) => Boolean(r.can_approve));
+    }, [requests]);
+
+    const scopedRequests = actorView === 'approver' ? approverRequests : requesterRequests;
+
+    const filteredRequests = useMemo(() => {
+        const q = searchText.trim().toLowerCase();
+        const filtered = scopedRequests.filter((r) => {
             if (filterStatus !== 'all' && r.status !== filterStatus) return false;
             if (filterRequestType !== 'all' && r.request_type !== filterRequestType) return false;
             if (dateFrom || dateTo) {
@@ -495,7 +521,28 @@ export default function ApprovalClient({
             }
             return true;
         });
-    }, [requests, currentUserId, canApprove, filterStatus, filterRequestType, dateFrom, dateTo, searchText]);
+        filtered.sort((left, right) => {
+            const leftTime = left.created_at ? new Date(left.created_at).getTime() : 0;
+            const rightTime = right.created_at ? new Date(right.created_at).getTime() : 0;
+
+            if (sortMode === 'oldest') {
+                return leftTime - rightTime;
+            }
+
+            if (sortMode === 'status') {
+                const leftRank = STATUS_SORT_RANK[left.status || ''] ?? 99;
+                const rightRank = STATUS_SORT_RANK[right.status || ''] ?? 99;
+                if (leftRank !== rightRank) {
+                    return leftRank - rightRank;
+                }
+                return rightTime - leftTime;
+            }
+
+            return rightTime - leftTime;
+        });
+
+        return filtered;
+    }, [scopedRequests, filterStatus, filterRequestType, dateFrom, dateTo, searchText, sortMode]);
 
     const totalPages = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE));
     const safePage = Math.min(currentPage, totalPages);
@@ -613,20 +660,44 @@ export default function ApprovalClient({
         URL.revokeObjectURL(url);
     };
 
-    const personalRequests = useMemo(() => {
-        return requests.filter(r => {
-            const ownerId = r.requested_by || r.tbl_users?.p_id || 0;
-            return ownerId === currentUserId;
-        });
-    }, [requests, currentUserId]);
+    const currentPerspectiveRequests = actorView === 'approver' ? approverRequests : requesterRequests;
 
     const requestSummary = useMemo(() => ({
-        total: personalRequests.length,
-        pending: personalRequests.filter((r) => r.status === 'pending').length,
-        returned: personalRequests.filter((r) => r.status === 'returned').length,
-        approved: personalRequests.filter((r) => r.status === 'approved').length,
-        rejected: personalRequests.filter((r) => r.status === 'rejected').length,
-    }), [personalRequests]);
+        total: currentPerspectiveRequests.length,
+        pending: currentPerspectiveRequests.filter((r) => r.status === 'pending').length,
+        returned: currentPerspectiveRequests.filter((r) => r.status === 'returned').length,
+        approved: currentPerspectiveRequests.filter((r) => r.status === 'approved').length,
+        rejected: currentPerspectiveRequests.filter((r) => r.status === 'rejected').length,
+    }), [currentPerspectiveRequests]);
+
+    const summaryCards = [
+        { value: 'all', label: 'ทั้งหมด', count: requestSummary.total, tone: 'text-slate-700', bg: 'bg-white border-slate-200', dot: 'bg-slate-400' },
+        { value: 'pending', label: 'รอพิจารณา', count: requestSummary.pending, tone: 'text-amber-700', bg: 'bg-amber-50 border-amber-100', dot: 'bg-amber-400' },
+        { value: 'approved', label: 'อนุมัติแล้ว', count: requestSummary.approved, tone: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-100', dot: 'bg-emerald-400' },
+        { value: 'rejected', label: 'ไม่อนุมัติ', count: requestSummary.rejected, tone: 'text-rose-700', bg: 'bg-rose-50 border-rose-100', dot: 'bg-rose-400' },
+        { value: 'returned', label: 'ตีกลับแก้ไข', count: requestSummary.returned, tone: 'text-orange-700', bg: 'bg-orange-50 border-orange-100', dot: 'bg-orange-400' },
+    ] as const;
+
+    const activeFilterChips = useMemo(() => {
+        const chips: string[] = [];
+        chips.push(actorView === 'approver' ? 'อนุมัติ' : '');
+        if (filterStatus !== 'all') {
+            chips.push(`สถานะ: ${STATUS_FILTER_OPTIONS.find((option) => option.value === filterStatus)?.label || filterStatus}`);
+        }
+        if (filterRequestType !== (lockedRequestType || initialRequestType)) {
+            chips.push(`ประเภท: ${getApprovalRequestTypeLabel(filterRequestType, 'short') || filterRequestType}`);
+        }
+        if (dateFrom) {
+            chips.push(`ตั้งแต่ ${new Date(`${dateFrom}T00:00:00`).toLocaleDateString('th-TH')}`);
+        }
+        if (dateTo) {
+            chips.push(`ถึง ${new Date(`${dateTo}T00:00:00`).toLocaleDateString('th-TH')}`);
+        }
+        if (searchText.trim()) {
+            chips.push(`ค้นหา: "${searchText.trim()}"`);
+        }
+        return chips;
+    }, [actorView, dateFrom, dateTo, filterRequestType, filterStatus, initialRequestType, lockedRequestType, searchText]);
 
     const defaultRequestTypeFilter = lockedRequestType || initialRequestType;
     const isFilterDirty = Boolean(searchText.trim() || filterStatus !== 'all' || filterRequestType !== defaultRequestTypeFilter || dateFrom || dateTo);
@@ -636,14 +707,42 @@ export default function ApprovalClient({
         <div className="min-h-screen bg-slate-50">
             {/* ── Top Nav ─────────────────────────────────────────────── */}
             <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3 min-w-0">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3 min-w-0">
                         <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
                             <FileText size={16} className="text-white" />
                         </div>
                         <div className="min-w-0">
                             <h1 className="text-base font-bold text-slate-800 leading-tight truncate">{title}</h1>
                             <p className="text-xs text-slate-400 leading-tight hidden sm:block">{subtitle}</p>
+                            <div className="mt-2 inline-flex items-center rounded-xl border border-slate-200 bg-slate-50 p-1">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setActorView('requester');
+                                        setFilterStatus('all');
+                                        resetToFirstPage();
+                                    }}
+                                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${actorView === 'requester' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                    aria-pressed={actorView === 'requester'}
+                                >
+                                    ผู้ขอ ({requesterRequests.length.toLocaleString('th-TH')})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setActorView('approver');
+                                        setFilterStatus('all');
+                                        resetToFirstPage();
+                                    }}
+                                    disabled={!canApprove}
+                                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${actorView === 'approver' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'} ${!canApprove ? 'cursor-not-allowed opacity-50' : ''}`}
+                                    aria-pressed={actorView === 'approver'}
+                                    title={canApprove ? 'แสดงคำขอที่คุณสามารถอนุมัติได้' : 'บัญชีนี้ไม่มีสิทธิ์ผู้อนุมัติ'}
+                                >
+                                    ผู้อนุมัติ ({approverRequests.length.toLocaleString('th-TH')})
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -655,7 +754,7 @@ export default function ApprovalClient({
                             <FileDown size={15} />
                             <span className="hidden sm:inline">Export</span>
                         </button>
-                        {allowCreate && (
+                        {allowCreate && actorView === 'requester' && (
                         <button
                             type="button"
                             onClick={() => setIsModalOpen(true)}
@@ -670,8 +769,37 @@ export default function ApprovalClient({
             </header>
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-2 text-xs text-indigo-700">
+                    
+                    <span>
+                        {actorView === 'approver'
+                            ? 'แสดงรายการที่คุณมีสิทธิ์อนุมัติ'
+                            : 'แสดงรายการที่คุณเป็นผู้ขอ'}
+                    </span>
+                </div>
                 {/* ── Summary Cards ──────────────────────────────────── */}
                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                    {summaryCards.map((item) => {
+                        const isActive = filterStatus === item.value || (item.value === 'all' && filterStatus === 'all');
+                        return (
+                            <button
+                                key={item.value}
+                                type="button"
+                                onClick={() => { setFilterStatus(item.value); resetToFirstPage(); }}
+                                className={`rounded-2xl border ${item.bg} px-4 py-3 flex flex-col gap-1 text-left transition hover:shadow-sm ${isActive ? 'ring-2 ring-indigo-300 shadow-sm' : ''}`}
+                                aria-pressed={isActive}
+                                title={`กรองสถานะ: ${item.label}`}
+                            >
+                                <div className="flex items-center gap-1.5">
+                                    <div className={`w-1.5 h-1.5 rounded-full ${item.dot}`} />
+                                    <span className="text-xs text-slate-500">{item.label}</span>
+                                </div>
+                                <div className={`text-2xl font-bold ${item.tone}`}>{item.count}</div>
+                            </button>
+                        );
+                    })}
+                </div>
+                <div className="hidden grid grid-cols-2 gap-3 lg:grid-cols-5">
                     {[
                         { label: 'ทั้งหมด', value: requestSummary.total, color: 'text-slate-700', bg: 'bg-white border-slate-200', dot: 'bg-slate-400' },
                         { label: 'รอพิจารณา', value: requestSummary.pending, color: 'text-amber-700', bg: 'bg-amber-50 border-amber-100', dot: 'bg-amber-400' },
@@ -708,6 +836,17 @@ export default function ApprovalClient({
                             />
                         </div>
 
+                        <select
+                            className="h-10 min-w-[158px] rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-600 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-200"
+                            value={sortMode}
+                            onChange={(e) => setSortMode(e.target.value as 'latest' | 'oldest' | 'status')}
+                            title="เรียงลำดับรายการ"
+                        >
+                            <option value="latest">ล่าสุดก่อน</option>
+                            <option value="oldest">เก่าสุดก่อน</option>
+                            <option value="status">เรียงตามสถานะ</option>
+                        </select>
+
                         {/* Filters toggle */}
                         <button
                             type="button"
@@ -727,6 +866,44 @@ export default function ApprovalClient({
                         </button>
 
                         <span className="text-xs text-slate-400 ml-auto">{filteredRequests.length} รายการ</span>
+                    </div>
+
+                    <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            {STATUS_FILTER_OPTIONS.map((option) => {
+                                const isActive = filterStatus === option.value;
+                                return (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        onClick={() => { setFilterStatus(option.value); resetToFirstPage(); }}
+                                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${isActive ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:border-indigo-200 hover:text-indigo-600'}`}
+                                        aria-pressed={isActive}
+                                    >
+                                        {option.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {activeFilterChips.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2">
+                                {activeFilterChips.map((chip) => (
+                                    <span
+                                        key={chip}
+                                        className="inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700"
+                                    >
+                                        {chip}
+                                    </span>
+                                ))}
+                                <button
+                                    type="button"
+                                    onClick={handleClearFilters}
+                                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                                >
+                                    ล้างตัวกรอง
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Expandable filters */}
@@ -808,7 +985,11 @@ export default function ApprovalClient({
                 {paginatedRequests.length === 0 ? (
                     <div className="bg-white rounded-2xl border border-slate-200 py-16 flex flex-col items-center gap-3 text-slate-400">
                         <FileText size={32} className="opacity-30" />
-                        <p className="text-sm font-medium">ไม่พบรายการที่ตรงกับเงื่อนไข</p>
+                        <p className="text-sm font-medium">
+                            {actorView === 'approver'
+                                ? 'ยังไม่มีคำขอที่คุณสามารถอนุมัติได้'
+                                : 'ไม่พบคำขอของคุณตามตัวกรองที่เลือก'}
+                        </p>
                         {isFilterDirty && (
                             <button onClick={handleClearFilters} className="text-xs text-indigo-500 hover:underline">ล้างตัวกรอง</button>
                         )}

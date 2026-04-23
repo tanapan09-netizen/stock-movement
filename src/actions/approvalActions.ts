@@ -6,8 +6,8 @@ import {
     canAccessDashboardPage,
     canApproveApprovalRequest,
     canEditPurchaseRequestRecord,
-    canViewApprovalQueue,
 } from '@/lib/rbac';
+import { isManagerRole } from '@/lib/roles';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { notifyApprovalEventFlex } from '@/lib/notifications/notificationManager';
@@ -389,31 +389,19 @@ export async function getApprovalRequests() {
         const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
 
         let whereClause: Prisma.tbl_approval_requestsWhereInput = {};
-
-        if (!canViewApprovalQueue(
-            permissionContext.role,
-            permissionContext.permissions,
-            permissionContext.isApprover,
-        )) {
-            if (!userId) {
-                return { success: false, error: APPROVAL_USER_LINK_ERROR };
-            }
-            whereClause = { requested_by: userId };
-        } else if (!canAccessDashboardPage(
+        const managerApprovalRole = isManagerRole(permissionContext.role);
+        const hasManagePageAccess = canAccessDashboardPage(
             permissionContext.role,
             permissionContext.permissions,
             '/approvals/manage',
             { isApprover: permissionContext.isApprover },
-        )) {
+        );
+
+        if (!managerApprovalRole || !hasManagePageAccess) {
             if (!userId) {
                 return { success: false, error: APPROVAL_USER_LINK_ERROR };
             }
-            whereClause = {
-                OR: [
-                    { requested_by: userId },
-                    { request_type: 'purchase' },
-                ],
-            };
+            whereClause = { requested_by: userId };
         }
 
         const requests = await prisma.tbl_approval_requests.findMany({
@@ -453,7 +441,7 @@ export async function getApprovalRequests() {
 
             return {
                 ...req,
-                can_approve: canApprove
+                can_approve: canApprove && managerApprovalRole
             };
         });
 

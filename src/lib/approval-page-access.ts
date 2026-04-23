@@ -1,5 +1,5 @@
-import { canAccessDashboardPage, canAccessPurchaseWorkflowQueue, canManageGeneralApprovals, type PagePermissionMap } from '@/lib/rbac';
-import { isDepartmentRole } from '@/lib/roles';
+import { canAccessDashboardPage, canManageGeneralApprovals, type PagePermissionMap } from '@/lib/rbac';
+import { isManagerRole } from '@/lib/roles';
 
 export interface ApprovalPagePermissionContext {
     role: string | null | undefined;
@@ -10,28 +10,14 @@ export interface ApprovalPagePermissionContext {
 export function getApprovalsEntryRedirect(context: ApprovalPagePermissionContext): string | null {
     const permissions = context.permissions || {};
     const isApprover = Boolean(context.isApprover);
+    const managerApprovalRole = isManagerRole(context.role);
     const canAccessManagePage = canAccessDashboardPage(
         context.role,
         permissions,
         '/approvals/manage',
         { isApprover },
     );
-    const canApprove = canManageGeneralApprovals(
-        context.role,
-        permissions,
-        isApprover,
-    );
-    const canAccessPurchaseWorkflow = canAccessPurchaseWorkflowQueue(
-        context.role,
-        permissions,
-        isApprover,
-    );
-
-    if (canAccessPurchaseWorkflow && !canApprove) {
-        return '/purchase-request/manage';
-    }
-
-    if (canAccessManagePage) {
+    if (canAccessManagePage && managerApprovalRole) {
         return '/approvals/manage';
     }
 
@@ -41,28 +27,20 @@ export function getApprovalsEntryRedirect(context: ApprovalPagePermissionContext
 export function resolveApprovalsManagePageAccess(context: ApprovalPagePermissionContext) {
     const permissions = context.permissions || {};
     const isApprover = Boolean(context.isApprover);
-    const canAccessManagePage = canAccessDashboardPage(
+    const managerApprovalRole = isManagerRole(context.role);
+    const hasManagePagePermission = canAccessDashboardPage(
         context.role,
         permissions,
         '/approvals/manage',
         { isApprover },
     );
+    const canAccessManagePage = hasManagePagePermission && managerApprovalRole;
     const canApprove = canManageGeneralApprovals(
         context.role,
         permissions,
         isApprover,
-    );
-    const canAccessPurchaseWorkflow = canAccessPurchaseWorkflowQueue(
-        context.role,
-        permissions,
-        isApprover,
-    );
-
-    const redirectTo = isDepartmentRole(context.role, 'purchasing')
-        && !canAccessManagePage
-        && canAccessPurchaseWorkflow
-        ? '/purchase-request/manage'
-        : (!canAccessManagePage ? '/approvals' : null);
+    ) && managerApprovalRole;
+    const redirectTo = !canAccessManagePage ? '/approvals' : null;
 
     return {
         canAccessManagePage,

@@ -2596,6 +2596,75 @@ export async function getGeneralRequests() {
     }
 }
 
+export async function acknowledgeGeneralRequest(
+    request_id: number,
+    changed_by: string,
+) {
+    try {
+        const authContext = await getMaintenanceAuthContext();
+        if (!authContext?.session?.user) {
+            return { success: false, error: 'Unauthorized' };
+        }
+
+        const normalizedRole = normalizeRole(authContext.role);
+        const canAcknowledge = ['employee', 'admin', 'manager'].includes(normalizedRole);
+        if (!canAcknowledge) {
+            return { success: false, error: 'Permission denied' };
+        }
+
+        const current = await prisma.tbl_maintenance_requests.findUnique({
+            where: { request_id },
+            select: {
+                request_id: true,
+                status: true,
+                category: true,
+            }
+        });
+
+        if (!current) {
+            return { success: false, error: 'Maintenance request not found' };
+        }
+
+        const requestCategory = (current.category || '').trim().toLowerCase();
+        if (requestCategory !== 'general') {
+            return { success: false, error: 'Only general requests can be acknowledged from this page' };
+        }
+
+        const currentStatus = normalizeMaintenanceWorkflowStatus(current.status);
+        if (['approved', 'confirmed', 'completed', 'verified'].includes(currentStatus)) {
+            return { success: true, message: 'Request already acknowledged' };
+        }
+
+        if (currentStatus !== 'pending') {
+            return { success: false, error: 'This request cannot be acknowledged in current status' };
+        }
+
+        const actorName = authContext.session.user.name || changed_by || 'System';
+
+        const updated = await prisma.tbl_maintenance_requests.update({
+            where: { request_id },
+            data: { status: 'approved' },
+        });
+
+        await prisma.tbl_maintenance_history.create({
+            data: {
+                request_id,
+                action: 'general_request_acknowledged',
+                old_value: current.status || '',
+                new_value: 'approved',
+                changed_by: actorName,
+            }
+        });
+
+        revalidatePath('/general-request');
+        revalidatePath('/maintenance');
+        return { success: true, data: updated };
+    } catch (error: unknown) {
+        console.error('Error acknowledgeGeneralRequest:', error);
+        return { success: false, error: getErrorMessage(error, 'Failed to acknowledge general request') };
+    }
+}
+
 export async function updateMaintenanceRequest(
     request_id: number,
     data: {
