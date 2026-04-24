@@ -4,11 +4,72 @@ import { useState, useEffect } from 'react';
 import { Settings, Save, Bell, RefreshCw, AlertTriangle, CheckCircle, XCircle, X, Download } from 'lucide-react';
 import { getSystemSettings, updateSystemSetting } from '@/actions/settingActions';
 import { performBackup, restoreDatabase, getBackupsList } from '@/actions/backupActions';
+import { ROLE_OPTIONS } from '@/lib/roles';
 
 interface BackupFile {
     name: string;
     size: string;
     date: string | Date;
+}
+
+type ManagerSummaryTopic = 'maintenance_pending' | 'part_requests_pending' | 'low_stock';
+type ManagerSummaryRole = string;
+
+const MANAGER_SUMMARY_ROLE_OPTIONS = ROLE_OPTIONS.map((role) => ({
+    value: role.value,
+    label: role.label.split('(')[0].trim() || role.value,
+}));
+
+const MANAGER_SUMMARY_TOPIC_OPTIONS: Array<{
+    key: ManagerSummaryTopic;
+    label: string;
+    description: string;
+}> = [
+    {
+        key: 'maintenance_pending',
+        label: 'งานซ่อมค้างคิว',
+        description: 'จำนวนงานแจ้งซ่อมที่ยังรอดำเนินการ',
+    },
+    {
+        key: 'part_requests_pending',
+        label: 'คำขอเบิก/สั่งซื้อรออนุมัติ',
+        description: 'จำนวนรายการขอเบิกอะไหล่/สั่งซื้อที่ยังไม่อนุมัติ',
+    },
+    {
+        key: 'low_stock',
+        label: 'สินค้าเหลือน้อย',
+        description: 'จำนวนสินค้าที่ต่ำกว่าหรือเท่ากับ Safety Stock',
+    },
+];
+
+function parseManagerSummaryTopics(rawValue?: string): Set<ManagerSummaryTopic> {
+    if (!rawValue || rawValue.trim() === '') {
+        return new Set(MANAGER_SUMMARY_TOPIC_OPTIONS.map((topic) => topic.key));
+    }
+
+    const allowed = new Set<ManagerSummaryTopic>(MANAGER_SUMMARY_TOPIC_OPTIONS.map((topic) => topic.key));
+    const topics = rawValue
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value): value is ManagerSummaryTopic => allowed.has(value as ManagerSummaryTopic));
+
+    return new Set(topics);
+}
+
+function parseManagerSummaryRoles(rawValue?: string): Set<ManagerSummaryRole> {
+    const allowedRoleSet = new Set<string>(MANAGER_SUMMARY_ROLE_OPTIONS.map((role) => role.value));
+    const defaultRoles = ['manager'];
+
+    if (!rawValue || rawValue.trim() === '') {
+        return new Set(defaultRoles);
+    }
+
+    const roles = rawValue
+        .split(',')
+        .map((value) => value.trim().toLowerCase())
+        .filter((value) => allowedRoleSet.has(value));
+
+    return new Set(roles.length > 0 ? roles : defaultRoles);
 }
 
 // Modal Components
@@ -228,6 +289,83 @@ export default function SettingsClient() {
         setStatusModal({ ...statusModal, isOpen: false });
     }
 
+    const managerSummaryEnabled = settings['manager_line_summary_enabled'] !== 'false';
+    const managerSummarySendTime = settings['manager_line_summary_time'] || '09:00';
+    const selectedManagerSummaryTopics = parseManagerSummaryTopics(settings['manager_line_summary_topics']);
+    const selectedManagerSummaryRoles = parseManagerSummaryRoles(settings['manager_line_summary_roles']);
+
+    async function saveManagerSummaryTopics(nextTopics: Set<ManagerSummaryTopic>) {
+        const orderedTopics = MANAGER_SUMMARY_TOPIC_OPTIONS
+            .map((topic) => topic.key)
+            .filter((topic) => nextTopics.has(topic));
+
+        if (orderedTopics.length === 0) {
+            setStatusModal({
+                isOpen: true,
+                type: 'error',
+                message: 'กรุณาเลือกอย่างน้อย 1 หัวข้อรายงาน',
+            });
+            return;
+        }
+
+        await handleSave('manager_line_summary_topics', orderedTopics.join(','));
+    }
+
+    function handleToggleManagerSummaryTopic(topicKey: ManagerSummaryTopic) {
+        const nextTopics = new Set(selectedManagerSummaryTopics);
+        if (nextTopics.has(topicKey)) {
+            if (nextTopics.size === 1) {
+                setStatusModal({
+                    isOpen: true,
+                    type: 'error',
+                    message: 'ต้องมีหัวข้อรายงานอย่างน้อย 1 รายการ',
+                });
+                return;
+            }
+            nextTopics.delete(topicKey);
+        } else {
+            nextTopics.add(topicKey);
+        }
+
+        void saveManagerSummaryTopics(nextTopics);
+    }
+
+    async function saveManagerSummaryRoles(nextRoles: Set<ManagerSummaryRole>) {
+        const orderedRoles = MANAGER_SUMMARY_ROLE_OPTIONS
+            .map((role) => role.value)
+            .filter((role) => nextRoles.has(role));
+
+        if (orderedRoles.length === 0) {
+            setStatusModal({
+                isOpen: true,
+                type: 'error',
+                message: 'กรุณาเลือก role ผู้รับอย่างน้อย 1 role',
+            });
+            return;
+        }
+
+        await handleSave('manager_line_summary_roles', orderedRoles.join(','));
+    }
+
+    function handleToggleManagerSummaryRole(role: ManagerSummaryRole) {
+        const nextRoles = new Set(selectedManagerSummaryRoles);
+        if (nextRoles.has(role)) {
+            if (nextRoles.size === 1) {
+                setStatusModal({
+                    isOpen: true,
+                    type: 'error',
+                    message: 'ต้องมี role ผู้รับอย่างน้อย 1 role',
+                });
+                return;
+            }
+            nextRoles.delete(role);
+        } else {
+            nextRoles.add(role);
+        }
+
+        void saveManagerSummaryRoles(nextRoles);
+    }
+
     if (loading) return <div className="p-8">Loading...</div>;
 
     return (
@@ -370,6 +508,99 @@ export default function SettingsClient() {
                                 />
                                 <div className="bg-gray-100 border border-l-0 dark:border-slate-600 dark:bg-slate-600 px-2 py-1.5 rounded-r-lg text-sm text-gray-600 dark:text-gray-300">
                                     นาที
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-4 bg-gray-50 dark:bg-slate-700 rounded-lg space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <div className="font-medium">สรุปรายงานส่งผ่าน LINE</div>
+                            <div className="text-sm text-gray-500">
+                                เปิด/ปิด การส่งรายงานรายวัน และกำหนด role ผู้รับ
+                            </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                aria-label="Toggle manager line summary"
+                                className="sr-only peer"
+                                checked={managerSummaryEnabled}
+                                onChange={(e) => handleSave('manager_line_summary_enabled', e.target.checked ? 'true' : 'false')}
+                            />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+
+                    {managerSummaryEnabled && (
+                        <div className="space-y-4 pt-4 border-t dark:border-slate-600">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        เวลาในการส่งรายงาน (รายวัน)
+                                    </label>
+                                    <input
+                                        type="time"
+                                        className="w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500 dark:bg-slate-800 dark:border-slate-600"
+                                        value={managerSummarySendTime}
+                                        onChange={(e) => {
+                                            const nextTime = e.target.value || '09:00';
+                                            setSettings((prev) => ({ ...prev, manager_line_summary_time: nextTime }));
+                                            void handleSave('manager_line_summary_time', nextTime);
+                                        }}
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        ใช้เวลาไทย (Asia/Bangkok) เช่น 09:00
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    ส่งให้ role
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    {MANAGER_SUMMARY_ROLE_OPTIONS.map((role) => {
+                                        const checked = selectedManagerSummaryRoles.has(role.value);
+                                        return (
+                                            <label key={role.value} className="flex items-start gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="mt-1"
+                                                    checked={checked}
+                                                    onChange={() => handleToggleManagerSummaryRole(role.value)}
+                                                />
+                                                <span className="text-sm text-gray-700 dark:text-gray-200">{role.label}</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    หัวข้อที่ต้องการส่ง
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    {MANAGER_SUMMARY_TOPIC_OPTIONS.map((topic) => {
+                                        const checked = selectedManagerSummaryTopics.has(topic.key);
+                                        return (
+                                            <label key={topic.key} className="flex items-start gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="mt-1"
+                                                    checked={checked}
+                                                    onChange={() => handleToggleManagerSummaryTopic(topic.key)}
+                                                />
+                                                <span>
+                                                    <span className="block text-sm text-gray-700 dark:text-gray-200 font-medium">{topic.label}</span>
+                                                    <span className="block text-xs text-gray-500 dark:text-gray-400">{topic.description}</span>
+                                                </span>
+                                            </label>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>

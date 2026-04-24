@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 import { FloatingSearchInput } from '@/components/FloatingField';
-import { FileSpreadsheet, FileText, QrCode, Loader2, LayoutGrid, List, Edit, Trash2, ArrowUpDown, Upload, Gem, AlertTriangle, Columns3, ArrowUp, ArrowDown, RotateCcw, GripVertical, Package, X, Image as ImageIcon, Eye, EyeOff, Check } from 'lucide-react';
+import { FileSpreadsheet, FileText, QrCode, Loader2, LayoutGrid, List, Edit, Trash2, ArrowUpDown, Upload, Gem, AlertTriangle, Columns3, ArrowUp, ArrowDown, RotateCcw, GripVertical, Package, X, Image as ImageIcon, Eye, EyeOff, Check, Plus } from 'lucide-react';
 import { exportToExcel, exportToPDF, EXPORT_COLUMNS, type ExportColumn } from '@/lib/exportUtils';
 import { resolveProductImageSrc } from '@/lib/product-image';
 import BarcodeScanner from '@/components/BarcodeScanner';
@@ -17,10 +17,12 @@ import ProductImage from '@/components/ProductImage';
 interface Product {
     p_id: string;
     p_name: string;
+    p_desc?: string | null;
     p_count: number;
     p_unit: string | null;
     price_unit: number | string;
     safety_stock: number;
+    supplier?: string | null;
     model_name?: string | null;
     brand_name?: string | null;
     brand_code?: string | null;
@@ -408,6 +410,29 @@ function getProductStockStatus(product: Pick<Product, 'p_count' | 'safety_stock'
 }
 
 const getProductImageSrc = resolveProductImageSrc;
+
+function buildAssetRegistrationHref(product: Product) {
+    const params = new URLSearchParams();
+    params.set('mode', 'purchase');
+    params.set('source', 'product_stock');
+    params.set('source_product_id', product.p_id);
+    params.set('p_id', product.p_id);
+    params.set('p_name', product.p_name || '');
+    params.set('p_desc', product.p_desc || '');
+    params.set('supplier', product.supplier || '');
+    params.set('brand_name', product.brand_name || '');
+    params.set('model_name', product.model_name || '');
+    params.set('category', product.main_category || product.tbl_categories?.cat_name || '');
+    params.set('asset_current_location', product.asset_current_location || '');
+    params.set('purchase_price', String(Number(product.price_unit) || 0));
+    params.set('quantity', String(Math.max(Number(product.p_count) || 1, 1)));
+    params.set('p_count', String(Math.max(Number(product.p_count) || 0, 0)));
+    params.set('status', 'Active');
+    params.set('useful_life_years', '5');
+    params.set('salvage_value', '1');
+
+    return `/assets/new?${params.toString()}`;
+}
 
 const IMAGE_PREVIEW_WIDTH = 288;
 const IMAGE_PREVIEW_HEIGHT = 320;
@@ -975,6 +1000,24 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
             case 'actions':
                 return isAdmin ? (
                     <div className="flex justify-end gap-2">
+                        {product.is_asset && (
+                            <Link
+                                href={buildAssetRegistrationHref(product)}
+                                className={`rounded p-1 hover:bg-emerald-50 ${
+                                    Number(product.p_count) > 0
+                                        ? 'text-emerald-600'
+                                        : 'pointer-events-none text-slate-300'
+                                }`}
+                                title={
+                                    Number(product.p_count) > 0
+                                        ? 'ขึ้นทะเบียนทรัพย์สินจากสินค้าในคลัง'
+                                        : 'สินค้าไม่มีคงเหลือในคลัง'
+                                }
+                                aria-disabled={Number(product.p_count) > 0 ? undefined : true}
+                            >
+                                <Plus className="h-4 w-4" />
+                            </Link>
+                        )}
                         <Link
                             href={`/products/${product.p_id}/edit`}
                             className="rounded p-1 text-blue-600 hover:bg-blue-50"
@@ -1635,6 +1678,24 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
                                     {/* Admin Actions */}
                                     {isAdmin && (
                                         <div className="mt-2 pt-2 border-t flex justify-end gap-1">
+                                            {product.is_asset && (
+                                                <Link
+                                                    href={buildAssetRegistrationHref(product)}
+                                                    className={`p-1.5 rounded ${
+                                                        Number(product.p_count) > 0
+                                                            ? 'text-emerald-600 hover:bg-emerald-50'
+                                                            : 'pointer-events-none text-slate-300'
+                                                    }`}
+                                                    title={
+                                                        Number(product.p_count) > 0
+                                                            ? 'ขึ้นทะเบียนทรัพย์สินจากสินค้าในคลัง'
+                                                            : 'สินค้าไม่มีคงเหลือในคลัง'
+                                                    }
+                                                    aria-disabled={Number(product.p_count) > 0 ? undefined : true}
+                                                >
+                                                    <Plus className="h-4 w-4" />
+                                                </Link>
+                                            )}
                                             <Link
                                                 href={`/products/${product.p_id}/edit`}
                                                 className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"

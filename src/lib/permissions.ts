@@ -106,6 +106,7 @@ export const DASHBOARD_PAGE_ROUTES = [
     '/categories/new',
     '/debug-auth',
     '/general-request',
+    '/general-request/dashboard',
     '/inventory-audit',
     '/inventory-audit/[id]',
     '/inventory-audit/new',
@@ -189,6 +190,7 @@ const ROUTE_REQUIRED_PERMISSIONS: Record<DashboardRoute, RouteRequirement> = {
     '/categories/new': PERMISSIONS.ADMIN_CATEGORIES,
     '/debug-auth': PERMISSIONS.ADMIN_SECURITY,
     '/general-request': PERMISSIONS.GENERAL_REQUEST,
+    '/general-request/dashboard': PERMISSIONS.GENERAL_REQUEST,
     '/inventory-audit': PERMISSIONS.ADMIN_AUDIT,
     '/inventory-audit/[id]': PERMISSIONS.ADMIN_AUDIT,
     '/inventory-audit/new': PERMISSIONS.ADMIN_AUDIT,
@@ -281,7 +283,7 @@ const MANUAL_BASELINE_ROUTES = new Set<DashboardRoute>([
 ]);
 
 const routeToCategory = (route: string): PermissionItem['category'] => {
-    if (route.startsWith('/maintenance') || route === '/general-request') {
+    if (route.startsWith('/maintenance') || route.startsWith('/general-request')) {
         return 'Maintenance';
     }
 

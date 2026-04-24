@@ -258,6 +258,37 @@ export async function getDailySummaryLineIds(): Promise<string[]> {
     }
 }
 
+export async function getManagerSummaryLineIds(): Promise<string[]> {
+    try {
+        return await collectEligibleLineIds((role) => {
+            const normalizedRole = normalizeRole(role);
+            return normalizedRole === 'manager';
+        });
+    } catch (error) {
+        console.error('Error fetching LINE IDs for manager summary:', error);
+        return [];
+    }
+}
+
+export async function getSummaryLineIdsByRoles(roles: string[]): Promise<string[]> {
+    try {
+        const normalizedTargetRoles = new Set(
+            roles
+                .map((role) => normalizeRole(role))
+                .filter((role) => role.length > 0),
+        );
+
+        if (normalizedTargetRoles.size === 0) {
+            return [];
+        }
+
+        return await collectEligibleLineIds((role) => normalizedTargetRoles.has(normalizeRole(role)));
+    } catch (error) {
+        console.error('Error fetching LINE IDs by summary roles:', error);
+        return [];
+    }
+}
+
 async function collectEligibleLineIds(
     predicate: (role: string, permissions: PagePermissionMap) => boolean,
 ): Promise<string[]> {

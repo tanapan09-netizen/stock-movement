@@ -73,6 +73,7 @@ export default function Sidebar(props: SidebarProps) {
     };
 
     const isActive = (path: string) => pathname === path;
+    const isGeneralRequestRoute = pathname === '/general-request' || pathname.startsWith('/general-request/');
     const can = (key: string) => !!permissions[key];
     const canAccessPage = (route: string) =>
         canAccessDashboardPage(normalizedRole, permissions, route, { isApprover });
@@ -355,10 +356,10 @@ export default function Sidebar(props: SidebarProps) {
                             <Link
                                 href="/general-request"
                                 onClick={handleLinkClick}
-                                className={getNavItemClass(isActive('/general-request'))}
+                                className={getNavItemClass(isGeneralRequestRoute)}
                                 title={collapsed ? 'รับแจ้งซ่อม' : undefined}
                             >
-                                <svg className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isActive('/general-request') && 'group-hover:scale-110 group-hover:text-cyan-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <svg className={`${collapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5 flex-shrink-0'} transition-transform duration-300 ${!isGeneralRequestRoute && 'group-hover:scale-110 group-hover:text-cyan-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                                 </svg>
                                 {!collapsed && <span className="truncate">รับเรื่อง</span>}

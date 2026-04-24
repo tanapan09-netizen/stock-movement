@@ -42,6 +42,7 @@ import {
     isMaintenanceWorkflowClosed,
     normalizeMaintenanceWorkflowStatus,
 } from '@/lib/maintenance-workflow';
+import { MAINTENANCE_TARGET_ROLE_OPTIONS } from '@/lib/maintenance-options';
 
 type MaintenanceNotificationRequest = {
     request_number: string;
@@ -67,6 +68,17 @@ const MAINTENANCE_EDIT_CANCEL_ROLE_SET = new Set([
 ]);
 const ACKNOWLEDGED_GENERAL_REQUEST_STATUS_SET = new Set(['confirmed', 'completed', 'verified']);
 const ACKNOWLEDGED_GENERAL_REQUEST_MANAGE_ROLE_SET = new Set(['leader_employee', 'manager', 'admin']);
+const MAINTENANCE_TARGET_ROLE_LABEL_MAP = new Map(
+    MAINTENANCE_TARGET_ROLE_OPTIONS.map((option) => [option.value.toLowerCase(), option.label] as const),
+);
+const MAINTENANCE_DISPATCH_TIME_FORMATTER = new Intl.DateTimeFormat('th-TH', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+});
 
 function canRoleEditOrCancelMaintenance(role?: string | null) {
     return MAINTENANCE_EDIT_CANCEL_ROLE_SET.has(normalizeRole(role));
@@ -74,6 +86,20 @@ function canRoleEditOrCancelMaintenance(role?: string | null) {
 
 function canManageAcknowledgedGeneralRequest(role?: string | null) {
     return ACKNOWLEDGED_GENERAL_REQUEST_MANAGE_ROLE_SET.has(normalizeRole(role));
+}
+
+function resolveMaintenanceTargetRoleLabel(targetRole?: string | null) {
+    const normalized = (targetRole || '').trim().toLowerCase();
+    if (!normalized) return '-';
+    return MAINTENANCE_TARGET_ROLE_LABEL_MAP.get(normalized) || normalized;
+}
+
+function appendDispatchContextToDescription(baseDescription?: string | null, dispatchContext?: string | null) {
+    const normalizedBase = (baseDescription || '').trim();
+    const normalizedDispatchContext = (dispatchContext || '').trim();
+    if (!normalizedDispatchContext) return normalizedBase || null;
+    if (!normalizedBase) return normalizedDispatchContext;
+    return `${normalizedBase}\n\n${normalizedDispatchContext}`;
 }
 
 function isGeneralRequestRecord(entry: { category?: string | null; tags?: string | null }) {
@@ -829,6 +855,18 @@ export async function createMaintenanceRequest(formData: FormData) {
 
         const initialStatus = isGeneralOnlyScope && !sourceRequest?.request_id ? 'pending' : 'approved';
         const actorName = authContext.session.user.name || reported_by || 'System';
+        const dispatchContext = sourceRequest?.request_id
+            ? [
+                '[ส่งต่อจากรับเรื่อง]',
+                `แจ้งไปยังฝ่าย: ${resolveMaintenanceTargetRoleLabel(target_role)}`,
+                assigned_to?.trim() ? `ผู้รับผิดชอบที่ระบุ: ${assigned_to.trim()}` : null,
+                `ดำเนินการโดย: ${actorName}`,
+                `เวลา: ${MAINTENANCE_DISPATCH_TIME_FORMATTER.format(new Date())}`,
+            ].filter(Boolean).join(' | ')
+            : null;
+        const requestDescription = sourceRequest?.request_id
+            ? appendDispatchContextToDescription(validData.description, dispatchContext)
+            : (validData.description || null);
 
         const request = await prisma.$transaction(async (tx) => {
             if (sourceRequest?.request_id) {
@@ -837,7 +875,7 @@ export async function createMaintenanceRequest(formData: FormData) {
                     data: {
                         room_id: validData.room_id,
                         title: validData.title,
-                        description: validData.description || null,
+                        description: requestDescription,
                         image_url: finalImageUrls.length > 0 ? JSON.stringify(finalImageUrls) : null,
                         priority: validData.priority,
                         status: initialStatus,
@@ -872,7 +910,7 @@ export async function createMaintenanceRequest(formData: FormData) {
                     request_number: requestNumber,
                     room_id: validData.room_id,
                     title: validData.title,
-                    description: validData.description || null,
+                    description: requestDescription,
                     image_url: finalImageUrls.length > 0 ? JSON.stringify(finalImageUrls) : null,
                     priority: validData.priority,
                     status: initialStatus,

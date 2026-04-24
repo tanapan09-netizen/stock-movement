@@ -52,8 +52,17 @@ export default async function NewAssetPage({
 
     const params = (await searchParams) || {};
     const mode = normalizeNewAssetMode(getSingleParam(params.mode));
+    const sourceProductId = getSingleParam(params.source_product_id).trim() || getSingleParam(params.p_id).trim();
+    const sourceProductName = getSingleParam(params.p_name).trim();
+    const sourceProductStockRaw = Number.parseInt(getSingleParam(params.p_count), 10);
+    const sourceProductStock = Number.isFinite(sourceProductStockRaw) ? Math.max(sourceProductStockRaw, 0) : 0;
+    const initialQuantityRaw = Number.parseInt(getSingleParam(params.quantity), 10);
+    const initialQuantity = Number.isFinite(initialQuantityRaw) ? Math.min(Math.max(initialQuantityRaw, 1), 500) : 1;
+    const prefillPurchasePriceRaw = Number.parseFloat(getSingleParam(params.purchase_price));
+    const prefillUsefulLifeRaw = Number.parseInt(getSingleParam(params.useful_life_years), 10);
+    const prefillSalvageValueRaw = Number.parseFloat(getSingleParam(params.salvage_value));
     const prefill = {
-        asset_code: getSingleParam(params.asset_code).trim() || getSingleParam(params.p_id).trim(),
+        asset_code: getSingleParam(params.asset_code).trim(),
         asset_name: getSingleParam(params.asset_name).trim() || getSingleParam(params.p_name).trim(),
         description: getSingleParam(params.description).trim() || getSingleParam(params.p_desc).trim(),
         category: getSingleParam(params.category).trim(),
@@ -64,6 +73,9 @@ export default async function NewAssetPage({
         model: getSingleParam(params.model).trim() || getSingleParam(params.model_name).trim(),
         serial_number: getSingleParam(params.serial_number).trim(),
         status: getSingleParam(params.status).trim() || 'Active',
+        purchase_price: Number.isFinite(prefillPurchasePriceRaw) ? prefillPurchasePriceRaw : undefined,
+        useful_life_years: Number.isFinite(prefillUsefulLifeRaw) ? prefillUsefulLifeRaw : undefined,
+        salvage_value: Number.isFinite(prefillSalvageValueRaw) ? prefillSalvageValueRaw : undefined,
     };
 
     const [roomReferences, policyCategoryNames] = await Promise.all([
@@ -109,6 +121,12 @@ export default async function NewAssetPage({
                 roomReferences={roomReferences}
                 assetGroups={assetGroups}
                 acquisitionType={mode}
+                initialQuantity={initialQuantity}
+                sourceProductInfo={sourceProductId ? {
+                    productId: sourceProductId,
+                    productName: sourceProductName || prefill.asset_name || sourceProductId,
+                    stockQty: sourceProductStock,
+                } : undefined}
             />
         </div>
     );

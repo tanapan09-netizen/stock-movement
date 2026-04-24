@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle, Package, Plus, ShieldCheck, Undo2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Package, Plus, ShieldCheck, Trash2, Undo2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { FloatingSearchInput } from '@/components/FloatingField';
@@ -17,7 +17,7 @@ import {
   getWithdrawnPartsForMaintenance,
   requestMaintenancePartWithdrawal,
   returnPartToStock,
-  withdrawPartForMaintenance,
+  withdrawPartsForMaintenanceBatch,
 } from '@/actions/maintenanceActions';
 
 type Product = {
@@ -65,6 +65,7 @@ type MaintenanceRequestItem = {
 
 type PartRequestItem = {
   request_id: number;
+  maintenance_id?: number | null;
   request_number?: string | null;
   item_name: string;
   quantity: number;
@@ -85,6 +86,18 @@ type Props = {
   canManageParts?: boolean;
   canDirectStockActions?: boolean;
   canConfirmDefectiveReceipt?: boolean;
+};
+
+type WithdrawFormItem = {
+  item_key: string;
+  p_id: string;
+  quantity: number;
+};
+
+type WithdrawFormState = {
+  request_id: number;
+  withdrawn_by: string;
+  items: WithdrawFormItem[];
 };
 
 type ActionDialogState =
@@ -154,6 +167,22 @@ const PART_REQUEST_STATUS_LABELS: Record<string, string> = {
 
 const MAINTENANCE_WITHDRAW_LINK_PREFIX = 'maintenance-withdraw://';
 
+function createWithdrawFormItem(): WithdrawFormItem {
+  return {
+    item_key: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    p_id: '',
+    quantity: 1,
+  };
+}
+
+function createInitialWithdrawForm(withdrawnBy = ''): WithdrawFormState {
+  return {
+    request_id: 0,
+    withdrawn_by: withdrawnBy,
+    items: [createWithdrawFormItem()],
+  };
+}
+
 function resolveMaintenanceWithdrawProductId(quotationLink?: string | null): string | null {
   const raw = (quotationLink || '').trim();
   if (!raw.startsWith(MAINTENANCE_WITHDRAW_LINK_PREFIX)) return null;
@@ -190,12 +219,9 @@ export default function PartsManagementClient({
   const [searchText, setSearchText] = useState('');
   const [partStatusFilter, setPartStatusFilter] = useState('all');
   const [actionDialog, setActionDialog] = useState<ActionDialogState | null>(null);
-  const [withdrawForm, setWithdrawForm] = useState({
-    request_id: 0,
-    p_id: '',
-    quantity: 1,
-    withdrawn_by: '',
-  });
+  const [withdrawForm, setWithdrawForm] = useState<WithdrawFormState>(() =>
+    createInitialWithdrawForm(),
+  );
 
   async function loadData() {
     setLoading(true);
@@ -225,7 +251,6 @@ export default function PartsManagementClient({
     loadData();
   }, []);
 
-  const selectedProduct = products.find((product) => product.p_id === withdrawForm.p_id);
   const productMap = useMemo(() => {
     const map = new Map<string, Product>();
     products.forEach((product) => {
@@ -233,6 +258,8 @@ export default function PartsManagementClient({
     });
     return map;
   }, [products]);
+  const primarySelectedProductId = withdrawForm.items.find((item) => item.p_id)?.p_id || '';
+  const selectedProduct = primarySelectedProductId ? productMap.get(primarySelectedProductId) : undefined;
   const availableStock = selectedProduct?.available_stock ?? selectedProduct?.p_count ?? 0;
   const stockWh01 = selectedProduct?.stock_wh01 ?? availableStock;
   const stockWh02 = selectedProduct?.stock_wh02 ?? 0;
@@ -245,6 +272,39 @@ export default function PartsManagementClient({
   const withdrawSubmitLabel = canDirectWithdraw ? 'ยืนยันเบิก' : 'ส่งคำขอไปคลัง';
   const withdrawHeaderButtonLabel = canDirectWithdraw ? 'เบิกอะไหล่' : 'ส่งคำขอเบิกไปคลัง';
   const normalizedSearchText = searchText.trim().toLowerCase();
+  const hasSelectedWithdrawItems = withdrawForm.items.some((item) => item.p_id.trim());
+
+  const getAvailableStockForProduct = (p_id: string) => {
+    const product = productMap.get(p_id);
+    return Number(product?.available_stock ?? product?.p_count ?? 0);
+  };
+
+  function addWithdrawFormItem() {
+    setWithdrawForm((prev) => ({
+      ...prev,
+      items: [...prev.items, createWithdrawFormItem()],
+    }));
+  }
+
+  function updateWithdrawFormItem(itemKey: string, patch: Partial<Omit<WithdrawFormItem, 'item_key'>>) {
+    setWithdrawForm((prev) => ({
+      ...prev,
+      items: prev.items.map((item) => (item.item_key === itemKey ? { ...item, ...patch } : item)),
+    }));
+  }
+
+  function removeWithdrawFormItem(itemKey: string) {
+    setWithdrawForm((prev) => {
+      if (prev.items.length <= 1) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        items: prev.items.filter((item) => item.item_key !== itemKey),
+      };
+    });
+  }
 
   const matchesPartRequestSearch = (request: PartRequestItem) => {
     if (!normalizedSearchText) return true;
@@ -269,45 +329,103 @@ export default function PartsManagementClient({
   async function handleWithdraw(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!withdrawForm.request_id || !withdrawForm.p_id || !withdrawForm.quantity) {
+    const normalizedItems = withdrawForm.items
+      .map((item) => ({
+        p_id: String(item.p_id || '').trim(),
+        quantity: Number(item.quantity || 0),
+      }))
+      .filter((item) => item.p_id && Number.isFinite(item.quantity) && item.quantity > 0);
+
+    if (!withdrawForm.request_id || normalizedItems.length === 0) {
       showToast('กรุณากรอกข้อมูลการเบิกอะไหล่ให้ครบถ้วน', 'warning');
       return;
     }
 
-    if (availableStock <= 0) {
-      showToast('อะไหล่นี้ไม่มีคงเหลือใน WH-01', 'warning');
-      return;
+    const aggregatedMap = new Map<string, number>();
+    for (const item of normalizedItems) {
+      aggregatedMap.set(item.p_id, (aggregatedMap.get(item.p_id) ?? 0) + item.quantity);
+    }
+    const aggregatedItems = Array.from(aggregatedMap.entries()).map(([p_id, quantity]) => ({
+      p_id,
+      quantity,
+    }));
+
+    for (const item of aggregatedItems) {
+      const product = productMap.get(item.p_id);
+      const itemStock = getAvailableStockForProduct(item.p_id);
+
+      if (!product) {
+        showToast(`ไม่พบข้อมูลสินค้า: ${item.p_id}`, 'warning');
+        return;
+      }
+
+      if (itemStock <= 0) {
+        showToast(`${product.p_name} ไม่มีคงเหลือใน WH-01`, 'warning');
+        return;
+      }
+
+      if (item.quantity > itemStock) {
+        showToast(
+          `จำนวน ${product.p_name} เกินสต็อกคงเหลือใน WH-01 (${itemStock} ${product.p_unit || 'ชิ้น'})`,
+          'warning',
+        );
+        return;
+      }
     }
 
-    if (withdrawForm.quantity > availableStock) {
-      showToast(`จำนวนเกินสต็อกคงเหลือใน WH-01 (${availableStock} ${selectedProduct?.p_unit || 'ชิ้น'})`, 'warning');
-      return;
+    if (!canDirectWithdraw) {
+      const pendingConflict = aggregatedItems.find((item) =>
+        maintenancePartRequests.some(
+          (request) =>
+            request.status === 'pending'
+            && Number(request.maintenance_id || 0) === withdrawForm.request_id
+            && resolveMaintenanceWithdrawProductId(request.quotation_link) === item.p_id,
+        ),
+      );
+
+      if (pendingConflict) {
+        const productName = productMap.get(pendingConflict.p_id)?.p_name || pendingConflict.p_id;
+        showToast(`มีคำขอรอคลังยืนยันอยู่แล้วสำหรับ ${productName}`, 'warning');
+        return;
+      }
     }
 
-    const result = canDirectWithdraw
-      ? await withdrawPartForMaintenance({
-          ...withdrawForm,
-          withdrawn_by: session?.user?.name || 'System',
-        })
-      : await requestMaintenancePartWithdrawal({
+    if (canDirectWithdraw) {
+      const result = await withdrawPartsForMaintenanceBatch({
+        request_id: withdrawForm.request_id,
+        items: aggregatedItems,
+        withdrawn_by: session?.user?.name || 'System',
+      });
+
+      if (!result.success) {
+        showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
+        return;
+      }
+    } else {
+      for (const item of aggregatedItems) {
+        const result = await requestMaintenancePartWithdrawal({
           request_id: withdrawForm.request_id,
-          p_id: withdrawForm.p_id,
-          quantity: withdrawForm.quantity,
+          p_id: item.p_id,
+          quantity: item.quantity,
           requested_by: session?.user?.name || 'System',
         });
 
-    if (!result.success) {
-      showToast(`เกิดข้อผิดพลาด: ${result.error}`, 'error');
-      return;
+        if (!result.success) {
+          const productName = productMap.get(item.p_id)?.p_name || item.p_id;
+          showToast(`เกิดข้อผิดพลาด (${productName}): ${result.error}`, 'error');
+          await loadData();
+          return;
+        }
+      }
     }
 
     setShowWithdrawForm(false);
-    setWithdrawForm({ request_id: 0, p_id: '', quantity: 1, withdrawn_by: '' });
+    setWithdrawForm(createInitialWithdrawForm(session?.user?.name || ''));
     await loadData();
     showToast(
       canDirectWithdraw
-        ? 'เบิกอะไหล่เรียบร้อยแล้ว'
-        : 'ส่งคำขอเบิกไปที่คลังแล้ว รอคลังยืนยันและพร้อมส่งมอบให้ช่าง',
+        ? `เบิกอะไหล่เรียบร้อยแล้ว ${aggregatedItems.length} รายการ`
+        : `ส่งคำขอเบิกไปที่คลังแล้ว ${aggregatedItems.length} รายการ`,
       'success',
     );
   }
@@ -582,7 +700,7 @@ export default function PartsManagementClient({
           {canManageParts ? (
             <button
               onClick={() => {
-                setWithdrawForm((prev) => ({ ...prev, withdrawn_by: session?.user?.name || '' }));
+                setWithdrawForm(createInitialWithdrawForm(session?.user?.name || ''));
                 setShowWithdrawForm(true);
               }}
               className="flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-white hover:bg-orange-700"
@@ -1098,25 +1216,25 @@ export default function PartsManagementClient({
                   <div className="mt-1 font-semibold">{session?.user?.name || '-'}</div>
                 </div>
                 <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-900 dark:bg-slate-700/60 dark:text-slate-100">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">คงเหลือ WH-01</div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">คงเหลือ WH-01 (รายการแรก)</div>
                   <div className="mt-1 font-semibold">
                     {selectedProduct ? `${stockWh01} ${selectedProduct.p_unit || 'ชิ้น'}` : '-'}
                   </div>
                 </div>
                 <div className="rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:bg-blue-900/25 dark:text-blue-100">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-300">ตัดเบิก WH-02</div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-300">ตัดเบิก WH-02 (รายการแรก)</div>
                   <div className="mt-1 font-semibold">
                     {selectedProduct ? `${stockWh02} ${selectedProduct.p_unit || 'ชิ้น'}` : '-'}
                   </div>
                 </div>
                 <div className="rounded-2xl bg-cyan-50 px-4 py-3 text-sm text-cyan-900 dark:bg-cyan-900/25 dark:text-cyan-100">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-300">ใช้จริง WH-03</div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-300">ใช้จริง WH-03 (รายการแรก)</div>
                   <div className="mt-1 font-semibold">
                     {selectedProduct ? `${stockWh03} ${selectedProduct.p_unit || 'ชิ้น'}` : '-'}
                   </div>
                 </div>
                 <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:bg-rose-900/25 dark:text-rose-100">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-300">ของเสีย WH-08</div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-300">ของเสีย WH-08 (รายการแรก)</div>
                   <div className="mt-1 font-semibold">
                     {selectedProduct ? `${stockWh08} ${selectedProduct.p_unit || 'ชิ้น'}` : '-'}
                   </div>
@@ -1142,57 +1260,114 @@ export default function PartsManagementClient({
                 </select>
               </div>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">สินค้า/อะไหล่ *</label>
-                <SearchableSelect
-                  options={products.map((product) => {
-                    const stock = product.available_stock ?? product.p_count;
-                    const unit = product.p_unit || 'ชิ้น';
-                    return {
-                      value: product.p_id,
-                      label:
-                        stock > 0
-                          ? `${product.p_name} (คงเหลือ WH-01: ${stock} ${unit})`
-                          : `${product.p_name} (WH-01 หมด)`,
-                    };
-                  })}
-                  value={withdrawForm.p_id}
-                  onChange={(value: string) =>
-                    setWithdrawForm((prev) => ({ ...prev, p_id: value, quantity: 1 }))
-                  }
-                  placeholder="เลือกสินค้า"
-                  required
-                />
-                {selectedProduct && availableStock < 5 ? (
-                  <div className="mt-2 inline-flex rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">
-                    สต็อกใกล้หมด
-                  </div>
-                ) : null}
-              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    สินค้า/อะไหล่ (หลายรายการ) *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addWithdrawFormItem}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-700 transition hover:bg-orange-100"
+                  >
+                    <Plus size={14} />
+                    เพิ่มรายการ
+                  </button>
+                </div>
 
-              <div>
-                <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">จำนวน *</label>
-                <input
-                  type="number"
-                  value={withdrawForm.quantity}
-                  onChange={(e) => {
-                    const nextQty = Number(e.target.value);
-                    const safeQty = Math.max(
-                      1,
-                      availableStock > 0 ? Math.min(nextQty, availableStock) : nextQty,
+                <div className="space-y-3">
+                  {withdrawForm.items.map((item, index) => {
+                    const itemProduct = item.p_id ? productMap.get(item.p_id) : undefined;
+                    const itemAvailableStock = item.p_id ? getAvailableStockForProduct(item.p_id) : 0;
+                    const itemUnit = itemProduct?.p_unit || 'ชิ้น';
+                    const selectedProductIds = new Set(
+                      withdrawForm.items
+                        .filter((candidate) => candidate.item_key !== item.item_key && candidate.p_id)
+                        .map((candidate) => candidate.p_id),
                     );
-                    setWithdrawForm({ ...withdrawForm, quantity: safeQty });
-                  }}
-                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 shadow-sm outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-200 dark:border-slate-600 dark:bg-slate-700"
-                  min="1"
-                  max={availableStock}
-                  required
-                />
-                {selectedProduct ? (
-                  <div className="mt-1 text-right text-xs text-gray-500">
-                    คงเหลือใน WH-01 สูงสุด: {availableStock}
-                  </div>
-                ) : null}
+
+                    return (
+                      <div
+                        key={item.item_key}
+                        className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-600 dark:bg-slate-700/20"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            รายการที่ {index + 1}
+                          </div>
+                          {withdrawForm.items.length > 1 ? (
+                            <button
+                              type="button"
+                              onClick={() => removeWithdrawFormItem(item.item_key)}
+                              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-50"
+                            >
+                              <Trash2 size={12} />
+                              ลบรายการ
+                            </button>
+                          ) : null}
+                        </div>
+
+                        <SearchableSelect
+                          options={products.map((product) => {
+                            const stock = Number(product.available_stock ?? product.p_count ?? 0);
+                            const unit = product.p_unit || 'ชิ้น';
+                            return {
+                              value: product.p_id,
+                              label:
+                                stock > 0
+                                  ? `${product.p_name} (คงเหลือ WH-01: ${stock} ${unit})`
+                                  : `${product.p_name} (WH-01 หมด)`,
+                              disabled: selectedProductIds.has(product.p_id),
+                            };
+                          })}
+                          value={item.p_id}
+                          onChange={(value: string) =>
+                            updateWithdrawFormItem(item.item_key, {
+                              p_id: value,
+                              quantity: 1,
+                            })
+                          }
+                          placeholder="เลือกสินค้า"
+                          required
+                        />
+
+                        <div>
+                          <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                            จำนวน *
+                          </label>
+                          <input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const parsedQty = Number(e.target.value);
+                              const nextQty = Number.isFinite(parsedQty) && parsedQty > 0 ? parsedQty : 1;
+                              const maxStock = itemAvailableStock > 0 ? itemAvailableStock : nextQty;
+                              const safeQty = Math.max(1, Math.min(nextQty, maxStock));
+                              updateWithdrawFormItem(item.item_key, { quantity: safeQty });
+                            }}
+                            className="w-full rounded-2xl border border-slate-200 px-4 py-3 shadow-sm outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-200 dark:border-slate-600 dark:bg-slate-700"
+                            min="1"
+                            max={itemAvailableStock > 0 ? itemAvailableStock : undefined}
+                            required
+                          />
+                          {itemProduct ? (
+                            <div className="mt-1 text-right text-xs text-gray-500">
+                              คงเหลือใน WH-01 สูงสุด: {itemAvailableStock} {itemUnit}
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-right text-xs text-gray-400">เลือกสินค้าเพื่อดูสต็อกคงเหลือ</div>
+                          )}
+                        </div>
+
+                        {itemProduct && itemAvailableStock < 5 ? (
+                          <div className="inline-flex rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">
+                            สต็อกใกล้หมด
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-600 dark:bg-slate-700/40">
@@ -1223,7 +1398,7 @@ export default function PartsManagementClient({
                 </button>
                 <button
                   type="submit"
-                  disabled={availableStock <= 0}
+                  disabled={!hasSelectedWithdrawItems}
                   className="flex-1 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-3 font-semibold text-white shadow-lg shadow-orange-200 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 dark:shadow-none"
                 >
                   {withdrawSubmitLabel}

@@ -138,7 +138,6 @@ export default function ProductForm({
 
         if (productSku) {
             params.set('p_id', productSku);
-            params.set('asset_code', productSku);
         }
         if (pName) params.set('p_name', pName);
         if (pDesc) params.set('p_desc', pDesc);

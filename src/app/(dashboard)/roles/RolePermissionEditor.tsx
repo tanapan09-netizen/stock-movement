@@ -165,6 +165,7 @@ const ROUTE_LABELS: Record<string, string> = {
   '/store-dashboard': 'แดชบอร์ดคลังสินค้า',
   '/purchasing-dashboard': 'แดชบอร์ดจัดซื้อ',
   '/settings/asset-policy': 'ตั้งค่าหมวดหมู่สินทรัพย์',
+  '/general-request/dashboard': 'แดชบอร์ด KPI รับแจ้งซ่อม',
 };
 
 const ROUTE_SEGMENT_LABELS: Record<string, string> = {
@@ -256,6 +257,7 @@ const ROUTE_PURPOSES: Record<string, string> = {
   '/warehouses': 'จัดการคลังสินค้าและตำแหน่งจัดเก็บ',
   '/inventory-audit': 'ทำรายการตรวจนับและปรับปรุงผลตรวจนับ',
   '/general-request': 'จัดการคำขอทั่วไปภายในองค์กร',
+  '/general-request/dashboard': 'ดู KPI และสถิติของงานรับแจ้งซ่อม',
   '/petty-cash': 'จัดการรายการเงินสดย่อย',
   '/api-docs': 'ดูเอกสาร API สำหรับเชื่อมต่อระบบ',
 };

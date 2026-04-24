@@ -185,36 +185,71 @@ export async function createAsset(formData: FormData) {
     const userName = resolveSessionUserName(sessionUser);
 
     const providedAssetCode = ((formData.get('asset_code') as string) || '').trim();
-    let asset_code = providedAssetCode || await generateNextAssetCodeByPolicy();
+    const quantityRaw = Number.parseInt(String(formData.get('quantity') || '1'), 10);
+    const quantity = Number.isFinite(quantityRaw) ? Math.min(Math.max(quantityRaw, 1), 500) : 1;
+    const sourceProductId = String(formData.get('source_product_id') || '').trim();
+    const deductProductStock = String(formData.get('deduct_product_stock') || '').trim().toLowerCase() === 'true';
     const acquisition_type = normalizeAcquisitionType(String(formData.get('acquisition_type') || ''));
     const acquisition_note = String(formData.get('acquisition_note') || '').trim();
     const opening_accumulated_depreciation = parseFloat(String(formData.get('opening_accumulated_depreciation') || '0')) || 0;
-    const asset_name = formData.get('asset_name') as string;
-    const description = formData.get('description') as string;
-    const category = formData.get('category') as string;
+    const asset_name = String(formData.get('asset_name') || '').trim();
+    const description = String(formData.get('description') || '').trim();
+    const category = String(formData.get('category') || '').trim();
     const purchase_date = new Date(formData.get('purchase_date') as string);
     const purchase_price = parseFloat(formData.get('purchase_price') as string) || 0;
     const useful_life_years = parseInt(formData.get('useful_life_years') as string) || 1;
     const salvage_value = parseFloat(formData.get('salvage_value') as string) || 0;
-    const location = formData.get('location') as string;
+    const location = String(formData.get('location') || '').trim();
     const room_section = ((formData.get('room_section') as string) || '').trim();
-    const status = formData.get('status') as string || 'Active';
-    const vendor = formData.get('vendor') as string;
-    const brand = formData.get('brand') as string;
-    const model = formData.get('model') as string;
-    const serial_number = formData.get('serial_number') as string;
+    const status = String(formData.get('status') || 'Active').trim() || 'Active';
+    const vendor = String(formData.get('vendor') || '').trim();
+    const brand = String(formData.get('brand') || '').trim();
+    const model = String(formData.get('model') || '').trim();
+    const serial_number = String(formData.get('serial_number') || '').trim();
     const imageFile = formData.get('image') as File;
 
-    const policy = await getAssetPolicyFromDb();
-    const policyValidation = validateAssetInputByPolicy(policy, {
-        asset_code,
-        serial_number,
-        status,
-        location,
-    });
-    if (!policyValidation.ok) {
-        throw new Error(policyValidation.error);
+    if (!asset_name) {
+        throw new Error('กรุณาระบุชื่อทรัพย์สิน');
     }
+    if (Number.isNaN(purchase_date.getTime())) {
+        throw new Error('วันที่ซื้อไม่ถูกต้อง');
+    }
+    if (purchase_price < 0) {
+        throw new Error('ราคาซื้อต้องไม่ติดลบ');
+    }
+    if (useful_life_years <= 0) {
+        throw new Error('อายุการใช้งานต้องมากกว่า 0');
+    }
+
+    let sourceProduct: {
+        p_id: string;
+        p_name: string;
+        p_count: number;
+        is_asset: boolean | null;
+    } | null = null;
+    if (sourceProductId) {
+        sourceProduct = await prisma.tbl_products.findUnique({
+            where: { p_id: sourceProductId },
+            select: {
+                p_id: true,
+                p_name: true,
+                p_count: true,
+                is_asset: true,
+            },
+        });
+
+        if (!sourceProduct) {
+            throw new Error('ไม่พบสินค้าต้นทางสำหรับการสร้างทรัพย์สิน');
+        }
+        if (!sourceProduct.is_asset) {
+            throw new Error('สินค้าต้นทางไม่ได้ถูกตั้งค่าเป็นทรัพย์สิน');
+        }
+        if (deductProductStock && sourceProduct.p_count < quantity) {
+            throw new Error(`จำนวนคงเหลือของสินค้าไม่พอ (คงเหลือ ${sourceProduct.p_count}, ต้องการ ${quantity})`);
+        }
+    }
+
+    const policy = await getAssetPolicyFromDb();
 
     let image_url = '';
 
@@ -226,82 +261,150 @@ export async function createAsset(formData: FormData) {
         }
     }
 
-    let lastError: unknown = null;
+    const createdAssetCodes: string[] = [];
+    const placement = formatAssetPlacement(location, room_section);
+    const initialActionType =
+        acquisition_type === 'opening'
+            ? 'OpeningBalance'
+            : acquisition_type === 'purchase'
+                ? 'Purchase'
+                : 'Create';
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-            const asset = await prisma.tbl_assets.create({
-                data: {
-                    asset_code,
-                    asset_name,
-                    description,
-                    category,
-                    purchase_date,
-                    purchase_price,
-                    useful_life_years,
-                    salvage_value,
-                    location,
-                    room_section: room_section || null,
-                    status,
-                    vendor: vendor || null,
-                    brand: brand || null,
-                    model: model || null,
-                    serial_number: serial_number || null,
-                    image_url: image_url || null,
-                },
-            });
+    for (let index = 0; index < quantity; index += 1) {
+        let assetCodeCandidate =
+            quantity === 1 && providedAssetCode
+                ? providedAssetCode
+                : await generateNextAssetCodeByPolicy();
+        const serialCandidate = serial_number
+            ? quantity > 1
+                ? `${serial_number}-${String(index + 1).padStart(3, '0')}`
+                : serial_number
+            : '';
 
-            const placement = formatAssetPlacement(location, room_section);
-            const initialActionType =
-                acquisition_type === 'opening'
-                    ? 'OpeningBalance'
-                    : acquisition_type === 'purchase'
-                        ? 'Purchase'
-                        : 'Create';
-            const initialDescription = [
-                acquisition_type === 'opening'
-                    ? `บันทึกสินทรัพย์ยกมา: ${asset_name} (${asset_code})`
-                    : acquisition_type === 'purchase'
-                        ? `ซื้อสินทรัพย์ใหม่: ${asset_name} (${asset_code})`
-                        : `ลงทะเบียนทรัพย์สินใหม่: ${asset_name} (${asset_code})`,
-                placement ? `Location: ${placement}` : '',
-                acquisition_note ? `หมายเหตุ: ${acquisition_note}` : '',
-                acquisition_type === 'opening' && opening_accumulated_depreciation > 0
-                    ? `ค่าเสื่อมสะสมยกมา: ${formatCurrency(opening_accumulated_depreciation)}`
-                    : '',
-            ].filter(Boolean).join(' | ');
+        const policyValidation = validateAssetInputByPolicy(policy, {
+            asset_code: assetCodeCandidate,
+            serial_number: serialCandidate,
+            status,
+            location,
+        });
+        if (!policyValidation.ok) {
+            throw new Error(policyValidation.error);
+        }
 
-            // Add initial history
-            await prisma.tbl_asset_history.create({
-                data: {
-                    asset_id: asset.asset_id,
-                    action_type: initialActionType,
-                    description: initialDescription,
-                    performed_by: userName,
+        let created = false;
+        let lastCreateError: unknown = null;
+
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+            try {
+                const asset = await prisma.tbl_assets.create({
+                    data: {
+                        asset_code: assetCodeCandidate,
+                        asset_name,
+                        description: description || null,
+                        category,
+                        purchase_date,
+                        purchase_price,
+                        useful_life_years,
+                        salvage_value,
+                        location: location || null,
+                        room_section: room_section || null,
+                        status,
+                        vendor: vendor || null,
+                        brand: brand || null,
+                        model: model || null,
+                        serial_number: serialCandidate || null,
+                        image_url: image_url || null,
+                    },
+                });
+
+                const initialDescription = [
+                    acquisition_type === 'opening'
+                        ? `บันทึกสินทรัพย์ยกมา: ${asset_name} (${assetCodeCandidate})`
+                        : acquisition_type === 'purchase'
+                            ? `ซื้อสินทรัพย์ใหม่: ${asset_name} (${assetCodeCandidate})`
+                            : `ลงทะเบียนทรัพย์สินใหม่: ${asset_name} (${assetCodeCandidate})`,
+                    quantity > 1 ? `Batch: ${index + 1}/${quantity}` : '',
+                    sourceProduct ? `สินค้าต้นทาง: ${sourceProduct.p_id}` : '',
+                    placement ? `Location: ${placement}` : '',
+                    acquisition_note ? `หมายเหตุ: ${acquisition_note}` : '',
+                    acquisition_type === 'opening' && opening_accumulated_depreciation > 0
+                        ? `ค่าเสื่อมสะสมยกมา: ${formatCurrency(opening_accumulated_depreciation)}`
+                        : '',
+                ].filter(Boolean).join(' | ');
+
+                await prisma.tbl_asset_history.create({
+                    data: {
+                        asset_id: asset.asset_id,
+                        action_type: initialActionType,
+                        description: initialDescription,
+                        performed_by: userName,
+                    },
+                });
+
+                createdAssetCodes.push(assetCodeCandidate);
+                created = true;
+                break;
+            } catch (error) {
+                lastCreateError = error;
+                if (isAssetCodeUniqueConstraintError(error)) {
+                    assetCodeCandidate = await generateNextAssetCodeByPolicy();
+                    continue;
                 }
-            });
-
-            revalidatePath('/assets');
-            return;
-        } catch (error) {
-            lastError = error;
-
-            if (isAssetCodeUniqueConstraintError(error)) {
-                asset_code = await generateNextAssetCodeByPolicy();
-                continue;
+                break;
             }
+        }
 
-            break;
+        if (!created) {
+            console.error('Failed to create asset in batch:', lastCreateError);
+            if (isAssetCodeUniqueConstraintError(lastCreateError)) {
+                throw new Error('Asset code already exists. Please try again.');
+            }
+            throw new Error(`สร้างทรัพย์สินไม่สำเร็จ (สำเร็จแล้ว ${createdAssetCodes.length}/${quantity} รายการ)`);
         }
     }
 
-    console.error('Failed to create asset:', lastError);
-    if (isAssetCodeUniqueConstraintError(lastError)) {
-        throw new Error('Asset code already exists. Please try again.');
-    }
-    throw new Error('Failed to create asset');
+    if (sourceProduct && deductProductStock && createdAssetCodes.length > 0) {
+        const stockDeductResult = await prisma.tbl_products.updateMany({
+            where: {
+                p_id: sourceProduct.p_id,
+                p_count: { gte: createdAssetCodes.length },
+            },
+            data: {
+                p_count: { decrement: createdAssetCodes.length },
+                is_asset: true,
+                asset_current_location: location || null,
+            },
+        });
 
-    // Return success - redirect handled by client to avoid NEXT_REDIRECT error
+        if (stockDeductResult.count === 0) {
+            throw new Error('สร้างทรัพย์สินสำเร็จแล้ว แต่ตัดสต็อกสินค้าไม่สำเร็จ เนื่องจากจำนวนคงเหลือเปลี่ยนแปลง');
+        }
+
+        await prisma.tbl_product_movements.create({
+            data: {
+                p_id: sourceProduct.p_id,
+                warehouse_id: null,
+                username: userName,
+                movement_type: 'OUT_ASSET_REGISTER',
+                quantity: createdAssetCodes.length,
+                remarks: `ขึ้นทะเบียนทรัพย์สิน ${createdAssetCodes.length} รายการ (${createdAssetCodes[0]}${createdAssetCodes.length > 1 ? ` ... ${createdAssetCodes[createdAssetCodes.length - 1]}` : ''})`,
+                movement_time: new Date(),
+            },
+        });
+    }
+
+    revalidatePath('/assets');
+    revalidatePath('/assets/new');
+    revalidatePath('/products');
+
+    return {
+        success: true as const,
+        createdCount: createdAssetCodes.length,
+        firstAssetCode: createdAssetCodes[0] || null,
+        lastAssetCode: createdAssetCodes[createdAssetCodes.length - 1] || null,
+        sourceProductId: sourceProduct?.p_id || null,
+        deductedFromProduct: sourceProduct && deductProductStock ? createdAssetCodes.length : 0,
+    };
 }
 
 export async function updateAsset(formData: FormData) {

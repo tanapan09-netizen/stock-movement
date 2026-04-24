@@ -55,6 +55,12 @@ type ZoneOption = {
 
 type AcquisitionType = 'register' | 'purchase' | 'opening';
 
+type SourceProductInfo = {
+    productId: string;
+    productName: string;
+    stockQty: number;
+};
+
 const ROOM_SECTION_PRESETS = [
     'ประตูทางเข้า',
     'พื้นที่นั่งเล่น',
@@ -81,6 +87,8 @@ export default function AssetForm({
     roomReferences = [],
     assetGroups = [],
     acquisitionType = 'register',
+    initialQuantity = 1,
+    sourceProductInfo,
 }: {
     asset?: Asset;
     prefill?: Partial<Asset>;
@@ -88,9 +96,16 @@ export default function AssetForm({
     roomReferences?: AssetRoomReference[];
     assetGroups?: string[];
     acquisitionType?: AcquisitionType;
+    initialQuantity?: number;
+    sourceProductInfo?: SourceProductInfo;
 }) {
     const [isPending, setIsPending] = useState(false);
     const [selectedStatus, setSelectedStatus] = useState(asset?.status || prefill?.status || 'Active');
+    const normalizedInitialQuantity = Number.isFinite(initialQuantity)
+        ? Math.min(Math.max(Math.floor(initialQuantity), 1), 500)
+        : 1;
+    const [registrationQuantity, setRegistrationQuantity] = useState<number>(normalizedInitialQuantity);
+    const [deductSourceStock, setDeductSourceStock] = useState<boolean>(Boolean(sourceProductInfo?.productId));
 
     // Auto-detect image URL format
     const getInitialPreview = (url: string | null | undefined) => {
@@ -108,6 +123,18 @@ export default function AssetForm({
     const effectiveAcquisitionType: AcquisitionType = asset ? 'register' : acquisitionType;
     const initialLocationText = (asset?.location || prefill?.location || '').trim();
     const initialRoomSectionText = (asset?.room_section || prefill?.room_section || '').trim();
+    const purchaseDateDefault = (() => {
+        if (asset?.purchase_date) {
+            return new Date(asset.purchase_date).toISOString().split('T')[0];
+        }
+        if (prefill?.purchase_date) {
+            const parsed = new Date(prefill.purchase_date);
+            if (Number.isFinite(parsed.getTime())) {
+                return parsed.toISOString().split('T')[0];
+            }
+        }
+        return new Date().toISOString().split('T')[0];
+    })();
     const categoryOptions = useMemo(() => {
         const sourceCategories = assetGroups.length > 0 ? assetGroups : DEFAULT_ASSET_CATEGORIES;
         return Array.from(
@@ -251,13 +278,22 @@ export default function AssetForm({
         const formData = new FormData(formRef.current!);
         const assetCode = formData.get('asset_code') as string;
         const assetName = formData.get('asset_name') as string;
+        const quantityValue = Number.parseInt(String(formData.get('quantity') || '1'), 10);
+        const finalQuantity = Number.isFinite(quantityValue)
+            ? Math.min(Math.max(quantityValue, 1), 500)
+            : 1;
+
+        if (!asset?.asset_id && sourceProductInfo && deductSourceStock && finalQuantity > sourceProductInfo.stockQty) {
+            showToast(`จำนวนที่ขึ้นทะเบียนเกินสต็อกคงเหลือ (${sourceProductInfo.stockQty})`, 'error');
+            return;
+        }
 
         // Show confirmation dialog
         const confirmed = await showConfirm({
             title: asset ? 'ยืนยันการแก้ไขข้อมูล' : 'ยืนยันการลงทะเบียนทรัพย์สิน',
             message: asset
                 ? `คุณต้องการบันทึกการแก้ไขข้อมูลทรัพย์สิน "${assetName}" หรือไม่?`
-                : `คุณต้องการลงทะเบียนทรัพย์สินใหม่\nรหัส: ${assetCode}\nชื่อ: ${assetName}\n\nกรุณาตรวจสอบข้อมูลให้ถูกต้องก่อนบันทึก`,
+                : `คุณต้องการลงทะเบียนทรัพย์สินใหม่\nรหัสเริ่มต้น: ${assetCode}\nชื่อ: ${assetName}\nจำนวน: ${finalQuantity} รายการ\n\nกรุณาตรวจสอบข้อมูลให้ถูกต้องก่อนบันทึก`,
             confirmText: 'บันทึก',
             cancelText: 'ยกเลิก',
             type: 'info'
@@ -273,8 +309,22 @@ export default function AssetForm({
                 showToast(`แก้ไขทรัพย์สิน "${assetName}" สำเร็จ`, 'success');
                 router.push(`/assets/${asset.asset_id}`);
             } else {
-                await createAsset(formData);
-                showToast(`ลงทะเบียนทรัพย์สิน "${assetName}" สำเร็จ`, 'success');
+                const result = await createAsset(formData);
+                if (result?.success && result.createdCount > 1) {
+                    const firstCode = result.firstAssetCode || '-';
+                    const lastCode = result.lastAssetCode || '-';
+                    const deductedText =
+                        result.sourceProductId && result.deductedFromProduct > 0
+                            ? ` และตัดสต็อก ${result.deductedFromProduct} ชิ้นจาก ${result.sourceProductId}`
+                            : '';
+                    showToast(`ลงทะเบียนทรัพย์สิน ${result.createdCount} รายการสำเร็จ (${firstCode} ถึง ${lastCode})${deductedText}`, 'success');
+                } else {
+                    const deductedText =
+                        result?.sourceProductId && result.deductedFromProduct > 0
+                            ? ` และตัดสต็อกจาก ${result.sourceProductId}`
+                            : '';
+                    showToast(`ลงทะเบียนทรัพย์สิน "${assetName}" สำเร็จ${deductedText}`, 'success');
+                }
                 router.push('/assets');
             }
         } catch (error) {
@@ -327,6 +377,8 @@ export default function AssetForm({
     return (
         <form ref={formRef} onSubmit={handleSubmit} className="bg-white rounded-lg shadow-lg overflow-hidden">
             <input type="hidden" name="acquisition_type" value={effectiveAcquisitionType} />
+            <input type="hidden" name="source_product_id" value={sourceProductInfo?.productId || ''} />
+            <input type="hidden" name="deduct_product_stock" value={deductSourceStock ? 'true' : 'false'} />
             <div className="p-6 border-b bg-gray-50">
                 <h2 className="text-lg font-bold text-gray-800">
                     {asset
@@ -355,6 +407,11 @@ export default function AssetForm({
                         {!asset && suggestedAssetCode && (
                             <p className="mt-1 text-xs text-gray-500">สร้างรหัสอัตโนมัติตามนโยบายทะเบียนทรัพย์สิน</p>
                         )}
+                        {!asset && registrationQuantity > 1 && (
+                            <p className="mt-1 text-xs text-blue-600">
+                                เมื่อจำนวนมากกว่า 1 ระบบจะสร้างรหัสทรัพย์สินใหม่ให้แต่ละรายการอัตโนมัติ
+                            </p>
+                        )}
                     </div>
                     <FloatingInput
                         label="ชื่อทรัพย์สิน *"
@@ -382,6 +439,41 @@ export default function AssetForm({
                     </div>
                     {!asset && (effectiveAcquisitionType === 'purchase' || effectiveAcquisitionType === 'opening') && (
                         <>
+                            <FloatingInput
+                                label="จำนวนที่ขึ้นทะเบียน *"
+                                type="number"
+                                name="quantity"
+                                min={1}
+                                max={500}
+                                value={registrationQuantity}
+                                onChange={(event) => {
+                                    const nextValue = Number.parseInt(event.target.value, 10);
+                                    if (!Number.isFinite(nextValue)) {
+                                        setRegistrationQuantity(1);
+                                        return;
+                                    }
+                                    setRegistrationQuantity(Math.min(Math.max(nextValue, 1), 500));
+                                }}
+                                className="focus:ring-blue-500/20"
+                                required
+                            />
+                            {sourceProductInfo && (
+                                <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-sm text-indigo-800">
+                                    <div className="font-medium">
+                                        สินค้าต้นทาง: {sourceProductInfo.productId} {sourceProductInfo.productName ? `(${sourceProductInfo.productName})` : ''}
+                                    </div>
+                                    <div className="mt-1">คงเหลือในคลัง: {sourceProductInfo.stockQty.toLocaleString('th-TH')} ชิ้น</div>
+                                    <label className="mt-2 inline-flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={deductSourceStock}
+                                            onChange={(event) => setDeductSourceStock(event.target.checked)}
+                                            className="h-4 w-4 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        <span>ตัดสต็อกสินค้าอัตโนมัติเมื่อบันทึกทรัพย์สิน</span>
+                                    </label>
+                                </div>
+                            )}
                             <div>
                                 <FloatingInput
                                     label={effectiveAcquisitionType === 'opening' ? 'อ้างอิงเอกสารยกมา' : 'อ้างอิงการซื้อ'}
@@ -555,25 +647,46 @@ export default function AssetForm({
                             label="วันที่ซื้อ *"
                             type="date"
                             name="purchase_date"
-                            defaultValue={asset?.purchase_date ? new Date(asset.purchase_date).toISOString().split('T')[0] : ''}
+                            defaultValue={purchaseDateDefault}
                             className="bg-white focus:ring-blue-500/20"
                             required
                         />
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">ราคาซื้อ (บาท) *</label>
-                                <CurrencyInput name="purchase_price" defaultValue={asset ? Number(asset.purchase_price) : 0} required placeholder="0.00" />
+                                <CurrencyInput
+                                    name="purchase_price"
+                                    defaultValue={
+                                        asset
+                                            ? Number(asset.purchase_price)
+                                            : prefill?.purchase_price
+                                                ? Number(prefill.purchase_price)
+                                                : 0
+                                    }
+                                    required
+                                    placeholder="0.00"
+                                />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">ราคาซาก (บาท)</label>
-                                <CurrencyInput name="salvage_value" defaultValue={asset ? Number(asset.salvage_value) : 0} placeholder="0.00" />
+                                <CurrencyInput
+                                    name="salvage_value"
+                                    defaultValue={
+                                        asset
+                                            ? Number(asset.salvage_value)
+                                            : prefill?.salvage_value
+                                                ? Number(prefill.salvage_value)
+                                                : 0
+                                    }
+                                    placeholder="0.00"
+                                />
                             </div>
                         </div>
                         <FloatingInput
                             label="อายุการใช้งาน (ปี) *"
                             type="number"
                             name="useful_life_years"
-                            defaultValue={asset?.useful_life_years || 5}
+                            defaultValue={asset?.useful_life_years || prefill?.useful_life_years || 5}
                             className="bg-white focus:ring-blue-500/20"
                             required
                         />

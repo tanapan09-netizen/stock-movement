@@ -2,12 +2,13 @@
 /* eslint-disable react/no-unescaped-entities */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { FloatingSearchInput } from '@/components/FloatingField';
 import { useToast } from '@/components/ToastProvider';
 import {
-    Search, Plus, CheckCircle2, Clock, AlertCircle, XCircle,
-    Eye, Calendar, MapPin, ShieldCheck, Loader2,
-    X, ClipboardList, LayoutGrid, TableProperties
+    Plus, CheckCircle2, AlertCircle,
+    Eye, Calendar, MapPin, Loader2,
+    X, ClipboardList, LayoutGrid, TableProperties, BarChart3
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
@@ -174,10 +175,9 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
     const canViewGeneralRequest = access.canViewPage;
     const canCreateGeneralRequest = access.canCreate;
     const canEditGeneralRequest = access.canEditPage;
-    const canApproveGeneralRequest = access.canApprove;
-    const canDeleteGeneralRequest = access.canDelete;
     const canAcknowledgeFromGeneralRequest =
         ['employee', 'leader_employee', 'admin', 'manager'].includes(currentRole);
+    const canOpenKpiDashboard = ['admin', 'manager', 'leader_employee'].includes(currentRole);
     // Data
     const [requests, setRequests] = useState<MaintenanceRequestItem[]>([]);
     const [rooms, setRooms] = useState<Room[]>([]);
@@ -811,6 +811,15 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         </div>
 
                         <div className="flex items-center gap-3">
+                            {canOpenKpiDashboard && (
+                                <Link
+                                    href="/general-request/dashboard"
+                                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors font-medium"
+                                >
+                                    <BarChart3 className="w-4 h-4" />
+                                    <span className="hidden sm:inline">Dashboard KPI</span>
+                                </Link>
+                            )}
                             <div className="flex bg-gray-100 p-1 rounded-lg">
                                 <button
                                     onClick={() => setViewMode('grid')}

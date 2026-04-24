@@ -21,6 +21,7 @@ const ROUTE_LABELS: Record<string, string> = {
     '/borrow': 'ยืม/คืนสินค้า',
     '/maintenance': 'งานซ่อมบำรุง',
     '/general-request': 'รับแจ้งซ่อม',
+    '/general-request/dashboard': 'KPI Dashboard',
     '/purchase-request': 'คำขอจัดซื้อ',
     '/purchase-orders': 'ใบสั่งซื้อ',
     '/reports': 'รายงาน',
