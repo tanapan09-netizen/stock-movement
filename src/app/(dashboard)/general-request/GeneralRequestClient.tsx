@@ -25,6 +25,7 @@ import {
 import { getAllVehicles } from '@/actions/vehicleActions';
 import { resolveGeneralRequestAccess } from '@/lib/rbac';
 import { parseMaintenanceImageUrls } from '@/lib/maintenance-images';
+import { hasGeneralRequestOnlyTag } from '@/lib/maintenance-request-scope';
 import {
     GENERAL_REQUEST_CATEGORY_OPTIONS,
     GENERAL_REQUEST_PRIORITY_CONFIG,
@@ -146,15 +147,32 @@ const isFinishedRequestStatus = (status?: string | null) =>
 const isCancelledRequestStatus = (status?: string | null) =>
     normalizeRequestStatus(status) === 'cancelled';
 
-const isInformationalRequestCategory = (category?: string | null) =>
-    INFORMATIONAL_REQUEST_CATEGORIES.has(normalizeRequestCategory(category));
+const isInformationalOnlyRequest = (
+    request: Pick<MaintenanceRequestItem, 'category' | 'tags' | 'status' | 'assigned_to' | 'completed_at'>,
+) => {
+    if (hasGeneralRequestOnlyTag(request.tags)) return true;
 
-const isAcknowledgedInformationalRequest = (request: Pick<MaintenanceRequestItem, 'category' | 'status'>) =>
-    isInformationalRequestCategory(request.category)
-    && isFinishedRequestStatus(request.status);
+    // Backward compatibility for legacy records that might miss the tag.
+    const normalizedCategory = normalizeRequestCategory(request.category);
+    if (!INFORMATIONAL_REQUEST_CATEGORIES.has(normalizedCategory)) return false;
+    if ((request.assigned_to || '').trim()) return false;
+    if (request.completed_at) return false;
+    if (isInProgressRequestStatus(request.status)) return false;
+    if (isFinishedRequestStatus(request.status)) return false;
+    if (isCancelledRequestStatus(request.status)) return false;
+    return true;
+};
 
-const isOperationalFinishedRequest = (request: Pick<MaintenanceRequestItem, 'category' | 'status'>) =>
-    !isInformationalRequestCategory(request.category)
+const isAcknowledgedInformationalRequest = (
+    request: Pick<MaintenanceRequestItem, 'category' | 'tags' | 'status' | 'assigned_to' | 'completed_at'>,
+) =>
+    isInformationalOnlyRequest(request)
+    && (isAcknowledgedRequestStatus(request.status) || isFinishedRequestStatus(request.status));
+
+const isOperationalFinishedRequest = (
+    request: Pick<MaintenanceRequestItem, 'category' | 'tags' | 'status' | 'assigned_to' | 'completed_at'>,
+) =>
+    !isInformationalOnlyRequest(request)
     && isFinishedRequestStatus(request.status);
 
 export default function GeneralRequestClient({ userPermissions }: Props) {
@@ -346,7 +364,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
     const canShowAcknowledgeAction = (request: MaintenanceRequestItem) =>
         canAcknowledgeFromGeneralRequest
-        && isInformationalRequestCategory(request.category)
+        && isInformationalOnlyRequest(request)
         && isPendingRequestStatus(request.status);
 
     const canEditGeneralRequestDetail =
@@ -426,10 +444,13 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
             edit_reason: editReason,
         };
 
-        const changedFields = Object.values(updateData).filter((value) => value !== undefined);
-        if (changedFields.length <= 1) {
-            showToast('ไม่มีข้อมูลที่เปลี่ยนแปลง', 'info');
-            return;
+        const changedFields = Object.entries(updateData)
+            .filter(([key, value]) => key !== 'edit_reason' && value !== undefined);
+
+        // Allow saving with edit reason even when other fields look unchanged.
+        // We submit notes as-is so the server can persist an audit trail entry.
+        if (changedFields.length === 0) {
+            updateData.notes = detailEditForm.notes;
         }
 
         setSavingDetail(true);
@@ -730,7 +751,9 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
         : '';
 
     const pendingCount = requests.filter((request) => isPendingRequestStatus(request.status)).length;
-    const acknowledgedCount = requests.filter((request) => isAcknowledgedRequestStatus(request.status)).length;
+    const acknowledgedCount = requests.filter(
+        (request) => isAcknowledgedRequestStatus(request.status) && !isAcknowledgedInformationalRequest(request),
+    ).length;
     const acknowledgedInfoCount = requests.filter((request) => isAcknowledgedInformationalRequest(request)).length;
     const inProgressCount = requests.filter((request) => isInProgressRequestStatus(request.status)).length;
     const finishedCount = requests.filter((request) => isOperationalFinishedRequest(request)).length;
