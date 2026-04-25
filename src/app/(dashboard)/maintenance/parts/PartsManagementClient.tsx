@@ -1,7 +1,21 @@
 ﻿'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle, Package, Plus, ShieldCheck, Trash2, Undo2, X } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  AlertTriangle,
+  CheckCircle,
+  Clock3,
+  History,
+  LayoutGrid,
+  ListFilter,
+  Package,
+  Plus,
+  ShieldCheck,
+  Trash2,
+  Truck,
+  Undo2,
+  X,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { FloatingSearchInput } from '@/components/FloatingField';
@@ -131,6 +145,8 @@ type ActionDialogState =
       withdrawnBy: string;
     };
 
+type SectionFilter = 'all' | 'pendingQueue' | 'history' | 'withdrawn';
+
 const STATUS_COLORS: Record<string, string> = {
   withdrawn: 'bg-yellow-100 text-yellow-700',
   used: 'bg-blue-100 text-blue-700',
@@ -218,6 +234,7 @@ export default function PartsManagementClient({
   const [returnQty, setReturnQty] = useState(0);
   const [searchText, setSearchText] = useState('');
   const [partStatusFilter, setPartStatusFilter] = useState('all');
+  const [activeSection, setActiveSection] = useState<SectionFilter>('all');
   const [actionDialog, setActionDialog] = useState<ActionDialogState | null>(null);
   const [withdrawForm, setWithdrawForm] = useState<WithdrawFormState>(() =>
     createInitialWithdrawForm(),
@@ -641,6 +658,14 @@ export default function PartsManagementClient({
     setPartStatusFilter('all');
   };
 
+  const quickStatusFilters = [
+    { value: 'all', label: 'ทุกสถานะ' },
+    { value: 'withdrawn', label: 'เบิกแล้ว' },
+    { value: 'pending_verification', label: 'รอตรวจนับ' },
+    { value: 'defective_pending_confirmation', label: 'รอยืนยันของเสีย' },
+    { value: 'completed', label: 'ตัดสต็อกแล้ว' },
+  ] as const;
+
   const filteredPartGroups = Object.values(
     filteredParts.reduce<
       Record<
@@ -678,22 +703,44 @@ export default function PartsManagementClient({
     }),
   );
 
+  const readyToPostCount = withdrawnParts.filter((part) => ['used', 'verified'].includes(part.status)).length;
+  const blockingCount = withdrawnParts.filter((part) =>
+    ['withdrawn', 'pending_verification', 'verification_failed'].includes(part.status)
+    || isDefectivePendingConfirmation(part),
+  ).length;
+
+  const sectionTabs: Array<{
+    key: SectionFilter;
+    label: string;
+    count: number;
+    icon: ReactNode;
+  }> = [
+    { key: 'all', label: 'ภาพรวมทั้งหมด', count: filteredParts.length, icon: <LayoutGrid size={14} /> },
+    { key: 'pendingQueue', label: 'คิวรอคลัง', count: filteredPendingPartRequests.length, icon: <Truck size={14} /> },
+    { key: 'history', label: 'ประวัติคำขอ', count: filteredRecentPartRequests.length, icon: <History size={14} /> },
+    { key: 'withdrawn', label: 'รอยืนยันอะไหล่ในใบงาน', count: filteredParts.length, icon: <Package size={14} /> },
+  ];
+
+  const showPendingQueueSection = activeSection === 'all' || activeSection === 'pendingQueue';
+  const showHistorySection = activeSection === 'all' || activeSection === 'history';
+  const showWithdrawnSection = activeSection === 'all' || activeSection === 'withdrawn';
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white">
+        <div className="space-y-1">
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900 dark:text-white">
             <Package className="text-orange-500" />
             จัดการอะไหล่งานซ่อม
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-slate-600 dark:text-slate-400">
             เบิก จ่าย คืน และตัดสต็อกอะไหล่ของงานซ่อม โดยแยกตามเลขแจ้งซ่อมแต่ละใบงาน
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
             href="/maintenance"
-            className="rounded-lg border px-4 py-2 hover:bg-gray-50 dark:hover:bg-slate-700"
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
           >
             กลับหน้าแจ้งซ่อม
           </Link>
@@ -703,7 +750,7 @@ export default function PartsManagementClient({
                 setWithdrawForm(createInitialWithdrawForm(session?.user?.name || ''));
                 setShowWithdrawForm(true);
               }}
-              className="flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-white hover:bg-orange-700"
+              className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-700"
             >
               <Plus size={18} />
               {withdrawHeaderButtonLabel}
@@ -712,7 +759,7 @@ export default function PartsManagementClient({
           {canDirectStockActions ? (
             <button
               onClick={handleClearReserved}
-              className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+              className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700"
             >
               <Undo2 size={18} />
               เคลียร์รายการค้าง
@@ -721,37 +768,71 @@ export default function PartsManagementClient({
         </div>
       </div>
 
-      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-900/20">
-          <div className="flex items-start gap-3 text-sm text-blue-700 dark:text-blue-300">
-            <AlertTriangle className="mt-0.5 text-blue-500" size={20} />
-            <div className="space-y-1">
-              <p>
-                {canDirectWithdraw
-                  ? 'หน้านี้รองรับการเบิกอะไหล่จากคลังโดยตรงและคืนเข้าสต็อก'
-                  : 'ช่างทำเรื่องเบิกได้จากหน้านี้ โดยระบบจะส่งคำขอไปที่ store ก่อนทุกครั้ง'}
-              </p>
-              
-            </div>
+      <div className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50 p-4 dark:border-blue-800 dark:from-blue-900/20 dark:to-cyan-900/20">
+        <div className="flex items-start gap-3 text-sm text-blue-800 dark:text-blue-300">
+          <AlertTriangle className="mt-0.5 text-blue-500" size={20} />
+          <div className="space-y-1">
+            <p className="font-medium">
+              {canDirectWithdraw
+                ? 'คลังสามารถเบิก/คืนอะไหล่ได้โดยตรงจากหน้านี้'
+                : 'ช่างสามารถส่งคำขอเบิกอะไหล่ และรอคลังยืนยันพร้อมจ่ายได้จากหน้านี้'}
+            </p>
+            <p className="text-blue-700/90 dark:text-blue-300/90">
+              ลำดับงานแนะนำ: สร้างคำขอ → คลังยืนยัน → เบิกใช้งาน → ตรวจนับ/ยืนยันของเสีย → ตัดสต็อก
+            </p>
           </div>
         </div>
+      </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-8">
         {[
-          { label: 'รอคลังยืนยัน', value: partRequestSummary.pending, className: 'bg-amber-50 text-amber-700' },
-          { label: 'พร้อมจ่ายแล้ว', value: partRequestSummary.approved, className: 'bg-emerald-50 text-emerald-700' },
-          { label: 'ไม่พร้อมจ่าย', value: partRequestSummary.rejected, className: 'bg-rose-50 text-rose-700' },
-          { label: 'รอตรวจนับ', value: partRequestSummary.pendingVerification, className: 'bg-blue-50 text-blue-700' },
-          { label: 'รอยืนยันของเสีย', value: partRequestSummary.pendingDefective, className: 'bg-rose-50 text-rose-700' },
-          { label: 'ค้างคืน/รอใช้จริง', value: partRequestSummary.withdrawn, className: 'bg-slate-100 text-slate-700' },
+          { label: 'รอคลังยืนยัน', value: partRequestSummary.pending, className: 'border-amber-200 bg-amber-50 text-amber-800' },
+          { label: 'พร้อมจ่ายแล้ว', value: partRequestSummary.approved, className: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
+          { label: 'ไม่พร้อมจ่าย', value: partRequestSummary.rejected, className: 'border-rose-200 bg-rose-50 text-rose-800' },
+          { label: 'รอตรวจนับ', value: partRequestSummary.pendingVerification, className: 'border-blue-200 bg-blue-50 text-blue-800' },
+          { label: 'รอยืนยันของเสีย', value: partRequestSummary.pendingDefective, className: 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800' },
+          { label: 'ค้างคืน/รอใช้จริง', value: partRequestSummary.withdrawn, className: 'border-slate-200 bg-slate-100 text-slate-800' },
+          { label: 'พร้อมตัดสต็อก', value: readyToPostCount, className: 'border-green-200 bg-green-50 text-green-800' },
+          { label: 'ติดเงื่อนไขค้าง', value: blockingCount, className: 'border-orange-200 bg-orange-50 text-orange-800' },
         ].map((item) => (
-          <div key={item.label} className={`rounded-xl p-4 shadow-sm ${item.className}`}>
+          <div key={item.label} className={`rounded-2xl border p-4 shadow-sm ${item.className}`}>
             <div className="text-2xl font-bold">{item.value}</div>
-            <div className="text-sm">{item.label}</div>
+            <div className="text-sm font-medium">{item.label}</div>
           </div>
         ))}
       </div>
 
-      <div className="rounded-xl bg-white p-4 shadow-sm dark:bg-slate-800 space-y-3">
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+        <div className="flex flex-wrap gap-2">
+          {sectionTabs.map((tab) => {
+            const isActive = activeSection === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveSection(tab.key)}
+                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                  isActive
+                    ? 'border-blue-500 bg-blue-600 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+                <span className={`rounded-full px-2 py-0.5 text-xs ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200'}`}>
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <ListFilter size={16} />
+          ตัวกรองรายการอะไหล่
+        </div>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <FloatingSearchInput
             type="text"
@@ -791,12 +872,30 @@ export default function PartsManagementClient({
             </button>
           ) : null}
         </div>
-        <div className="text-sm text-gray-500 dark:text-gray-400">
+        <div className="flex flex-wrap gap-2">
+          {quickStatusFilters.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => setPartStatusFilter(item.value)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                partStatusFilter === item.value
+                  ? 'border-blue-500 bg-blue-600 text-white'
+                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+          <Clock3 size={14} />
           คิวรอคลัง {filteredPendingPartRequests.length} รายการ • รอยืนยันของเสีย {partRequestSummary.pendingDefective} รายการ • ประวัติล่าสุด {filteredRecentPartRequests.length} รายการ • อะไหล่ในใบงาน {filteredParts.length} รายการ
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl bg-white shadow-sm dark:bg-slate-800">
+      {showPendingQueueSection ? (
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
         <div className="flex items-center justify-between border-b p-4 dark:border-slate-700">
           <div>
             <h2 className="flex items-center gap-2 font-semibold">
@@ -959,8 +1058,10 @@ export default function PartsManagementClient({
           </div>
         )}
       </div>
+      ) : null}
 
-      <div className="overflow-hidden rounded-xl bg-white shadow-sm dark:bg-slate-800">
+      {showHistorySection ? (
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
         <div className="flex items-center justify-between border-b p-4 dark:border-slate-700">
           <div>
             <h2 className="font-semibold">สถานะคำขอเบิกล่าสุด</h2>
@@ -1021,8 +1122,10 @@ export default function PartsManagementClient({
           </div>
         )}
       </div>
+      ) : null}
 
-      <div className="overflow-hidden rounded-xl bg-white shadow-sm dark:bg-slate-800">
+      {showWithdrawnSection ? (
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
         <div className="flex items-center justify-between border-b p-4 dark:border-slate-700">
           <h2 className="flex items-center gap-2 font-semibold">
             <Package size={18} />
@@ -1184,6 +1287,7 @@ export default function PartsManagementClient({
           </div>
         )}
       </div>
+      ) : null}
 
       {showWithdrawForm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
