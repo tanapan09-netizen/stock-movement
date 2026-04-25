@@ -16,6 +16,7 @@ import {
 import { auth } from '@/auth';
 import { getMaintenanceRequests } from '@/actions/maintenanceActions';
 import { GENERAL_REQUEST_CATEGORY_OPTIONS, GENERAL_REQUEST_PRIORITY_CONFIG } from '@/lib/general-request-options';
+import { GENERAL_REQUEST_FORWARDED_BY_TAG_PREFIX } from '@/lib/maintenance-request-scope';
 import { resolveGeneralRequestAccess } from '@/lib/rbac';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { prisma } from '@/lib/prisma';
@@ -43,11 +44,13 @@ type GeneralRequestRow = {
     request_id: number;
     request_number: string;
     title: string;
+    description?: string | null;
     category: string | null;
     priority: string;
     status: string;
     reported_by: string;
     department: string | null;
+    tags?: string | null;
     created_at: Date | string;
     updated_at: Date | string;
     completed_at: Date | string | null;
@@ -123,6 +126,49 @@ function buildIdentityKeys(value?: string | null): string[] {
     }
 
     return [normalized, sanitized];
+}
+
+function extractForwardedByFromTags(tags?: string | null): string | null {
+    if (!tags) return null;
+    const token = tags
+        .split(',')
+        .map((item) => item.trim())
+        .find((item) => item.toLowerCase().startsWith(GENERAL_REQUEST_FORWARDED_BY_TAG_PREFIX));
+    if (!token) return null;
+    const forwardedBy = token.slice(GENERAL_REQUEST_FORWARDED_BY_TAG_PREFIX.length).trim();
+    return forwardedBy || null;
+}
+
+function extractForwardedByFromDescription(description?: string | null): string | null {
+    if (!description) return null;
+    const text = description.replace(/\r/g, ' ').trim();
+    if (!text) return null;
+
+    const thaiMatch = text.match(/ดำเนินการโดย:\s*([^|\n]+)/i);
+    if (thaiMatch?.[1]) return thaiMatch[1].trim();
+
+    const englishMatch = text.match(/forwarded\s*by:\s*([^|\n]+)/i);
+    if (englishMatch?.[1]) return englishMatch[1].trim();
+
+    return null;
+}
+
+function buildForwardedByIdentityKeys(value?: string | null): string[] {
+    const raw = (value || '').trim();
+    if (!raw) return [];
+    const normalized = normalizeIdentityKey(raw);
+    if (!normalized) return [];
+
+    const keys = new Set<string>(buildIdentityKeys(raw));
+    const withSpaces = normalized.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+    const noUnderscore = normalized.replace(/_/g, '');
+    for (const key of buildIdentityKeys(withSpaces)) {
+        keys.add(key);
+    }
+    if (noUnderscore) {
+        keys.add(noUnderscore);
+    }
+    return Array.from(keys);
 }
 
 function isPendingStatus(status?: string | null): boolean {
@@ -373,12 +419,25 @@ export default async function GeneralRequestKpiDashboardPage({ searchParams }: P
     }
 
     const employeeDepartmentMatrix = new Map<string, Map<string, number>>();
+    let forwardedByEmployeeCount = 0;
+    let reporterEmployeeCount = 0;
     for (const request of allTimeRequests) {
-        const reporterKeys = buildIdentityKeys(request.reported_by);
-        const employeeName = reporterKeys
+        const forwardedByActor = extractForwardedByFromTags(request.tags)
+            || extractForwardedByFromDescription(request.description);
+        const forwardedByEmployeeName = buildForwardedByIdentityKeys(forwardedByActor)
             .map((key) => employeeIdentityMap.get(key))
             .find((name): name is string => Boolean(name));
+        const reporterEmployeeName = buildIdentityKeys(request.reported_by)
+            .map((key) => employeeIdentityMap.get(key))
+            .find((name): name is string => Boolean(name));
+        const employeeName = forwardedByEmployeeName || reporterEmployeeName;
         if (!employeeName) continue;
+
+        if (forwardedByEmployeeName) {
+            forwardedByEmployeeCount += 1;
+        } else {
+            reporterEmployeeCount += 1;
+        }
 
         const departmentLabel = (request.department || '').trim() || 'ไม่ระบุฝ่าย';
         const departmentMap = employeeDepartmentMatrix.get(employeeName) || new Map<string, number>();
@@ -632,7 +691,7 @@ export default async function GeneralRequestKpiDashboardPage({ searchParams }: P
                     <div>
                         <h2 className="text-base font-semibold text-slate-900">ผลงานการส่งงานของพนักงาน (role employee)</h2>
                         <p className="mt-1 text-sm text-slate-600">
-                            นับสะสมจากข้อมูลทั้งหมดในระบบของผู้แจ้งที่เป็น role employee ว่าส่งงานไปแต่ละฝ่ายกี่งาน
+                            นับสะสมจากข้อมูลทั้งหมด โดยใช้ทั้งผู้แจ้ง (reported_by) และผู้ดำเนินการส่งต่อ (forwarded_by / ดำเนินการโดย)
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -641,6 +700,12 @@ export default async function GeneralRequestKpiDashboardPage({ searchParams }: P
                         </span>
                         <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 font-semibold text-cyan-700">
                             งานจากพนักงานทั้งหมด: {formatNumber(totalEmployeeSubmittedRequests)} งาน
+                        </span>
+                        <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 font-semibold text-violet-700">
+                            จากผู้ดำเนินการส่งต่อ: {formatNumber(forwardedByEmployeeCount)} งาน
+                        </span>
+                        <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 font-semibold text-slate-700">
+                            จากผู้แจ้งโดยตรง: {formatNumber(reporterEmployeeCount)} งาน
                         </span>
                     </div>
                 </div>
