@@ -5,7 +5,10 @@ import { getUserPermissionContext } from '@/lib/server/permission-service';
 import { resolveAuthenticatedUserId } from '@/lib/server/auth-user';
 import { normalizeRole } from '@/lib/roles';
 import type { Prisma } from '@prisma/client';
-import { GENERAL_REQUEST_ONLY_TAG } from '@/lib/maintenance-request-scope';
+import {
+    GENERAL_REQUEST_FORWARDED_BY_TAG_PREFIX,
+    GENERAL_REQUEST_ONLY_TAG,
+} from '@/lib/maintenance-request-scope';
 import {
     canViewBorrowNotifications,
     canViewGeneralMaintenanceNotifications,
@@ -193,6 +196,7 @@ export async function GET(request: Request) {
                     OR: [
                         { tags: null },
                         { NOT: { tags: { contains: GENERAL_REQUEST_ONLY_TAG } } },
+                        { tags: { contains: GENERAL_REQUEST_FORWARDED_BY_TAG_PREFIX } },
                     ],
                 }],
             };

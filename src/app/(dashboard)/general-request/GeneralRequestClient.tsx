@@ -25,7 +25,7 @@ import {
 import { getAllVehicles } from '@/actions/vehicleActions';
 import { resolveGeneralRequestAccess } from '@/lib/rbac';
 import { parseMaintenanceImageUrls } from '@/lib/maintenance-images';
-import { hasGeneralRequestOnlyTag } from '@/lib/maintenance-request-scope';
+import { hasGeneralRequestForwardedByTag, hasGeneralRequestOnlyTag } from '@/lib/maintenance-request-scope';
 import {
     GENERAL_REQUEST_CATEGORY_OPTIONS,
     GENERAL_REQUEST_PRIORITY_CONFIG,
@@ -150,7 +150,9 @@ const isCancelledRequestStatus = (status?: string | null) =>
 const isInformationalOnlyRequest = (
     request: Pick<MaintenanceRequestItem, 'category' | 'tags' | 'status' | 'assigned_to' | 'completed_at'>,
 ) => {
-    if (hasGeneralRequestOnlyTag(request.tags)) return true;
+    if (hasGeneralRequestOnlyTag(request.tags)) {
+        return !hasGeneralRequestForwardedByTag(request.tags);
+    }
 
     // Backward compatibility for legacy records that might miss the tag.
     const normalizedCategory = normalizeRequestCategory(request.category);

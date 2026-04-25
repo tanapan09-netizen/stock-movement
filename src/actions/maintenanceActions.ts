@@ -10,8 +10,11 @@ import { uploadFile } from '@/lib/gcs';
 import { notifyRoleViaLine, sendLineMessage, sendLineNotify } from '@/lib/lineNotify';
 import { appendCopiedImageMetadataTags, parseMaintenanceImageUrls } from '@/lib/maintenance-images';
 import {
+    GENERAL_REQUEST_FORWARDED_BY_TAG_PREFIX,
     GENERAL_REQUEST_ONLY_TAG,
+    hasGeneralRequestForwardedByTag,
     hasGeneralRequestOnlyTag,
+    markGeneralRequestForwardedBy,
     markAsGeneralRequestOnly,
     unmarkGeneralRequestOnly,
 } from '@/lib/maintenance-request-scope';
@@ -106,11 +109,18 @@ function isGeneralRequestRecord(entry: { category?: string | null; tags?: string
     return hasGeneralRequestOnlyTag(entry.tags) || (entry.category || '').trim().toLowerCase() === 'general';
 }
 
+function isGeneralRequestInformationalOnlyRecord(entry: { category?: string | null; tags?: string | null }) {
+    if (hasGeneralRequestOnlyTag(entry.tags) && hasGeneralRequestForwardedByTag(entry.tags)) {
+        return false;
+    }
+    return isGeneralRequestRecord(entry);
+}
+
 function isAcknowledgedGeneralRequestRecord(entry: { status?: string | null; category?: string | null; tags?: string | null }) {
     const normalizedStatus = normalizeMaintenanceWorkflowStatus(entry.status);
     if (!normalizedStatus) return false;
     return ACKNOWLEDGED_GENERAL_REQUEST_STATUS_SET.has(normalizedStatus)
-        && isGeneralRequestRecord(entry);
+        && isGeneralRequestInformationalOnlyRecord(entry);
 }
 
 function buildExcludeGeneralRequestOnlyWhere(): Prisma.tbl_maintenance_requestsWhereInput {
@@ -118,6 +128,7 @@ function buildExcludeGeneralRequestOnlyWhere(): Prisma.tbl_maintenance_requestsW
         OR: [
             { tags: null },
             { NOT: { tags: { contains: GENERAL_REQUEST_ONLY_TAG } } },
+            { tags: { contains: GENERAL_REQUEST_FORWARDED_BY_TAG_PREFIX } },
         ],
     };
 }
@@ -842,19 +853,22 @@ export async function createMaintenanceRequest(formData: FormData) {
 
         const existingSourceImageUrls = parseMaintenanceImageUrls(sourceRequest?.image_url);
         const finalImageUrls = Array.from(new Set([...existingSourceImageUrls, ...sourceImageUrls, ...uploadedImageUrls]));
+        const actorName = authContext.session.user.name || reported_by || 'System';
         let finalTags = appendCopiedImageMetadataTags(
             tags || sourceRequest?.tags || null,
             Number.isFinite(sourceRequestId ?? NaN) ? sourceRequestId : null,
             Number.isFinite(sourceImageCount) ? sourceImageCount : 0,
         );
-        if (isGeneralOnlyScope && !sourceRequest?.request_id) {
+        if (isGeneralOnlyScope || sourceRequest?.request_id) {
             finalTags = markAsGeneralRequestOnly(finalTags);
-        } else if (sourceRequest?.request_id) {
+        } else {
             finalTags = unmarkGeneralRequestOnly(finalTags);
+        }
+        if (sourceRequest?.request_id) {
+            finalTags = markGeneralRequestForwardedBy(finalTags, actorName);
         }
 
         const initialStatus = isGeneralOnlyScope && !sourceRequest?.request_id ? 'pending' : 'approved';
-        const actorName = authContext.session.user.name || reported_by || 'System';
         const dispatchContext = sourceRequest?.request_id
             ? [
                 '[ส่งต่อจากรับเรื่อง]',
