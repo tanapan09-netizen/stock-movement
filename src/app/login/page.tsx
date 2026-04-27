@@ -302,7 +302,7 @@ export default function LoginPage() {
                                             key={option.locale}
                                             type="button"
                                             onClick={() => setLocale(option.locale)}
-                                            aria-pressed={isActive.toString()}
+                                            aria-pressed={isActive}
                                             className={`flex min-w-[92px] snap-start items-center justify-center gap-2 rounded-xl border px-3 py-2 transition-all ${isActive
                                                 ? 'border-cyan-300 bg-cyan-50 text-cyan-800 shadow-sm'
                                                 : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
