@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendMulticastMessage } from '@/lib/notifications/lineMessaging';
+import { sendConfiguredLineGroupTextNotification } from '@/lib/notifications/lineGroup';
 import { getSummaryLineIdsByRoles } from '@/actions/lineUserActions';
 
 export const dynamic = 'force-dynamic';
@@ -264,13 +265,26 @@ export async function GET(request: Request) {
 
         const targetIds = await getSummaryLineIdsByRoles(selectedRoles);
 
+        let groupRecipients = 0;
+
+        let individualRecipients = 0;
         if (targetIds.length > 0) {
             const result = await sendMulticastMessage(targetIds, message);
             if (!result.success) {
                 console.error('[Cron] Failed to send manager LINE summary:', result.error);
                 return NextResponse.json({ error: 'Failed to send LINE message', details: result.error }, { status: 500 });
             }
+            individualRecipients = targetIds.length;
+        } else {
+            console.log('[Cron] No active LINE users found for selected summary roles.');
+        }
 
+        const groupResult = await sendConfiguredLineGroupTextNotification(message.text);
+        if (groupResult.success) {
+            groupRecipients = groupResult.pushSuccess + (groupResult.notifySuccess ? 1 : 0);
+        }
+
+        if (individualRecipients > 0 || groupRecipients > 0) {
             await prisma.tbl_system_settings.upsert({
                 where: { setting_key: 'manager_line_summary_last_sent_date' },
                 update: {
@@ -282,8 +296,6 @@ export async function GET(request: Request) {
                     setting_value: todayKey,
                 },
             });
-        } else {
-            console.log('[Cron] No active LINE users found for selected summary roles.');
         }
 
         return NextResponse.json({
@@ -293,7 +305,8 @@ export async function GET(request: Request) {
             selectedRoles,
             sendTime: summaryTime.label,
             stats: topicStats,
-            recipients: targetIds.length,
+            recipients: individualRecipients,
+            groupRecipients,
             forced: forceSend,
         });
     } catch (error) {

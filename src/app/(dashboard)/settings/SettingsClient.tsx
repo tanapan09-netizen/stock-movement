@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Settings, Save, Bell, RefreshCw, AlertTriangle, CheckCircle, XCircle, X, Download } from 'lucide-react';
-import { getSystemSettings, updateSystemSetting } from '@/actions/settingActions';
+import { type ReactNode, useEffect, useState } from 'react';
+import { Settings, Save, Bell, RefreshCw, AlertTriangle, CheckCircle, XCircle, Download } from 'lucide-react';
+import { getSystemSettings, sendTestLineGroupNotification, updateSystemSetting } from '@/actions/settingActions';
 import { performBackup, restoreDatabase, getBackupsList } from '@/actions/backupActions';
 import { ROLE_OPTIONS } from '@/lib/roles';
 
@@ -14,6 +14,12 @@ interface BackupFile {
 
 type ManagerSummaryTopic = 'maintenance_pending' | 'part_requests_pending' | 'low_stock';
 type ManagerSummaryRole = string;
+type DiscoveredLineGroup = {
+    id: string;
+    name: string | null;
+    sourceType: 'group' | 'room';
+    lastEventAt: string;
+};
 
 const MANAGER_SUMMARY_ROLE_OPTIONS = ROLE_OPTIONS.map((role) => ({
     value: role.value,
@@ -70,6 +76,40 @@ function parseManagerSummaryRoles(rawValue?: string): Set<ManagerSummaryRole> {
         .filter((value) => allowedRoleSet.has(value));
 
     return new Set(roles.length > 0 ? roles : defaultRoles);
+}
+
+function parseLineGroupTargetIds(rawValue?: string): string[] {
+    if (!rawValue || rawValue.trim() === '') return [];
+
+    return Array.from(
+        new Set(
+            rawValue
+                .split(/[\n,]+/)
+                .map((value) => value.trim())
+                .filter((value) => value.length > 0),
+        ),
+    );
+}
+
+function parseDiscoveredLineGroups(rawValue?: string): DiscoveredLineGroup[] {
+    if (!rawValue || rawValue.trim() === '') return [];
+
+    try {
+        const parsed = JSON.parse(rawValue) as Array<Partial<DiscoveredLineGroup>>;
+        if (!Array.isArray(parsed)) return [];
+
+        return parsed
+            .map((entry) => ({
+                id: String(entry.id || '').trim(),
+                name: entry.name ? String(entry.name) : null,
+                sourceType: (entry.sourceType === 'room' ? 'room' : 'group') as 'group' | 'room',
+                lastEventAt: String(entry.lastEventAt || ''),
+            }))
+            .filter((entry) => entry.id.length > 0);
+    } catch (error) {
+        console.error('Failed to parse discovered LINE groups:', error);
+        return [];
+    }
 }
 
 // Modal Components
@@ -189,6 +229,86 @@ const StatusModal = ({ isOpen, onClose, type, message }: any) => {
     );
 };
 
+type ToggleSwitchProps = {
+    checked: boolean;
+    onChange: (checked: boolean) => void;
+    ariaLabel: string;
+};
+
+function ToggleSwitch({ checked, onChange, ariaLabel }: ToggleSwitchProps) {
+    return (
+        <label className="relative inline-flex items-center cursor-pointer">
+            <input
+                type="checkbox"
+                aria-label={ariaLabel}
+                className="sr-only peer"
+                checked={checked}
+                onChange={(e) => onChange(e.target.checked)}
+            />
+            <div className="h-6 w-11 rounded-full bg-gray-200 transition peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white dark:bg-gray-700 dark:border-gray-600 dark:peer-focus:ring-blue-800" />
+        </label>
+    );
+}
+
+type QuickAccessCardProps = {
+    title: string;
+    description: string;
+    href: string;
+    badge?: string;
+};
+
+function QuickAccessCard({ title, description, href, badge }: QuickAccessCardProps) {
+    return (
+        <button
+            type="button"
+            onClick={() => {
+                window.location.href = href;
+            }}
+            className="group flex h-full w-full flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg hover:shadow-blue-100"
+        >
+            <div className="flex items-start justify-between gap-3">
+                <div className="text-base font-semibold text-slate-900">{title}</div>
+                <span className="text-sm font-medium text-blue-600 transition-transform duration-200 group-hover:translate-x-1">Go</span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
+            {badge ? (
+                <span className="mt-4 inline-flex w-fit rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                    {badge}
+                </span>
+            ) : null}
+        </button>
+    );
+}
+
+type SettingsSectionCardProps = {
+    id?: string;
+    title: string;
+    description: string;
+    icon: ReactNode;
+    children: ReactNode;
+};
+
+function SettingsSectionCard({ id, title, description, icon, children }: SettingsSectionCardProps) {
+    return (
+        <section id={id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70">
+            <div className="mb-5 flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+                <div>
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+                            {icon}
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
+                            <p className="mt-1 text-sm text-slate-500">{description}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {children}
+        </section>
+    );
+}
+
 export default function SettingsClient() {
     const [settings, setSettings] = useState<Record<string, string>>({});
     const [backups, setBackups] = useState<BackupFile[]>([]);
@@ -196,6 +316,7 @@ export default function SettingsClient() {
     const [saving, setSaving] = useState(false);
     const [backingUp, setBackingUp] = useState(false);
     const [restoring, setRestoring] = useState(false);
+    const [testingLineGroup, setTestingLineGroup] = useState(false);
 
     // Modal States
     const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; filename: string }>({ isOpen: false, filename: '' });
@@ -205,6 +326,11 @@ export default function SettingsClient() {
     const customerRegisterPublicUrl = customerRegisterLiffId
         ? `https://liff.line.me/${customerRegisterLiffId}`
         : (typeof window !== 'undefined' ? `${window.location.origin}/line/customer-register` : '/line/customer-register');
+    const repairRequestLiffId =
+        process.env.NEXT_PUBLIC_LINE_LIFF_REPAIR_REQUEST_ID || '';
+    const repairRequestPublicUrl = repairRequestLiffId
+        ? `https://liff.line.me/${repairRequestLiffId}`
+        : (typeof window !== 'undefined' ? `${window.location.origin}/line/repair-request` : '/line/repair-request');
 
     async function loadData() {
         setLoading(true);
@@ -293,6 +419,53 @@ export default function SettingsClient() {
     const managerSummarySendTime = settings['manager_line_summary_time'] || '09:00';
     const selectedManagerSummaryTopics = parseManagerSummaryTopics(settings['manager_line_summary_topics']);
     const selectedManagerSummaryRoles = parseManagerSummaryRoles(settings['manager_line_summary_roles']);
+    const customerRegisterEnabled = settings['customer_register_enabled'] === 'true';
+    const customerRepairRequestEnabled = settings['customer_repair_request_enabled'] === 'true';
+    const activeCustomerServiceCount = Number(customerRegisterEnabled) + Number(customerRepairRequestEnabled);
+    const lineGroupNotificationsEnabled = settings['line_group_notifications_enabled'] === 'true';
+    const lineGroupNotifyEnabled = settings['line_group_notify_enabled'] === 'true';
+    const lineGroupTargetIds = parseLineGroupTargetIds(settings['line_group_target_ids']);
+    const discoveredLineGroups = parseDiscoveredLineGroups(settings['line_group_registry_json']);
+
+    function scrollToSection(sectionId: string) {
+        document.getElementById(sectionId)?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+        });
+    }
+
+    async function saveLineGroupTargetIds(nextIds: string[]) {
+        const normalized = Array.from(
+            new Set(
+                nextIds
+                    .map((value) => value.trim())
+                    .filter((value) => value.length > 0),
+            ),
+        );
+        const nextValue = normalized.join('\n');
+        setSettings((prev) => ({ ...prev, line_group_target_ids: nextValue }));
+        await handleSave('line_group_target_ids', nextValue);
+    }
+
+    function toggleLineGroupTarget(targetId: string) {
+        const nextIds = lineGroupTargetIds.includes(targetId)
+            ? lineGroupTargetIds.filter((id) => id !== targetId)
+            : [...lineGroupTargetIds, targetId];
+
+        void saveLineGroupTargetIds(nextIds);
+    }
+
+    async function handleTestLineGroup() {
+        setTestingLineGroup(true);
+        const result = await sendTestLineGroupNotification();
+        setTestingLineGroup(false);
+
+        setStatusModal({
+            isOpen: true,
+            type: result.success ? 'success' : 'error',
+            message: result.message || (result.success ? 'ส่งทดสอบสำเร็จ' : 'ส่งทดสอบไม่สำเร็จ'),
+        });
+    }
 
     async function saveManagerSummaryTopics(nextTopics: Set<ManagerSummaryTopic>) {
         const orderedTopics = MANAGER_SUMMARY_TOPIC_OPTIONS
@@ -391,7 +564,156 @@ export default function SettingsClient() {
                 <Settings className="text-gray-600" /> ตั้งค่าระบบ
             </h1>
 
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6 space-y-6">
+            <section className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-cyan-50 shadow-sm shadow-cyan-100/60">
+                <div className="grid gap-6 p-6 lg:grid-cols-[1.5fr_1fr] lg:p-8">
+                    <div>
+                        <h2 className="text-3xl font-bold text-slate-900">System Settings</h2>
+                        <p className="mt-2 text-sm text-slate-500">จัดหมวดการตั้งค่าใหม่ให้หาง่ายขึ้น และควบคุมบริการที่หน้าเข้าสู่ระบบได้จากจุดเดียว</p>
+
+                        <div className="mt-6 flex flex-wrap gap-3">
+                            <button
+                                type="button"
+                                onClick={() => scrollToSection('customer-services-section')}
+                                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-blue-300 hover:text-blue-700"
+                            >
+                                บริการลูกค้า
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => scrollToSection('company-section')}
+                                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-blue-300 hover:text-blue-700"
+                            >
+                                ข้อมูลบริษัท
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => scrollToSection('notification-section')}
+                                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-blue-300 hover:text-blue-700"
+                            >
+                                การแจ้งเตือน
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => scrollToSection('database-section')}
+                                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-blue-300 hover:text-blue-700"
+                            >
+                                ฐานข้อมูล
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+                        <div className="rounded-2xl border border-emerald-200 bg-white/90 p-4">
+                            <div className="text-xs font-medium uppercase tracking-[0.2em] text-emerald-600">Customer Services</div>
+                            <div className="mt-2 text-3xl font-bold text-slate-900">{activeCustomerServiceCount}/2</div>
+                            <div className="mt-1 text-sm text-slate-500">ปุ่มที่เปิดใช้งานบนหน้าเข้าสู่ระบบ</div>
+                        </div>
+                        <div className="rounded-2xl border border-blue-200 bg-white/90 p-4">
+                            <div className="text-xs font-medium uppercase tracking-[0.2em] text-blue-600">Line Summary</div>
+                            <div className="mt-2 text-xl font-bold text-slate-900">{managerSummaryEnabled ? 'ON' : 'OFF'}</div>
+                            <div className="mt-1 text-sm text-slate-500">เวลาที่ตั้งไว้ {managerSummarySendTime}</div>
+                        </div>
+                        <div className="rounded-2xl border border-amber-200 bg-white/90 p-4">
+                            <div className="text-xs font-medium uppercase tracking-[0.2em] text-amber-600">Backups</div>
+                            <div className="mt-2 text-3xl font-bold text-slate-900">{backups.length}</div>
+                            <div className="mt-1 text-sm text-slate-500">ไฟล์สำรองข้อมูลพร้อมใช้งาน</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <SettingsSectionCard
+                id="customer-services-section"
+                title="บริการลูกค้าบนหน้าเข้าสู่ระบบ"
+                description="เปิดหรือปิด 2 ปุ่มสำหรับลูกค้าที่แสดงในหน้า Login ได้จากที่นี่"
+                icon={<Settings size={20} />}
+            >
+                <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <h3 className="text-base font-semibold text-slate-900">ลงทะเบียนลูกค้า</h3>
+                                <p className="mt-1 text-sm text-slate-600">ควบคุมปุ่มลงทะเบียนสำหรับลูกค้าที่หน้าเข้าสู่ระบบ</p>
+                            </div>
+                            <ToggleSwitch
+                                checked={customerRegisterEnabled}
+                                ariaLabel="Toggle customer register button"
+                                onChange={(checked) => void handleSave('customer_register_enabled', checked ? 'true' : 'false')}
+                            />
+                        </div>
+                        <div className="mt-4 rounded-xl border border-white/80 bg-white/80 p-3 text-sm text-slate-600">
+                            <div className="font-medium text-slate-800">URL</div>
+                            <div className="mt-1 break-all font-mono text-xs">{customerRegisterPublicUrl}</div>
+                        </div>
+                        <div className="mt-4 inline-flex rounded-full border px-3 py-1 text-xs font-medium text-slate-700">
+                            สถานะ: {customerRegisterEnabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                        </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <h3 className="text-base font-semibold text-slate-900">แจ้งซ่อมออนไลน์</h3>
+                                <p className="mt-1 text-sm text-slate-600">ควบคุมปุ่มแจ้งซ่อมออนไลน์สำหรับลูกค้าที่หน้าเข้าสู่ระบบ</p>
+                            </div>
+                            <ToggleSwitch
+                                checked={customerRepairRequestEnabled}
+                                ariaLabel="Toggle customer repair request button"
+                                onChange={(checked) => void handleSave('customer_repair_request_enabled', checked ? 'true' : 'false')}
+                            />
+                        </div>
+                        <div className="mt-4 rounded-xl border border-white/80 bg-white/80 p-3 text-sm text-slate-600">
+                            <div className="font-medium text-slate-800">URL</div>
+                            <div className="mt-1 break-all font-mono text-xs">{repairRequestPublicUrl}</div>
+                        </div>
+                        <div className="mt-4 inline-flex rounded-full border px-3 py-1 text-xs font-medium text-slate-700">
+                            สถานะ: {customerRepairRequestEnabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                        </div>
+                    </div>
+                </div>
+            </SettingsSectionCard>
+
+            <SettingsSectionCard
+                id="quick-tools-section"
+                title="ทางลัดการตั้งค่า"
+                description="รวมเมนูที่ใช้บ่อยไว้เป็นกลุ่มเดียวเพื่อเข้าไปจัดการต่อได้เร็วขึ้น"
+                icon={<Bell size={20} />}
+            >
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <QuickAccessCard
+                        title="LINE Messaging Users"
+                        description="จัดการผู้ใช้ LINE ภายในระบบและผู้อนุมัติ"
+                        href="/settings/line-users"
+                        badge="Users"
+                    />
+                    <QuickAccessCard
+                        title="LINE Customers"
+                        description="ดูรายการลูกค้าที่ลงทะเบียนผ่าน LINE และข้อมูลอ้างอิง"
+                        href="/settings/line-customers"
+                        badge="Customers"
+                    />
+                    <QuickAccessCard
+                        title="LINE Group Notifications"
+                        description="จัดการกลุ่ม LINE ที่ระบบตรวจพบ ตั้งค่าปลายทางการแจ้งเตือน และทดสอบการส่ง"
+                        href="/settings/line-groups"
+                        badge="LINE Groups"
+                    />
+                    <QuickAccessCard
+                        title="Asset Policy"
+                        description="ตั้งค่าหมวดทรัพย์สินและนโยบายที่ใช้ในหน้า Assets"
+                        href="/settings/asset-policy"
+                        badge="Assets"
+                    />
+                    <QuickAccessCard
+                        title="Storage Cleanup"
+                        description="สแกนและจัดการไฟล์รูปที่ไม่ได้อ้างอิงในระบบ"
+                        href="/settings/storage-cleanup"
+                        badge="Storage"
+                    />
+                </div>
+            </SettingsSectionCard>
+
+            <div id="company-section" className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6 space-y-6">
                 <div className="flex items-center gap-2 mb-4">
                     <Save className="text-gray-500" />
                     <h2 className="text-xl font-semibold">ข้อมูลบริษัท (Company Information)</h2>
@@ -466,7 +788,7 @@ export default function SettingsClient() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2 mb-4 pt-4 border-t dark:border-slate-700">
+                <div id="notification-section" className="flex items-center gap-2 mb-4 pt-4 border-t dark:border-slate-700">
                     <Bell className="text-yellow-500" />
                     <h2 className="text-xl font-semibold">การแจ้งเตือน (Notifications)</h2>
                 </div>
@@ -607,17 +929,152 @@ export default function SettingsClient() {
                     )}
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg">
-                    <div>
-                        <div className="font-medium">แจ้งเตือนผ่าน LINE Notify (Group)</div>
-                        <div className="text-sm text-gray-500">ใช้สำหรับแจ้งเตือนภาพรวมไปยังกลุ่ม LINE</div>
+                <div className="rounded-2xl border border-sky-200 bg-sky-50/60 p-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                            <div className="font-medium text-slate-900">แจ้งเตือนเข้ากลุ่ม LINE</div>
+                            <div className="mt-1 text-sm text-slate-500">
+                                ใช้ส่งข้อความแจ้งเตือนภาพรวมของระบบไปยังกลุ่มหรือห้องแชต LINE โดยรองรับ Group ID / Room ID และ LINE Notify token แบบเสริม
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.location.href = '/settings/line-groups';
+                                }}
+                                className="inline-flex items-center rounded-xl border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-sky-700 transition hover:border-sky-300 hover:bg-sky-50"
+                            >
+                                เปิดหน้าจัดการกลุ่ม
+                            </button>
+                            <span className="text-sm font-medium text-slate-600">
+                                {lineGroupNotificationsEnabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                            </span>
+                            <ToggleSwitch
+                                checked={lineGroupNotificationsEnabled}
+                                ariaLabel="Toggle LINE group notifications"
+                                onChange={(checked) => void handleSave('line_group_notifications_enabled', checked ? 'true' : 'false')}
+                            />
+                        </div>
                     </div>
-                    <div className="text-sm text-gray-400">
-                        {process.env.NEXT_PUBLIC_LINE_NOTIFY_TOKEN ? 'Configured (Env)' : 'Not Configured'}
+
+                    <div className="mt-4 grid gap-4 xl:grid-cols-[1.25fr_1fr]">
+                        <div className="rounded-2xl border border-white/80 bg-white/90 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="text-sm font-medium text-slate-800">ปลายทาง Group ID / Room ID</div>
+                                <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
+                                    {lineGroupTargetIds.length} ปลายทาง
+                                </span>
+                            </div>
+                            <textarea
+                                rows={5}
+                                className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                                value={settings['line_group_target_ids'] || ''}
+                                onChange={(e) => setSettings((prev) => ({ ...prev, line_group_target_ids: e.target.value }))}
+                                onBlur={(e) => void handleSave('line_group_target_ids', e.target.value)}
+                                placeholder={'Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'}
+                            />
+                            <p className="mt-2 text-xs text-slate-500">
+                                กรอกได้หลายรายการ โดยคั่นด้วยขึ้นบรรทัดใหม่ หรือเครื่องหมายคอมมา
+                            </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-white/80 bg-white/90 p-4">
+                            <div className="text-sm font-medium text-slate-800">ทดสอบการส่งข้อความ</div>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                                ใช้ตรวจสอบว่าบอทมีสิทธิ์ส่งข้อความเข้ากลุ่มปลายทางที่ตั้งค่าไว้แล้ว
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => void handleTestLineGroup()}
+                                disabled={testingLineGroup || !lineGroupNotificationsEnabled}
+                                className="mt-4 inline-flex items-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {testingLineGroup ? 'กำลังส่งทดสอบ...' : 'ส่งข้อความทดสอบเข้ากลุ่ม'}
+                            </button>
+
+                            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                                วิธีใช้งาน:
+                                <div className="mt-1">1. เชิญ LINE Bot ของระบบเข้ากลุ่ม</div>
+                                <div className="mt-1">2. ส่งข้อความในกลุ่มอย่างน้อย 1 ครั้ง</div>
+                                <div className="mt-1">3. นำ Group ID / Room ID ที่ระบบเจอมาใส่เป็นปลายทาง</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1.2fr]">
+                        <div className="rounded-2xl border border-white/80 bg-white/90 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <div className="text-sm font-medium text-slate-800">LINE Notify token (เสริม)</div>
+                                    <p className="mt-1 text-xs text-slate-500">ใช้เป็นช่องทางสำรอง หากต้องการส่งเข้ากลุ่มผ่าน token ด้วย</p>
+                                </div>
+                                <ToggleSwitch
+                                    checked={lineGroupNotifyEnabled}
+                                    ariaLabel="Toggle LINE Notify fallback"
+                                    onChange={(checked) => void handleSave('line_group_notify_enabled', checked ? 'true' : 'false')}
+                                />
+                            </div>
+                            <input
+                                type="text"
+                                className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                                value={settings['line_group_notify_token'] || ''}
+                                onChange={(e) => setSettings((prev) => ({ ...prev, line_group_notify_token: e.target.value }))}
+                                onBlur={(e) => void handleSave('line_group_notify_token', e.target.value)}
+                                placeholder="LINE Notify token (optional)"
+                            />
+                        </div>
+
+                        <div className="rounded-2xl border border-white/80 bg-white/90 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <div className="text-sm font-medium text-slate-800">กลุ่มที่ระบบตรวจพบจาก Webhook</div>
+                                    <p className="mt-1 text-xs text-slate-500">รายการนี้จะเพิ่มอัตโนมัติเมื่อบอทอยู่ในกลุ่ม/ห้อง และมี event เข้ามา</p>
+                                </div>
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                                    {discoveredLineGroups.length} รายการ
+                                </span>
+                            </div>
+
+                            <div className="mt-3 space-y-2">
+                                {discoveredLineGroups.length === 0 ? (
+                                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                                        ยังไม่พบ group/room จาก webhook
+                                    </div>
+                                ) : (
+                                    discoveredLineGroups.map((group) => {
+                                        const isSelected = lineGroupTargetIds.includes(group.id);
+                                        return (
+                                            <div key={group.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:flex-row lg:items-center lg:justify-between">
+                                                <div>
+                                                    <div className="text-sm font-medium text-slate-800">
+                                                        {group.name || '(ไม่มีชื่อกลุ่ม)'}
+                                                    </div>
+                                                    <div className="mt-1 font-mono text-xs text-slate-500">{group.id}</div>
+                                                    <div className="mt-1 text-xs text-slate-400">
+                                                        {group.sourceType} • ล่าสุด {group.lastEventAt ? new Date(group.lastEventAt).toLocaleString('th-TH') : '-'}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleLineGroupTarget(group.id)}
+                                                    className={`rounded-xl px-3 py-2 text-sm font-medium transition ${isSelected
+                                                        ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                                        : 'border border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:text-blue-700'
+                                                        }`}
+                                                >
+                                                    {isSelected ? 'เลือกเป็นปลายทางแล้ว' : 'ใช้เป็นปลายทาง'}
+                                                </button>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors" onClick={() => window.location.href = '/settings/line-users'}>
+                <div className="hidden" onClick={() => window.location.href = '/settings/line-users'}>
                     <div>
                         <div className="font-medium flex items-center gap-2">
                             LINE Messaging API Users <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700 border border-green-200">New</span>
@@ -627,7 +1084,7 @@ export default function SettingsClient() {
                     <div className="text-blue-600 text-sm font-medium">Manage &rarr;</div>
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors" onClick={() => window.location.href = '/settings/line-customers'}>
+                <div className="hidden" onClick={() => window.location.href = '/settings/line-customers'}>
                     <div>
                         <div className="font-medium flex items-center gap-2">
                             LINE Customers
@@ -641,7 +1098,7 @@ export default function SettingsClient() {
                 </div>
 
                 <div
-                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                    className="hidden"
                     onClick={() => window.location.href = '/settings/asset-policy'}
                 >
                     <div>
@@ -659,7 +1116,7 @@ export default function SettingsClient() {
                 </div>
 
                 <div
-                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
+                    className="hidden"
                     onClick={() => window.location.href = '/settings/storage-cleanup'}
                 >
                     <div>
@@ -739,7 +1196,7 @@ export default function SettingsClient() {
             </div>
 
             {/* Database Maintenance Section */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
+            <div id="database-section" className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xl font-semibold flex items-center gap-2">
                         <Save className="text-blue-600" size={20} />
@@ -837,3 +1294,5 @@ export default function SettingsClient() {
         </div>
     );
 }
+
+

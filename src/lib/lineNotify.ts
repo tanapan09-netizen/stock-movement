@@ -3,6 +3,7 @@
 // LINE Notify helper for maintenance notifications
 // Uses LINE Messaging API push for direct and group alerts
 import { isMaintenanceTechnician } from '@/lib/rbac';
+import { sendConfiguredLineGroupTextNotification } from '@/lib/notifications/lineGroup';
 
 const LINE_ADMIN_ID = process.env.LINE_ADMIN_ID || '';
 const LINE_CHANNEL_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
@@ -73,9 +74,14 @@ function buildNewMaintenanceMessage(params: {
 export async function sendLineNotify(message: string): Promise<boolean> {
     console.log(`[LINE] sendLineNotify called. AdminID present: ${!!LINE_ADMIN_ID}`);
 
+    const groupResult = await sendConfiguredLineGroupTextNotification(`📣 [System Alert]\n${message}`);
+    if (groupResult.success) {
+        return true;
+    }
+
     // Legacy support: redirect "Notify" calls to the admin/group via Messaging API
     if (!LINE_ADMIN_ID) {
-        console.warn('[LINE] LINE_ADMIN_ID not configured. Broadcast notifications will be skipped.');
+        console.warn('[LINE] No LINE group target or LINE_ADMIN_ID configured. Broadcast notifications will be skipped.');
         return false;
     }
 

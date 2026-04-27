@@ -1396,6 +1396,21 @@ export async function getUserProfile(userId: string) {
     }
 }
 
+export async function getGroupSummary(groupId: string) {
+    try {
+        const lineClient = getClient();
+        if (!lineClient) {
+            return null;
+        }
+
+        const summary = await lineClient.getGroupSummary(groupId);
+        return summary;
+    } catch (error) {
+        console.error('[LINE Messaging] Failed to get group summary:', error);
+        return null;
+    }
+}
+
 /**
  * Create Flex Message for Job Assignment
  */

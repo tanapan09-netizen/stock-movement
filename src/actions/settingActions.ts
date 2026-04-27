@@ -111,3 +111,32 @@ export async function sendTestEmail(recipientEmail: string) {
         return { success: false, message: 'Error sending test email: ' + error.message };
     }
 }
+
+export async function sendTestLineGroupNotification() {
+    try {
+        const authContext = await getSettingsAuthContext();
+        if (!authContext || !canManageAdminSecurity(authContext.role, authContext.permissions)) {
+            return { success: false, message: 'Unauthorized: Admin access required' };
+        }
+
+        const { sendConfiguredLineGroupTextNotification } = await import('@/lib/notifications/lineGroup');
+        const result = await sendConfiguredLineGroupTextNotification(
+            `🧪 ทดสอบการแจ้งเตือนเข้ากลุ่ม LINE\nระบบส่งข้อความทำงานปกติ\nเวลา: ${new Date().toLocaleString('th-TH')}`,
+        );
+
+        if (result.success) {
+            return {
+                success: true,
+                message: `ส่งทดสอบสำเร็จ (push ${result.pushSuccess}/${result.pushTargets}${result.notifyUsed ? ` | notify ${result.notifySuccess ? 'ok' : 'fail'}` : ''})`,
+            };
+        }
+
+        return {
+            success: false,
+            message: result.errorMessages[0] || 'ยังไม่สามารถส่งเข้ากลุ่ม LINE ได้',
+        };
+    } catch (error: any) {
+        console.error('Error sending LINE group test notification:', error);
+        return { success: false, message: 'Error sending LINE group test notification: ' + error.message };
+    }
+}

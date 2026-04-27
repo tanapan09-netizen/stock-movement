@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, ArrowRight, Package, UserPlus, Wrench } from 'lucide-react';
@@ -27,6 +27,37 @@ type Messages = {
     unknownStatus: string;
     errorPrefix: string;
 };
+
+type PublicCustomerServiceSettings = {
+    customerRegisterEnabled: boolean;
+    customerRepairRequestEnabled: boolean;
+};
+
+type CustomerServiceButtonProps = {
+    enabled: boolean;
+    onClick: () => void;
+    className: string;
+    children: ReactNode;
+    disabled?: boolean;
+};
+
+function CustomerServiceButton({
+    enabled,
+    onClick,
+    className,
+    children,
+}: CustomerServiceButtonProps) {
+    return (
+        <button
+            type="button"
+            disabled={!enabled}
+            onClick={enabled ? onClick : undefined}
+            className={className}
+        >
+            {children}
+        </button>
+    );
+}
 
 const translations: Record<Locale, Messages> = {
     th: {
@@ -143,6 +174,10 @@ export default function LoginPage() {
     const [lockoutEndTime, setLockoutEndTime] = useState<number | null>(null);
     const [timeLeft, setTimeLeft] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [customerServiceSettings, setCustomerServiceSettings] = useState<PublicCustomerServiceSettings>({
+        customerRegisterEnabled: false,
+        customerRepairRequestEnabled: false,
+    });
     const router = useRouter();
 
     const t = useMemo(() => translations[locale], [locale]);
@@ -190,6 +225,38 @@ export default function LoginPage() {
 
         return () => clearInterval(timer);
     }, [lockoutEndTime, locale]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadPublicSettings() {
+            try {
+                const response = await fetch('/api/settings/public', {
+                    cache: 'no-store',
+                });
+
+                if (!response.ok) {
+                    return;
+                }
+
+                const nextSettings = await response.json() as PublicCustomerServiceSettings;
+                if (!cancelled) {
+                    setCustomerServiceSettings({
+                        customerRegisterEnabled: nextSettings.customerRegisterEnabled === true,
+                        customerRepairRequestEnabled: nextSettings.customerRepairRequestEnabled === true,
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load public settings:', error);
+            }
+        }
+
+        void loadPublicSettings();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -404,12 +471,12 @@ export default function LoginPage() {
                         </form>
                     </div>
 
-<div className="flex flex-col justify-center bg-slate-50/80 p-6 sm:p-8">
+                    <div className="flex flex-col justify-center bg-slate-50/80 p-6 sm:p-8">
                         <h2 className="mb-5 text-center text-lg font-semibold text-slate-900">{t.customerSection}</h2>
 
                         <div className="space-y-4">
-                            <button
-                                type="button"
+                            <CustomerServiceButton
+                                enabled={customerServiceSettings.customerRegisterEnabled}
                                 disabled // 1. เพิ่ม disabled เพื่อปิดการทำงาน
                                 onClick={() => openCustomerServicePage(customerRegisterUrl)}
                                 // 2. เพิ่ม disabled:cursor-not-allowed และ disabled:opacity-60 
@@ -418,10 +485,10 @@ export default function LoginPage() {
                             >
                                 <UserPlus className="h-5 w-5" />
                                 <span>{t.registerCustomer}</span>
-                            </button>
+                            </CustomerServiceButton>
 
-                            <button
-                                type="button"
+                            <CustomerServiceButton
+                                enabled={customerServiceSettings.customerRepairRequestEnabled}
                                 disabled // 1. เพิ่ม disabled
                                 onClick={() => openCustomerServicePage(repairRequestUrl)}
                                 // 2. เพิ่มคลาสสำหรับจัดหน้าตาตอนโดน disable
@@ -429,7 +496,7 @@ export default function LoginPage() {
                             >
                                 <Wrench className="h-5 w-5" />
                                 <span>{t.repairRequest}</span>
-                            </button>
+                            </CustomerServiceButton>
                         </div>
 
                         <div className="relative mt-7 border-t border-slate-200 pt-5 text-center">

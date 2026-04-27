@@ -6,7 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WebhookEvent, validateSignature } from '@line/bot-sdk';
 import { prisma } from '@/lib/prisma';
-import { createTextMessage, getUserProfile, sendPushMessage } from '@/lib/notifications/lineMessaging';
+import { createTextMessage, getGroupSummary, getUserProfile, sendPushMessage } from '@/lib/notifications/lineMessaging';
+import { registerLineGroupSource } from '@/lib/notifications/lineGroup';
 
 export async function POST(request: NextRequest) {
     try {
@@ -68,6 +69,10 @@ async function handleEvent(event: WebhookEvent) {
 
             case 'message':
                 await handleMessageEvent(event);
+                break;
+
+            case 'join':
+                await handleJoinEvent(event);
                 break;
 
             default:
@@ -178,8 +183,33 @@ async function handleUnfollowEvent(event: WebhookEvent) {
     }
 }
 
+async function registerSourceGroupFromEvent(event: WebhookEvent) {
+    if (event.source.type !== 'group' && event.source.type !== 'room') {
+        return;
+    }
+
+    const sourceId = event.source.type === 'group' ? event.source.groupId : event.source.roomId;
+    if (!sourceId) {
+        return;
+    }
+
+    let groupName: string | null = null;
+    if (event.source.type === 'group') {
+        const summary = await getGroupSummary(sourceId);
+        groupName = summary?.groupName || null;
+    }
+
+    await registerLineGroupSource({
+        id: sourceId,
+        sourceType: event.source.type,
+        name: groupName,
+    });
+}
+
 async function handleMessageEvent(event: WebhookEvent) {
     if (event.type !== 'message' || event.message.type !== 'text') return;
+
+    await registerSourceGroupFromEvent(event);
 
     const userId = event.source.userId;
     if (!userId) return;
@@ -207,6 +237,12 @@ async function handleMessageEvent(event: WebhookEvent) {
     );
 
     await sendPushMessage(userId, msg);
+}
+
+async function handleJoinEvent(event: WebhookEvent) {
+    if (event.type !== 'join') return;
+
+    await registerSourceGroupFromEvent(event);
 }
 
 export const dynamic = 'force-dynamic';
