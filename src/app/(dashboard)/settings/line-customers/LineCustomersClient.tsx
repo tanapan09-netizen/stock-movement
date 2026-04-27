@@ -1,8 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { FloatingSearchInput } from '@/components/FloatingField';
-import { Trash2, UserCheck, UserX, Search, Copy } from 'lucide-react';
+import { Trash2, UserCheck, UserX, Search, Copy, ExternalLink } from 'lucide-react';
 import {
     deleteLineCustomer,
     getLineCustomers,
@@ -35,6 +36,12 @@ export default function LineCustomersClient({ canEdit }: Props) {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [copied, setCopied] = useState(false);
+    const customerRegisterUrl = useMemo(() => {
+        const registerLiffId = process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID || '';
+        if (registerLiffId) return `https://liff.line.me/${registerLiffId}`;
+        if (typeof window !== 'undefined') return `${window.location.origin}/line/customer-register`;
+        return 'https://mpstock.sugoidev.com/line/customer-register';
+    }, []);
 
     async function loadCustomers() {
         setLoading(true);
@@ -110,12 +117,7 @@ export default function LineCustomersClient({ canEdit }: Props) {
     }
 
     async function handleCopyRegisterLink() {
-        const registerLiffId =
-            process.env.NEXT_PUBLIC_LINE_LIFF_CUSTOMER_REGISTER_ID || '';
-        const url = registerLiffId
-            ? `https://liff.line.me/${registerLiffId}`
-            : `${window.location.origin}/line/customer-register`;
-        await navigator.clipboard.writeText(url);
+        await navigator.clipboard.writeText(customerRegisterUrl);
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
     }
@@ -125,17 +127,28 @@ export default function LineCustomersClient({ canEdit }: Props) {
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">จัดการลูกค้า LINE</h1>
-                        <p className="text-gray-500 dark:text-gray-400">จัดการรายชื่อลูกค้าที่ลงทะเบียนผ่าน LINE โดยเฉพาะ</p>
+                        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">ลูกค้า LINE (สมัครผ่านลิงก์)</h1>
+                        <p className="text-gray-500 dark:text-gray-400">สำหรับลูกค้าที่ลงทะเบียนผ่านหน้า customer register เท่านั้น</p>
                     </div>
-                    <button
-                        type="button"
-                        onClick={handleCopyRegisterLink}
-                        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm"
-                    >
-                        <Copy size={14} />
-                        {copied ? 'คัดลอกแล้ว' : 'คัดลอกลิงก์สมัครลูกค้า'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={handleCopyRegisterLink}
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm"
+                        >
+                            <Copy size={14} />
+                            {copied ? 'คัดลอกแล้ว' : 'คัดลอกลิงก์สมัครลูกค้า'}
+                        </button>
+                        <Link
+                            href="/settings/line-users"
+                            className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-medium text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-200"
+                        >
+                            ไปหน้า LINE ภายใน (QR) <ExternalLink size={13} />
+                        </Link>
+                    </div>
+                </div>
+                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-200">
+                    ลิงก์ลงทะเบียนลูกค้า: <a href={customerRegisterUrl} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2">{customerRegisterUrl}</a>
                 </div>
                 <div className="mt-4">
                     <FloatingSearchInput

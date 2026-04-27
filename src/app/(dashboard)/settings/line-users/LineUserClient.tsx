@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useEffect } from 'react';
-import { Trash2, UserCheck, UserX, Plus, Link2 } from 'lucide-react';
+import { Trash2, UserCheck, UserX, Plus, Link2, ExternalLink } from 'lucide-react';
 import { useToast } from '@/components/ToastProvider';
 import { LINE_USER_ROLE_OPTIONS, partitionLineUsersByAssignment } from '@/lib/line-users';
 import { getRoleLabel } from '@/lib/roles';
@@ -234,6 +235,9 @@ export default function LineUserClient() {
     };
 
     const { pending: pendingUsers, assigned: assignedUsers } = partitionLineUsersByAssignment(users);
+    const customerRegisterUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/line/customer-register`
+        : 'https://mpstock.sugoidev.com/line/customer-register';
 
     const renderRows = (list: LineUser[]) => (
         list.map((user) => (
@@ -371,8 +375,8 @@ export default function LineUserClient() {
         <div className="space-y-6">
             <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white">LINE User Management</h1>
-                    <p className="text-gray-500 dark:text-gray-400">Manage users for LINE Messaging API notifications</p>
+                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white">LINE ภายใน (พนักงาน)</h1>
+                    <p className="text-gray-500 dark:text-gray-400">สำหรับผู้ใช้ภายในที่ต้อง Add ผ่าน QR Code เท่านั้น</p>
                 </div>
                 <div className="flex gap-2">
                     <button
@@ -388,8 +392,31 @@ export default function LineUserClient() {
                         className="flex items-center gap-2 bg-[#06C755] hover:bg-[#05b34c] text-white px-4 py-2 rounded-lg transition-colors"
                     >
                         <Plus size={20} />
-                        Add Friend
+                        เพิ่ม LINE ภายใน (QR)
                     </button>
+                </div>
+            </div>
+
+            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-900/50 dark:bg-sky-950/30">
+                <div className="flex flex-col gap-2 text-sm text-sky-900 dark:text-sky-100">
+                    <p className="font-semibold">หน้านี้สำหรับ LINE ภายในเท่านั้น</p>
+                    <p>หากเป็นลูกค้าที่ลงทะเบียนเอง ให้จัดการที่หน้า <span className="font-semibold">ลูกค้า LINE</span> และใช้ลิงก์ลงทะเบียนลูกค้าด้านล่าง</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                            href="/settings/line-customers"
+                            className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-200"
+                        >
+                            ไปหน้าลูกค้า LINE <ExternalLink size={13} />
+                        </Link>
+                        <a
+                            href={customerRegisterUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200"
+                        >
+                            ลิงก์ลงทะเบียนลูกค้า <ExternalLink size={13} />
+                        </a>
+                    </div>
                 </div>
             </div>
 

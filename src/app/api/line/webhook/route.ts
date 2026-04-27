@@ -121,27 +121,6 @@ async function handleFollowEvent(event: WebhookEvent) {
             },
         });
 
-        await prisma.tbl_line_customers.upsert({
-            where: { line_user_id: userId },
-            update: {
-                is_active: true,
-                display_name: profile?.displayName || null,
-                picture_url: profile?.pictureUrl || null,
-                last_interaction: new Date(),
-            },
-            create: {
-                line_user_id: userId,
-                display_name: profile?.displayName || null,
-                full_name: profile?.displayName || 'ลูกค้า',
-                phone_number: null,
-                room_number: null,
-                picture_url: profile?.pictureUrl || null,
-                is_active: true,
-                registered_at: new Date(),
-                last_interaction: new Date(),
-            },
-        });
-
         console.log('[LINE Webhook] User registered:', profile?.displayName || userId);
     } catch (error) {
         console.error('[LINE Webhook] Failed to register user:', error);

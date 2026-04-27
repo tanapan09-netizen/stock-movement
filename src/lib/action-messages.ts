@@ -12,6 +12,8 @@ export const LINE_CUSTOMER_ACTION_MESSAGES = {
     requireLineUserId: 'กรุณาระบุ LINE User ID',
     requireFullName: 'กรุณาระบุชื่อ-นามสกุล',
     requirePhoneNumber: 'กรุณาระบุเบอร์โทร',
+    requireRoomNumber: 'กรุณาระบุเบอร์ห้อง',
+    roomNumberNotFound: 'ไม่พบเบอร์ห้องในระบบ กรุณาตรวจสอบอีกครั้ง',
     registerFailed: 'ไม่สามารถบันทึกข้อมูลลูกค้าได้',
     loadCustomerFailed: 'ไม่สามารถโหลดข้อมูลลูกค้าได้',
     loadCustomersFailed: 'ไม่สามารถโหลดรายการลูกค้า LINE ได้',

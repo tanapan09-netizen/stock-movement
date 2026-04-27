@@ -4,8 +4,8 @@ import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/serv
 import LineCustomersClient from './LineCustomersClient';
 
 export const metadata = {
-    title: 'จัดการลูกค้า LINE | Stock Movement',
-    description: 'จัดการการลงทะเบียนลูกค้าผ่าน LINE',
+    title: 'ลูกค้า LINE (ลงทะเบียนผ่านลิงก์) | Stock Movement',
+    description: 'จัดการรายชื่อลูกค้าที่สมัครผ่านหน้า customer register',
 };
 
 export default async function LineCustomersPage() {

@@ -1077,7 +1077,7 @@ export default function SettingsClient() {
                 <div className="hidden" onClick={() => window.location.href = '/settings/line-users'}>
                     <div>
                         <div className="font-medium flex items-center gap-2">
-                            LINE Messaging API Users <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700 border border-green-200">New</span>
+                            ผู้ใช้ LINE ภายใน (ผ่าน QR) <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700 border border-green-200">Internal</span>
                         </div>
                         <div className="text-sm text-gray-500">จัดการผู้ใช้ LINE และตั้งค่าผู้อนุมัติ (Approvers) และแผนก</div>
                     </div>
@@ -1087,9 +1087,9 @@ export default function SettingsClient() {
                 <div className="hidden" onClick={() => window.location.href = '/settings/line-customers'}>
                     <div>
                         <div className="font-medium flex items-center gap-2">
-                            LINE Customers
+                            ลูกค้า LINE (ลงทะเบียนผ่านลิงก์)
                         </div>
-                        <div className="text-sm text-gray-500">จัดการรายชื่อลูกค้าที่สมัครผ่าน LINE แยกจากผู้ใช้ภายในระบบ</div>
+                        <div className="text-sm text-gray-500">จัดการรายชื่อลูกค้าที่สมัครผ่านลิงก์ customer register โดยเฉพาะ</div>
                         <div className="text-xs text-gray-400 mt-1">
                             หน้าสมัครลูกค้า: <span className="font-mono">{customerRegisterPublicUrl}</span>
                         </div>
@@ -1294,5 +1294,4 @@ export default function SettingsClient() {
         </div>
     );
 }
-
 

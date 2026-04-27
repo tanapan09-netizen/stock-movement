@@ -300,6 +300,9 @@ export default function LineCustomerRegisterClient({
             });
 
             if (result.success) {
+                if (result.data?.room_number) {
+                    setRoomNumber(result.data.room_number);
+                }
                 setAlert({ kind: 'success', text: t.successText });
             } else {
                 setAlert({ kind: 'error', text: result.error || t.errorSave });
@@ -319,6 +322,7 @@ export default function LineCustomerRegisterClient({
         !!lineUserId &&
         fullName.trim().length > 0 &&
         phoneNumber.trim().length > 0 &&
+        roomNumber.trim().length > 0 &&
         agreedToTerms &&
         !loading &&
         !detectingLineId;
@@ -471,15 +475,19 @@ export default function LineCustomerRegisterClient({
                     {/* Room */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
-                            <House size={14} /> {t.roomLabel}
+                            <House size={14} /> {t.roomLabel} *
                         </label>
                         <input
                             type="text"
                             value={roomNumber}
                             onChange={(e) => setRoomNumber(e.target.value)}
+                            required
                             className="w-full border rounded-lg px-3 py-2"
                             placeholder={t.roomPlaceholder}
                         />
+                        <p className="text-xs text-gray-500 mt-1">
+                            ระบบจะอ้างอิงเบอร์ห้องจากฐานข้อมูลอัตโนมัติ (เช่น 201 จะถูกบันทึกเป็น A201)
+                        </p>
                     </div>
 
                     {/* Notes */}
