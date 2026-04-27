@@ -302,7 +302,7 @@ export default function LoginPage() {
                                             key={option.locale}
                                             type="button"
                                             onClick={() => setLocale(option.locale)}
-                                            aria-pressed={isActive}
+                                            aria-pressed={isActive.toString()}
                                             className={`flex min-w-[92px] snap-start items-center justify-center gap-2 rounded-xl border px-3 py-2 transition-all ${isActive
                                                 ? 'border-cyan-300 bg-cyan-50 text-cyan-800 shadow-sm'
                                                 : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
@@ -404,14 +404,17 @@ export default function LoginPage() {
                         </form>
                     </div>
 
-                    <div className="flex flex-col justify-center bg-slate-50/80 p-6 sm:p-8">
+<div className="flex flex-col justify-center bg-slate-50/80 p-6 sm:p-8">
                         <h2 className="mb-5 text-center text-lg font-semibold text-slate-900">{t.customerSection}</h2>
 
                         <div className="space-y-4">
                             <button
                                 type="button"
+                                disabled // 1. เพิ่ม disabled เพื่อปิดการทำงาน
                                 onClick={() => openCustomerServicePage(customerRegisterUrl)}
-                                className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 py-3 font-medium text-emerald-700 transition-all duration-200 hover:border-emerald-300 hover:bg-emerald-100"
+                                // 2. เพิ่ม disabled:cursor-not-allowed และ disabled:opacity-60 
+                                // (พร้อมเคลียร์สีตอน hover ไม่ให้เปลี่ยนสีเมื่อปุ่มถูกปิดใช้งาน)
+                                className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 py-3 font-medium text-emerald-700 transition-all duration-200 hover:border-emerald-300 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-emerald-200 disabled:hover:bg-emerald-50"
                             >
                                 <UserPlus className="h-5 w-5" />
                                 <span>{t.registerCustomer}</span>
@@ -419,8 +422,10 @@ export default function LoginPage() {
 
                             <button
                                 type="button"
+                                disabled // 1. เพิ่ม disabled
                                 onClick={() => openCustomerServicePage(repairRequestUrl)}
-                                className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 py-3 font-medium text-amber-700 shadow-sm transition-all duration-200 hover:border-amber-300 hover:bg-amber-100"
+                                // 2. เพิ่มคลาสสำหรับจัดหน้าตาตอนโดน disable
+                                className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 py-3 font-medium text-amber-700 shadow-sm transition-all duration-200 hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-20 disabled:hover:border-amber-200 disabled:hover:bg-amber-50"
                             >
                                 <Wrench className="h-5 w-5" />
                                 <span>{t.repairRequest}</span>

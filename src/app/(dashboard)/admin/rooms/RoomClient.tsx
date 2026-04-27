@@ -95,6 +95,13 @@ interface QuickActionPermissions {
     canCreateAsset: boolean;
 }
 
+interface HierarchyCounts {
+    types: number;
+    floors: number;
+    rooms: number;
+    zones: number;
+}
+
 function toVehicleFormValues(data?: Vehicle): VehicleFormValues {
     return {
         vehicle_id: data?.vehicle_id,
@@ -185,6 +192,38 @@ function mergeNodeSummaries(summaries: Array<RoomServiceSummary | undefined>): N
         acc.assetCount += current.asset_count || 0;
         return acc;
     }, { ...EMPTY_NODE_SERVICE_SUMMARY });
+}
+
+function countHierarchy(types: TypeNode[]): HierarchyCounts {
+    return types.reduce<HierarchyCounts>((acc, type) => {
+        acc.types += 1;
+        acc.floors += type.floors.length;
+        for (const floor of type.floors) {
+            acc.rooms += floor.rooms.length;
+            for (const room of floor.rooms) {
+                acc.zones += room.zones.length;
+            }
+        }
+        return acc;
+    }, { types: 0, floors: 0, rooms: 0, zones: 0 });
+}
+
+function collectTypeSummary(
+    type: TypeNode,
+    roomSummaryMap: Record<number, RoomServiceSummary>,
+): NodeServiceSummary {
+    const summaries: Array<RoomServiceSummary | undefined> = [];
+    if (type.originalId) summaries.push(roomSummaryMap[type.originalId]);
+    for (const floor of type.floors) {
+        if (floor.originalId) summaries.push(roomSummaryMap[floor.originalId]);
+        for (const room of floor.rooms) {
+            if (room.originalId) summaries.push(roomSummaryMap[room.originalId]);
+            for (const zone of room.zones) {
+                if (zone.originalId) summaries.push(roomSummaryMap[zone.originalId]);
+            }
+        }
+    }
+    return mergeNodeSummaries(summaries);
 }
 
 const UI = {
@@ -1098,6 +1137,9 @@ export default function RoomManagement({
     const [vehicleSearch, setVehicleSearch] = useState("");
     const [vehicleModal, setVehicleModal] = useState<{ show: boolean; data?: Vehicle } | null>(null);
     const [search, setSearch] = useState("");
+    const [roomTypeFilter, setRoomTypeFilter] = useState("all");
+    const [showOnlyOpenMaintenance, setShowOnlyOpenMaintenance] = useState(false);
+    const [showOnlyWithAssets, setShowOnlyWithAssets] = useState(false);
     const [expandAll, setExpandAll] = useState(false);
     const [modal, setModal] = useState(false);
     const [toasts, setToasts] = useState<Toast[]>([]);
@@ -1251,8 +1293,6 @@ export default function RoomManagement({
             return acc;
         }, {});
     }, [roomServiceSummaries]);
-    const totalRooms = types.reduce((a, t) => a + t.floors.reduce((b, f) => b + f.rooms.length, 0), 0);
-
     const filteredTypes = useMemo(() => {
         const q = search.toLowerCase();
         if (!q) return types;
@@ -1268,10 +1308,62 @@ export default function RoomManagement({
         }).filter(t => t.code.toLowerCase().includes(q) || t.name.toLowerCase().includes(q) || t.floors.length > 0);
     }, [types, search]);
 
+    const typeSummaryLookup = useMemo(() => {
+        return types.reduce<Record<string, NodeServiceSummary>>((acc, type) => {
+            acc[type.id] = collectTypeSummary(type, roomSummaryLookup);
+            return acc;
+        }, {});
+    }, [types, roomSummaryLookup]);
+
+    const roomTypeFilterOptions = useMemo(() => {
+        return types
+            .map((type) => ({ value: type.code, label: `${type.code} - ${type.name}` }))
+            .sort((a, b) => a.label.localeCompare(b.label));
+    }, [types]);
+
+    const visibleTypes = useMemo(() => {
+        return filteredTypes
+            .filter((type) => roomTypeFilter === "all" || type.code === roomTypeFilter)
+            .filter((type) => !showOnlyOpenMaintenance || (typeSummaryLookup[type.id]?.maintenanceOpen || 0) > 0)
+            .filter((type) => !showOnlyWithAssets || (typeSummaryLookup[type.id]?.assetCount || 0) > 0);
+    }, [filteredTypes, roomTypeFilter, showOnlyOpenMaintenance, showOnlyWithAssets, typeSummaryLookup]);
+
+    const visibleHierarchyCounts = useMemo(() => countHierarchy(visibleTypes), [visibleTypes]);
+    const allHierarchyCounts = useMemo(() => countHierarchy(types), [types]);
+    const activeVehicleCount = useMemo(() => vehicles.filter((vehicle) => vehicle.active).length, [vehicles]);
+    const filteredVehicleCount = useMemo(() => {
+        const q = safeLower(vehicleSearch);
+        return vehicles.filter((vehicle) => {
+            if (!q) return true;
+            return (
+                safeLower(vehicle.license_plate).includes(q) ||
+                safeLower(vehicle.owner_name).includes(q) ||
+                safeLower(vehicle.owner_room).includes(q)
+            );
+        }).length;
+    }, [vehicles, vehicleSearch]);
+    const hasActiveRoomFilters = Boolean(search.trim())
+        || roomTypeFilter !== "all"
+        || showOnlyOpenMaintenance
+        || showOnlyWithAssets;
+
+    const clearRoomFilters = useCallback(() => {
+        setSearch("");
+        setRoomTypeFilter("all");
+        setShowOnlyOpenMaintenance(false);
+        setShowOnlyWithAssets(false);
+    }, []);
+
     useEffect(() => {
         if (search && search.length > 0) setExpandAll(true);
         else setExpandAll(false);
     }, [search]);
+
+    useEffect(() => {
+        if (roomTypeFilter === "all") return;
+        const exists = roomTypeFilterOptions.some((option) => option.value === roomTypeFilter);
+        if (!exists) setRoomTypeFilter("all");
+    }, [roomTypeFilter, roomTypeFilterOptions]);
 
     // Backend Handlers
     const deleteNode = async (roomId: number) => {
@@ -1525,7 +1617,7 @@ export default function RoomManagement({
                         subtitle="สร้างโครงสร้างประเภท > ชั้น > ห้อง > โซน"
                         headerRight={
                             <>
-                                <span style={UI.pill}>{totalRooms} ห้อง</span>
+                                <span style={UI.pill}>{visibleHierarchyCounts.rooms.toLocaleString()} / {allHierarchyCounts.rooms.toLocaleString()} ห้อง</span>
                                 <span style={{ ...UI.pill, background: "#fef3c7", color: "#92400e" }}>
                                     งานซ่อมเปิด {serviceTotals.maintenance_open}
                                 </span>
@@ -1550,15 +1642,75 @@ export default function RoomManagement({
                                     dense
                                 />
                             </div>
+                            <select
+                                value={roomTypeFilter}
+                                onChange={(e) => setRoomTypeFilter(e.target.value)}
+                                style={{ ...UI.control, minWidth: 220, maxWidth: 320, height: 44, padding: "10px 12px" }}
+                            >
+                                <option value="all">ทุกประเภทห้อง</option>
+                                {roomTypeFilterOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                onClick={() => setShowOnlyOpenMaintenance((prev) => !prev)}
+                                style={{
+                                    ...UI.btnSecondary,
+                                    background: showOnlyOpenMaintenance ? "#fef3c7" : "#fff",
+                                    borderColor: showOnlyOpenMaintenance ? "#f59e0b" : "#e2e8f0",
+                                    color: showOnlyOpenMaintenance ? "#92400e" : "#475569",
+                                }}
+                            >
+                                {showOnlyOpenMaintenance ? "✓ เฉพาะมีงานซ่อมเปิด" : "เฉพาะมีงานซ่อมเปิด"}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowOnlyWithAssets((prev) => !prev)}
+                                style={{
+                                    ...UI.btnSecondary,
+                                    background: showOnlyWithAssets ? "#dbeafe" : "#fff",
+                                    borderColor: showOnlyWithAssets ? "#3b82f6" : "#e2e8f0",
+                                    color: showOnlyWithAssets ? "#1d4ed8" : "#475569",
+                                }}
+                            >
+                                {showOnlyWithAssets ? "✓ เฉพาะมีทรัพย์สิน" : "เฉพาะมีทรัพย์สิน"}
+                            </button>
                             <button onClick={() => setExpandAll((v) => !v)} style={UI.btnSecondary}>
                                 {expandAll ? "พับทั้งหมด" : "กางทั้งหมด"}
                             </button>
                             <button onClick={() => loadData()} style={UI.btnSecondary}>
                                 รีโหลดข้อมูล
                             </button>
+                            {hasActiveRoomFilters ? (
+                                <button onClick={clearRoomFilters} style={{ ...UI.btnSecondary, borderColor: "#fca5a5", color: "#b91c1c", background: "#fff1f2" }}>
+                                    ล้างตัวกรอง
+                                </button>
+                            ) : null}
                             <button onClick={() => setModal(true)} style={{ display: "none", padding: "10px 22px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #1e3a5f, #3b82f6)", color: "#fff", cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", boxShadow: "0 4px 14px #3b82f633" }}>
                                 + เพิ่มประเภทใหม่
                             </button>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, margin: "0 0 12px" }}>
+                            <div style={{ border: "1.5px solid #bfdbfe", background: "#eff6ff", borderRadius: 12, padding: "10px 12px" }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, color: "#1d4ed8" }}>ประเภทที่แสดง</div>
+                                <div style={{ marginTop: 2, fontSize: 24, fontWeight: 900, color: "#1e3a5f" }}>{visibleHierarchyCounts.types}</div>
+                            </div>
+                            <div style={{ border: "1.5px solid #bbf7d0", background: "#f0fdf4", borderRadius: 12, padding: "10px 12px" }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, color: "#15803d" }}>ชั้นที่แสดง</div>
+                                <div style={{ marginTop: 2, fontSize: 24, fontWeight: 900, color: "#166534" }}>{visibleHierarchyCounts.floors}</div>
+                            </div>
+                            <div style={{ border: "1.5px solid #fde68a", background: "#fffbeb", borderRadius: 12, padding: "10px 12px" }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, color: "#b45309" }}>ห้องที่แสดง</div>
+                                <div style={{ marginTop: 2, fontSize: 24, fontWeight: 900, color: "#92400e" }}>{visibleHierarchyCounts.rooms}</div>
+                            </div>
+                            <div style={{ border: "1.5px solid #e9d5ff", background: "#faf5ff", borderRadius: 12, padding: "10px 12px" }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, color: "#7e22ce" }}>โซนที่แสดง</div>
+                                <div style={{ marginTop: 2, fontSize: 24, fontWeight: 900, color: "#6b21a8" }}>{visibleHierarchyCounts.zones}</div>
+                            </div>
                         </div>
 
                         {/* Tree */}
@@ -1567,23 +1719,23 @@ export default function RoomManagement({
                                 <div style={{ textAlign: "center", padding: "64px 20px", background: "#fff", borderRadius: 16, border: "1.5px dashed #e2e8f0" }}>
                                     <div style={{ fontSize: 16, fontWeight: 700, color: "#374151" }}>กำลังโหลดข้อมูลห้อง...</div>
                                 </div>
-                            ) : filteredTypes.length === 0 ? (
+                            ) : visibleTypes.length === 0 ? (
                                 <div style={{ textAlign: "center", padding: "64px 20px", background: "#fff", borderRadius: 16, border: "1.5px dashed #e2e8f0" }}>
                                     <div style={{ fontSize: 52, marginBottom: 12 }}>🏢</div>
                                     <div style={{ fontSize: 16, fontWeight: 700, color: "#374151", marginBottom: 6 }}>
-                                        {search ? "ไม่พบข้อมูลที่ค้นหา" : "ยังไม่มีข้อมูลห้อง"}
+                                        {hasActiveRoomFilters ? "ไม่พบข้อมูลตามตัวกรองที่เลือก" : "ยังไม่มีข้อมูลห้อง"}
                                     </div>
                                     <div style={{ color: "#94a3b8", fontSize: 14, marginBottom: 20 }}>
-                                        {search ? "ลองเปลี่ยนคำค้นหา" : "เริ่มต้นด้วยการเพิ่มประเภทห้องแรก"}
+                                        {hasActiveRoomFilters ? "ลองล้างตัวกรองหรือเปลี่ยนคำค้นหา" : "เริ่มต้นด้วยการเพิ่มประเภทห้องแรก"}
                                     </div>
-                                    {!search && (
+                                    {!hasActiveRoomFilters && (
                                         <button onClick={() => setModal(true)} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: "#3b82f6", color: "#fff", cursor: "pointer", fontFamily: "'Sarabun', sans-serif", fontWeight: 700 }}>
                                             + เพิ่มรายการแรก
                                         </button>
                                     )}
                                 </div>
                             ) : (
-                                filteredTypes.map(type => (
+                                visibleTypes.map(type => (
                                     <TypeRow
                                         key={type.id} type={type}
                                         roomSummaryMap={roomSummaryLookup}
@@ -1609,6 +1761,9 @@ export default function RoomManagement({
                         headerRight={
                             <>
                                 <span style={UI.pill}>{vehicles.length} รายการ</span>
+                                <span style={{ ...UI.pill, background: "#dcfce7", color: "#166534" }}>
+                                    ใช้งานอยู่ {activeVehicleCount}
+                                </span>
                                 <button onClick={() => setVehicleModal({ show: true })} style={UI.btnSuccess}>
                                     + เพิ่มทะเบียนรถ
                                 </button>
@@ -1629,6 +1784,9 @@ export default function RoomManagement({
                             <button onClick={() => loadData()} style={UI.btnSecondary}>
                                 รีโหลดข้อมูล
                             </button>
+                        </div>
+                        <div style={{ padding: "0 18px 14px", color: "#64748b", fontSize: 13 }}>
+                            ผลลัพธ์ที่แสดง {filteredVehicleCount} / {vehicles.length} รายการ
                         </div>
 
                         {loading ? (
