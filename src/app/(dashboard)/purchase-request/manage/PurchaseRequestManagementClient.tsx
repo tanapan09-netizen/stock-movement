@@ -216,6 +216,62 @@ function getStepLogActionClass(action?: string | null) {
     }
 }
 
+function getHistoryDisplayStep(
+    stepOrder: number,
+    requestType?: string | null,
+    workflowSteps: Array<{ step_order: number; approver_role?: string | null }> = [],
+    actorRole?: string | null,
+) {
+    const normalizedStepOrder = Math.max(1, Number(stepOrder || 1));
+    const actorRoleLabel = actorRole ? getRequesterRoleStepLabel(actorRole) : null;
+
+    if (requestType === 'purchase') {
+        const displayStep = Math.min(
+            normalizedStepOrder + 1,
+            PURCHASE_REQUEST_WORKFLOW_LABELS.length,
+        );
+        const matchedWorkflowStep = workflowSteps.find((step) => step.step_order === normalizedStepOrder);
+        const roleBasedLabel = matchedWorkflowStep?.approver_role
+            ? getRequesterRoleStepLabel(matchedWorkflowStep.approver_role)
+            : null;
+        return {
+            displayStep,
+            label: actorRoleLabel || roleBasedLabel || PURCHASE_REQUEST_WORKFLOW_LABELS[displayStep - 1] || `Step ${displayStep}`,
+        };
+    }
+
+    return {
+        displayStep: normalizedStepOrder,
+        label: actorRoleLabel || `Step ${normalizedStepOrder}`,
+    };
+}
+
+function getRequesterRoleStepLabel(role?: string | null) {
+    const normalized = (role || '').trim().toLowerCase();
+    switch (normalized) {
+        case 'technician':
+        case 'leader_technician':
+            return 'ช่าง';
+        case 'purchasing':
+        case 'leader_purchasing':
+            return 'จัดซื้อ';
+        case 'manager':
+        case 'any_manager':
+            return 'ผู้จัดการ';
+        case 'accounting':
+        case 'leader_accounting':
+            return 'บัญชี';
+        case 'store':
+        case 'leader_store':
+            return 'Store';
+        case 'operation':
+        case 'leader_operation':
+            return 'ปฏิบัติการ';
+        default:
+            return 'ผู้ขอซื้อ';
+    }
+}
+
 export default function PurchaseRequestManagementClient({ initialRequests, currentRole }: Props) {
     const router = useRouter();
     const [requests, setRequests] = useState<ApprovalRequest[]>(initialRequests);
@@ -1005,12 +1061,34 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                 <div className="rounded-2xl border border-slate-200 bg-white p-5">
                                     <h4 className="text-sm font-semibold text-slate-900">ประวัติการดำเนินการ</h4>
                                     <div className="mt-4 space-y-4">
+                                        {selectedRequest.request_type === 'purchase' && (
+                                            <div className="relative rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="text-sm font-semibold text-slate-900">
+                                                        ขั้น 1: ผู้ขอซื้อ
+                                                    </div>
+                                                    <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                                                        ส่งคำขอ
+                                                    </span>
+                                                </div>
+                                                <div className="mt-2 text-xs text-slate-500">
+                                                    โดย {selectedRequest.tbl_users?.username || '-'} • {formatDisplayDateTime(selectedRequest.created_at)}
+                                                </div>
+                                            </div>
+                                        )}
                                         {selectedRequest.step_logs && selectedRequest.step_logs.length > 0 ? (
-                                            selectedRequest.step_logs.map((log) => (
-                                                <div key={log.id} className="relative rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                            selectedRequest.step_logs.map((log) => {
+                                                const historyStep = getHistoryDisplayStep(
+                                                    log.step_order,
+                                                    selectedRequest.request_type,
+                                                    selectedRequest.workflow?.steps || [],
+                                                    log.actor?.role,
+                                                );
+                                                return (
+                                                    <div key={log.id} className="relative rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                                     <div className="flex flex-wrap items-center justify-between gap-2">
                                                         <div className="text-sm font-semibold text-slate-900">
-                                                            ขั้น {log.step_order}: {PURCHASE_REQUEST_WORKFLOW_LABELS[Math.max(log.step_order - 1, 0)] || `Step ${log.step_order}`}
+                                                            ขั้น {historyStep.displayStep}: {historyStep.label}
                                                         </div>
                                                         <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getStepLogActionClass(log.action)}`}>
                                                             {getStepLogActionLabel(log.action)}
@@ -1024,8 +1102,9 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                                             {log.comment}
                                                         </div>
                                                     )}
-                                                </div>
-                                            ))
+                                                    </div>
+                                                );
+                                            })
                                         ) : (
                                             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
                                                 ยังไม่มีประวัติการอนุมัติในคำขอนี้

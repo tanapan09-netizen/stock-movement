@@ -17,6 +17,7 @@ type PurchaseLineItem = {
 type RoleStamp = {
     stepOrder: number;
     approverRole: string;
+    approverId: number | null;
     actorName: string | null;
     actedAt: Date | null;
     action: string | null;
@@ -195,6 +196,7 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                         actor: {
                             select: {
                                 username: true,
+                                role: true,
                             },
                         },
                     },
@@ -243,25 +245,57 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
         request.request_type,
         request.workflow?.steps || [],
     );
+    const approverIds = Array.from(new Set(
+        effectiveWorkflowSource
+            .map((step) => step.approver_id)
+            .filter((id): id is number => typeof id === 'number' && Number.isFinite(id)),
+    ));
+    const explicitApprovers = approverIds.length > 0
+        ? await prisma.tbl_users.findMany({
+            where: {
+                p_id: {
+                    in: approverIds,
+                },
+            },
+            select: {
+                p_id: true,
+                username: true,
+            },
+        })
+        : [];
+    const approverNameById = new Map(explicitApprovers.map((approver) => [approver.p_id, approver.username || '']));
 
     const workflowSteps = effectiveWorkflowSource.map((step) => ({
         stepOrder: step.step_order,
         approverRole: step.approver_role || 'approver',
+        approverId: step.approver_id ?? null,
     }));
 
     const roleStamps: RoleStamp[] = workflowSteps.map((step) => {
         const matchedLog = [...request.step_logs]
             .reverse()
             .find((log) => log.step_order === step.stepOrder);
+        const fallbackActorName = step.approverId ? (approverNameById.get(step.approverId) || null) : null;
 
         return {
             stepOrder: step.stepOrder,
             approverRole: step.approverRole,
-            actorName: matchedLog?.actor?.username || null,
+            approverId: step.approverId,
+            actorName: matchedLog?.actor?.username || fallbackActorName,
             actedAt: matchedLog?.acted_at || null,
             action: matchedLog?.action || null,
         };
     });
+
+    const approvedByFromLogs = [...roleStamps]
+        .reverse()
+        .find((stamp) => stamp.action?.toLowerCase() === 'approved' && Boolean(stamp.actorName?.trim()))
+        ?.actorName || null;
+    const currentStepApprover = workflowSteps.find((step) => step.stepOrder === Number(request.current_step || 0));
+    const currentStepApproverName = currentStepApprover?.approverId
+        ? (approverNameById.get(currentStepApprover.approverId) || null)
+        : null;
+    const approvedByName = request.tbl_approver?.username || approvedByFromLogs || currentStepApproverName || null;
 
     return (
         <div className="min-h-screen bg-white p-8 print:p-0 text-black">
@@ -413,7 +447,7 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                     </div>
                     <div className="text-center">
                         <div className="mx-auto mb-2 w-3/4 border-b border-black opacity-50"></div>
-                        <p className="font-bold">{request.tbl_approver?.username || '________________'}</p>
+                        <p className="font-bold">{approvedByName || '________________'}</p>
                         <p className="text-xs uppercase text-gray-500">Approved By</p>
                         <p className="mt-1 text-xs">Date: ____/____/____</p>
                     </div>

@@ -6,6 +6,7 @@ import { Lock } from 'lucide-react';
 import PrintButton from './PrintButton';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { isNonStockPurchaseOrderItem, parsePurchaseOrderItemNote } from '@/lib/purchase-order-item';
+import { parsePurchaseOrderRequestReference } from '@/lib/purchase-order-reference';
 
 type PoStamp = {
     stepKey: string;
@@ -19,6 +20,7 @@ type PoStamp = {
 function formatRoleLabel(role: string) {
     const normalized = role.trim().toLowerCase();
     const roleMap: Record<string, string> = {
+        requester: 'ผู้ขอซื้อ',
         admin: 'Admin',
         manager: 'Manager',
         employee: 'Employee',
@@ -40,19 +42,6 @@ function formatRoleLabel(role: string) {
         .filter(Boolean)
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' ') || '-';
-}
-
-function formatStepLabel(stepKey: string) {
-    const key = stepKey.trim().toLowerCase();
-    const labels: Record<string, string> = {
-        draft: 'Draft',
-        pending: 'Pending',
-        approved: 'Approved',
-        ordered: 'Ordered',
-        received: 'Received',
-        cancelled: 'Cancelled',
-    };
-    return labels[key] || key.toUpperCase();
 }
 
 export default async function POPrintPage(props: { params: Promise<{ id: string }> }) {
@@ -82,6 +71,7 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
     const items = await prisma.tbl_po_items.findMany({
         where: { po_id: poId }
     });
+    const requestReference = parsePurchaseOrderRequestReference(po.notes);
 
     // Merge items
     const poWithItems = { ...po, tbl_po_items: items };
@@ -118,25 +108,67 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
         // Fallback for environments where the new table has not been migrated yet
         poApprovalLogs = [];
     }
-
-    const actorNames = [po.created_by, po.approved_by, ...poApprovalLogs.map((log) => log.actor_name)]
-        .filter((name): name is string => Boolean(name && name.trim()))
-        .map((name) => name.trim());
-    const uniqueActorNames = Array.from(new Set(actorNames));
-    const actorUsers = uniqueActorNames.length > 0
-        ? await prisma.tbl_users.findMany({
-            where: {
-                username: {
-                    in: uniqueActorNames,
+    const linkedRequest = requestReference.requestId
+        ? await prisma.tbl_approval_requests.findUnique({
+            where: { request_id: requestReference.requestId },
+            include: {
+                tbl_users: {
+                    select: {
+                        username: true,
+                    },
+                },
+                tbl_approver: {
+                    select: {
+                        username: true,
+                    },
+                },
+                step_logs: {
+                    include: {
+                        actor: {
+                            select: {
+                                username: true,
+                                role: true,
+                            },
+                        },
+                    },
+                    orderBy: {
+                        acted_at: 'asc',
+                    },
+                },
+                workflow: {
+                    include: {
+                        steps: {
+                            orderBy: { step_order: 'asc' },
+                        },
+                    },
                 },
             },
-            select: {
-                username: true,
-                role: true,
-            },
         })
-        : [];
-    const roleByUsername = new Map(actorUsers.map((user) => [user.username, user.role || '']));
+        : null;
+    const linkedRequestLogs = linkedRequest?.step_logs || [];
+    const linkedRequestLatestLogByStep = new Map<number, (typeof linkedRequestLogs)[number]>();
+    for (const log of linkedRequestLogs) {
+        linkedRequestLatestLogByStep.set(Number(log.step_order), log);
+    }
+    const linkedRequestWorkflowByStep = new Map<number, { approver_role: string | null; approver_id: number | null }>();
+    for (const step of linkedRequest?.workflow?.steps || []) {
+        linkedRequestWorkflowByStep.set(Number(step.step_order), {
+            approver_role: step.approver_role,
+            approver_id: step.approver_id,
+        });
+    }
+    const linkedRequestManagerLog = linkedRequestLatestLogByStep.get(2);
+    const linkedRequestAccountingLog = linkedRequestLatestLogByStep.get(3);
+    const linkedRequestPoIssuedLog = linkedRequestLatestLogByStep.get(4);
+    const linkedRequestPurchasingLog = linkedRequestLatestLogByStep.get(1);
+    const linkedRequestApprovedBy = linkedRequest?.tbl_approver?.username
+        || linkedRequestAccountingLog?.actor?.username
+        || linkedRequestManagerLog?.actor?.username
+        || [...linkedRequestLogs]
+            .reverse()
+            .find((log) => log.action?.toLowerCase() === 'approved' && Boolean(log.actor?.username?.trim()))
+            ?.actor?.username
+        || null;
 
     // Fetch Company Settings
     const settings = await prisma.tbl_system_settings.findMany();
@@ -150,37 +182,60 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
     const displaySubtotal = Number(po.subtotal) > 0 ? Number(po.subtotal) : calculatedSubtotal;
     const calculatedTax = Number(po.total_amount) - displaySubtotal;
     const displayTax = Number(po.tax_amount) > 0 ? Number(po.tax_amount) : (calculatedTax > 0 ? calculatedTax : 0);
-    const status = String(po.status || 'draft').toLowerCase();
-    const normalizedStatus = status === 'partial' ? 'ordered' : status;
-    const stepFlow = ['draft', 'pending', 'approved', 'ordered', 'received'];
-    const currentStepIndex = Math.max(0, stepFlow.indexOf(normalizedStatus));
-    const latestLogByStep = new Map<string, (typeof poApprovalLogs)[number]>();
-    for (const log of poApprovalLogs) {
-        latestLogByStep.set(log.step_key.toLowerCase(), log);
-    }
+    const approvedByFromLog = [...poApprovalLogs]
+        .reverse()
+        .find((log) => (
+            ['ordered', 'approved', 'received'].includes(log.step_key.toLowerCase())
+            && Boolean(log.actor_name?.trim())
+        ))?.actor_name || null;
+    const approvedByName = linkedRequestApprovedBy || po.approved_by || approvedByFromLog || null;
+    const requesterSignatureName = linkedRequest?.tbl_users?.username || po.created_by || null;
+    const managerApprovedByName = linkedRequestManagerLog?.actor?.username || approvedByName;
+    const requesterName = linkedRequest?.tbl_users?.username || null;
+    const requesterActedAt = linkedRequest?.created_at || linkedRequest?.request_date || null;
 
-    const stamps: PoStamp[] = stepFlow.map((stepKey, index) => {
-        const stepLog = latestLogByStep.get(stepKey);
-        const fallbackActorName = stepKey === 'draft'
-            ? (po.created_by || null)
-            : (stepKey === 'received' || stepKey === 'approved' ? (po.approved_by || null) : null);
-        const actorName = stepLog?.actor_name || fallbackActorName;
-        const role =
-            stepLog?.actor_role ||
-            (actorName ? roleByUsername.get(actorName) : '') ||
-            (stepKey === 'draft' ? 'purchasing' : stepKey === 'received' ? 'store' : 'approver');
-        const actedAt = stepLog?.acted_at ||
-            (stepKey === 'draft' ? (po.created_at || null) : stepKey === 'received' ? (po.received_date || null) : null);
-
-        return {
-            stepKey,
-            stepLabel: formatStepLabel(stepKey),
-            role,
-            actorName,
-            actedAt,
-            approved: index <= currentStepIndex && Boolean(actorName),
-        };
-    });
+    const stamps: PoStamp[] = [
+        {
+            stepKey: 'requester',
+            stepLabel: 'ผู้ขอซื้อ',
+            role: 'requester',
+            actorName: requesterName,
+            actedAt: requesterActedAt,
+            approved: Boolean(requesterName),
+        },
+        {
+            stepKey: 'purchasing',
+            stepLabel: 'จัดซื้อ',
+            role: linkedRequestWorkflowByStep.get(1)?.approver_role || 'purchasing',
+            actorName: linkedRequestPurchasingLog?.actor?.username || po.created_by || null,
+            actedAt: linkedRequestPurchasingLog?.acted_at || po.created_at || null,
+            approved: linkedRequestPurchasingLog?.action === 'approved',
+        },
+        {
+            stepKey: 'manager',
+            stepLabel: 'ผู้จัดการ',
+            role: linkedRequestWorkflowByStep.get(2)?.approver_role || 'manager',
+            actorName: linkedRequestManagerLog?.actor?.username || null,
+            actedAt: linkedRequestManagerLog?.acted_at || null,
+            approved: linkedRequestManagerLog?.action === 'approved',
+        },
+        {
+            stepKey: 'accounting',
+            stepLabel: 'บัญชี',
+            role: linkedRequestWorkflowByStep.get(3)?.approver_role || 'accounting',
+            actorName: linkedRequestAccountingLog?.actor?.username || null,
+            actedAt: linkedRequestAccountingLog?.acted_at || null,
+            approved: linkedRequestAccountingLog?.action === 'approved',
+        },
+        {
+            stepKey: 'purchasing_po',
+            stepLabel: 'จัดซื้อ',
+            role: linkedRequestWorkflowByStep.get(4)?.approver_role || 'purchasing',
+            actorName: linkedRequestPoIssuedLog?.actor?.username || po.created_by || null,
+            actedAt: linkedRequestPoIssuedLog?.acted_at || null,
+            approved: linkedRequestPoIssuedLog?.action === 'approved',
+        },
+    ];
 
     return (
         <div className="bg-white min-h-screen p-8 print:p-0 text-black">
@@ -289,13 +344,13 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
                 <div className="grid grid-cols-2 gap-12 mt-20 page-break-inside-avoid">
                     <div className="text-center">
                         <div className="border-b border-black w-3/4 mx-auto mb-2"></div>
-                        <p className="font-bold">{po.created_by || '________________'}</p>
-                        <p className="text-xs uppercase text-gray-500">Prepared By</p>
+                        <p className="font-bold">{requesterSignatureName || '________________'}</p>
+                        <p className="text-xs uppercase text-gray-500">Requested By</p>
                         <p className="text-xs mt-1">Date: ____/____/____</p>
                     </div>
                     <div className="text-center">
                         <div className="border-b border-black w-3/4 mx-auto mb-2 opacity-50"></div>
-                        <p className="font-bold">{po.approved_by || '________________'}</p>
+                        <p className="font-bold">{managerApprovedByName || '________________'}</p>
                         <p className="text-xs uppercase text-gray-500">Approved By</p>
                         <p className="text-xs mt-1">Date: ____/____/____</p>
                     </div>

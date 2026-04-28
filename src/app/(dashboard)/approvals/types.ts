@@ -1,6 +1,7 @@
 export interface ApprovalUser {
     username?: string | null;
     p_id?: number | null;
+    role?: string | null;
 }
 
 export interface ApprovalApprover {
@@ -21,6 +22,7 @@ export interface ApprovalStepLog {
     comment?: string | null;
     actor?: {
         username?: string | null;
+        role?: string | null;
     } | null;
 }
 
@@ -44,6 +46,12 @@ export interface ApprovalRequest {
     can_approve?: boolean;
     tbl_users?: ApprovalUser | null;
     tbl_approver?: ApprovalApprover | null;
+    workflow?: {
+        steps?: Array<{
+            step_order: number;
+            approver_role?: string | null;
+        }>;
+    } | null;
     linked_purchase_orders?: LinkedPurchaseOrderSummary[];
     step_logs?: ApprovalStepLog[];
 }

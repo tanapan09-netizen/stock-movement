@@ -163,6 +163,7 @@ export async function createPO(formData: FormData) {
                     total_amount,
                     notes: persistedNotes,
                     created_by: user.name,
+                    approved_by: status === 'ordered' ? (user.name || null) : null,
                 },
             });
             createdPOId = po.po_id;
@@ -357,6 +358,9 @@ export async function updatePO(formData: FormData) {
                     tax_amount,
                     total_amount,
                     notes,
+                    approved_by: status === 'ordered'
+                        ? (user.name || existing.approved_by || null)
+                        : existing.approved_by,
                     updated_at: new Date(),
                 },
             });

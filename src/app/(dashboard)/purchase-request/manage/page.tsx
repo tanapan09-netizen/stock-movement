@@ -33,6 +33,7 @@ export default async function PurchaseRequestManagementPage() {
                 select: {
                     username: true,
                     p_id: true,
+                    role: true,
                 },
             },
             tbl_approver: {
@@ -50,6 +51,7 @@ export default async function PurchaseRequestManagementPage() {
                     actor: {
                         select: {
                             username: true,
+                            role: true,
                         },
                     },
                 },

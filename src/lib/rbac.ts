@@ -498,10 +498,19 @@ export function canApproveApprovalRequest(
   const workflowRole = (context?.workflowStep?.approver_role || '').toLowerCase();
 
   if (isManagerLike(normalized)) return true;
+
+  // Purchase workflow must follow the assigned step role strictly.
+  // Override is intentionally limited to manager-like roles above.
+  if (requestType === 'purchase') {
+    if (!workflowRole) return false;
+    if (workflowRole.includes('purchasing')) return isPurchasingRole(normalized);
+    if (workflowRole.includes('accounting')) return isAccountingRole(normalized);
+    if (workflowRole.includes('store')) return isStoreRole(normalized);
+    if (workflowRole.includes('manager') || workflowRole.includes('any_manager')) return isManagerLike(normalized);
+    return false;
+  }
+
   if (context?.isApprover) return true;
-  if (requestType === 'purchase' && isPurchasingRole(normalized)) return true;
-  if (requestType === 'purchase' && workflowRole.includes('accounting') && isAccountingRole(normalized)) return true;
-  if (requestType === 'purchase' && workflowRole.includes('store') && isStoreRole(normalized)) return true;
 
   return hasAnyPermission(permissions, [PERMISSIONS.APPROVALS, PERMISSIONS.PURCHASING_APPROVALS]);
 }
