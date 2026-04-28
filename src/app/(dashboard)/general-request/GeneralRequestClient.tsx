@@ -109,12 +109,10 @@ const ABSOLUTE_URL_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
 const ACKNOWLEDGED_REQUEST_STATUSES = new Set(['approved']);
 const IN_PROGRESS_REQUEST_STATUSES = new Set(['in_progress']);
 const FINISHED_REQUEST_STATUSES = new Set(['confirmed', 'completed', 'verified']);
-const INFORMATIONAL_REQUEST_CATEGORIES = new Set(['general']);
 const GENERAL_REQUEST_EDIT_ROLE_SET = new Set(['leader_employee', 'manager', 'admin']);
 const GENERAL_REQUEST_CANCEL_ALLOWED_STATUS_SET = new Set(['pending', 'approved', 'in_progress']);
 
 const normalizeRequestStatus = (status?: string | null) => (status || '').toLowerCase();
-const normalizeRequestCategory = (category?: string | null) => (category || '').trim().toLowerCase();
 const isPendingRequestStatus = (status?: string | null) => normalizeRequestStatus(status) === 'pending';
 const isAcknowledgedRequestStatus = (status?: string | null) =>
     ACKNOWLEDGED_REQUEST_STATUSES.has(normalizeRequestStatus(status));
@@ -129,6 +127,30 @@ const getStatusHint = (status?: string | null) => {
     if (normalized === 'approved') return 'ฝ่ายธุรการรับเรื่องแล้ว';
     if (normalized === 'in_progress') return 'ช่างกำลังดำเนินการ';
     return '';
+};
+
+const getRequestDisplayStatusMeta = (
+    request: Pick<MaintenanceRequestItem, 'category' | 'tags' | 'status' | 'assigned_to' | 'completed_at'>,
+) => {
+    const base = getRequestStatusMeta(request.status);
+    const normalizedStatus = normalizeRequestStatus(request.status);
+    if (normalizedStatus === 'approved' && isAcknowledgedInformationalRequest(request)) {
+        return {
+            ...base,
+            label: 'รับทราบแล้ว',
+            color: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+        };
+    }
+    return base;
+};
+
+const getRequestDisplayStatusHint = (
+    request: Pick<MaintenanceRequestItem, 'category' | 'tags' | 'status' | 'assigned_to' | 'completed_at'>,
+) => {
+    if (normalizeRequestStatus(request.status) === 'approved' && isAcknowledgedInformationalRequest(request)) {
+        return 'รับทราบแล้ว (ไม่สร้างใบงานซ่อม)';
+    }
+    return getStatusHint(request.status);
 };
 
 function resolveMaintenanceImageProxyUrl(imageUrl: string): string {
@@ -150,19 +172,8 @@ const isCancelledRequestStatus = (status?: string | null) =>
 const isInformationalOnlyRequest = (
     request: Pick<MaintenanceRequestItem, 'category' | 'tags' | 'status' | 'assigned_to' | 'completed_at'>,
 ) => {
-    if (hasGeneralRequestOnlyTag(request.tags)) {
-        return !hasGeneralRequestForwardedByTag(request.tags);
-    }
-
-    // Backward compatibility for legacy records that might miss the tag.
-    const normalizedCategory = normalizeRequestCategory(request.category);
-    if (!INFORMATIONAL_REQUEST_CATEGORIES.has(normalizedCategory)) return false;
-    if ((request.assigned_to || '').trim()) return false;
-    if (request.completed_at) return false;
-    if (isInProgressRequestStatus(request.status)) return false;
-    if (isFinishedRequestStatus(request.status)) return false;
-    if (isCancelledRequestStatus(request.status)) return false;
-    return true;
+    if (!hasGeneralRequestOnlyTag(request.tags)) return false;
+    return !hasGeneralRequestForwardedByTag(request.tags);
 };
 
 const isAcknowledgedInformationalRequest = (
@@ -1020,8 +1031,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {primaryFilteredRequests.map(req => {
-                                        const statusCfg = getRequestStatusMeta(req.status);
-                                        const statusHint = getStatusHint(req.status);
+                                        const statusCfg = getRequestDisplayStatusMeta(req);
+                                        const statusHint = getRequestDisplayStatusHint(req);
                                         const priorityCfg = GENERAL_REQUEST_PRIORITY_CONFIG[req.priority] || GENERAL_REQUEST_PRIORITY_CONFIG.normal;
                                         const rowToneClass = isPendingRequestStatus(req.status)
                                             ? 'bg-yellow-50/20'
@@ -1103,8 +1114,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {primaryFilteredRequests.map(req => {
-                            const statusCfg = getRequestStatusMeta(req.status);
-                            const statusHint = getStatusHint(req.status);
+                            const statusCfg = getRequestDisplayStatusMeta(req);
+                            const statusHint = getRequestDisplayStatusHint(req);
                             const priorityCfg = GENERAL_REQUEST_PRIORITY_CONFIG[req.priority] || GENERAL_REQUEST_PRIORITY_CONFIG.normal;
                             const StatusIcon = statusCfg.icon;
                             const statusToneClass = isPendingRequestStatus(req.status)
@@ -1207,6 +1218,7 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
 
                     <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {acknowledgedInfoRequests.map((req) => {
+                            const acknowledgedStatusCfg = getRequestDisplayStatusMeta(req);
                             return (
                                 <div
                                     key={`ack-info-${req.request_id}`}
@@ -1225,8 +1237,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                                             </p>
                                             <p className="mt-1 text-xs text-gray-500">{formatDate(req.created_at)}</p>
                                         </div>
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap bg-emerald-100 text-emerald-700 border-emerald-200">
-                                            รับทราบแล้ว
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${acknowledgedStatusCfg.color}`}>
+                                            {acknowledgedStatusCfg.label}
                                         </span>
                                     </div>
                                 </div>
@@ -1261,8 +1273,8 @@ export default function GeneralRequestClient({ userPermissions }: Props) {
                         <div className="space-y-5">
                             <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-mono text-sm text-gray-600">{selectedRequest.request_number}</span>
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-medium border ${getRequestStatusMeta(selectedRequest.status).color}`}>
-                                    {getRequestStatusMeta(selectedRequest.status).label}
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-medium border ${getRequestDisplayStatusMeta(selectedRequest).color}`}>
+                                    {getRequestDisplayStatusMeta(selectedRequest).label}
                                 </span>
                                 <span className={`px-2.5 py-1 rounded-full text-sm font-medium ${GENERAL_REQUEST_PRIORITY_CONFIG[selectedRequest.priority]?.color}`}>
                                     {GENERAL_REQUEST_PRIORITY_CONFIG[selectedRequest.priority]?.label}

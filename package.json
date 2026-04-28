@@ -16,6 +16,10 @@
     "test:watch": "vitest",
     "uploads:cleanup": "node scripts/cleanup-orphan-uploads.js",
     "uploads:cleanup:execute": "node scripts/cleanup-orphan-uploads.js --execute",
+    "general-request:backfill-informational-tags": "node scripts/backfill-general-request-informational-tags.js",
+    "general-request:backfill-informational-tags:execute": "node scripts/backfill-general-request-informational-tags.js --execute",
+    "general-request:backfill-informational-tags:legacy": "node scripts/backfill-general-request-informational-tags.js --legacy-heuristic",
+    "general-request:backfill-informational-tags:legacy:execute": "node scripts/backfill-general-request-informational-tags.js --legacy-heuristic --execute",
     "prisma:generate": "prisma generate",
     "postinstall": "prisma generate"
   },

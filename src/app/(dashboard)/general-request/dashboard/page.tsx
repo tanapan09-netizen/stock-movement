@@ -16,7 +16,11 @@ import {
 import { auth } from '@/auth';
 import { getMaintenanceRequests } from '@/actions/maintenanceActions';
 import { GENERAL_REQUEST_CATEGORY_OPTIONS, GENERAL_REQUEST_PRIORITY_CONFIG } from '@/lib/general-request-options';
-import { GENERAL_REQUEST_FORWARDED_BY_TAG_PREFIX } from '@/lib/maintenance-request-scope';
+import {
+    GENERAL_REQUEST_FORWARDED_BY_TAG_PREFIX,
+    hasGeneralRequestForwardedByTag,
+    hasGeneralRequestOnlyTag,
+} from '@/lib/maintenance-request-scope';
 import { resolveGeneralRequestAccess } from '@/lib/rbac';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { prisma } from '@/lib/prisma';
@@ -76,7 +80,6 @@ const PENDING_REQUEST_STATUSES = new Set(['pending']);
 const ACKNOWLEDGED_REQUEST_STATUSES = new Set(['approved']);
 const IN_PROGRESS_REQUEST_STATUSES = new Set(['in_progress']);
 const CANCELLED_REQUEST_STATUSES = new Set(['cancelled']);
-const INFORMATIONAL_REQUEST_CATEGORIES = new Set(['general']);
 
 const TH_DATE_FORMATTER = new Intl.DateTimeFormat('th-TH', {
     day: '2-digit',
@@ -191,16 +194,16 @@ function isCancelledStatus(status?: string | null): boolean {
     return CANCELLED_REQUEST_STATUSES.has(normalizeStatus(status));
 }
 
-function isInformationalCategory(category?: string | null): boolean {
-    return INFORMATIONAL_REQUEST_CATEGORIES.has(normalizeCategory(category));
+function isInformationalOnlyRequest(request: Pick<GeneralRequestRow, 'tags'>): boolean {
+    return hasGeneralRequestOnlyTag(request.tags) && !hasGeneralRequestForwardedByTag(request.tags);
 }
 
-function isAcknowledgedInformationalRequest(request: Pick<GeneralRequestRow, 'category' | 'status'>): boolean {
-    return isInformationalCategory(request.category) && isFinishedStatus(request.status);
+function isAcknowledgedInformationalRequest(request: Pick<GeneralRequestRow, 'tags' | 'status'>): boolean {
+    return isInformationalOnlyRequest(request) && (isAcknowledgedStatus(request.status) || isFinishedStatus(request.status));
 }
 
-function isOperationalFinishedRequest(request: Pick<GeneralRequestRow, 'category' | 'status'>): boolean {
-    return !isInformationalCategory(request.category) && isFinishedStatus(request.status);
+function isOperationalFinishedRequest(request: Pick<GeneralRequestRow, 'tags' | 'status'>): boolean {
+    return !isInformationalOnlyRequest(request) && isFinishedStatus(request.status);
 }
 
 function parseDateInput(value: string | undefined, fallback: Date): Date {
@@ -480,7 +483,7 @@ export default async function GeneralRequestKpiDashboardPage({ searchParams }: P
     const closedRequests = requests.filter((request) => isFinishedStatus(request.status) || isCancelledStatus(request.status));
 
     const openRequestsCount = pendingRequests.length + acknowledgedRequests.length + inProgressRequests.length;
-    const informationalRequestsCount = requests.filter((request) => isInformationalCategory(request.category)).length;
+    const informationalRequestsCount = requests.filter((request) => isInformationalOnlyRequest(request)).length;
     const maintenanceFlowRequestsCount = totalRequests - informationalRequestsCount;
 
     const responseHourValues = requests
