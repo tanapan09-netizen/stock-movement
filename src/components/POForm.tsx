@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createPO, updatePO } from '@/actions/poActions';
 import { Search, Trash2, Save, Calculator } from 'lucide-react';
 import { FloatingSearchInput } from '@/components/FloatingField';
@@ -11,6 +11,12 @@ import { parsePurchaseOrderItemNote, type PurchaseOrderItemKind } from '@/lib/pu
 type Product = { p_id: string; p_name: string; price_unit: number | null };
 type Supplier = { id: number; name: string };
 type POItem = { p_id: string; p_name: string; quantity: number; unit_price: number; item_type: PurchaseOrderItemKind };
+type PODataItem = {
+    p_id: string;
+    quantity: number;
+    unit_price: number;
+    notes?: string | null;
+};
 
 type POData = {
     po_id: number;
@@ -21,7 +27,7 @@ type POData = {
     status: string;
     notes: string | null;
     total_amount: number; // Decimal in Prisma but number in JS usually
-    tbl_po_items: any[];
+    tbl_po_items: PODataItem[];
 }
 
 type PurchaseRequestContext = {
@@ -48,11 +54,15 @@ export default function POForm({
     suppliers,
     initialData,
     initialRequestContext,
+    initialRequestItems,
+    defaultPoNumber,
 }: {
     products: Product[];
     suppliers: Supplier[];
     initialData?: POData;
     initialRequestContext?: PurchaseRequestContext;
+    initialRequestItems?: POItem[];
+    defaultPoNumber?: string;
 }) {
     const router = useRouter();
     const { showConfirm, showToast } = useToast();
@@ -70,7 +80,7 @@ export default function POForm({
 
     // Form state
     const [supplierId, setSupplierId] = useState(initialData?.supplier_id?.toString() || '');
-    const [poNumber, setPoNumber] = useState(initialData?.po_number || `PO-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`);
+    const [poNumber, setPoNumber] = useState(initialData?.po_number || defaultPoNumber || '');
     const [orderDate, setOrderDate] = useState(initialData?.order_date ? new Date(initialData.order_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
     const [expectedDate, setExpectedDate] = useState(initialData?.expected_date ? new Date(initialData.expected_date).toISOString().split('T')[0] : '');
     const [status, setStatus] = useState(initialData?.status || (isWorkflowPurchaseOrder ? 'ordered' : 'draft'));
@@ -96,6 +106,9 @@ export default function POForm({
                 };
             });
         }
+        if (initialRequestItems?.length) {
+            return initialRequestItems.map((item) => ({ ...item }));
+        }
         return [];
     });
 
@@ -103,11 +116,15 @@ export default function POForm({
     const [isPending, setIsPending] = useState(false);
     const [error, setError] = useState('');
 
-    useEffect(() => {
-        if (isWorkflowPurchaseOrder) {
-            setStatus('ordered');
+    const getSubmitActionLabel = (targetStatus: string) => {
+        if (targetStatus === 'draft') {
+            return isEditMode ? 'บันทึกการแก้ไขร่าง PO' : 'บันทึกร่าง PO';
         }
-    }, [isWorkflowPurchaseOrder]);
+        if (targetStatus === 'ordered') {
+            return isEditMode ? 'บันทึกการแก้ไขและยืนยันออก PO' : 'ยืนยันออก PO';
+        }
+        return isEditMode ? 'บันทึกการแก้ไขใบสั่งซื้อ' : 'ยืนยันการสร้างใบสั่งซื้อ';
+    };
 
     const filteredProducts = searchTerm
         ? products.filter(p => p.p_name.toLowerCase().includes(searchTerm.toLowerCase()) || p.p_id.includes(searchTerm)).slice(0, 8)
@@ -179,11 +196,14 @@ export default function POForm({
         setCart(cart.filter(i => i.p_id !== p_id));
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const submitPO = async (targetStatus?: string) => {
+        if (!poNumber.trim()) {
+            setError('กรุณาระบุเลขที่ใบสั่งซื้อ');
+            return;
+        }
 
-        if (!supplierId || cart.length === 0) {
-            setError('กรุณาเลือก Supplier และเพิ่มสินค้าอย่างน้อย 1 รายการ');
+        if (cart.length === 0) {
+            setError('กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ');
             return;
         }
 
@@ -192,9 +212,10 @@ export default function POForm({
             return;
         }
 
+        const submitStatus = targetStatus || status;
         const confirmed = await showConfirm({
-            title: isEditMode ? 'ยืนยันการแก้ไขใบสั่งซื้อ' : 'ยืนยันการสร้างใบสั่งซื้อ',
-            message: `เลขที่: ${poNumber}\nผู้ขาย: ${suppliers.find(s => s.id === parseInt(supplierId))?.name}\nจำนวนรายการ: ${cart.length}\nยอดรวม: ${formatMoney(grandTotal)} บาท`,
+            title: getSubmitActionLabel(submitStatus),
+            message: `เลขที่: ${poNumber}\nผู้ขาย: ${suppliers.find(s => s.id === parseInt(supplierId))?.name || '-'}\nจำนวนรายการ: ${cart.length}\nยอดรวม: ${formatMoney(grandTotal)} บาท`,
             confirmText: 'ยืนยัน',
             cancelText: 'ยกเลิก',
             type: 'info'
@@ -212,12 +233,18 @@ export default function POForm({
         formData.append('supplier_id', supplierId);
         formData.append('order_date', orderDate);
         formData.append('expected_date', expectedDate);
-        formData.append('status', status);
+        formData.append('status', submitStatus);
         formData.append('subtotal', subtotal.toFixed(2));
         formData.append('tax_amount', taxAmount.toFixed(2));
         formData.append('total_amount', grandTotal.toFixed(2));
         formData.append('notes', notes);
         formData.append('items', JSON.stringify(cart));
+        if (initialRequestContext?.requestId) {
+            formData.append('request_id', String(initialRequestContext.requestId));
+        }
+        if (initialRequestContext?.requestNumber) {
+            formData.append('request_number', initialRequestContext.requestNumber);
+        }
 
         let res;
         if (isEditMode) {
@@ -233,12 +260,19 @@ export default function POForm({
         } else {
             showToast(isEditMode ? 'แก้ไขใบสั่งซื้อสำเร็จ' : 'สร้างใบสั่งซื้อสำเร็จ', 'success');
             const nextPOId = !isEditMode && 'poId' in res ? res.poId : null;
-            const nextRoute = isWorkflowPurchaseOrder
+            const nextRoute = isWorkflowPurchaseOrder && submitStatus === 'ordered'
                 ? '/purchase-request/manage'
+                : isWorkflowPurchaseOrder && nextPOId
+                    ? `/purchase-orders/${nextPOId}`
                 : nextPOId ? `/purchase-orders/${nextPOId}` : '/purchase-orders';
             router.push(nextRoute);
             router.refresh(); // Refresh to show updated data
         }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        await submitPO();
     };
 
     // Calculate totals
@@ -281,20 +315,19 @@ export default function POForm({
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">ผู้ขาย (Supplier) *</label>
+                        <label className="block text-sm font-medium text-gray-700">ผู้ขาย (Supplier)</label>
                         <select
                             name="supplier_id"
-                            required
                             value={supplierId}
                             onChange={e => setSupplierId(e.target.value)}
                             className="w-full border rounded-lg p-2.5 mt-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
-                            <option value="">-- เลือกผู้ขาย --</option>
+                            <option value="">-- ไม่ระบุผู้ขาย --</option>
                             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                         {isWorkflowPurchaseOrder && (
                             <p className="mt-2 text-xs text-cyan-700">
-                                PO ที่สร้างจาก workflow จะถูกตั้งสถานะเป็น Ordered อัตโนมัติ เพื่อรอจัดซื้อส่งต่อให้ Store รับเข้า
+                                เมื่อกดยืนยันออก PO ระบบจะตั้งสถานะ Ordered และส่งงานไปคิว Store รับเข้าอัตโนมัติ
                             </p>
                         )}
                     </div>
@@ -323,23 +356,31 @@ export default function POForm({
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">สถานะ</label>
-                        <select
-                            name="status"
-                            value={status}
-                            onChange={e => setStatus(e.target.value)}
-                            className="w-full border rounded-lg p-2.5 mt-1"
-                            disabled={isWorkflowPurchaseOrder || initialData?.status === 'received'} // Disable status change if received via this form
-                        >
-                            <option value="draft">ร่าง (Draft)</option>
-                            <option value="pending">รออนุมัติ (Pending)</option>
-                            <option value="approved">อนุมัติแล้ว (Approved)</option>
-                            <option value="ordered">สั่งซื้อแล้ว (Ordered)</option>
-                            {/* Received status is usually set by system actions, but kept for viewing */}
-                            {status === 'received' && <option value="received">ได้รับสินค้าแล้ว (Received)</option>}
-                        </select>
-                    </div>
+                    {isWorkflowPurchaseOrder && !isEditMode ? (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">สถานะ</label>
+                            <div className="mt-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700">
+                                Ordered (ระบบจะตั้งสถานะเมื่อกดยืนยันออก PO)
+                            </div>
+                        </div>
+                    ) : (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">สถานะ</label>
+                            <select
+                                name="status"
+                                value={status}
+                                onChange={e => setStatus(e.target.value)}
+                                className="w-full border rounded-lg p-2.5 mt-1"
+                                disabled={initialData?.status === 'received'}
+                            >
+                                <option value="draft">ร่าง (Draft)</option>
+                                <option value="pending">รออนุมัติ (Pending)</option>
+                                <option value="approved">อนุมัติแล้ว (Approved)</option>
+                                <option value="ordered">สั่งซื้อแล้ว (Ordered)</option>
+                                {status === 'received' && <option value="received">ได้รับสินค้าแล้ว (Received)</option>}
+                            </select>
+                        </div>
+                    )}
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700">หมายเหตุ</label>
@@ -407,18 +448,41 @@ export default function POForm({
 
                 {isWorkflowPurchaseOrder && (
                     <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                        เมื่อสร้าง PO สำเร็จ ระบบจะพากลับไปหน้า <span className="font-semibold">purchase workflow</span> เพื่อให้จัดซื้อส่งต่อ Store รับเข้า
+                        เมื่อยืนยันออก PO สำเร็จ ระบบจะพากลับไปหน้า <span className="font-semibold">purchase workflow</span> และขึ้นคิว Store รับเข้าให้อัตโนมัติ
                     </div>
                 )}
 
-                <button
-                    type="submit"
-                    disabled={isPending || cart.length === 0}
-                    className="w-full bg-green-600 text-white font-bold py-3.5 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition"
-                >
-                    <Save className="w-5 h-5" />
-                    {isPending ? 'กำลังบันทึก...' : (isEditMode ? 'บันทึกการแก้ไข' : 'ยืนยันสร้างใบสั่งซื้อ')}
-                </button>
+                {isWorkflowPurchaseOrder && !isEditMode ? (
+                    <div className="space-y-2">
+                        <button
+                            type="button"
+                            disabled={isPending || cart.length === 0}
+                            onClick={() => submitPO('draft')}
+                            className="w-full rounded-lg border border-slate-300 bg-white py-3.5 font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            <Save className="w-5 h-5" />
+                            {isPending ? 'กำลังบันทึก...' : 'บันทึกร่าง PO'}
+                        </button>
+                        <button
+                            type="button"
+                            disabled={isPending || cart.length === 0}
+                            onClick={() => submitPO('ordered')}
+                            className="w-full bg-green-600 text-white font-bold py-3.5 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition"
+                        >
+                            <Save className="w-5 h-5" />
+                            {isPending ? 'กำลังบันทึก...' : 'ยืนยันออก PO'}
+                        </button>
+                    </div>
+                ) : (
+                    <button
+                        type="submit"
+                        disabled={isPending || cart.length === 0}
+                        className="w-full bg-green-600 text-white font-bold py-3.5 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition"
+                    >
+                        <Save className="w-5 h-5" />
+                        {isPending ? 'กำลังบันทึก...' : (isEditMode ? 'บันทึกการแก้ไข' : 'ยืนยันสร้างใบสั่งซื้อ')}
+                    </button>
+                )}
                 {error && <div className="text-red-500 text-sm text-center bg-red-50 p-3 rounded-lg">{error}</div>}
             </div>
 

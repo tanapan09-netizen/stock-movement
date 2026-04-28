@@ -614,6 +614,36 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
         let finalAction = false; // Whether this action completes the request
         let requesterNotificationAction: ApprovalAction | null = null;
         const effectiveTotalSteps = getEffectiveTotalSteps(currentRequest);
+        let hasIssuedPurchaseOrder = false;
+        let hasReceivedPurchaseOrder = false;
+
+        if (currentRequest.request_type === 'purchase') {
+            const linkedPurchaseOrders = await prisma.tbl_purchase_orders.findMany({
+                where: {
+                    OR: [
+                        {
+                            notes: {
+                                contains: `PR Request ID: ${currentRequest.request_id}`,
+                            },
+                        },
+                        {
+                            notes: {
+                                contains: `อ้างอิงคำขอซื้อ: ${currentRequest.request_number}`,
+                            },
+                        },
+                    ],
+                    status: {
+                        not: 'cancelled',
+                    },
+                },
+                select: {
+                    status: true,
+                },
+            });
+
+            hasIssuedPurchaseOrder = linkedPurchaseOrders.length > 0;
+            hasReceivedPurchaseOrder = linkedPurchaseOrders.some((purchaseOrder) => purchaseOrder.status === 'received');
+        }
 
         // Process step logic
         if (status === 'rejected') {
@@ -630,6 +660,14 @@ export async function updateApprovalStatus(requestId: number, status: 'approved'
                 nextStep = getPurchaseReturnTargetStep(currentRequest.current_step);
             }
         } else if (status === 'approved') {
+            if (currentRequest.request_type === 'purchase' && currentRequest.current_step === 4 && !hasIssuedPurchaseOrder) {
+                return { success: false, error: 'กรุณาออก PO ก่อนส่งต่อให้ Store' };
+            }
+
+            if (currentRequest.request_type === 'purchase' && currentRequest.current_step === 5 && !hasReceivedPurchaseOrder) {
+                return { success: false, error: 'กรุณารับสินค้าใน PO ก่อนปิดงานรับเข้า' };
+            }
+
             if (currentRequest.current_step < effectiveTotalSteps) {
                 // Advance step
                 nextStep += 1;

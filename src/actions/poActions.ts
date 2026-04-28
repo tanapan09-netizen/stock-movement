@@ -7,6 +7,7 @@ import { buildPurchaseOrderItemNote, isNonStockPurchaseOrderItem, type PurchaseO
 import { tbl_purchase_orders_status } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
+import { resolveAuthenticatedUserId } from '@/lib/server/auth-user';
 
 type POItemInput = {
     p_id: string;
@@ -30,6 +31,18 @@ function parseItems(itemsJson: string): POItemInput[] | null {
     }
 }
 
+function toIntOrNull(value: FormDataEntryValue | null) {
+    if (typeof value !== 'string') return null;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseOptionalInt(value: FormDataEntryValue | null) {
+    if (typeof value !== 'string' || value.trim() === '') return null;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
 export async function createPO(formData: FormData) {
     const session = await auth();
     if (!session?.user) {
@@ -42,16 +55,20 @@ export async function createPO(formData: FormData) {
         return { error: 'Permission denied' };
     }
 
-    const createdByUserId = Number.parseInt(user.id || '', 10);
-    const supplier_id = parseInt(formData.get('supplier_id') as string, 10);
+    const resolvedUserId = await resolveAuthenticatedUserId(session.user);
+    const fallbackUserId = Number.parseInt(user.id || '', 10);
+    const createdByUserId = resolvedUserId ?? (Number.isNaN(fallbackUserId) ? null : fallbackUserId);
+    const supplier_id = parseOptionalInt(formData.get('supplier_id'));
     const po_number = formData.get('po_number') as string;
     const order_date = formData.get('order_date') as string;
-    const notes = formData.get('notes') as string;
+    const notes = (formData.get('notes') as string) || '';
     const expected_date = formData.get('expected_date') as string;
     const status = (formData.get('status') as tbl_purchase_orders_status) || 'draft';
+    const requestId = toIntOrNull(formData.get('request_id'));
+    const requestNumber = (formData.get('request_number') as string | null)?.trim() || null;
     const items = parseItems((formData.get('items') as string) || '');
 
-    if (!supplier_id || !po_number || !items?.length) {
+    if (!po_number || !items?.length) {
         return { error: 'Missing required fields' };
     }
 
@@ -65,20 +82,86 @@ export async function createPO(formData: FormData) {
         const tax_amount = parseFloat(formData.get('tax_amount') as string) || 0;
         const total_amount = parseFloat(formData.get('total_amount') as string) || 0;
         let createdPOId: number | null = null;
+        let linkedPurchaseRequest: { request_id: number; request_number: string; request_type: string; status: string; current_step: number } | null = null;
+        let persistedNotes = notes;
+
+        if (requestId) {
+            linkedPurchaseRequest = await prisma.tbl_approval_requests.findUnique({
+                where: { request_id: requestId },
+                select: {
+                    request_id: true,
+                    request_number: true,
+                    request_type: true,
+                    status: true,
+                    current_step: true,
+                },
+            });
+
+            if (!linkedPurchaseRequest || linkedPurchaseRequest.request_type !== 'purchase') {
+                return { error: 'ไม่พบคำขอซื้อที่อ้างอิง' };
+            }
+
+            if (requestNumber && linkedPurchaseRequest.request_number !== requestNumber) {
+                return { error: 'ข้อมูล PR ไม่ตรงกัน กรุณาเปิดฟอร์มออก PO ใหม่' };
+            }
+
+            const existingPO = await prisma.tbl_purchase_orders.findFirst({
+                where: {
+                    OR: [
+                        {
+                            notes: {
+                                contains: `PR Request ID: ${requestId}`,
+                            },
+                        },
+                        {
+                            notes: {
+                                contains: `อ้างอิงคำขอซื้อ: ${linkedPurchaseRequest.request_number}`,
+                            },
+                        },
+                    ],
+                    status: {
+                        not: 'cancelled',
+                    },
+                },
+                select: {
+                    po_number: true,
+                },
+            });
+
+            if (existingPO) {
+                return { error: `คำขอซื้อมี PO แล้ว (${existingPO.po_number})` };
+            }
+
+            if (status === 'ordered' && (linkedPurchaseRequest.status !== 'pending' || linkedPurchaseRequest.current_step !== 4)) {
+                return { error: 'คำขอซื้อยังไม่อยู่ขั้นออก PO' };
+            }
+
+            const canonicalLinkLines = [
+                `อ้างอิงคำขอซื้อ: ${linkedPurchaseRequest.request_number}`,
+                `PR Request ID: ${linkedPurchaseRequest.request_id}`,
+            ];
+            const existingLines = persistedNotes.split('\n').map((line) => line.trim()).filter(Boolean);
+            for (const line of canonicalLinkLines) {
+                if (!existingLines.includes(line)) {
+                    existingLines.push(line);
+                }
+            }
+            persistedNotes = existingLines.join('\n');
+        }
 
         await prisma.$transaction(async (tx) => {
             const po = await tx.tbl_purchase_orders.create({
                 data: {
                     po_number,
-                    supplier_id,
-                    created_by_user_id: Number.isNaN(createdByUserId) ? null : createdByUserId,
+                    supplier_id: supplier_id ?? null,
+                    created_by_user_id: createdByUserId,
                     order_date: new Date(order_date),
                     expected_date: expected_date ? new Date(expected_date) : null,
                     status,
                     subtotal,
                     tax_amount,
                     total_amount,
-                    notes,
+                    notes: persistedNotes,
                     created_by: user.name,
                 },
             });
@@ -108,8 +191,34 @@ export async function createPO(formData: FormData) {
                     },
                 });
             }
+
+            if (linkedPurchaseRequest && status === 'ordered') {
+                if (createdByUserId === null) {
+                    throw new Error('ไม่สามารถระบุผู้ใช้งานสำหรับอัปเดต workflow ได้');
+                }
+
+                await tx.tbl_approval_requests.update({
+                    where: { request_id: linkedPurchaseRequest.request_id },
+                    data: {
+                        current_step: 5,
+                        status: 'pending',
+                        rejection_reason: null,
+                    },
+                });
+
+                await tx.tbl_approval_step_logs.create({
+                    data: {
+                        request_id: linkedPurchaseRequest.request_id,
+                        step_order: 4,
+                        action: 'approved',
+                        acted_by: createdByUserId,
+                        comment: `Auto-forward to Store after PO issued (${po.po_number})`,
+                    },
+                });
+            }
         });
         revalidatePath('/purchase-orders');
+        revalidatePath('/purchase-request/manage');
         return { success: true, poId: createdPOId };
     } catch (error) {
         console.error('Create PO failed:', error);
@@ -215,7 +324,7 @@ export async function updatePO(formData: FormData) {
     }
 
     const po_id = parseInt(formData.get('po_id') as string, 10);
-    const supplier_id = parseInt(formData.get('supplier_id') as string, 10);
+    const supplier_id = parseOptionalInt(formData.get('supplier_id'));
     const po_number = formData.get('po_number') as string;
     const order_date = formData.get('order_date') as string;
     const expected_date = formData.get('expected_date') as string;
@@ -226,7 +335,7 @@ export async function updatePO(formData: FormData) {
     const total_amount = parseFloat(formData.get('total_amount') as string) || 0;
     const items = parseItems((formData.get('items') as string) || '');
 
-    if (!po_id || !supplier_id || !po_number || !items?.length) {
+    if (!po_id || !po_number || !items?.length) {
         return { error: 'Missing required fields' };
     }
 
@@ -240,7 +349,7 @@ export async function updatePO(formData: FormData) {
                 where: { po_id },
                 data: {
                     po_number,
-                    supplier_id,
+                    supplier_id: supplier_id ?? null,
                     order_date: new Date(order_date),
                     expected_date: expected_date ? new Date(expected_date) : null,
                     status,
@@ -298,7 +407,7 @@ export async function deletePO(po_id: number) {
         return { error: 'Unauthorized' };
     }
 
-    const user = session.user as SessionUserLike;
+    const _user = session.user as SessionUserLike;
     const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
     if (!canEditPurchaseOrders(permissionContext.permissions)) {
         return { error: 'Permission denied' };

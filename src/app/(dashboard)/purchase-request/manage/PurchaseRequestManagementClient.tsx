@@ -5,7 +5,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { FloatingSearchInput } from '@/components/FloatingField';
-import { CheckCircle2, CircleSlash, ClipboardList, ExternalLink, FileCheck2, FilePenLine, FileText, Filter, Loader2, Printer, Search, ShoppingCart, X } from 'lucide-react';
+import { CheckCircle2, CircleSlash, ClipboardList, ExternalLink, FileCheck2, FilePenLine, FileText, Filter, Loader2, Printer, ShoppingCart, X } from 'lucide-react';
 
 import { updateApprovalStatus, updatePurchaseRequest } from '@/actions/approvalActions';
 import { isDepartmentRole } from '@/lib/roles';
@@ -20,7 +20,7 @@ interface Props {
 
 type StatusFilter = 'all' | 'pending' | 'returned' | 'approved' | 'rejected';
 type ViewMode = 'all' | 'my_queue';
-type PurchaseOrderFilter = 'all' | 'has_po' | 'received_po';
+type PurchaseOrderFilter = 'all' | 'ready_po' | 'issued_po' | 'wait_receive' | 'received_po';
 
 function formatCurrency(value: unknown) {
     return Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -155,6 +155,17 @@ function hasReceivedPurchaseOrder(request: ApprovalRequest) {
     return request.linked_purchase_orders?.some((purchaseOrder) => purchaseOrder.status === 'received') ?? false;
 }
 
+function isReadyForPurchaseOrderIssue(request: ApprovalRequest) {
+    return request.status === 'pending' && request.current_step === 4 && !hasIssuedPurchaseOrder(request);
+}
+
+function isWaitingForStoreReceive(request: ApprovalRequest) {
+    return request.status === 'pending'
+        && request.current_step === 5
+        && hasIssuedPurchaseOrder(request)
+        && !hasReceivedPurchaseOrder(request);
+}
+
 function getPurchaseOrderProgressLabel(request: ApprovalRequest) {
     if (hasReceivedPurchaseOrder(request)) return 'PO รับเข้าแล้ว';
     if (hasIssuedPurchaseOrder(request)) return 'ออก PO แล้ว';
@@ -232,10 +243,24 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
         const actionable = requests.filter((request) => request.status === 'pending' && request.can_approve).length;
         const hasPurchaseOrder = requests.filter((request) => hasIssuedPurchaseOrder(request)).length;
         const receivedPurchaseOrder = requests.filter((request) => hasReceivedPurchaseOrder(request)).length;
+        const readyForPurchaseOrderIssue = requests.filter((request) => isReadyForPurchaseOrderIssue(request)).length;
+        const waitingStoreReceive = requests.filter((request) => isWaitingForStoreReceive(request)).length;
+        const issuedPurchaseOrder = requests.filter((request) => hasIssuedPurchaseOrder(request) && !hasReceivedPurchaseOrder(request)).length;
         const returned = requests.filter((request) => request.status === 'returned').length;
         const approved = requests.filter((request) => request.status === 'approved').length;
         const rejected = requests.filter((request) => request.status === 'rejected').length;
-        return { pending, actionable, hasPurchaseOrder, receivedPurchaseOrder, returned, approved, rejected };
+        return {
+            pending,
+            actionable,
+            hasPurchaseOrder,
+            receivedPurchaseOrder,
+            readyForPurchaseOrderIssue,
+            waitingStoreReceive,
+            issuedPurchaseOrder,
+            returned,
+            approved,
+            rejected,
+        };
     }, [requests]);
 
     const resetFilters = () => {
@@ -245,7 +270,7 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
         setViewMode(isDepartmentRole(currentRole, 'purchasing') ? 'all' : 'my_queue');
     };
 
-    const applySummaryFilter = (filter: 'pending' | 'actionable' | 'approved' | 'returned' | 'rejected' | 'has_po' | 'received_po') => {
+    const applySummaryFilter = (filter: 'pending' | 'actionable' | 'approved' | 'returned' | 'rejected' | 'ready_po' | 'issued_po' | 'wait_receive' | 'received_po') => {
         if (isSummaryFilterActive(filter)) {
             resetFilters();
             return;
@@ -273,9 +298,17 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                 setStatusFilter('rejected');
                 setPurchaseOrderFilter('all');
                 return;
-            case 'has_po':
+            case 'ready_po':
                 setStatusFilter('all');
-                setPurchaseOrderFilter('has_po');
+                setPurchaseOrderFilter('ready_po');
+                return;
+            case 'issued_po':
+                setStatusFilter('all');
+                setPurchaseOrderFilter('issued_po');
+                return;
+            case 'wait_receive':
+                setStatusFilter('all');
+                setPurchaseOrderFilter('wait_receive');
                 return;
             case 'received_po':
                 setStatusFilter('all');
@@ -286,7 +319,7 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
         }
     };
 
-    const isSummaryFilterActive = (filter: 'pending' | 'actionable' | 'approved' | 'returned' | 'rejected' | 'has_po' | 'received_po') => {
+    const isSummaryFilterActive = (filter: 'pending' | 'actionable' | 'approved' | 'returned' | 'rejected' | 'ready_po' | 'issued_po' | 'wait_receive' | 'received_po') => {
         switch (filter) {
             case 'pending':
                 return statusFilter === 'pending' && purchaseOrderFilter === 'all';
@@ -298,8 +331,12 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                 return statusFilter === 'returned' && purchaseOrderFilter === 'all';
             case 'rejected':
                 return statusFilter === 'rejected' && purchaseOrderFilter === 'all';
-            case 'has_po':
-                return purchaseOrderFilter === 'has_po' && statusFilter === 'all';
+            case 'ready_po':
+                return purchaseOrderFilter === 'ready_po' && statusFilter === 'all';
+            case 'issued_po':
+                return purchaseOrderFilter === 'issued_po' && statusFilter === 'all';
+            case 'wait_receive':
+                return purchaseOrderFilter === 'wait_receive' && statusFilter === 'all';
             case 'received_po':
                 return purchaseOrderFilter === 'received_po' && statusFilter === 'all';
             default:
@@ -318,7 +355,9 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
             .filter((request) => {
                 if (viewMode === 'my_queue' && !(request.status === 'pending' && request.can_approve)) return false;
                 if (statusFilter !== 'all' && request.status !== statusFilter) return false;
-                if (purchaseOrderFilter === 'has_po' && !hasIssuedPurchaseOrder(request)) return false;
+                if (purchaseOrderFilter === 'ready_po' && !isReadyForPurchaseOrderIssue(request)) return false;
+                if (purchaseOrderFilter === 'issued_po' && !(hasIssuedPurchaseOrder(request) && !hasReceivedPurchaseOrder(request))) return false;
+                if (purchaseOrderFilter === 'wait_receive' && !isWaitingForStoreReceive(request)) return false;
                 if (purchaseOrderFilter === 'received_po' && !hasReceivedPurchaseOrder(request)) return false;
                 if (!keyword) return true;
                 const haystack = [
@@ -518,34 +557,22 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-7">
-                <button type="button" onClick={() => applySummaryFilter('pending')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('pending') ? 'border-amber-400 ring-2 ring-amber-200' : 'border-amber-200'}`}>
-                    <div className="text-sm font-medium text-slate-500">รอดำเนินการ</div>
-                    <div className="mt-2 text-3xl font-bold text-amber-600">{summary.pending}</div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <button type="button" onClick={() => applySummaryFilter('ready_po')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('ready_po') ? 'border-cyan-400 ring-2 ring-cyan-200' : 'border-cyan-200'}`}>
+                    <div className="text-sm font-medium text-slate-500">รอออก PO</div>
+                    <div className="mt-2 text-3xl font-bold text-cyan-700">{summary.readyForPurchaseOrderIssue}</div>
                 </button>
-                <button type="button" onClick={() => applySummaryFilter('actionable')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('actionable') ? 'border-cyan-400 ring-2 ring-cyan-200' : 'border-cyan-200'}`}>
-                    <div className="text-sm font-medium text-slate-500">{queueLabel}</div>
-                    <div className="mt-2 text-3xl font-bold text-cyan-700">{summary.actionable}</div>
+                <button type="button" onClick={() => applySummaryFilter('issued_po')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('issued_po') ? 'border-blue-400 ring-2 ring-blue-200' : 'border-blue-200'}`}>
+                    <div className="text-sm font-medium text-slate-500">ออก PO แล้ว</div>
+                    <div className="mt-2 text-3xl font-bold text-blue-600">{summary.issuedPurchaseOrder}</div>
                 </button>
-                <button type="button" onClick={() => applySummaryFilter('has_po')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('has_po') ? 'border-blue-400 ring-2 ring-blue-200' : 'border-blue-200'}`}>
-                    <div className="text-sm font-medium text-slate-500">มี PO แล้ว</div>
-                    <div className="mt-2 text-3xl font-bold text-blue-600">{summary.hasPurchaseOrder}</div>
+                <button type="button" onClick={() => applySummaryFilter('wait_receive')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('wait_receive') ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-emerald-200'}`}>
+                    <div className="text-sm font-medium text-slate-500">รอ Store รับเข้า</div>
+                    <div className="mt-2 text-3xl font-bold text-emerald-700">{summary.waitingStoreReceive}</div>
                 </button>
-                <button type="button" onClick={() => applySummaryFilter('received_po')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('received_po') ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-emerald-200'}`}>
-                    <div className="text-sm font-medium text-slate-500">PO รับเข้าแล้ว</div>
-                    <div className="mt-2 text-3xl font-bold text-emerald-700">{summary.receivedPurchaseOrder}</div>
-                </button>
-                <button type="button" onClick={() => applySummaryFilter('approved')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('approved') ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-emerald-200'}`}>
-                    <div className="text-sm font-medium text-slate-500">อนุมัติแล้ว</div>
-                    <div className="mt-2 text-3xl font-bold text-emerald-600">{summary.approved}</div>
-                </button>
-                <button type="button" onClick={() => applySummaryFilter('returned')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('returned') ? 'border-orange-400 ring-2 ring-orange-200' : 'border-orange-200'}`}>
-                    <div className="text-sm font-medium text-slate-500">ตีกลับแก้ไข</div>
-                    <div className="mt-2 text-3xl font-bold text-orange-600">{summary.returned}</div>
-                </button>
-                <button type="button" onClick={() => applySummaryFilter('rejected')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('rejected') ? 'border-rose-400 ring-2 ring-rose-200' : 'border-rose-200'}`}>
-                    <div className="text-sm font-medium text-slate-500">ไม่อนุมัติ</div>
-                    <div className="mt-2 text-3xl font-bold text-rose-600">{summary.rejected}</div>
+                <button type="button" onClick={() => applySummaryFilter('approved')} className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${isSummaryFilterActive('approved') ? 'border-teal-400 ring-2 ring-teal-200' : 'border-teal-200'}`}>
+                    <div className="text-sm font-medium text-slate-500">เสร็จสิ้น</div>
+                    <div className="mt-2 text-3xl font-bold text-teal-700">{summary.approved}</div>
                 </button>
             </div>
 
@@ -616,7 +643,9 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                 className="min-w-[180px] rounded-xl border border-slate-200 py-2.5 pl-10 pr-8 text-sm text-slate-700 outline-none transition focus:border-cyan-400"
                             >
                                 <option value="all">ทุกสถานะ PO</option>
-                                <option value="has_po">มี PO แล้ว</option>
+                                <option value="ready_po">รอออก PO</option>
+                                <option value="issued_po">ออก PO แล้ว</option>
+                                <option value="wait_receive">รอ Store รับเข้า</option>
                                 <option value="received_po">PO รับเข้าแล้ว</option>
                             </select>
                         </div>
@@ -663,7 +692,7 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                     const primaryPurchaseOrder = getPrimaryPurchaseOrder(request);
                                     const linkedPurchaseOrderCount = request.linked_purchase_orders?.length || 0;
                                     const canEditRequest = request.status === 'pending' && canEditManagedRequests && isPurchaseRequestPurchasingStep(request.current_step);
-                                    const canIssuePurchaseOrder = canEditRequest && request.current_step === 4;
+                                    const canIssuePurchaseOrder = canEditRequest && request.current_step === 4 && !hasIssuedPurchaseOrder(request);
                                     const canEditPurchasingRequest = canEditRequest && request.current_step !== 4;
                                     const canApproveRequest = request.status === 'pending' && Boolean(request.can_approve);
 
@@ -759,7 +788,7 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                                             className="inline-flex items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-medium text-cyan-700 transition hover:bg-cyan-100"
                                                         >
                                                             <FileCheck2 className="h-4 w-4" />
-                                                            {linkedPurchaseOrderCount > 0 ? 'สร้าง PO เพิ่ม' : 'ออก PO'}
+                                                            ออก PO
                                                         </Link>
                                                     )}
 
