@@ -4,6 +4,7 @@
  */
 
 import { Client, WebhookEvent, TextMessage, FlexMessage } from '@line/bot-sdk';
+import { logLineNotificationAttempt } from '@/lib/logger';
 
 const config = {
     channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
@@ -37,14 +38,40 @@ export async function sendPushMessage(
     try {
         const lineClient = getClient();
         if (!lineClient) {
+            void logLineNotificationAttempt({
+                channel: 'line_messaging_api',
+                mode: 'push',
+                recipients: [userId],
+                success: false,
+                message,
+                error: 'LINE client not configured',
+                context: 'sendPushMessage',
+            });
             return { success: false, error: 'LINE client not configured' };
         }
 
         await lineClient.pushMessage(userId, message);
         console.log('[LINE Messaging] Message sent to:', userId);
+        void logLineNotificationAttempt({
+            channel: 'line_messaging_api',
+            mode: 'push',
+            recipients: [userId],
+            success: true,
+            message,
+            context: 'sendPushMessage',
+        });
         return { success: true };
     } catch (error) {
         console.error('[LINE Messaging] Failed to send:', error);
+        void logLineNotificationAttempt({
+            channel: 'line_messaging_api',
+            mode: 'push',
+            recipients: [userId],
+            success: false,
+            message,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            context: 'sendPushMessage',
+        });
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error',
@@ -62,10 +89,28 @@ export async function sendMulticastMessage(
     try {
         const lineClient = getClient();
         if (!lineClient) {
+            void logLineNotificationAttempt({
+                channel: 'line_messaging_api',
+                mode: 'multicast',
+                recipients: userIds,
+                success: false,
+                message,
+                error: 'LINE client not configured',
+                context: 'sendMulticastMessage',
+            });
             return { success: false, error: 'LINE client not configured' };
         }
 
         if (userIds.length === 0) {
+            void logLineNotificationAttempt({
+                channel: 'line_messaging_api',
+                mode: 'multicast',
+                recipients: [],
+                success: false,
+                message,
+                error: 'No recipients',
+                context: 'sendMulticastMessage',
+            });
             return { success: false, error: 'No recipients' };
         }
 
@@ -77,9 +122,26 @@ export async function sendMulticastMessage(
         }
 
         console.log('[LINE Messaging] Multicast sent to', userIds.length, 'users');
+        void logLineNotificationAttempt({
+            channel: 'line_messaging_api',
+            mode: 'multicast',
+            recipients: userIds,
+            success: true,
+            message,
+            context: 'sendMulticastMessage',
+        });
         return { success: true };
     } catch (error) {
         console.error('[LINE Messaging] Multicast failed:', error);
+        void logLineNotificationAttempt({
+            channel: 'line_messaging_api',
+            mode: 'multicast',
+            recipients: userIds,
+            success: false,
+            message,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            context: 'sendMulticastMessage',
+        });
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error',

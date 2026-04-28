@@ -86,6 +86,10 @@ export default function SystemLogsPage() {
             case 'PETTY_CASH_RECEIPT_VERIFY':
             case 'PETTY_CASH_SIGNATURE_SAVE':
                 return 'bg-emerald-100 text-emerald-800';
+            case 'LINE_NOTIFY_SENT':
+                return 'bg-sky-100 text-sky-800';
+            case 'LINE_NOTIFY_FAILED':
+                return 'bg-rose-100 text-rose-800';
             default: return 'bg-gray-100 text-gray-800';
         }
     }
@@ -194,6 +198,8 @@ export default function SystemLogsPage() {
                         <option value="PETTY_CASH_DELETE">Petty Cash Delete</option>
                         <option value="PETTY_CASH_RECEIPT_VERIFY">Petty Cash Receipt Verify</option>
                         <option value="PETTY_CASH_SIGNATURE_SAVE">Petty Cash Signature Save</option>
+                        <option value="LINE_NOTIFY_SENT">LINE Notify Sent</option>
+                        <option value="LINE_NOTIFY_FAILED">LINE Notify Failed</option>
                     </select>
                 </div>
                 <div className="w-[200px]">

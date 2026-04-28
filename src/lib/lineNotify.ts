@@ -4,6 +4,7 @@
 // Uses LINE Messaging API push for direct and group alerts
 import { isMaintenanceTechnician } from '@/lib/rbac';
 import { sendConfiguredLineGroupTextNotification } from '@/lib/notifications/lineGroup';
+import { logLineNotificationAttempt } from '@/lib/logger';
 
 const LINE_ADMIN_ID = process.env.LINE_ADMIN_ID || '';
 const LINE_CHANNEL_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
@@ -76,12 +77,27 @@ export async function sendLineNotify(message: string): Promise<boolean> {
 
     const groupResult = await sendConfiguredLineGroupTextNotification(`📣 [System Alert]\n${message}`);
     if (groupResult.success) {
+        void logLineNotificationAttempt({
+            channel: 'line_messaging_api',
+            mode: 'broadcast',
+            success: true,
+            message,
+            context: 'sendLineNotify:group-broadcast',
+        });
         return true;
     }
 
     // Legacy support: redirect "Notify" calls to the admin/group via Messaging API
     if (!LINE_ADMIN_ID) {
         console.warn('[LINE] No LINE group target or LINE_ADMIN_ID configured. Broadcast notifications will be skipped.');
+        void logLineNotificationAttempt({
+            channel: 'line_messaging_api',
+            mode: 'broadcast',
+            success: false,
+            message,
+            error: 'No LINE group target or LINE_ADMIN_ID configured',
+            context: 'sendLineNotify:missing-admin-target',
+        });
         return false;
     }
 
@@ -94,6 +110,15 @@ export async function sendLineMessage(userId: string, message: string): Promise<
 
     if (!LINE_CHANNEL_TOKEN) {
         console.error('[LINE] LINE_CHANNEL_ACCESS_TOKEN not configured, skipping push message');
+        void logLineNotificationAttempt({
+            channel: 'line_messaging_api',
+            mode: 'push',
+            recipients: [userId],
+            success: false,
+            message,
+            error: 'LINE_CHANNEL_ACCESS_TOKEN not configured',
+            context: 'sendLineMessage',
+        });
         return false;
     }
 
@@ -117,13 +142,40 @@ export async function sendLineMessage(userId: string, message: string): Promise<
 
         if (response.ok) {
             console.log(`[LINE] Success: Message sent to ${userId}`);
+            void logLineNotificationAttempt({
+                channel: 'line_messaging_api',
+                mode: 'push',
+                recipients: [userId],
+                success: true,
+                message,
+                context: 'sendLineMessage',
+            });
             return true;
         }
 
-        console.error('[LINE] Failed:', await response.text());
+        const errorText = await response.text();
+        console.error('[LINE] Failed:', errorText);
+        void logLineNotificationAttempt({
+            channel: 'line_messaging_api',
+            mode: 'push',
+            recipients: [userId],
+            success: false,
+            message,
+            error: errorText,
+            context: 'sendLineMessage',
+        });
         return false;
     } catch (error) {
         console.error('[LINE] Exception:', error);
+        void logLineNotificationAttempt({
+            channel: 'line_messaging_api',
+            mode: 'push',
+            recipients: [userId],
+            success: false,
+            message,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            context: 'sendLineMessage',
+        });
         return false;
     }
 }

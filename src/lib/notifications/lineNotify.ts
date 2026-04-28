@@ -2,6 +2,7 @@
  * LINE Notify Service
  * Sends notifications to LINE groups/chats via LINE Notify API
  */
+import { logLineNotificationAttempt } from '@/lib/logger';
 
 const LINE_NOTIFY_API = 'https://notify-api.line.me/api/notify';
 
@@ -26,12 +27,28 @@ export async function sendLineNotification(
         // Skip if token not configured
         if (!notifyToken) {
             console.log('[LINE Notify] Token not configured, skipping notification');
+            void logLineNotificationAttempt({
+                channel: 'line_notify',
+                mode: 'notify_api',
+                success: false,
+                message,
+                error: 'Token not configured',
+                context: 'sendLineNotification',
+            });
             return { success: false, error: 'Token not configured' };
         }
 
         // Skip if explicitly disabled
         if (process.env.LINE_NOTIFY_ENABLED === 'false') {
             console.log('[LINE Notify] Disabled via env variable');
+            void logLineNotificationAttempt({
+                channel: 'line_notify',
+                mode: 'notify_api',
+                success: false,
+                message,
+                error: 'Service disabled',
+                context: 'sendLineNotification',
+            });
             return { success: false, error: 'Service disabled' };
         }
 
@@ -50,13 +67,36 @@ export async function sendLineNotification(
 
         if (response.ok && data.status === 200) {
             console.log('[LINE Notify] Message sent successfully');
+            void logLineNotificationAttempt({
+                channel: 'line_notify',
+                mode: 'notify_api',
+                success: true,
+                message,
+                context: 'sendLineNotification',
+            });
             return { success: true };
         } else {
             console.error('[LINE Notify] Failed to send:', data);
+            void logLineNotificationAttempt({
+                channel: 'line_notify',
+                mode: 'notify_api',
+                success: false,
+                message,
+                error: data.message || 'Unknown error',
+                context: 'sendLineNotification',
+            });
             return { success: false, error: data.message || 'Unknown error' };
         }
     } catch (error) {
         console.error('[LINE Notify] Error:', error);
+        void logLineNotificationAttempt({
+            channel: 'line_notify',
+            mode: 'notify_api',
+            success: false,
+            message,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            context: 'sendLineNotification',
+        });
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error'
