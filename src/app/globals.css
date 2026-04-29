@@ -628,12 +628,33 @@ main tbody tr:hover {
   border-color: #374151 !important;
 }
 
+@page {
+  size: A4;
+  margin: 10mm;
+}
+
 @media print {
+  html,
   body {
-    background: white !important;
+    background: #fff !important;
   }
 
   .no-print {
     display: none !important;
+  }
+
+  .print-sheet {
+    max-width: 190mm !important;
+    margin: 0 auto !important;
+  }
+
+  .print-tight {
+    font-size: 12px !important;
+    line-height: 1.3 !important;
+  }
+
+  .print-block {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
   }
 }

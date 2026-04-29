@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { auth } from '@/auth';
 import { canPrintPurchaseOrders, canViewPurchaseOrders } from '@/lib/rbac';
 import { Lock } from 'lucide-react';
@@ -16,6 +17,49 @@ type PoStamp = {
     actedAt: Date | null;
     approved: boolean;
 };
+
+function stripStockTags(value: string) {
+    return value.replace(/\[(?:NON[-_\s]?STOCK|STOCK)\]\s*/gi, '').trim();
+}
+
+function renderNoteLineWithBadge(line: string, key: string) {
+    const numberedMatch = line.match(/^(\d+\.)\s*(.*)$/);
+    if (!numberedMatch) {
+        return (
+            <p key={key} className="whitespace-pre-wrap">
+                {stripStockTags(line)}
+            </p>
+        );
+    }
+
+    const lineNumber = numberedMatch[1];
+    const rawContent = numberedMatch[2].trim();
+    const isNonStock = /^\[(?:NON[-_\s]?STOCK)\]\s*/i.test(rawContent);
+    const isStock = !isNonStock && /^\[(?:STOCK)\]\s*/i.test(rawContent);
+
+    if (!isNonStock && !isStock) {
+        return (
+            <p key={key} className="whitespace-pre-wrap">
+                {line}
+            </p>
+        );
+    }
+
+    const description = rawContent
+        .replace(/^\[(?:NON[-_\s]?STOCK)\]\s*/i, '')
+        .replace(/^\[(?:STOCK)\]\s*/i, '')
+        .trim();
+
+    return (
+        <p key={key} className="flex flex-wrap items-center gap-2 whitespace-pre-wrap">
+            <span>{lineNumber}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${isNonStock ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                {isNonStock ? 'NON-STOCK' : 'STOCK'}
+            </span>
+            <span>{description}</span>
+        </p>
+    );
+}
 
 function formatRoleLabel(role: string) {
     const normalized = role.trim().toLowerCase();
@@ -44,10 +88,15 @@ function formatRoleLabel(role: string) {
         .join(' ') || '-';
 }
 
-export default async function POPrintPage(props: { params: Promise<{ id: string }> }) {
+export default async function POPrintPage(props: {
+    params: Promise<{ id: string }>;
+    searchParams?: Promise<{ stamps?: string }>;
+}) {
     const params = await props.params;
+    const searchParams = props.searchParams ? await props.searchParams : {};
     const poId = parseInt(params.id);
     if (isNaN(poId)) notFound();
+    const includeStamps = searchParams?.stamps !== '0';
 
     const session = await auth();
     const { permissions: rolePermissions } = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
@@ -193,6 +242,10 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
     const managerApprovedByName = linkedRequestManagerLog?.actor?.username || approvedByName;
     const requesterName = linkedRequest?.tbl_users?.username || null;
     const requesterActedAt = linkedRequest?.created_at || linkedRequest?.request_date || null;
+    const requesterSignatureDate = requesterActedAt ? new Date(requesterActedAt).toLocaleDateString('th-TH') : null;
+    const managerApprovedDate = linkedRequestManagerLog?.acted_at
+        ? new Date(linkedRequestManagerLog.acted_at).toLocaleDateString('th-TH')
+        : null;
 
     const stamps: PoStamp[] = [
         {
@@ -238,15 +291,29 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
     ];
 
     return (
-        <div className="bg-white min-h-screen p-8 print:p-0 text-black">
-            <div className="max-w-[210mm] mx-auto print:max-w-none">
+        <div className="bg-white min-h-screen p-8 print:p-0 text-black print-tight">
+            <div className="max-w-[210mm] mx-auto print:max-w-none print-sheet">
                 {/* Print Controls */}
-                <div className="mb-6 print:hidden flex justify-end">
+                <div className="mb-6 print:hidden flex flex-wrap justify-end gap-3">
+                    <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 bg-white">
+                        <Link
+                            href={`/print/purchase-orders/${po.po_id}?stamps=1`}
+                            className={`px-3 py-2 text-sm ${includeStamps ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                        >
+                            พิมพ์พร้อม Stamps
+                        </Link>
+                        <Link
+                            href={`/print/purchase-orders/${po.po_id}?stamps=0`}
+                            className={`border-l border-slate-200 px-3 py-2 text-sm ${!includeStamps ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                        >
+                            พิมพ์ไม่เอา Stamps
+                        </Link>
+                    </div>
                     <PrintButton />
                 </div>
 
                 {/* Header */}
-                <div className="border-b pb-4 mb-6 flex justify-between items-start">
+                <div className="border-b pb-4 mb-6 flex justify-between items-start print:mb-4 print:pb-3 print-block">
                     <div>
                         <h1 className="text-3xl font-bold uppercase tracking-wider mb-2">Purchase Order</h1>
                         <div className="text-sm">
@@ -273,7 +340,7 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
                 </div>
 
                 {/* Supplier Info */}
-                <div className="mb-8 p-4 border rounded-sm">
+                <div className="mb-8 p-4 border rounded-sm print:mb-4 print:p-3 print-block">
                     <h3 className="text-xs uppercase font-bold text-gray-500 mb-2">Vendor / Supplier</h3>
                     <div className="font-bold text-lg">{supplier?.name || 'Unknown Supplier'}</div>
                     <div className="text-sm mt-1">
@@ -284,7 +351,7 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
                 </div>
 
                 {/* Items Table */}
-                <table className="w-full text-sm mb-8">
+                <table className="w-full text-sm mb-8 print:mb-4 print-block">
                     <thead>
                         <tr className="border-b-2 border-black">
                             <th className="py-2 text-left w-12">#</th>
@@ -295,21 +362,25 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
                         </tr>
                     </thead>
                     <tbody className="divide-y">
-                        {poWithItems.tbl_po_items.map((item, index) => (
-                            <tr key={item.item_id}>
-                                <td className="py-3 text-gray-500">{index + 1}</td>
-                                <td className="py-3">
-                                    <div className="font-bold">{parsePurchaseOrderItemNote(item.notes, item.p_id).displayName || productMap.get(item.p_id) || item.p_id}</div>
-                                    {isNonStockPurchaseOrderItem(item.notes, item.p_id) && (
-                                        <div className="text-[10px] font-semibold uppercase text-orange-600">Non-stock</div>
-                                    )}
-                                    <div className="text-xs text-gray-500">{item.p_id}</div>
-                                </td>
-                                <td className="py-3 text-right">{item.quantity}</td>
-                                <td className="py-3 text-right">{Number(item.unit_price).toLocaleString()}</td>
-                                <td className="py-3 text-right font-bold">{Number(item.line_total).toLocaleString()}</td>
-                            </tr>
-                        ))}
+                        {poWithItems.tbl_po_items.map((item, index) => {
+                            const isNonStock = isNonStockPurchaseOrderItem(item.notes, item.p_id);
+
+                            return (
+                                <tr key={item.item_id}>
+                                    <td className="py-3 text-gray-500">{index + 1}</td>
+                                    <td className="py-3">
+                                        <div className="font-bold">{parsePurchaseOrderItemNote(item.notes, item.p_id).displayName || productMap.get(item.p_id) || item.p_id}</div>
+                                        <div className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${isNonStock ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                            {isNonStock ? 'NON-STOCK' : 'STOCK'}
+                                        </div>
+                                        <div className="text-xs text-gray-500">{item.p_id}</div>
+                                    </td>
+                                    <td className="py-3 text-right">{item.quantity}</td>
+                                    <td className="py-3 text-right">{Number(item.unit_price).toLocaleString()}</td>
+                                    <td className="py-3 text-right font-bold">{Number(item.line_total).toLocaleString()}</td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                     <tfoot>
                         <tr className="border-t-2 border-black">
@@ -334,31 +405,36 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
 
                 {/* Notes */}
                 {po.notes && (
-                    <div className="mb-8 border p-4 bg-gray-50 print:bg-transparent">
+                    <div className="mb-8 border p-4 bg-gray-50 print:mb-4 print:p-3 print:bg-transparent print-block">
                         <h4 className="font-bold text-sm mb-1">Notes:</h4>
-                        <p className="text-sm whitespace-pre-wrap">{po.notes}</p>
+                        <div className="space-y-1 text-sm">
+                            {po.notes.split('\n').map((line, index) => (
+                                renderNoteLineWithBadge(line, `po-note-${index}`)
+                            ))}
+                        </div>
                     </div>
                 )}
 
                 {/* Signatures */}
-                <div className="grid grid-cols-2 gap-12 mt-20 page-break-inside-avoid">
+                <div className="grid grid-cols-2 gap-12 mt-20 page-break-inside-avoid print:mt-8 print:gap-8 print-block">
                     <div className="text-center">
                         <div className="border-b border-black w-3/4 mx-auto mb-2"></div>
                         <p className="font-bold">{requesterSignatureName || '________________'}</p>
                         <p className="text-xs uppercase text-gray-500">Requested By</p>
-                        <p className="text-xs mt-1">Date: ____/____/____</p>
+                        <p className="text-xs mt-1">Date: {requesterSignatureDate || '____/____/____'}</p>
                     </div>
                     <div className="text-center">
                         <div className="border-b border-black w-3/4 mx-auto mb-2 opacity-50"></div>
                         <p className="font-bold">{managerApprovedByName || '________________'}</p>
                         <p className="text-xs uppercase text-gray-500">Approved By</p>
-                        <p className="text-xs mt-1">Date: ____/____/____</p>
+                        <p className="text-xs mt-1">Date: {managerApprovedDate || '____/____/____'}</p>
                     </div>
                 </div>
 
-                <div className="mt-10 page-break-inside-avoid">
+                {includeStamps && (
+                    <div className="mt-10 page-break-inside-avoid print:mt-6 print-block">
                     <h3 className="mb-3 text-sm font-bold uppercase text-gray-600">Approval Stamps</h3>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 print:gap-2">
                         {stamps.map((stamp, index) => (
                             <div key={`${stamp.role}-${index}`} className="relative rounded border border-gray-300 p-3">
                                 {stamp.approved && (
@@ -375,7 +451,8 @@ export default async function POPrintPage(props: { params: Promise<{ id: string 
                             </div>
                         ))}
                     </div>
-                </div>
+                    </div>
+                )}
 
                 {/* Footer */}
                 <div className="mt-12 text-center text-xs text-gray-400 print:fixed print:bottom-4 print:left-0 print:w-full">

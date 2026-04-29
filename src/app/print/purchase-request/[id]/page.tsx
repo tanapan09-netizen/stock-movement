@@ -10,14 +10,15 @@ import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/serv
 import PrintButton from './PrintButton';
 
 type PurchaseLineItem = {
-    line: string;
+    description: string;
+    itemType: 'stock' | 'non_stock';
     link?: string;
 };
 
 type RoleStamp = {
     stepOrder: number;
+    stepLabel: string;
     approverRole: string;
-    approverId: number | null;
     actorName: string | null;
     actedAt: Date | null;
     action: string | null;
@@ -82,7 +83,16 @@ function parsePurchaseReason(reason: string | null | undefined) {
         if (!trimmed) continue;
 
         if (/^\d+\./.test(trimmed)) {
-            items.push({ line: trimmed.replace(/^\d+\.\s*/, '') });
+            const cleaned = trimmed.replace(/^\d+\.\s*/, '');
+            const isNonStock = /^\[(?:NON[-_\s]?STOCK)\]\s*/i.test(cleaned);
+            const description = cleaned
+                .replace(/^\[(?:NON[-_\s]?STOCK)\]\s*/i, '')
+                .replace(/^\[(?:STOCK)\]\s*/i, '')
+                .trim();
+            items.push({
+                description,
+                itemType: isNonStock ? 'non_stock' : 'stock',
+            });
             continue;
         }
 
@@ -106,9 +116,14 @@ function parsePurchaseReason(reason: string | null | undefined) {
     };
 }
 
+function stripStockTags(value: string) {
+    return value.replace(/\[(?:NON[-_\s]?STOCK|STOCK)\]\s*/gi, '').trim();
+}
+
 function formatRoleLabel(role: string) {
     const normalized = role.trim().toLowerCase();
     const roleMap: Record<string, string> = {
+        requester: 'ผู้ขอซื้อ',
         admin: 'Admin',
         manager: 'Manager',
         employee: 'Employee',
@@ -151,10 +166,15 @@ function getPrintablePurchaseRequestStatusLabel(status?: string | null) {
     }
 }
 
-export default async function PurchaseRequestPrintPage(props: { params: Promise<{ id: string }> }) {
+export default async function PurchaseRequestPrintPage(props: {
+    params: Promise<{ id: string }>;
+    searchParams?: Promise<{ stamps?: string }>;
+}) {
     const params = await props.params;
+    const searchParams = props.searchParams ? await props.searchParams : {};
     const requestId = Number(params.id);
     if (!Number.isFinite(requestId)) notFound();
+    const includeStamps = searchParams?.stamps !== '0';
 
     const session = await auth();
     if (!session?.user?.id) {
@@ -245,62 +265,75 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
         request.request_type,
         request.workflow?.steps || [],
     );
-    const approverIds = Array.from(new Set(
-        effectiveWorkflowSource
-            .map((step) => step.approver_id)
-            .filter((id): id is number => typeof id === 'number' && Number.isFinite(id)),
-    ));
-    const explicitApprovers = approverIds.length > 0
-        ? await prisma.tbl_users.findMany({
-            where: {
-                p_id: {
-                    in: approverIds,
-                },
-            },
-            select: {
-                p_id: true,
-                username: true,
-            },
-        })
-        : [];
-    const approverNameById = new Map(explicitApprovers.map((approver) => [approver.p_id, approver.username || '']));
+    const workflowRoleByStep = new Map<number, string>();
+    for (const step of effectiveWorkflowSource) {
+        workflowRoleByStep.set(step.step_order, step.approver_role || '');
+    }
+    const requestLatestLogByStep = new Map<number, (typeof request.step_logs)[number]>();
+    for (const log of request.step_logs) {
+        requestLatestLogByStep.set(Number(log.step_order), log);
+    }
+    const purchasingLog = requestLatestLogByStep.get(1);
+    const managerLog = requestLatestLogByStep.get(2);
+    const accountingLog = requestLatestLogByStep.get(3);
+    const purchasingPoLog = requestLatestLogByStep.get(4);
 
-    const workflowSteps = effectiveWorkflowSource.map((step) => ({
-        stepOrder: step.step_order,
-        approverRole: step.approver_role || 'approver',
-        approverId: step.approver_id ?? null,
-    }));
+    const roleStamps: RoleStamp[] = [
+        {
+            stepOrder: 1,
+            stepLabel: 'ผู้ขอซื้อ',
+            approverRole: 'requester',
+            actorName: request.tbl_users?.username || null,
+            actedAt: request.created_at || request.request_date || null,
+            action: 'approved',
+        },
+        {
+            stepOrder: 2,
+            stepLabel: 'จัดซื้อ',
+            approverRole: workflowRoleByStep.get(1) || 'purchasing',
+            actorName: purchasingLog?.actor?.username || null,
+            actedAt: purchasingLog?.acted_at || null,
+            action: purchasingLog?.action || null,
+        },
+        {
+            stepOrder: 3,
+            stepLabel: 'ผู้จัดการ',
+            approverRole: workflowRoleByStep.get(2) || 'manager',
+            actorName: managerLog?.actor?.username || null,
+            actedAt: managerLog?.acted_at || null,
+            action: managerLog?.action || null,
+        },
+        {
+            stepOrder: 4,
+            stepLabel: 'บัญชี',
+            approverRole: workflowRoleByStep.get(3) || 'accounting',
+            actorName: accountingLog?.actor?.username || null,
+            actedAt: accountingLog?.acted_at || null,
+            action: accountingLog?.action || null,
+        },
+        {
+            stepOrder: 5,
+            stepLabel: 'จัดซื้อ',
+            approverRole: workflowRoleByStep.get(4) || 'purchasing',
+            actorName: purchasingPoLog?.actor?.username || null,
+            actedAt: purchasingPoLog?.acted_at || null,
+            action: purchasingPoLog?.action || null,
+        },
+    ];
 
-    const roleStamps: RoleStamp[] = workflowSteps.map((step) => {
-        const matchedLog = [...request.step_logs]
-            .reverse()
-            .find((log) => log.step_order === step.stepOrder);
-        const fallbackActorName = step.approverId ? (approverNameById.get(step.approverId) || null) : null;
-
-        return {
-            stepOrder: step.stepOrder,
-            approverRole: step.approverRole,
-            approverId: step.approverId,
-            actorName: matchedLog?.actor?.username || fallbackActorName,
-            actedAt: matchedLog?.acted_at || null,
-            action: matchedLog?.action || null,
-        };
-    });
-
-    const approvedByFromLogs = [...roleStamps]
-        .reverse()
-        .find((stamp) => stamp.action?.toLowerCase() === 'approved' && Boolean(stamp.actorName?.trim()))
-        ?.actorName || null;
-    const currentStepApprover = workflowSteps.find((step) => step.stepOrder === Number(request.current_step || 0));
-    const currentStepApproverName = currentStepApprover?.approverId
-        ? (approverNameById.get(currentStepApprover.approverId) || null)
+    const requesterSignatureName = request.tbl_users?.username || '________________';
+    const requesterSignatureDate = roleStamps[0]?.actedAt ? new Date(roleStamps[0].actedAt).toLocaleDateString('th-TH') : null;
+    const managerApprovedByName = managerLog?.actor?.username
+        || request.tbl_approver?.username
+        || '________________';
+    const managerApprovedDate = managerLog?.acted_at
+        ? new Date(managerLog.acted_at).toLocaleDateString('th-TH')
         : null;
-    const approvedByName = request.tbl_approver?.username || approvedByFromLogs || currentStepApproverName || null;
 
     return (
-        <div className="min-h-screen bg-white p-8 print:p-0 text-black">
-            <div className="mx-auto max-w-[210mm] print:max-w-none">
-                <div className="mb-6 flex justify-end gap-3 print:hidden">
+        <div className="min-h-screen bg-white p-8 print:p-0 text-black print-tight">
+            <div className="mx-auto max-w-[210mm] print:max-w-none print-sheet">
+                <div className="mb-6 flex flex-wrap justify-end gap-3 print:hidden">
                     {(request.status === 'pending' || request.status === 'returned') && (
                         <Link
                             href={`/purchase-request?edit=${request.request_id}`}
@@ -310,10 +343,24 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                             แก้ไขเอกสาร
                         </Link>
                     )}
+                    <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 bg-white">
+                        <Link
+                            href={`/print/purchase-request/${request.request_id}?stamps=1`}
+                            className={`px-3 py-2 text-sm ${includeStamps ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                        >
+                            พิมพ์พร้อม Stamps
+                        </Link>
+                        <Link
+                            href={`/print/purchase-request/${request.request_id}?stamps=0`}
+                            className={`border-l border-slate-200 px-3 py-2 text-sm ${!includeStamps ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                        >
+                            พิมพ์ไม่เอา Stamps
+                        </Link>
+                    </div>
                     <PrintButton />
                 </div>
 
-                <div className="mb-6 flex items-start justify-between border-b pb-4">
+                <div className="mb-6 flex items-start justify-between border-b pb-4 print:mb-4 print:pb-3 print-block">
                     <div>
                         <h1 className="mb-2 text-3xl font-bold uppercase tracking-wider">Purchase Request</h1>
                         <div className="text-sm">
@@ -339,7 +386,7 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                     </div>
                 </div>
 
-                <div className="mb-8 grid grid-cols-2 gap-4">
+                <div className="mb-8 grid grid-cols-2 gap-4 print:mb-4 print:gap-3 print-block">
                     <div className="rounded-sm border p-4">
                         <h3 className="mb-2 text-xs font-bold uppercase text-gray-500">Requester</h3>
                         <div className="text-lg font-bold">{request.tbl_users?.username || '-'}</div>
@@ -359,7 +406,7 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                 </div>
 
                 {(request.status === 'returned' || request.status === 'rejected') && request.rejection_reason && (
-                    <div className={`mb-8 rounded-sm border p-4 ${request.status === 'returned' ? 'border-orange-300 bg-orange-50' : 'border-rose-300 bg-rose-50'}`}>
+                    <div className={`mb-8 rounded-sm border p-4 print:mb-4 print:p-3 print-block ${request.status === 'returned' ? 'border-orange-300 bg-orange-50' : 'border-rose-300 bg-rose-50'}`}>
                         <h3 className="mb-2 text-xs font-bold uppercase text-gray-600">
                             {request.status === 'returned' ? 'Return Reason' : 'Rejection Reason'}
                         </h3>
@@ -369,7 +416,7 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                     </div>
                 )}
 
-                <table className="mb-8 w-full text-sm">
+                <table className="mb-8 w-full text-sm print:mb-4 print-block">
                     <thead>
                         <tr className="border-b-2 border-black">
                             <th className="w-12 py-2 text-left">#</th>
@@ -382,7 +429,14 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                             parsed.items.map((item, index) => (
                                 <tr key={`${request.request_id}-${index}`}>
                                     <td className="py-3 text-gray-500">{index + 1}</td>
-                                    <td className="whitespace-pre-wrap py-3">{item.line}</td>
+                                    <td className="whitespace-pre-wrap py-3">
+                                        <div className="flex items-center gap-2">
+                                            <span>{item.description}</span>
+                                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.itemType === 'non_stock' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                {item.itemType === 'non_stock' ? 'NON-STOCK' : 'STOCK'}
+                                            </span>
+                                        </div>
+                                    </td>
                                     <td className="break-all py-3">
                                         {item.link ? (
                                             <a href={item.link} target="_blank" rel="noreferrer" title={item.link} className="text-blue-700 underline">
@@ -396,7 +450,7 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={3} className="whitespace-pre-wrap py-3">{parsed.raw || '-'}</td>
+                                <td colSpan={3} className="whitespace-pre-wrap py-3">{stripStockTags(parsed.raw) || '-'}</td>
                             </tr>
                         )}
                     </tbody>
@@ -433,30 +487,30 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                     </tfoot>
                 </table>
 
-                <div className="mb-8 border bg-gray-50 p-4 print:bg-transparent">
+                <div className="mb-8 border bg-gray-50 p-4 print:mb-4 print:p-3 print:bg-transparent print-block">
                     <h4 className="mb-1 text-sm font-bold">Notes:</h4>
                     <p className="whitespace-pre-wrap text-sm">{parsed.note || '-'}</p>
                 </div>
 
-                <div className="mt-20 grid grid-cols-2 gap-12 page-break-inside-avoid">
+                <div className="mt-20 grid grid-cols-2 gap-12 page-break-inside-avoid print:mt-8 print:gap-8 print-block">
                     <div className="text-center">
                         <div className="mx-auto mb-2 w-3/4 border-b border-black"></div>
-                        <p className="font-bold">{request.tbl_users?.username || '________________'}</p>
-                        <p className="text-xs uppercase text-gray-500">Prepared By</p>
-                        <p className="mt-1 text-xs">Date: ____/____/____</p>
+                        <p className="font-bold">{requesterSignatureName}</p>
+                        <p className="text-xs uppercase text-gray-500">Requested By</p>
+                        <p className="mt-1 text-xs">Date: {requesterSignatureDate || '____/____/____'}</p>
                     </div>
                     <div className="text-center">
                         <div className="mx-auto mb-2 w-3/4 border-b border-black opacity-50"></div>
-                        <p className="font-bold">{approvedByName || '________________'}</p>
+                        <p className="font-bold">{managerApprovedByName}</p>
                         <p className="text-xs uppercase text-gray-500">Approved By</p>
-                        <p className="mt-1 text-xs">Date: ____/____/____</p>
+                        <p className="mt-1 text-xs">Date: {managerApprovedDate || '____/____/____'}</p>
                     </div>
                 </div>
 
-                {request.status === 'approved' && roleStamps.length > 0 && (
-                    <div className="mt-10 page-break-inside-avoid">
+                {includeStamps && roleStamps.length > 0 && (
+                    <div className="mt-10 page-break-inside-avoid print:mt-6 print-block">
                         <h3 className="mb-3 text-sm font-bold uppercase text-gray-600">Approval Stamps</h3>
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 print:gap-2">
                             {roleStamps.map((stamp) => {
                                 const isApproved = stamp.action === 'approved' && Boolean(stamp.actorName);
 
@@ -467,7 +521,7 @@ export default async function PurchaseRequestPrintPage(props: { params: Promise<
                                                 APPROVED
                                             </div>
                                         )}
-                                        <p className="text-xs text-gray-500">Step {stamp.stepOrder}</p>
+                                        <p className="text-xs text-gray-500">Step {stamp.stepOrder} · {stamp.stepLabel}</p>
                                         <p className="text-sm font-semibold">{formatRoleLabel(stamp.approverRole)}</p>
                                         <p className="mt-1 text-sm">{stamp.actorName || '-'}</p>
                                         <p className="text-xs text-gray-500">

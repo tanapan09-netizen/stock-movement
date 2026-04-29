@@ -1,11 +1,12 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { createApprovalRequest, updatePurchaseRequest } from '@/actions/approvalActions';
+import { FloatingSearchInput } from '@/components/FloatingField';
 import SearchableSelect from '@/components/SearchableSelect';
 import { ApprovalRequest } from '../approvals/types';
-import { ClipboardList, Eye, Loader2, Pencil, Plus, Printer, Send, ShoppingCart, Trash2, X } from 'lucide-react';
+import { ClipboardList, Eye, Loader2, Package, Pencil, Plus, Printer, Send, ShoppingCart, Trash2, X } from 'lucide-react';
 import { getProcurementStatusBadgeClass, getProcurementStatusLabel } from '@/lib/procurement-status';
 
 interface ActiveJobOption {
@@ -19,11 +20,23 @@ interface ActiveJobOption {
 interface Props {
     initialRequests: ApprovalRequest[];
     activeJobs: ActiveJobOption[];
+    stockProducts: Array<{
+        p_id: string;
+        p_name: string;
+        p_count: number | null;
+        p_unit: string | null;
+        price_unit: number | null;
+    }>;
     initialEditRequestId?: number | null;
 }
 
+type PurchaseItemType = 'stock' | 'non_stock';
+
 interface PurchaseItem {
     id: string;
+    itemType: PurchaseItemType;
+    stockProductId: string;
+    stockSearch: string;
     description: string;
     quantity: number;
     unit: string;
@@ -32,9 +45,16 @@ interface PurchaseItem {
     productLink: string;
 }
 
+function buildStockSearchLabel(productId: string, productName: string) {
+    return `${productId} - ${productName}`;
+}
+
 function createEmptyPurchaseItem(): PurchaseItem {
     return {
         id: typeof crypto !== 'undefined' ? crypto.randomUUID() : Math.random().toString(),
+        itemType: 'stock',
+        stockProductId: '',
+        stockSearch: '',
         description: '',
         quantity: 1,
         unit: '',
@@ -69,7 +89,10 @@ function getValueAfterColon(line: string | undefined) {
     return line.slice(separatorIndex + 1).trim();
 }
 
-function parseRequestForEdit(request: ApprovalRequest) {
+function parseRequestForEdit(
+    request: ApprovalRequest,
+    stockProducts: Array<{ p_id: string; p_name: string; p_count: number | null; p_unit: string | null; price_unit: number | null }>,
+) {
     const raw = request.reason || '';
     const lines = raw.split('\n');
     const normalizedLines = lines.map((line) => line.trim()).filter(Boolean);
@@ -82,11 +105,18 @@ function parseRequestForEdit(request: ApprovalRequest) {
 
         if (/^\d+\./.test(trimmed)) {
             const cleaned = trimmed.replace(/^\d+\.\s*/, '');
-            const match = cleaned.match(/^(.*) - ([\d.]+)\s+(.+?) @ [^\d]*([\d,]+\.\d{2})/);
+            const isNonStock = /^\[(?:NON[-_\s]?STOCK)\]\s*/i.test(cleaned);
+            const cleanedWithoutTypeTag = cleaned
+                .replace(/^\[(?:NON[-_\s]?STOCK)\]\s*/i, '')
+                .replace(/^\[(?:STOCK)\]\s*/i, '');
+            const match = cleanedWithoutTypeTag.match(/^(.*) - ([\d.]+)\s+(.+?) @ [^\d]*([\d,]+\.\d{2})/);
 
             items.push({
                 id: typeof crypto !== 'undefined' ? crypto.randomUUID() : Math.random().toString(),
-                description: match?.[1]?.trim() || cleaned,
+                itemType: isNonStock ? 'non_stock' : 'stock',
+                stockProductId: '',
+                stockSearch: isNonStock ? '' : (match?.[1]?.trim() || cleanedWithoutTypeTag),
+                description: match?.[1]?.trim() || cleanedWithoutTypeTag,
                 quantity: Number(match?.[2] || 1),
                 unit: match?.[3]?.trim() || '',
                 pricePerUnit: Number((match?.[4] || '0').replace(/,/g, '')),
@@ -105,23 +135,42 @@ function parseRequestForEdit(request: ApprovalRequest) {
         }
     }
 
+    const normalizedItems = (items.length > 0 ? items : [createEmptyPurchaseItem()]).map((item) => {
+        if (item.itemType !== 'stock') return item;
+        const normalizedDescription = (item.description || '').trim().toLowerCase();
+        const matchedProduct = stockProducts.find((product) => (
+            product.p_id.toLowerCase() === normalizedDescription
+            || product.p_name.trim().toLowerCase() === normalizedDescription
+        ));
+        if (!matchedProduct) return item;
+        return {
+            ...item,
+            stockProductId: matchedProduct.p_id,
+            stockSearch: buildStockSearchLabel(matchedProduct.p_id, matchedProduct.p_name),
+            description: matchedProduct.p_name,
+            unit: matchedProduct.p_unit || item.unit || '',
+            pricePerUnit: Number(matchedProduct.price_unit ?? item.pricePerUnit ?? 0),
+        };
+    });
+
     return {
         requestDate: request.created_at ? new Date(request.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
         subject: getValueAfterColon(headerLines[0]),
         priority: Number(getValueAfterColon(headerLines[1]).split('/')[0] || 3),
         note: getValueAfterColon(headerLines[2]),
         includeTax: normalizedLines.some((line) => line.includes('7%')),
-        items: items.length > 0 ? items : [createEmptyPurchaseItem()],
+        items: normalizedItems,
     };
 }
 
-export default function PurchaseRequestClient({ initialRequests, activeJobs, initialEditRequestId = null }: Props) {
+export default function PurchaseRequestClient({ initialRequests, activeJobs, stockProducts, initialEditRequestId = null }: Props) {
     const [requests, setRequests] = useState<ApprovalRequest[]>(initialRequests);
     const [editingRequestId, setEditingRequestId] = useState<number | null>(null);
     const [requestDate, setRequestDate] = useState(new Date().toISOString().slice(0, 10));
     const [priority, setPriority] = useState(3);
     const [subject, setSubject] = useState('');
     const [referenceJob, setReferenceJob] = useState('');
+    const [requestItemType, setRequestItemType] = useState<PurchaseItemType>('stock');
     const [items, setItems] = useState<PurchaseItem[]>([createEmptyPurchaseItem()]);
     const [includeTax, setIncludeTax] = useState(false);
     const [note, setNote] = useState('');
@@ -129,6 +178,8 @@ export default function PurchaseRequestClient({ initialRequests, activeJobs, ini
     const [submitting, setSubmitting] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const returnedBannerRef = useRef<HTMLDivElement | null>(null);
+    const stockPickerRef = useRef<HTMLDivElement | null>(null);
+    const [openStockPickerItemId, setOpenStockPickerItemId] = useState<string | null>(null);
 
     const jobOptions = activeJobs
         .map((job) => ({
@@ -148,7 +199,13 @@ export default function PurchaseRequestClient({ initialRequests, activeJobs, ini
     const otherRequests = requests.filter((request) => request.status !== 'returned');
 
     const addItem = () => {
-        setItems((prev) => [...prev, createEmptyPurchaseItem()]);
+        setItems((prev) => [
+            ...prev,
+            {
+                ...createEmptyPurchaseItem(),
+                itemType: requestItemType,
+            },
+        ]);
     };
 
     const removeItem = (id: string) => {
@@ -160,13 +217,113 @@ export default function PurchaseRequestClient({ initialRequests, activeJobs, ini
         setItems((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
     };
 
+    const setDocumentItemType = (itemType: PurchaseItemType) => {
+        if (itemType === 'stock' && stockProducts.length === 0) {
+            setMessage({ type: 'error', text: 'ยังไม่มีสินค้าใน stock ให้เลือก' });
+            return;
+        }
+
+        setOpenStockPickerItemId(null);
+        setRequestItemType(itemType);
+        const fallbackProduct = stockProducts[0];
+
+        setItems((prev) => prev.map((item) => {
+            if (itemType === 'non_stock') {
+                return {
+                    ...item,
+                    itemType: 'non_stock',
+                    stockProductId: '',
+                    stockSearch: '',
+                };
+            }
+
+            if (!fallbackProduct) {
+                return {
+                    ...item,
+                    itemType: 'stock',
+                };
+            }
+
+            const matchedByExistingId = item.stockProductId
+                ? stockProducts.find((product) => product.p_id === item.stockProductId)
+                : null;
+            const selected = matchedByExistingId || fallbackProduct;
+
+            return {
+                ...item,
+                itemType: 'stock',
+                stockProductId: matchedByExistingId ? selected.p_id : '',
+                stockSearch: matchedByExistingId ? buildStockSearchLabel(selected.p_id, selected.p_name) : '',
+                description: matchedByExistingId ? selected.p_name : '',
+                unit: matchedByExistingId ? (selected.p_unit || item.unit || '') : item.unit,
+                pricePerUnit: matchedByExistingId ? Number(selected.price_unit ?? item.pricePerUnit ?? 0) : item.pricePerUnit,
+            };
+        }));
+    };
+
+    const setStockProduct = (id: string, productId: string) => {
+        const selected = stockProducts.find((product) => product.p_id === productId);
+        if (!selected) return;
+
+        setItems((prev) => prev.map((item) => {
+            if (item.id !== id) return item;
+            return {
+                ...item,
+                itemType: 'stock',
+                stockProductId: selected.p_id,
+                stockSearch: buildStockSearchLabel(selected.p_id, selected.p_name),
+                description: selected.p_name,
+                unit: selected.p_unit || '',
+                pricePerUnit: Number(selected.price_unit ?? 0),
+            };
+        }));
+    };
+
+    const setStockProductByQuery = (id: string, rawValue: string) => {
+        const query = rawValue.trim();
+        if (!query) {
+            setItems((prev) => prev.map((item) => (
+                item.id === id
+                    ? { ...item, stockProductId: '', stockSearch: '', description: '' }
+                    : item
+            )));
+            return;
+        }
+
+        const lower = query.toLowerCase();
+        const idFromLabel = query.includes(' - ') ? query.split(' - ')[0].trim() : '';
+        const selected = stockProducts.find((product) => (
+            product.p_id.toLowerCase() === lower
+            || product.p_name.trim().toLowerCase() === lower
+            || (idFromLabel && product.p_id.toLowerCase() === idFromLabel.toLowerCase())
+        ));
+
+        if (selected) {
+            setStockProduct(id, selected.p_id);
+            return;
+        }
+
+        setItems((prev) => prev.map((item) => (
+            item.id === id
+                ? {
+                    ...item,
+                    itemType: 'stock',
+                    stockProductId: '',
+                    stockSearch: query,
+                    description: query,
+                }
+                : item
+        )));
+    };
+
     const startEditing = (request: ApprovalRequest) => {
-        const parsed = parseRequestForEdit(request);
+        const parsed = parseRequestForEdit(request, stockProducts);
         setEditingRequestId(request.request_id);
         setRequestDate(parsed.requestDate);
         setSubject(parsed.subject);
         setPriority(parsed.priority);
         setReferenceJob(request.reference_job || '');
+        setRequestItemType(parsed.items[0]?.itemType === 'non_stock' ? 'non_stock' : 'stock');
         setItems(parsed.items);
         setIncludeTax(parsed.includeTax);
         setNote(parsed.note === '-' ? '' : parsed.note);
@@ -180,6 +337,7 @@ export default function PurchaseRequestClient({ initialRequests, activeJobs, ini
         setSubject('');
         setPriority(3);
         setReferenceJob('');
+        setRequestItemType('stock');
         setItems([createEmptyPurchaseItem()]);
         setIncludeTax(false);
         setNote('');
@@ -199,6 +357,26 @@ export default function PurchaseRequestClient({ initialRequests, activeJobs, ini
         returnedBannerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
         returnedBannerRef.current.focus({ preventScroll: true });
     }, [editingReturnedRequest]);
+
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (stockPickerRef.current && !stockPickerRef.current.contains(event.target as Node)) {
+                setOpenStockPickerItemId(null);
+            }
+        }
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const getFilteredStockProducts = (query: string) => {
+        const keyword = query.trim().toLowerCase();
+        if (!keyword) return stockProducts.slice(0, 40);
+        return stockProducts.filter((product) => (
+            product.p_id.toLowerCase().includes(keyword)
+            || product.p_name.toLowerCase().includes(keyword)
+        )).slice(0, 40);
+    };
 
     const renderRequestCard = (request: ApprovalRequest, emphasis: 'default' | 'returned' = 'default') => (
         <div
@@ -282,6 +460,18 @@ export default function PurchaseRequestClient({ initialRequests, activeJobs, ini
             return;
         }
 
+        if (requestItemType === 'stock') {
+            if (stockProducts.length === 0) {
+                setMessage({ type: 'error', text: 'ยังไม่มีสินค้าใน stock ให้เลือก' });
+                return;
+            }
+            const missingStockProduct = items.find((item) => !item.stockProductId);
+            if (missingStockProduct) {
+                setMessage({ type: 'error', text: 'กรุณาเลือกสินค้าใน stock ให้ครบทุกรายการ' });
+                return;
+            }
+        }
+
         const invalidLinkItem = items.find((item) => {
             if (!item.includeLink) return false;
             if (!item.productLink.trim()) return true;
@@ -309,7 +499,7 @@ export default function PurchaseRequestClient({ initialRequests, activeJobs, ini
 หมายเหตุ: ${note.trim() || '-'}
 
 รายการสินค้า:
-${items.map((item, index) => `${index + 1}. ${item.description} - ${item.quantity} ${item.unit} @ ฿${formatCurrency(item.pricePerUnit)} (รวม: ฿${formatCurrency((item.quantity || 0) * (item.pricePerUnit || 0))})${item.includeLink ? `\n   ลิงก์สินค้า: ${item.productLink.trim()}` : ''}`).join('\n')}
+${items.map((item, index) => `${index + 1}. ${item.itemType === 'non_stock' ? '[NON-STOCK] ' : '[STOCK] '}${item.description} - ${item.quantity} ${item.unit} @ ฿${formatCurrency(item.pricePerUnit)} (รวม: ฿${formatCurrency((item.quantity || 0) * (item.pricePerUnit || 0))})${item.includeLink ? `\n   ลิงก์สินค้า: ${item.productLink.trim()}` : ''}`).join('\n')}
 
 รวมเงิน: ฿${formatCurrency(subTotal)}
 ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอดรวมสุทธิ: ฿${formatCurrency(netTotal)}`;
@@ -443,105 +633,223 @@ ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอ�
                             </div>
 
                             <div className="flex-1">
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">หัวข้อคำขอซื้อ</label>
-                                <input
-                                    type="text"
-                                    value={subject}
-                                    onChange={(e) => setSubject(e.target.value)}
-                                    className="w-full border rounded-lg px-3 py-3 dark:bg-slate-700 dark:border-slate-600"
-                                    placeholder="เช่น จัดซื้ออุปกรณ์ทำความสะอาดห้องพัก"
-                                    required
-                                />
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_230px]">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">หัวข้อคำขอซื้อ</label>
+                                        <input
+                                            type="text"
+                                            value={subject}
+                                            onChange={(e) => setSubject(e.target.value)}
+                                            className="w-full border rounded-lg px-3 py-3 dark:bg-slate-700 dark:border-slate-600"
+                                            placeholder="เช่น จัดซื้ออุปกรณ์ทำความสะอาดห้องพัก"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ประเภทสินค้า (ทั้งใบ)</label>
+                                        <select
+                                            value={requestItemType}
+                                            onChange={(e) => setDocumentItemType(e.target.value as PurchaseItemType)}
+                                            className="h-[50px] w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+                                        >
+                                            <option value="stock">สินค้าใน stock</option>
+                                            <option value="non_stock">สินค้านอก stock</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="border border-gray-200 dark:border-slate-600 rounded-xl overflow-hidden">
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900/40">
                             <div className="overflow-x-auto">
-                                <table className="w-full table-auto text-sm text-left [&_th.w-12]:w-auto [&_th.w-12]:whitespace-nowrap [&_th.w-28]:min-w-[6rem] [&_th.w-28]:w-auto [&_th.w-28]:whitespace-nowrap [&_th.w-36]:min-w-[8rem] [&_th.w-36]:w-auto [&_th.w-36]:whitespace-nowrap">
-                                    <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-slate-700 dark:text-gray-300 border-b border-gray-200 dark:border-slate-600">
+                                <table className="min-w-[920px] w-full table-fixed text-sm text-left">
+                                    <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-600 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300">
                                         <tr>
-                                            <th className="px-3 py-3 w-12 text-center">ลำดับ</th>
-                                            <th className="px-3 py-3 min-w-[300px]">รายการสินค้า</th>
-                                            <th className="px-3 py-3 w-28 text-right">จำนวน</th>
-                                            <th className="px-3 py-3 w-28 text-center">หน่วย</th>
-                                            <th className="px-3 py-3 w-36 text-right">ราคา/หน่วย</th>
-                                            <th className="px-3 py-3 w-36 text-right">รวม</th>
-                                            <th className="px-3 py-3 w-12 text-center">ลบ</th>
+                                            <th className="w-12 px-3 py-3 text-center">ลำดับ</th>
+                                            <th className="w-[44%] px-3 py-3">รายการสินค้า</th>
+                                            <th className="w-[11%] px-3 py-3 text-right">จำนวน</th>
+                                            <th className="w-[11%] px-3 py-3 text-center">หน่วย</th>
+                                            <th className="w-[13%] px-3 py-3 text-right">ราคา/หน่วย</th>
+                                            <th className="w-[13%] px-3 py-3 text-right">รวม</th>
+                                            <th className="w-12 px-3 py-3 text-center">ลบ</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {items.map((item, index) => (
-                                            <tr key={item.id} className="bg-white dark:bg-slate-800 border-b dark:border-slate-700 align-top">
-                                                <td className="px-3 py-3 text-center text-gray-500">{index + 1}</td>
-                                                <td className="px-3 py-3 space-y-2">
-                                                    <input
-                                                        type="text"
-                                                        value={item.description}
-                                                        onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                                                        className="w-full bg-transparent border-0 border-b border-gray-300 dark:border-slate-600 focus:ring-0 px-1 py-1 text-sm outline-none"
-                                                        placeholder="ระบุชื่อสินค้า / รายละเอียด"
-                                                        required
-                                                    />
-                                                    <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                            <tr key={item.id} className="align-top border-b border-slate-100 bg-white transition-colors hover:bg-slate-50/70 dark:border-slate-800 dark:bg-slate-900/20 dark:hover:bg-slate-800/30">
+                                                <td className="px-3 py-4 text-center text-sm font-medium text-slate-500">{index + 1}</td>
+                                                <td className="px-3 py-4">
+                                                    <div className="space-y-2.5 rounded-xl border border-slate-100 bg-slate-50/60 p-2.5 dark:border-slate-700 dark:bg-slate-800/50">
+                                                    {item.itemType === 'stock' ? (
+                                                        <div className="space-y-2">
+                                                            <div
+                                                                ref={openStockPickerItemId === item.id ? stockPickerRef : null}
+                                                                className="relative"
+                                                            >
+                                                                <div className="relative">
+                                                                    <FloatingSearchInput
+                                                                        label="ค้นหาสินค้า"
+                                                                        dense
+                                                                        value={item.stockSearch || (item.stockProductId ? buildStockSearchLabel(item.stockProductId, item.description) : item.description)}
+                                                                        onFocus={() => setOpenStockPickerItemId(item.id)}
+                                                                        onChange={(e) => {
+                                                                            setStockProductByQuery(item.id, e.target.value);
+                                                                            setOpenStockPickerItemId(item.id);
+                                                                        }}
+                                                                        placeholder="ค้นหาสินค้า"
+                                                                        required
+                                                                        containerClassName="w-full"
+                                                                        className="h-11 border-2 border-cyan-300 pr-10 text-sm font-medium text-slate-800 dark:border-cyan-700 dark:bg-slate-800 dark:text-slate-200"
+                                                                    />
+                                                                    {item.stockSearch && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                setStockProductByQuery(item.id, '');
+                                                                                setOpenStockPickerItemId(item.id);
+                                                                            }}
+                                                                            className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                                                        >
+                                                                            <X className="h-4 w-4" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+
+                                                                {openStockPickerItemId === item.id && (
+                                                                    <div className="absolute z-40 mt-2 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                                                                        <div className="max-h-72 overflow-y-auto">
+                                                                            {getFilteredStockProducts(item.stockSearch || item.description).length > 0 ? (
+                                                                                getFilteredStockProducts(item.stockSearch || item.description).map((product) => {
+                                                                                    const qty = Number(product.p_count ?? 0);
+                                                                                    return (
+                                                                                        <button
+                                                                                            key={product.p_id}
+                                                                                            type="button"
+                                                                                            onClick={() => {
+                                                                                                setStockProduct(item.id, product.p_id);
+                                                                                                setOpenStockPickerItemId(null);
+                                                                                            }}
+                                                                                            className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-3 text-left hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/70"
+                                                                                        >
+                                                                                            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+                                                                                                <Package className="h-5 w-5" />
+                                                                                            </div>
+                                                                                            <div className="min-w-0 flex-1">
+                                                                                                <div className="truncate text-base font-semibold text-slate-800 dark:text-slate-100">
+                                                                                                    {product.p_name}
+                                                                                                </div>
+                                                                                                <div className="mt-1 inline-flex rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                                                                                                    รหัส: {product.p_id}
+                                                                                                </div>
+                                                                                            </div>
+                                                                                            <div className="text-right">
+                                                                                                <div className={`text-3xl font-bold leading-none ${qty > 0 ? 'text-blue-600' : 'text-rose-600'}`}>
+                                                                                                    {qty.toLocaleString('th-TH')}
+                                                                                                </div>
+                                                                                                <div className="text-xs text-slate-400">{product.p_unit || 'ชิ้น'}</div>
+                                                                                            </div>
+                                                                                        </button>
+                                                                                    );
+                                                                                })
+                                                                            ) : (
+                                                                                <div className="px-4 py-6 text-center text-sm text-slate-500">ไม่พบสินค้า</div>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="border-t border-slate-100 bg-slate-50 px-3 py-2 text-center text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-300">
+                                                                            แสดง {getFilteredStockProducts(item.stockSearch || item.description).length} จาก {stockProducts.length} รายการ
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                                                                {item.stockProductId && (
+                                                                    <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                                                                        รหัส: {item.stockProductId}
+                                                                    </span>
+                                                                )}
+                                                                {item.unit && (
+                                                                    <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-slate-500 dark:bg-slate-700 dark:text-slate-300">
+                                                                        หน่วย: {item.unit}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
                                                         <input
-                                                            type="checkbox"
-                                                            checked={item.includeLink}
-                                                            onChange={(e) => updateItem(item.id, 'includeLink', e.target.checked)}
-                                                            className="rounded text-emerald-600 focus:ring-emerald-500"
+                                                            type="text"
+                                                            value={item.description}
+                                                            onChange={(e) => updateItem(item.id, 'description', e.target.value)}
+                                                            className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm focus:border-cyan-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                                                            placeholder="ระบุชื่อสินค้า / รายละเอียด"
+                                                            required
                                                         />
-                                                        แนบลิงก์สินค้า
-                                                    </label>
+                                                    )}
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <label className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={item.includeLink}
+                                                                onChange={(e) => updateItem(item.id, 'includeLink', e.target.checked)}
+                                                                className="rounded text-emerald-600 focus:ring-emerald-500"
+                                                            />
+                                                            แนบลิงก์สินค้า
+                                                        </label>
+                                                        <span className={`inline-flex h-6 items-center rounded-full px-2.5 text-[10px] font-semibold ${requestItemType === 'non_stock' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'}`}>
+                                                            {requestItemType === 'non_stock' ? 'NON-STOCK' : 'STOCK'}
+                                                        </span>
+                                                    </div>
                                                     {item.includeLink && (
                                                         <input
                                                             type="url"
                                                             value={item.productLink}
                                                             onChange={(e) => updateItem(item.id, 'productLink', e.target.value)}
-                                                            className="w-full rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-2 text-xs dark:bg-slate-700"
+                                                            className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-700 focus:border-cyan-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                                                             placeholder="https://example.com/product"
                                                         />
                                                     )}
+                                                    </div>
                                                 </td>
-                                                <td className="px-3 py-3 w-[1%] align-top">
+                                                <td className="px-3 py-4 align-top">
                                                     <input
                                                         type="number"
                                                         min="1"
                                                         value={item.quantity || ''}
                                                         onChange={(e) => updateItem(item.id, 'quantity', Number(e.target.value))}
-                                                        className="min-w-[6.5rem] w-full bg-transparent border-0 border-b border-gray-300 dark:border-slate-600 focus:ring-0 px-1 py-1 text-sm text-right outline-none"
+                                                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-right text-base font-semibold text-slate-800 focus:border-cyan-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                                                         required
                                                     />
                                                 </td>
-                                                <td className="px-3 py-3 w-[1%] align-top">
+                                                <td className="px-3 py-4 align-top">
                                                     <input
                                                         type="text"
                                                         value={item.unit}
                                                         onChange={(e) => updateItem(item.id, 'unit', e.target.value)}
-                                                        className="min-w-[6rem] w-full bg-transparent border-0 border-b border-gray-300 dark:border-slate-600 focus:ring-0 px-1 py-1 text-sm text-center outline-none"
+                                                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-center text-base font-semibold text-slate-800 focus:border-cyan-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                                                         placeholder="ชิ้น"
                                                         required
                                                     />
                                                 </td>
-                                                <td className="px-3 py-3 w-[1%] align-top">
+                                                <td className="px-3 py-4 align-top">
                                                     <input
                                                         type="number"
                                                         min="0"
                                                         step="0.01"
                                                         value={item.pricePerUnit === 0 ? '' : item.pricePerUnit}
                                                         onChange={(e) => updateItem(item.id, 'pricePerUnit', Number(e.target.value))}
-                                                        className="min-w-[8rem] w-full bg-transparent border-0 border-b border-gray-300 dark:border-slate-600 focus:ring-0 px-1 py-1 text-sm text-right outline-none"
+                                                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-right text-base font-semibold text-slate-800 focus:border-cyan-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                                                         placeholder="0.00"
                                                         required
                                                     />
                                                 </td>
-                                                <td className="px-3 py-3 w-[1%] whitespace-nowrap text-right font-medium text-emerald-700 dark:text-emerald-400">
-                                                    {formatCurrency((item.quantity || 0) * (item.pricePerUnit || 0))}
+                                                <td className="px-3 py-4 text-right">
+                                                    <div className="inline-flex min-w-[96px] justify-end rounded-xl bg-emerald-50 px-3 py-2 text-base font-bold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">{formatCurrency((item.quantity || 0) * (item.pricePerUnit || 0))}</div>
                                                 </td>
-                                                <td className="px-3 py-3 text-center">
+                                                <td className="px-3 py-4 text-center">
                                                     <button
                                                         type="button"
                                                         onClick={() => removeItem(item.id)}
                                                         disabled={items.length === 1}
-                                                        className="p-1.5 rounded-md text-rose-500 hover:bg-rose-50 disabled:opacity-30"
+                                                        className="rounded-lg border border-rose-200 p-2 text-rose-500 transition hover:bg-rose-50 disabled:opacity-30 dark:border-rose-500/30 dark:hover:bg-rose-500/10"
                                                     >
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
@@ -550,12 +858,12 @@ ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอ�
                                         ))}
                                     </tbody>
                                     <tfoot>
-                                        <tr className="bg-gray-50/80 dark:bg-slate-700/30">
-                                            <td colSpan={7} className="px-3 py-3">
+                                        <tr className="border-t border-dashed border-slate-200 bg-slate-50/70 dark:border-slate-700 dark:bg-slate-800/50">
+                                            <td colSpan={7} className="px-3 py-3.5">
                                                 <button
                                                     type="button"
                                                     onClick={addItem}
-                                                    className="inline-flex items-center gap-1.5 text-emerald-600 hover:text-emerald-700 font-medium text-sm"
+                                                    className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300"
                                                 >
                                                     <Plus className="w-4 h-4" /> เพิ่มรายการสินค้า
                                                 </button>
@@ -565,14 +873,14 @@ ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอ�
                                 </table>
                             </div>
 
-                            <div className="bg-gray-50 dark:bg-slate-800/80 p-5 border-t border-gray-200 dark:border-slate-600 flex justify-end">
-                                <div className="w-full sm:w-72 space-y-3 text-sm">
-                                    <div className="flex justify-between items-center text-gray-600 dark:text-gray-400">
+                            <div className="flex justify-end border-t border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 dark:border-slate-700 dark:from-slate-900/60 dark:to-slate-900/30">
+                                <div className="w-full sm:w-80 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-800/70">
+                                    <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
                                         <span>รวมก่อนภาษี</span>
-                                        <span className="font-medium text-gray-900 dark:text-gray-200">{formatCurrency(subTotal)}</span>
+                                        <span className="font-semibold text-slate-900 dark:text-slate-200">{formatCurrency(subTotal)}</span>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <label className="flex items-center gap-2 cursor-pointer text-gray-600 dark:text-gray-400">
+                                        <label className="flex items-center gap-2 cursor-pointer text-slate-600 dark:text-slate-400">
                                             <input
                                                 type="checkbox"
                                                 checked={includeTax}
@@ -581,9 +889,9 @@ ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอ�
                                             />
                                             VAT 7%
                                         </label>
-                                        <span className="font-medium text-gray-900 dark:text-gray-200">{formatCurrency(taxAmount)}</span>
+                                        <span className="font-semibold text-slate-900 dark:text-slate-200">{formatCurrency(taxAmount)}</span>
                                     </div>
-                                    <div className="flex justify-between items-center pt-3 border-t border-gray-200 dark:border-slate-600 text-base font-bold text-gray-900 dark:text-white">
+                                    <div className="flex justify-between items-center pt-3 border-t border-slate-200 dark:border-slate-600 text-base font-bold text-slate-900 dark:text-white">
                                         <span>ยอดรวมสุทธิ</span>
                                         <span className="text-emerald-600 dark:text-emerald-400">฿ {formatCurrency(netTotal)}</span>
                                     </div>
@@ -794,7 +1102,12 @@ ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอ�
                                             <tr key={item.id}>
                                                 <td className="py-3">{index + 1}</td>
                                                 <td className="py-3">
-                                                    <div className="font-medium">{item.description || '-'}</div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="font-medium">{item.description || '-'}</div>
+                                                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.itemType === 'non_stock' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                            {item.itemType === 'non_stock' ? 'NON-STOCK' : 'STOCK'}
+                                                        </span>
+                                                    </div>
                                                     {item.includeLink && item.productLink.trim() && (
                                                         <div className="mt-1 break-all text-xs text-blue-700">{item.productLink.trim()}</div>
                                                     )}
@@ -802,7 +1115,7 @@ ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอ�
                                                 <td className="py-3 whitespace-nowrap text-right">{item.quantity || 0}</td>
                                                 <td className="py-3 whitespace-nowrap">{item.unit || '-'}</td>
                                                 <td className="py-3 whitespace-nowrap text-right">{formatCurrency(item.pricePerUnit || 0)}</td>
-                                                <td className="py-3 whitespace-nowrap text-right font-medium">{formatCurrency((item.quantity || 0) * (item.pricePerUnit || 0))}</td>
+                                                <td className="py-3 whitespace-nowrap text-right font-medium"><div className="inline-flex min-w-[96px] justify-end rounded-xl bg-emerald-50 px-3 py-2 text-base font-bold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">{formatCurrency((item.quantity || 0) * (item.pricePerUnit || 0))}</div></td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -862,3 +1175,4 @@ ${includeTax ? `ภาษี 7%: ฿${formatCurrency(taxAmount)}\n` : ''}ยอ�
         </div>
     );
 }
+

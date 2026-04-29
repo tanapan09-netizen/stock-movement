@@ -33,7 +33,12 @@ function parsePurchaseRequestItems(reason: string | null | undefined, products: 
         const match = line.match(/^\d+\.\s*(.+?)\s*-\s*([\d,]+(?:\.\d+)?)\s+.+?\s*@\s*฿?\s*([\d,]+(?:\.\d+)?)/i);
         if (!match) continue;
 
-        const description = match[1].trim();
+        const rawDescription = match[1].trim();
+        const explicitNonStock = /^\[(?:NON[-_\s]?STOCK)\]\s*/i.test(rawDescription);
+        const description = rawDescription
+            .replace(/^\[(?:NON[-_\s]?STOCK)\]\s*/i, '')
+            .replace(/^\[(?:STOCK)\]\s*/i, '')
+            .trim();
         const quantity = Math.max(1, Math.trunc(parseNumeric(match[2])));
         const unitPrice = parseNumeric(match[3]);
         const normalizedDescription = description.toLowerCase();
@@ -42,7 +47,7 @@ function parsePurchaseRequestItems(reason: string | null | undefined, products: 
             || product.p_name.trim().toLowerCase() === normalizedDescription
         ));
 
-        if (matchedProduct) {
+        if (matchedProduct && !explicitNonStock) {
             parsedItems.push({
                 p_id: matchedProduct.p_id,
                 p_name: matchedProduct.p_name,
