@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Plus, Filter, ShoppingCart, CheckCircle, XCircle, Clock, Upload, Link as LinkIcon, X } from 'lucide-react';
 import { getPartRequests, createPartRequest, updatePartRequestStatus, deletePartRequest, approvePartRequest } from '@/actions/partRequestActions';
 import { getMaintenanceRequests } from '@/actions/maintenanceActions';
@@ -30,10 +31,12 @@ interface PartRequest {
     category?: string;
     request_number?: string;
     current_stage?: number;
+    source_type?: 'part_request' | 'purchase_request';
+    purchase_request_id?: number;
     tbl_maintenance_requests?: {
         request_number: string;
         title: string;
-        tbl_rooms: { room_code: string; room_name: string; };
+        tbl_rooms: { room_code: string; room_name: string; } | null;
     } | null;
 }
 
@@ -76,6 +79,7 @@ export default function PartRequestClient({
     canUpdateStatus,
     canDeleteRequest,
 }: PartRequestClientProps) {
+    const router = useRouter();
     const [requests, setRequests] = useState<PartRequest[]>([]);
     const [maintenanceRequests, setMaintenanceRequests] = useState<MaintenanceRequest[]>([]);
     const [loading, setLoading] = useState(true);
@@ -194,7 +198,7 @@ export default function PartRequestClient({
                 </div>
                 {canCreateRequest && (
                     <button
-                        onClick={() => setShowForm(true)}
+                        onClick={() => router.push('/purchase-request')}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
                     >
                     <Plus size={18} /> ขอซื้ออะไหล่
@@ -245,9 +249,10 @@ export default function PartRequestClient({
                                 <tr><td colSpan={8} className="text-center py-8 text-gray-500">ไม่มีรายการ</td></tr>
                             ) : (
                                 requests.map(req => {
+                                    const isPurchaseReference = req.source_type === 'purchase_request';
                                     const status = STATUS_CONFIG[req.status] || STATUS_CONFIG.pending;
                                     const StatusIcon = status.icon;
-                                    const canApproveCurrentStage = req.status === 'pending'
+                                    const canApproveCurrentStage = !isPurchaseReference && req.status === 'pending'
                                         && (req.current_stage === undefined || req.current_stage < 3)
                                         && canApprovePartRequestStage(
                                             role,
@@ -260,6 +265,11 @@ export default function PartRequestClient({
                                             <td className="px-4 py-3">
                                                 <div className="font-medium flex items-center gap-2">
                                                     {req.item_name}
+                                                    {isPurchaseReference && (
+                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700">
+                                                            PR
+                                                        </span>
+                                                    )}
                                                     {(req.quotation_file || req.quotation_link) && (
                                                         <a
                                                             href={req.quotation_file || req.quotation_link || '#'}
@@ -318,7 +328,7 @@ export default function PartRequestClient({
                                                     title="Change Status"
                                                     value={req.status}
                                                     onChange={(e) => handleStatusChange(req.request_id, e.target.value)}
-                                                    disabled={!canUpdateStatus}
+                                                    disabled={!canUpdateStatus || isPurchaseReference}
                                                     className="text-sm border rounded px-2 py-1 mr-2 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-700 dark:border-slate-600"
                                                 >
                                                     <option value="pending">รอ</option>
@@ -327,7 +337,16 @@ export default function PartRequestClient({
                                                     <option value="received">ได้รับ</option>
                                                     <option value="rejected">ปัดตก</option>
                                                 </select>
-                                                {canDeleteRequest && (
+                                                {isPurchaseReference && (
+                                                    <a
+                                                        href="/purchase-request/manage"
+                                                        className="text-blue-600 text-sm hover:underline"
+                                                        title="Open purchase request management"
+                                                    >
+                                                        ดู PR
+                                                    </a>
+                                                )}
+                                                {canDeleteRequest && !isPurchaseReference && (
                                                     <button onClick={() => handleDelete(req.request_id)} className="text-red-600 text-sm">ลบ</button>
                                                 )}
                                             </td>

@@ -32,6 +32,39 @@ async function getPartRequestAuthContext() {
     };
 }
 
+function parsePurchaseReasonItems(reason: string | null | undefined) {
+    const raw = reason || '';
+    const items: Array<{ item_name: string; quantity: number; description: string | null }> = [];
+
+    for (const line of raw.split('\n')) {
+        const trimmed = line.trim();
+        if (!/^\d+\./.test(trimmed)) continue;
+
+        const cleaned = trimmed
+            .replace(/^\d+\.\s*/, '')
+            .replace(/^\[(?:NON[-_\s]?STOCK|STOCK)\]\s*/i, '')
+            .trim();
+        const match = cleaned.match(/^(.*)\s-\s([\d.]+)\s+(.+?)\s@\s[^\d]*([\d,]+(?:\.\d+)?)/);
+
+        if (match) {
+            items.push({
+                item_name: match[1].trim(),
+                quantity: Math.max(1, Math.trunc(Number(match[2]) || 1)),
+                description: cleaned,
+            });
+            continue;
+        }
+
+        items.push({
+            item_name: cleaned,
+            quantity: 1,
+            description: cleaned,
+        });
+    }
+
+    return items;
+}
+
 export async function getPartRequests(filters?: {
     status?: string;
     maintenance_id?: number;
@@ -69,7 +102,119 @@ export async function getPartRequests(filters?: {
             orderBy: { created_at: 'desc' }
         });
 
-        return { success: true, data: requests };
+        const purchaseRequestWhere: Prisma.tbl_approval_requestsWhereInput = {
+            request_type: 'purchase',
+            reference_job: {
+                not: null,
+            },
+            NOT: {
+                reference_job: '',
+            },
+        };
+
+        if (filters?.status && filters.status !== 'all') {
+            purchaseRequestWhere.status = filters.status;
+        }
+
+        if (filters?.maintenance_id) {
+            const linkedMaintenance = await prisma.tbl_maintenance_requests.findUnique({
+                where: { request_id: filters.maintenance_id },
+                select: { request_number: true },
+            });
+
+            if (!linkedMaintenance?.request_number) {
+                return { success: true, data: requests };
+            }
+
+            purchaseRequestWhere.reference_job = linkedMaintenance.request_number;
+        }
+
+        const purchaseRequests = await prisma.tbl_approval_requests.findMany({
+            where: purchaseRequestWhere,
+            include: {
+                tbl_users: {
+                    select: {
+                        username: true,
+                    },
+                },
+            },
+            orderBy: { created_at: 'desc' },
+        });
+
+        const referenceJobs = purchaseRequests
+            .map((request) => (request.reference_job || '').trim())
+            .filter(Boolean);
+
+        const maintenanceRequests = referenceJobs.length > 0
+            ? await prisma.tbl_maintenance_requests.findMany({
+                where: { request_number: { in: referenceJobs } },
+                include: {
+                    tbl_rooms: { select: { room_code: true, room_name: true } },
+                },
+            })
+            : [];
+
+        const maintenanceByRequestNumber = new Map(
+            maintenanceRequests.map((maintenance) => [maintenance.request_number, maintenance]),
+        );
+
+        const purchaseRows = purchaseRequests.flatMap((request) => {
+            const parsedItems = parsePurchaseReasonItems(request.reason);
+            const items = parsedItems.length > 0
+                ? parsedItems
+                : [{
+                    item_name: request.request_number || 'Purchase Request',
+                    quantity: 1,
+                    description: request.reason || null,
+                }];
+            const linkedMaintenance = request.reference_job
+                ? maintenanceByRequestNumber.get(request.reference_job.trim())
+                : null;
+
+            return items.map((item, index) => ({
+                // Keep synthetic IDs negative so they never collide with tbl_part_requests primary keys.
+                request_id: -1 * (request.request_id * 1000 + index + 1),
+                purchase_request_id: request.request_id,
+                maintenance_id: linkedMaintenance?.request_id || null,
+                item_name: item.item_name,
+                description: item.description,
+                quantity: item.quantity,
+                status: request.status || 'pending',
+                requested_by: request.tbl_users?.username || 'Unknown',
+                department: 'purchasing',
+                date_needed: null,
+                priority: 'normal',
+                estimated_price: request.amount ? Number(request.amount) : null,
+                supplier: null,
+                quotation_file: null,
+                quotation_link: null,
+                approval_notes: null,
+                created_at: request.created_at,
+                request_type: 'purchase_reference',
+                category: null,
+                request_number: request.request_number,
+                current_stage: request.current_step || 0,
+                source_type: 'purchase_request',
+                tbl_maintenance_requests: linkedMaintenance
+                    ? {
+                        request_number: linkedMaintenance.request_number,
+                        title: linkedMaintenance.title,
+                        tbl_rooms: linkedMaintenance.tbl_rooms
+                            ? {
+                                room_code: linkedMaintenance.tbl_rooms.room_code,
+                                room_name: linkedMaintenance.tbl_rooms.room_name,
+                            }
+                            : null,
+                    }
+                    : null,
+            }));
+        });
+
+        const merged = [...requests, ...purchaseRows].sort((a, b) => (
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        ));
+
+        return { success: true, data: merged };
     } catch (error) {
         console.error('Error fetching part requests:', error);
         return { success: false, error: 'Failed to fetch part requests' };
