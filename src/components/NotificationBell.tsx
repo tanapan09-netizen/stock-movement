@@ -241,10 +241,17 @@ export default function NotificationBell() {
     if (notification.id.startsWith('po_') || notification.type === 'po_update') {
       return '/purchase-orders';
     }
+    if (
+      notification.id === 'purchase_requests_pending'
+      || notification.id.startsWith('purchase_request_')
+      || notification.id.startsWith('purchase_requests_')
+    ) {
+      return '/purchase-request/manage';
+    }
     if (notification.id.startsWith('low_stock_') || notification.type === 'low_stock') {
       return '/products?filter=low_stock';
     }
-    return '/dashboard';
+    return '/';
   }, []);
 
   const requestBrowserPermission = async () => {

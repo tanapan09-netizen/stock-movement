@@ -190,6 +190,49 @@ function formatDisplayDateTime(value: string | Date | null | undefined) {
     });
 }
 
+const URL_PATTERN = /(https?:\/\/[^\s]+)/g;
+
+function normalizeMatchedUrl(rawUrl: string) {
+    return rawUrl.replace(/[),.;]+$/g, '');
+}
+
+function extractProductLinks(reason?: string | null): string[] {
+    if (!reason || !reason.trim()) {
+        return [];
+    }
+
+    const rawMatches = reason.match(URL_PATTERN) || [];
+    return Array.from(new Set(rawMatches.map(normalizeMatchedUrl).filter(Boolean)));
+}
+
+function getReasonTextWithoutLinks(reason?: string | null) {
+    if (!reason || !reason.trim()) {
+        return '-';
+    }
+
+    const withoutUrls = reason
+        .replace(URL_PATTERN, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .split('\n')
+        .map((line) => line.trimEnd())
+        .join('\n')
+        .trim();
+
+    return withoutUrls || '-';
+}
+
+function getShortExternalUrlLabel(linkIndex: number) {
+    return `ดูสินค้า ${linkIndex}`;
+}
+
+function getLinkHostname(rawUrl: string) {
+    try {
+        return new URL(rawUrl).hostname.replace(/^www\./, '');
+    } catch {
+        return '';
+    }
+}
+
 function getStepLogActionLabel(action?: string | null) {
     switch (action) {
         case 'approved':
@@ -293,6 +336,14 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
     const canEditManagedRequests = isDepartmentRole(currentRole, 'purchasing');
     const queueLabel = getQueueLabelByRole(currentRole);
     const primaryNavigation = getPrimaryNavigation(currentRole);
+    const selectedRequestProductLinks = useMemo(
+        () => extractProductLinks(selectedRequest?.reason),
+        [selectedRequest?.reason],
+    );
+    const selectedRequestReasonText = useMemo(
+        () => getReasonTextWithoutLinks(selectedRequest?.reason),
+        [selectedRequest?.reason],
+    );
 
     const summary = useMemo(() => {
         const pending = requests.filter((request) => request.status === 'pending').length;
@@ -1026,8 +1077,32 @@ export default function PurchaseRequestManagementClient({ initialRequests, curre
                                         <div className="mt-4">
                                             <div className="text-xs font-medium uppercase tracking-wide text-slate-500">เหตุผล / รายละเอียด</div>
                                             <div className="mt-2 whitespace-pre-wrap rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
-                                                {selectedRequest.reason || '-'}
+                                                {selectedRequestReasonText}
                                             </div>
+                                            {selectedRequestProductLinks.length > 0 && (
+                                                <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-3">
+                                                    <div className="text-xs font-semibold text-blue-700">ลิงก์สินค้า</div>
+                                                    <div className="mt-2 flex flex-wrap gap-2">
+                                                        {selectedRequestProductLinks.map((url, index) => {
+                                                            const hostname = getLinkHostname(url);
+                                                            return (
+                                                                <a
+                                                                    key={`${selectedRequest.request_id}-product-link-${index + 1}`}
+                                                                    href={url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    title={url}
+                                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-50"
+                                                                >
+                                                                    {getShortExternalUrlLabel(index + 1)}
+                                                                    {hostname && <span className="text-[11px] text-slate-500">({hostname})</span>}
+                                                                    <ExternalLink className="h-3.5 w-3.5" />
+                                                                </a>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                         {selectedRequest.rejection_reason && (
                                             <div className="mt-4 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800">
