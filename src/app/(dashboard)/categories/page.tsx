@@ -6,7 +6,7 @@ import { auth } from '@/auth';
 import { canAccessDashboardPage } from '@/lib/rbac';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { getCategories } from '@/lib/server/category-service';
-...
+
 export default async function CategoriesPage() {
     const session = await auth();
     const permissionContext = await getUserPermissionContext(session?.user as PermissionSessionUser | undefined);
