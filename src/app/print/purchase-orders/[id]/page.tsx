@@ -23,20 +23,19 @@ function stripStockTags(value: string) {
 }
 
 function renderNoteLineWithBadge(line: string, key: string) {
-    const isProductLink = line.includes('ลิ้งก์สินค้า:');
-
     const renderText = (text: string) => {
-        if (!text.includes('ลิ้งก์สินค้า:')) return stripStockTags(text);
+        // Detect "ลิ้งก์สินค้า" or "ลิงก์สินค้า" followed by a colon or space
+        const linkLabelMatch = text.match(/^(.*?(?:ลิ้งก์|ลิงก์)สินค้า\s*[:\s]\s*)(https?:\/\/\S+)(.*)$/i);
+        
+        if (linkLabelMatch) {
+            const label = linkLabelMatch[1];
+            const url = linkLabelMatch[2];
+            const suffix = linkLabelMatch[3];
+            let displayUrl = url;
 
-        const parts = text.split('ลิ้งก์สินค้า:');
-        const label = parts[0] + 'ลิ้งก์สินค้า: ';
-        const url = parts[1].trim();
-        let displayUrl = url;
-
-        if (url.startsWith('http')) {
             if (url.includes('shopee.co.th/product/')) {
-                const match = url.match(/(https:\/\/shopee\.co\.th\/product\/\d+\/\d+)/);
-                if (match) displayUrl = match[1];
+                const shopeeMatch = url.match(/(https:\/\/shopee\.co\.th\/product\/\d+\/\d+)/);
+                if (shopeeMatch) displayUrl = shopeeMatch[1];
             } else if (displayUrl.length > 50) {
                 displayUrl = displayUrl.substring(0, 47) + '...';
             }
@@ -47,9 +46,26 @@ function renderNoteLineWithBadge(line: string, key: string) {
                     <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline print:text-black break-all">
                         {displayUrl}
                     </a>
+                    {suffix}
                 </>
             );
         }
+
+        // Fallback: Shorten any long URL even without the specific label
+        const urlMatch = text.match(/(https?:\/\/\S+)/ig);
+        if (urlMatch && urlMatch.length === 1 && text.trim() === urlMatch[0]) {
+             const url = urlMatch[0];
+             let displayUrl = url;
+             if (displayUrl.length > 50) {
+                 displayUrl = displayUrl.substring(0, 47) + '...';
+             }
+             return (
+                <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline print:text-black break-all">
+                    {displayUrl}
+                </a>
+             );
+        }
+
         return stripStockTags(text);
     };
 

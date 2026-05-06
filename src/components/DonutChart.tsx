@@ -18,9 +18,8 @@ export function DonutChart({ data }: { data: CategoryBreakdown[] }) {
     const circ = 2 * Math.PI * R;
     const GAP = 0.03;
 
-    let cumAngle = 0;
     let currentAngle = 0;
-    const arcData = data.map((d) => {
+    const slices = data.map((d) => {
         const slice = (d.value / total) * 2 * Math.PI;
         const startA = currentAngle;
         const dashLen = Math.max(0, (slice - GAP) / (2 * Math.PI)) * circ;
