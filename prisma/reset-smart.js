@@ -14,7 +14,7 @@ function getBcrypt() {
         try {
             console.log(`Trying to load bcryptjs from: ${p}`);
             return require(p);
-            /* eslint-disable no-unused-vars */
+             
         } catch (e) {
             // continue
         }

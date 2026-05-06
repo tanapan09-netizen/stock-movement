@@ -19,14 +19,16 @@ export function DonutChart({ data }: { data: CategoryBreakdown[] }) {
     const GAP = 0.03;
 
     let cumAngle = 0;
-    const slices = data.map((d) => {
+    let currentAngle = 0;
+    const arcData = data.map((d) => {
         const slice = (d.value / total) * 2 * Math.PI;
-        const startA = cumAngle + GAP / 2;
+        const startA = currentAngle;
         const dashLen = Math.max(0, (slice - GAP) / (2 * Math.PI)) * circ;
         const startOffset = -(startA / (2 * Math.PI)) * circ;
-        cumAngle += slice;
+        currentAngle += slice;
         return { ...d, dashLen, startOffset };
     });
+
 
     const active = activeIdx !== null ? slices[activeIdx] : null;
 

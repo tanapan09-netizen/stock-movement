@@ -77,6 +77,7 @@ import {
     MAINTENANCE_WORKFLOW_LABELS,
     normalizeMaintenanceWorkflowStatus,
 } from '@/lib/maintenance-workflow';
+import { getProcurementStatusBadgeClass, getProcurementStatusLabel } from '@/lib/procurement-status';
 import type { MaintenanceWorkflowStatus } from '@/lib/maintenance-workflow';
 import { getCopiedImageMetadata, parseMaintenanceImageUrls } from '@/lib/maintenance-images';
 
@@ -125,6 +126,25 @@ interface HistoryItem {
     changed_at: Date;
 }
 
+interface LinkedPurchaseOrderSummary {
+    po_id: number;
+    po_number: string;
+    status: string | null;
+    order_date: Date | null;
+    received_date: Date | null;
+    updated_at: Date;
+}
+
+interface LinkedPurchaseRequestSummary {
+    request_id: number;
+    request_number: string;
+    status: string;
+    current_step: number;
+    created_at: Date;
+    updated_at: Date;
+    linked_purchase_orders: LinkedPurchaseOrderSummary[];
+}
+
 interface MaintenanceRequestItem {
     request_id: number;
     request_number: string;
@@ -151,6 +171,7 @@ interface MaintenanceRequestItem {
     department?: string | null;
     contact_info?: string | null;
     tags?: string | null;
+    linked_purchase_requests?: LinkedPurchaseRequestSummary[];
 }
 
 interface MaintenancePart {
@@ -233,6 +254,17 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: Lucide
     completed: { label: 'ปิดงานแล้ว', color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle2 },
     cancelled: { label: 'ยกเลิก', color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle },
     verified: { label: 'ตรวจสอบแล้ว', color: 'bg-cyan-100 text-cyan-700 border-cyan-200', icon: ShieldCheck },
+};
+
+const getPurchaseRequestWorkflowLabel = (currentStep?: number | null) => {
+    switch (Number(currentStep || 0)) {
+        case 1: return 'รอจัดซื้อทบทวน';
+        case 2: return 'รอผู้จัดการอนุมัติ';
+        case 3: return 'รอบัญชีตรวจสอบ';
+        case 4: return 'รอจัดซื้อออก PO';
+        case 5: return 'รอ Store รับเข้า';
+        default: return '-';
+    }
 };
 
 const getHistoryActionLabel = (action: string): string => {
@@ -2114,6 +2146,9 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
     const selectedRequestLatestReopenReason = getLatestHistoryValueByAction(historyItems, 'reopen_reason');
     const selectedRequestLatestReopenAt = getLatestHistoryTimeByAction(historyItems, 'reopen_request');
     const selectedRequestExecutionTechnician = getLatestExecutionTechnician(historyItems, selectedRequest?.assigned_to);
+    const selectedLinkedPurchaseRequests = Array.isArray(selectedRequest?.linked_purchase_requests)
+        ? selectedRequest.linked_purchase_requests
+        : [];
     const shouldLockAssignedTechnician =
         ['in_progress', 'confirmed', 'completed'].includes(selectedWorkflowStatus || '')
         && Boolean(selectedRequestExecutionTechnician);
@@ -3412,6 +3447,60 @@ export default function MaintenanceClient({ userPermissions = {}, canEditPage = 
                 </div>
               )}
             </div>
+
+            {selectedLinkedPurchaseRequests.length > 0 && (
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-3 text-sm font-medium text-slate-500">
+                  สถานะสั่งซื้อที่อ้างอิง
+                </div>
+                <div className="space-y-3">
+                  {selectedLinkedPurchaseRequests.map((purchaseRequest) => (
+                    <div
+                      key={`purchase-ref-${purchaseRequest.request_id}`}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-semibold text-slate-900">
+                          {purchaseRequest.request_number}
+                        </div>
+                        <span
+                          className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getProcurementStatusBadgeClass(purchaseRequest.status || 'pending')}`}
+                        >
+                          {getProcurementStatusLabel(purchaseRequest.status || 'pending')}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">
+                        Workflow: {getPurchaseRequestWorkflowLabel(purchaseRequest.current_step)}
+                      </div>
+
+                      {purchaseRequest.linked_purchase_orders.length > 0 ? (
+                        <div className="mt-3 space-y-2">
+                          {purchaseRequest.linked_purchase_orders.map((purchaseOrder) => (
+                            <div
+                              key={`po-${purchaseRequest.request_id}-${purchaseOrder.po_id}`}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2"
+                            >
+                              <span className="text-sm font-medium text-slate-800">
+                                {purchaseOrder.po_number}
+                              </span>
+                              <span
+                                className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getProcurementStatusBadgeClass(purchaseOrder.status || 'draft')}`}
+                              >
+                                {getProcurementStatusLabel(purchaseOrder.status || 'draft')}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-3 text-xs text-slate-500">
+                          ยังไม่พบใบสั่งซื้อ (PO) ที่เชื่อมกับคำขอนี้
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Column */}

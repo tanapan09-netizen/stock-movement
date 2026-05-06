@@ -25,9 +25,15 @@ const colorPresets = [
 ];
 
 export function ThemeColorProvider({ children }: { children: React.ReactNode }) {
-    const [colors, setColorsState] = useState<ThemeColors>({
-        primary: '#3b82f6',
-        accent: '#8b5cf6'
+    const [colors, setColorsState] = useState<ThemeColors>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('themeColors');
+            if (saved) return JSON.parse(saved);
+        }
+        return {
+            primary: '#3b82f6',
+            accent: '#8b5cf6'
+        };
     });
 
     const applyColors = (newColors: ThemeColors) => {
@@ -43,12 +49,7 @@ export function ThemeColorProvider({ children }: { children: React.ReactNode }) 
     };
 
     useEffect(() => {
-        const saved = localStorage.getItem('themeColors');
-        if (saved) {
-            const parsed = JSON.parse(saved);
-            setColorsState(parsed);
-            applyColors(parsed);
-        }
+        applyColors(colors);
     }, []);
 
     const setColors = (newColors: ThemeColors) => {

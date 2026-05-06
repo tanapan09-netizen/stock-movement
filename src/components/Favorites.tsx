@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Star, Package, X, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 
@@ -13,14 +13,19 @@ interface Favorite {
 }
 
 export function useFavorites() {
-    const [favorites, setFavorites] = useState<Favorite[]>([]);
-
-    useEffect(() => {
-        const saved = localStorage.getItem('favorites');
-        if (saved) {
-            setFavorites(JSON.parse(saved));
+    const [favorites, setFavorites] = useState<Favorite[]>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('favorites');
+            if (saved) {
+                try {
+                    return JSON.parse(saved);
+                } catch (e) {
+                    console.error("Failed to parse favorites", e);
+                }
+            }
         }
-    }, []);
+        return [];
+    });
 
     const addFavorite = (item: Omit<Favorite, 'addedAt'>) => {
         const newFav = { ...item, addedAt: new Date() };

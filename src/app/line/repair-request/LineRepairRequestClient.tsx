@@ -668,9 +668,9 @@ function AlertBox({ kind, children, onDismiss, closeLabel }: { kind: AlertKind; 
 // ── Captcha Display with SVG noise lines ──
 function CaptchaDisplay({ code }: { code: string }) {
     const rotations = ['-4deg', '3deg', '-2deg', '5deg'];
-    // SVG noise lines
+    // Pure SVG noise lines to avoid hydration/render impure function errors
     const lines = Array.from({ length: 5 }, (_, i) => ({
-        x1: 5 + i * 18, y1: Math.random() * 54, x2: 15 + i * 18, y2: Math.random() * 54,
+        x1: 5 + i * 18, y1: 15 + (i * 7 % 30), x2: 15 + i * 18, y2: 10 + (i * 13 % 40),
     }));
     return (
         <div className="cap-display">

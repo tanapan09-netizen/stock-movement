@@ -161,13 +161,7 @@ export function FloatingSelect({
 }: FloatingSelectProps) {
     const autoId = useId();
     const resolvedId = id ?? `floating-select-${autoId}`;
-    const [filled, setFilled] = useState(isFilledValue(value ?? defaultValue));
-
-    useEffect(() => {
-        if (value !== undefined) {
-            setFilled(isFilledValue(value));
-        }
-    }, [value]);
+    const filled = isFilledValue(value ?? defaultValue);
 
     return (
         <FloatingShell
@@ -184,10 +178,7 @@ export function FloatingSelect({
                 id={resolvedId}
                 value={value}
                 defaultValue={defaultValue}
-                onChange={(event) => {
-                    setFilled(isFilledValue(event.target.value));
-                    onChange?.(event);
-                }}
+                onChange={onChange}
                 className={cx('floating-control floating-control--select', className)}
             >
                 {children}

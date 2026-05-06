@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Mail, Calendar, Clock, Bell, Save, Loader2, Check } from 'lucide-react';
+import { useState } from 'react';
+import { Mail, Calendar, Clock, Save, Loader2, Check } from 'lucide-react';
 
 interface DigestSettings {
     enabled: boolean;
@@ -16,29 +16,36 @@ interface DigestSettings {
     includeMovementSummary: boolean;
 }
 
+const DEFAULT_SETTINGS: DigestSettings = {
+    enabled: false,
+    frequency: 'daily',
+    time: '08:00',
+    dayOfWeek: 1, // Monday
+    dayOfMonth: 1,
+    email: '',
+    includeStockAlerts: true,
+    includePOSummary: true,
+    includeBorrowReminders: true,
+    includeMovementSummary: true,
+};
+
 export default function EmailDigestSettings() {
-    const [settings, setSettings] = useState<DigestSettings>({
-        enabled: false,
-        frequency: 'daily',
-        time: '08:00',
-        dayOfWeek: 1, // Monday
-        dayOfMonth: 1,
-        email: '',
-        includeStockAlerts: true,
-        includePOSummary: true,
-        includeBorrowReminders: true,
-        includeMovementSummary: true,
+    const [settings, setSettings] = useState<DigestSettings>(() => {
+        if (typeof window !== 'undefined') {
+            const savedSettings = localStorage.getItem('emailDigestSettings');
+            if (savedSettings) {
+                try {
+                    return JSON.parse(savedSettings);
+                } catch (e) {
+                    console.error("Failed to parse emailDigestSettings", e);
+                }
+            }
+        }
+        return DEFAULT_SETTINGS;
     });
     const [isSaving, setIsSaving] = useState(false);
     const [saved, setSaved] = useState(false);
 
-    useEffect(() => {
-        // Load settings from localStorage or API
-        const savedSettings = localStorage.getItem('emailDigestSettings');
-        if (savedSettings) {
-            setSettings(JSON.parse(savedSettings));
-        }
-    }, []);
 
     const handleSave = async () => {
         setIsSaving(true);

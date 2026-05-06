@@ -220,11 +220,6 @@ export default function HierarchicalRoomSelector({
         return { types: treeTypes, flatLocations: flat, selectedText: selectedValue };
     }, [rooms, value]);
 
-    useEffect(() => {
-        if (!open || types.length === 0 || expandedTypes.size > 0) return;
-        setExpandedTypes(new Set([types[0].code]));
-    }, [open, types, expandedTypes.size]);
-
     const searchResults = useMemo(() => {
         const q = query.trim().toLowerCase();
         if (!q) return [];

@@ -8,10 +8,37 @@ import { uploadFile } from '@/lib/gcs';
 import { logSystemAction } from '@/lib/logger';
 import { auth } from '@/auth';
 import { validateData, createProductSchema } from '@/lib/validation';
+import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
+import { canAccessDashboardPage } from '@/lib/rbac';
+import { COMMON_ACTION_MESSAGES } from '@/lib/action-messages';
 
 const UPLOAD_DIR = 'products'; // Just folder name for GCS/Local util
 const PRODUCT_ID_SEQUENCE_WIDTH = 4;
 const MAX_PRODUCT_ID_RETRY = 5;
+
+async function getProductAuthContext(level: 'read' | 'edit' = 'read') {
+    const session = await auth();
+    if (!session?.user) {
+        return null;
+    }
+
+    const permissionContext = await getUserPermissionContext(session.user as PermissionSessionUser);
+    const hasAccess = canAccessDashboardPage(
+        permissionContext.role,
+        permissionContext.permissions,
+        '/products',
+        { isApprover: permissionContext.isApprover, level }
+    );
+
+    if (!hasAccess) {
+        return null;
+    }
+
+    return {
+        session,
+        ...permissionContext
+    };
+}
 
 function normalizeOptionalText(value: unknown): string | null {
     if (typeof value !== 'string') return null;
@@ -102,6 +129,11 @@ export async function generateNextProductId(
 }
 
 export async function createProduct(formData: FormData) {
+    const authContext = await getProductAuthContext('edit');
+    if (!authContext) {
+        return { error: COMMON_ACTION_MESSAGES.unauthorized };
+    }
+
     const rawData = {
         p_name: formData.get('p_name') as string,
         p_desc: formData.get('p_desc') as string,
@@ -245,6 +277,11 @@ export async function createProduct(formData: FormData) {
 }
 
 export async function updateProduct(formData: FormData) {
+    const authContext = await getProductAuthContext('edit');
+    if (!authContext) {
+        return { error: COMMON_ACTION_MESSAGES.unauthorized };
+    }
+
     const p_id = formData.get('p_id') as string;
     const p_name = formData.get('p_name') as string;
     const p_desc = formData.get('p_desc') as string;
@@ -327,16 +364,21 @@ export async function updateProduct(formData: FormData) {
 }
 
 export async function deleteProduct(p_id: string) {
+    const authContext = await getProductAuthContext('edit');
+    if (!authContext) {
+        return { error: COMMON_ACTION_MESSAGES.unauthorized };
+    }
+
     try {
         await prisma.tbl_products.delete({
             where: { p_id },
         });
 
-        const session = await auth();
+        const session = authContext.session;
         await logSystemAction(
             'DELETE',
             'Product',
-            p_id, // p_id is string, but log expects int ID usually, but schema allows string entity_id
+            p_id,
             `Deleted product: ${p_id}`,
             session?.user?.id ? (parseInt(session.user.id as string) || 0) : 0,
             session?.user?.name || 'Unknown',

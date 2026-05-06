@@ -23,11 +23,41 @@ function stripStockTags(value: string) {
 }
 
 function renderNoteLineWithBadge(line: string, key: string) {
+    const isProductLink = line.includes('ลิ้งก์สินค้า:');
+
+    const renderText = (text: string) => {
+        if (!text.includes('ลิ้งก์สินค้า:')) return stripStockTags(text);
+
+        const parts = text.split('ลิ้งก์สินค้า:');
+        const label = parts[0] + 'ลิ้งก์สินค้า: ';
+        const url = parts[1].trim();
+        let displayUrl = url;
+
+        if (url.startsWith('http')) {
+            if (url.includes('shopee.co.th/product/')) {
+                const match = url.match(/(https:\/\/shopee\.co\.th\/product\/\d+\/\d+)/);
+                if (match) displayUrl = match[1];
+            } else if (displayUrl.length > 50) {
+                displayUrl = displayUrl.substring(0, 47) + '...';
+            }
+
+            return (
+                <>
+                    {stripStockTags(label)}
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline print:text-black break-all">
+                        {displayUrl}
+                    </a>
+                </>
+            );
+        }
+        return stripStockTags(text);
+    };
+
     const numberedMatch = line.match(/^(\d+\.)\s*(.*)$/);
     if (!numberedMatch) {
         return (
             <p key={key} className="whitespace-pre-wrap">
-                {stripStockTags(line)}
+                {renderText(line)}
             </p>
         );
     }
@@ -40,7 +70,7 @@ function renderNoteLineWithBadge(line: string, key: string) {
     if (!isNonStock && !isStock) {
         return (
             <p key={key} className="whitespace-pre-wrap">
-                {line}
+                {lineNumber} {renderText(rawContent)}
             </p>
         );
     }
@@ -56,7 +86,7 @@ function renderNoteLineWithBadge(line: string, key: string) {
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${isNonStock ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
                 {isNonStock ? 'NON-STOCK' : 'STOCK'}
             </span>
-            <span>{description}</span>
+            <span>{renderText(description)}</span>
         </p>
     );
 }

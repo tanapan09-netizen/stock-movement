@@ -23,8 +23,34 @@ export function OfflineQueueProvider({ children }: { children: ReactNode }) {
     const [showToast, setShowToast] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
 
+    const processQueue = async () => {
+        // Retrieve latest from localStorage in case it changed via other tabs
+        const savedQueueStr = localStorage.getItem('stock_pro_offline_queue');
+        if (!savedQueueStr) return;
+
+        let savedQueue = [];
+        try {
+            savedQueue = JSON.parse(savedQueueStr);
+        } catch (e) { return; }
+
+        if (savedQueue.length === 0) return;
+
+        console.log(`[OfflineSync] Starting to sync ${savedQueue.length} items...`);
+        // In a real app, you would submit these to your server actions or API endpoints here
+        // For now, we simulate processing by clearing them out one by one
+
+        // Once processed:
+        setQueue([]);
+        localStorage.removeItem('stock_pro_offline_queue');
+
+        setToastMessage(`✅ ซิงค์ข้อมูลที่ค้างอยู่ ${savedQueue.length} รายการสำเร็จ!`);
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 4000);
+    };
+
     // Load queue from localStorage on mount
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsOnline(navigator.onLine);
 
         try {
@@ -58,7 +84,7 @@ export function OfflineQueueProvider({ children }: { children: ReactNode }) {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, []);
 
     const queueAction = (actionName: string, payload: any) => {
@@ -75,31 +101,6 @@ export function OfflineQueueProvider({ children }: { children: ReactNode }) {
         setToastMessage(`บันทึกคำสั่งแบบออฟไลน์แล้ว (ค้าง ${newQueue.length} รายการ)`);
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
-    };
-
-    const processQueue = async () => {
-        // Retrieve latest from localStorage in case it changed via other tabs
-        const savedQueueStr = localStorage.getItem('stock_pro_offline_queue');
-        if (!savedQueueStr) return;
-
-        let savedQueue = [];
-        try {
-            savedQueue = JSON.parse(savedQueueStr);
-        } catch (e) { return; }
-
-        if (savedQueue.length === 0) return;
-
-        console.log(`[OfflineSync] Starting to sync ${savedQueue.length} items...`);
-        // In a real app, you would submit these to your server actions or API endpoints here
-        // For now, we simulate processing by clearing them out one by one
-
-        // Once processed:
-        setQueue([]);
-        localStorage.removeItem('stock_pro_offline_queue');
-
-        setToastMessage(`✅ ซิงค์ข้อมูลที่ค้างอยู่ ${savedQueue.length} รายการสำเร็จ!`);
-        setShowToast(true);
-        setTimeout(() => setShowToast(false), 4000);
     };
 
     return (

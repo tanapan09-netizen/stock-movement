@@ -100,26 +100,20 @@ interface TransferFormProps {
 }
 
 export function StockTransferForm({ onTransfer }: TransferFormProps) {
-    const [warehouses, setWarehouses] = useState<WarehouseItem[]>([]);
-    const [products, setProducts] = useState<{ p_id: string; p_name: string; p_count: number }[]>([]);
+    const [warehouses, setWarehouses] = useState<WarehouseItem[]>([
+        { id: 1, name: 'คลังหลัก', location: 'อาคาร A', productCount: 150 },
+        { id: 2, name: 'คลังสำรอง', location: 'อาคาร B', productCount: 75 },
+        { id: 3, name: 'คลังส่งออก', location: 'อาคาร C', productCount: 30 }
+    ]);
+    const [products, setProducts] = useState<{ p_id: string; p_name: string; p_count: number }[]>([
+        { p_id: 'P001', p_name: 'สินค้า A', p_count: 100 },
+        { p_id: 'P002', p_name: 'สินค้า B', p_count: 50 }
+    ]);
     const [fromWarehouse, setFromWarehouse] = useState<number>(0);
     const [toWarehouse, setToWarehouse] = useState<number>(0);
     const [productId, setProductId] = useState('');
     const [quantity, setQuantity] = useState<number>(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    useEffect(() => {
-        // Mock data
-        setWarehouses([
-            { id: 1, name: 'คลังหลัก', location: 'อาคาร A', productCount: 150 },
-            { id: 2, name: 'คลังสำรอง', location: 'อาคาร B', productCount: 75 },
-            { id: 3, name: 'คลังส่งออก', location: 'อาคาร C', productCount: 30 }
-        ]);
-        setProducts([
-            { p_id: 'P001', p_name: 'สินค้า A', p_count: 100 },
-            { p_id: 'P002', p_name: 'สินค้า B', p_count: 50 }
-        ]);
-    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

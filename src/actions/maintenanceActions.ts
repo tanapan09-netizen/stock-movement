@@ -719,7 +719,162 @@ export async function getMaintenanceRequests(filters?: {
             },
             orderBy: { created_at: 'desc' }
         });
-        return { success: true, data: requests };
+
+        const requestNumbers = Array.from(new Set(
+            requests
+                .map((request) => (request.request_number || '').trim())
+                .filter(Boolean),
+        ));
+
+        if (requestNumbers.length === 0) {
+            return { success: true, data: requests };
+        }
+
+        const linkedPurchaseRequests = await prisma.tbl_approval_requests.findMany({
+            where: {
+                request_type: 'purchase',
+                reference_job: { in: requestNumbers },
+            },
+            select: {
+                request_id: true,
+                request_number: true,
+                status: true,
+                current_step: true,
+                reference_job: true,
+                created_at: true,
+                updated_at: true,
+            },
+            orderBy: { created_at: 'desc' },
+        });
+
+        if (linkedPurchaseRequests.length === 0) {
+            return { success: true, data: requests };
+        }
+
+        const purchaseOrderLinkClauses: Prisma.tbl_purchase_ordersWhereInput[] = [];
+        linkedPurchaseRequests.forEach((purchaseRequest) => {
+            purchaseOrderLinkClauses.push({
+                notes: { contains: `PR Request ID: ${purchaseRequest.request_id}` },
+            });
+            purchaseOrderLinkClauses.push({
+                notes: { contains: purchaseRequest.request_number },
+            });
+        });
+
+        const linkedPurchaseOrders = purchaseOrderLinkClauses.length > 0
+            ? await prisma.tbl_purchase_orders.findMany({
+                where: { OR: purchaseOrderLinkClauses },
+                select: {
+                    po_id: true,
+                    po_number: true,
+                    status: true,
+                    order_date: true,
+                    received_date: true,
+                    updated_at: true,
+                    notes: true,
+                },
+                orderBy: { created_at: 'desc' },
+            })
+            : [];
+
+        const purchaseRequestIdSet = new Set(linkedPurchaseRequests.map((request) => request.request_id));
+        const purchaseRequestByNumber = new Map(
+            linkedPurchaseRequests.map((request) => [request.request_number, request.request_id] as const),
+        );
+        const purchaseOrderByRequestId = new Map<
+            number,
+            Array<{
+                po_id: number;
+                po_number: string;
+                status: string | null;
+                order_date: Date | null;
+                received_date: Date | null;
+                updated_at: Date;
+            }>
+        >();
+
+        linkedPurchaseOrders.forEach((purchaseOrder) => {
+            const noteText = purchaseOrder.notes || '';
+            const linkedIds = new Set<number>();
+
+            const idPattern = /PR Request ID:\s*(\d+)/gi;
+            let match = idPattern.exec(noteText);
+            while (match) {
+                const parsedId = Number(match[1]);
+                if (Number.isFinite(parsedId) && purchaseRequestIdSet.has(parsedId)) {
+                    linkedIds.add(parsedId);
+                }
+                match = idPattern.exec(noteText);
+            }
+
+            purchaseRequestByNumber.forEach((requestId, requestNumber) => {
+                if (noteText.includes(requestNumber)) {
+                    linkedIds.add(requestId);
+                }
+            });
+
+            if (linkedIds.size === 0) return;
+
+            linkedIds.forEach((requestId) => {
+                const current = purchaseOrderByRequestId.get(requestId) || [];
+                current.push({
+                    po_id: purchaseOrder.po_id,
+                    po_number: purchaseOrder.po_number,
+                    status: purchaseOrder.status || null,
+                    order_date: purchaseOrder.order_date || null,
+                    received_date: purchaseOrder.received_date || null,
+                    updated_at: purchaseOrder.updated_at,
+                });
+                purchaseOrderByRequestId.set(requestId, current);
+            });
+        });
+
+        const purchaseRequestsByReferenceJob = new Map<
+            string,
+            Array<{
+                request_id: number;
+                request_number: string;
+                status: string;
+                current_step: number;
+                created_at: Date;
+                updated_at: Date;
+                linked_purchase_orders: Array<{
+                    po_id: number;
+                    po_number: string;
+                    status: string | null;
+                    order_date: Date | null;
+                    received_date: Date | null;
+                    updated_at: Date;
+                }>;
+            }>
+        >();
+
+        linkedPurchaseRequests.forEach((purchaseRequest) => {
+            const referenceJob = (purchaseRequest.reference_job || '').trim();
+            if (!referenceJob) return;
+
+            const linkedOrders = purchaseOrderByRequestId.get(purchaseRequest.request_id) || [];
+            const nextItem = {
+                request_id: purchaseRequest.request_id,
+                request_number: purchaseRequest.request_number,
+                status: purchaseRequest.status,
+                current_step: Number(purchaseRequest.current_step || 0),
+                created_at: purchaseRequest.created_at,
+                updated_at: purchaseRequest.updated_at,
+                linked_purchase_orders: linkedOrders,
+            };
+
+            const current = purchaseRequestsByReferenceJob.get(referenceJob) || [];
+            current.push(nextItem);
+            purchaseRequestsByReferenceJob.set(referenceJob, current);
+        });
+
+        const enrichedRequests = requests.map((request) => ({
+            ...request,
+            linked_purchase_requests: purchaseRequestsByReferenceJob.get(request.request_number) || [],
+        }));
+
+        return { success: true, data: enrichedRequests };
     } catch (error: unknown) {
         console.error('Error getMaintenanceRequests:', error);
         return { success: false, error: getErrorMessage(error, 'Failed to fetch maintenance requests') };

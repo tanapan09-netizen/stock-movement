@@ -7,6 +7,7 @@ import { logSystemAction } from '@/lib/logger';
 import { canManageLineCustomers, canViewLineCustomers } from '@/lib/rbac';
 import { getUserPermissionContext, type PermissionSessionUser } from '@/lib/server/permission-service';
 import { COMMON_ACTION_MESSAGES, LINE_CUSTOMER_ACTION_MESSAGES } from '@/lib/action-messages';
+import { maskPII } from '@/lib/security';
 
 function normalizePhone(phone: string): string {
     return phone.replace(/[^\d+]/g, '').trim();
@@ -249,9 +250,9 @@ export async function updateLineCustomer(data: {
             'UPDATE',
             'LineCustomer',
             data.id,
-            `${LINE_CUSTOMER_ACTION_MESSAGES.updatedLogPrefix} ${fullName}`,
+            `${LINE_CUSTOMER_ACTION_MESSAGES.updatedLogPrefix} ${maskPII.name(fullName)}`,
             parseInt(session.user.id as string) || 0,
-            session.user.name || COMMON_ACTION_MESSAGES.systemUser,
+            maskPII.name(session.user.name || COMMON_ACTION_MESSAGES.systemUser),
             COMMON_ACTION_MESSAGES.unknownSource,
         );
 
@@ -280,7 +281,7 @@ export async function toggleLineCustomerActive(id: number, isActive: boolean) {
             id,
             isActive ? LINE_CUSTOMER_ACTION_MESSAGES.activatedLog : LINE_CUSTOMER_ACTION_MESSAGES.deactivatedLog,
             parseInt(session.user.id as string) || 0,
-            session.user.name || COMMON_ACTION_MESSAGES.systemUser,
+            maskPII.name(session.user.name || COMMON_ACTION_MESSAGES.systemUser),
             COMMON_ACTION_MESSAGES.unknownSource,
         );
 

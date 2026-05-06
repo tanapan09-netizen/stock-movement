@@ -7,6 +7,7 @@ import { uploadFile } from '@/lib/gcs';
 import { adjustFundBalance, getPettyCashFundStatus } from './pettyCashFundActions';
 import { logSystemAction } from '@/lib/logger';
 import { getUserPermissionContext } from '@/lib/server/permission-service';
+import { maskPII } from '@/lib/security';
 import {
     canApprovePettyCashRequest,
     canCreatePettyCashRequest,
@@ -144,9 +145,9 @@ export async function createPettyCashRequest(formData: FormData) {
             'PETTY_CASH_CREATE',
             'PettyCash',
             request.id,
-            `เลขที่: ${request_number} | จำนวนเงิน: ${requested_amount.toLocaleString()} บาท | วัตถุประสงค์: ${purpose} | ผู้ขอ: ${authContext.session.user.name} | สถานะ: รออนุมัติ`,
+            `เลขที่: ${request_number} | จำนวนเงิน: ${requested_amount.toLocaleString()} บาท | วัตถุประสงค์: ${purpose} | ผู้ขอ: ${maskPII.name(authContext.session.user.name)} | สถานะ: รออนุมัติ`,
             (authContext.session.user as any).p_id || (authContext.session.user as any).id,
-            authContext.session.user.name
+            maskPII.name(authContext.session.user.name)
         );
 
         return { success: true, data: request };
@@ -194,9 +195,9 @@ export async function approvePettyCash(id: number) {
             'PETTY_CASH_APPROVE',
             'PettyCash',
             id,
-            `อนุมัติคำขอเลขที่: ${request.request_number} | จำนวนเงิน: ${Number(request.requested_amount).toLocaleString()} บาท | วัตถุประสงค์: ${request.purpose} | ผู้ขอ: ${request.requested_by} | อนุมัติโดย: ${authContext.session.user.name}`,
+            `อนุมัติคำขอเลขที่: ${request.request_number} | จำนวนเงิน: ${Number(request.requested_amount).toLocaleString()} บาท | วัตถุประสงค์: ${request.purpose} | ผู้ขอ: ${maskPII.name(request.requested_by)} | อนุมัติโดย: ${maskPII.name(authContext.session.user.name)}`,
             (authContext.session.user as any).p_id || (authContext.session.user as any).id,
-            authContext.session.user.name
+            maskPII.name(authContext.session.user.name)
         );
 
         return { success: true, data: request };
@@ -252,9 +253,9 @@ export async function dispensePettyCash(id: number, dispensed_amount: number, no
             'PETTY_CASH_DISPENSE',
             'PettyCash',
             id,
-            `จ่ายเงินสดย่อยเลขที่: ${request.request_number} | จำนวนที่จ่าย: ${dispensed_amount.toLocaleString()} บาท | ผู้รับ: ${request.requested_by} | วัตถุประสงค์: ${request.purpose} | จ่ายโดย: ${authContext.session.user.name}${notes ? ' | หมายเหตุ: ' + notes : ''}`,
+            `จ่ายเงินสดย่อยเลขที่: ${request.request_number} | จำนวนที่จ่าย: ${dispensed_amount.toLocaleString()} บาท | ผู้รับ: ${maskPII.name(request.requested_by)} | วัตถุประสงค์: ${request.purpose} | จ่ายโดย: ${maskPII.name(authContext.session.user.name)}${notes ? ' | หมายเหตุ: ' + notes : ''}`,
             (authContext.session.user as any).p_id || (authContext.session.user as any).id,
-            authContext.session.user.name
+            maskPII.name(authContext.session.user.name)
         );
 
         return { success: true, data: request };
@@ -334,9 +335,9 @@ export async function submitClearance(id: number, formData: FormData) {
             'PETTY_CASH_CLEARANCE_SUBMIT',
             'PettyCash',
             id,
-            `ส่งเคลียร์เงินสดย่อยเลขที่: ${updated.request_number} | ยอดใช้จริง: ${actual_spent.toLocaleString()} บาท | เงินทอนคืน: ${change_returned.toLocaleString()} บาท | ใบเสร็จ: ${receipt_urls.length} ไฟล์ | ผู้ส่ง: ${authContext.session.user.name}${notes ? ' | หมายเหตุ: ' + notes : ''}`,
+            `ส่งเคลียร์เงินสดย่อยเลขที่: ${updated.request_number} | ยอดใช้จริง: ${actual_spent.toLocaleString()} บาท | เงินทอนคืน: ${change_returned.toLocaleString()} บาท | ใบเสร็จ: ${receipt_urls.length} ไฟล์ | ผู้ส่ง: ${maskPII.name(authContext.session.user.name)}${notes ? ' | หมายเหตุ: ' + notes : ''}`,
             (authContext.session.user as any).p_id || (authContext.session.user as any).id,
-            authContext.session.user.name
+            maskPII.name(authContext.session.user.name)
         );
 
         return { success: true, data: updated };
@@ -395,9 +396,9 @@ export async function reconcilePettyCash(id: number, notes?: string) {
             'PETTY_CASH_RECONCILE',
             'PettyCash',
             id,
-            `ปิดยอด (Reconcile) เลขที่: ${updated.request_number} | ยอดใช้จริง: ${Number(updated.actual_spent).toLocaleString()} บาท | เงินทอน: ${Number(updated.change_returned).toLocaleString()} บาท | ผู้ปิดยอด: ${authContext.session.user.name}`,
+            `ปิดยอด (Reconcile) เลขที่: ${updated.request_number} | ยอดใช้จริง: ${Number(updated.actual_spent).toLocaleString()} บาท | เงินทอน: ${Number(updated.change_returned).toLocaleString()} บาท | ผู้ปิดยอด: ${maskPII.name(authContext.session.user.name)}`,
             (authContext.session.user as any).p_id || (authContext.session.user as any).id,
-            authContext.session.user.name
+            maskPII.name(authContext.session.user.name)
         );
 
         return { success: true, data: updated };
@@ -450,9 +451,9 @@ export async function rejectPettyCash(id: number, notes?: string) {
             'PETTY_CASH_REJECT',
             'PettyCash',
             id,
-            `ปฏิเสธคำขอเลขที่: ${currentRequest?.request_number || id} | จำนวนเงิน: ${Number(currentRequest?.requested_amount).toLocaleString()} บาท | ผู้ขอ: ${currentRequest?.requested_by} | ปฏิเสธโดย: ${authContext.session.user.name}${notes ? ' | เหตุผล: ' + notes : ''}`,
+            `ปฏิเสธคำขอเลขที่: ${currentRequest?.request_number || id} | จำนวนเงิน: ${Number(currentRequest?.requested_amount).toLocaleString()} บาท | ผู้ขอ: ${maskPII.name(currentRequest?.requested_by)} | ปฏิเสธโดย: ${maskPII.name(authContext.session.user.name)}${notes ? ' | เหตุผล: ' + notes : ''}`,
             (authContext.session.user as any).p_id || (authContext.session.user as any).id,
-            authContext.session.user.name
+            maskPII.name(authContext.session.user.name)
         );
 
         return { success: true, data: request };
@@ -499,9 +500,9 @@ export async function deletePettyCashRequest(id: number) {
             'PETTY_CASH_DELETE',
             'PettyCash',
             id,
-            `ลบใบเบิกเงินสดย่อย ${request.request_number} | ลบโดย: ${authContext.session.user.name} (สิทธิ์: ${(authContext.session.user as any).role || 'N/A'})`,
+            `ลบใบเบิกเงินสดย่อย ${request.request_number} | ลบโดย: ${maskPII.name(authContext.session.user.name)} (สิทธิ์: ${(authContext.session.user as any).role || 'N/A'})`,
             (authContext.session.user as any).p_id || (authContext.session.user as any).id,
-            authContext.session.user.name
+            maskPII.name(authContext.session.user.name)
         );
 
         return { success: true };
@@ -533,7 +534,7 @@ export async function verifyOriginalReceipt(id: number, hasReceived: boolean) {
             id,
             `เปลี่ยนสถานะรับเอกสารต้นฉบับเป็น: ${hasReceived ? 'ได้รับ' : 'ยังไม่ได้รับ'} (PC: ${updated.request_number})`,
             (authContext.session.user as any).p_id || (authContext.session.user as any).id,
-            authContext.session.user.name
+            maskPII.name(authContext.session.user.name)
         );
 
         return { success: true, data: updated };
@@ -628,7 +629,7 @@ export async function savePettyCashSignatures(id: number, payeeSignature?: strin
             id,
             `บันทึกลายเซ็น ${payeeSignature ? '[ผู้รับเงิน]' : ''} ${payerSignature ? '[ผู้จ่ายเงิน]' : ''} (PC: ${request.request_number})`,
             (authContext.session.user as any).p_id || (authContext.session.user as any).id,
-            authContext.session.user.name
+            maskPII.name(authContext.session.user.name)
         );
 
         return { success: true, data: request };

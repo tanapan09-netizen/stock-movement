@@ -13,9 +13,28 @@ interface SearchResult {
     title: string;
     description?: string;
     href?: string;
-    action?: () => void;
+    action?: (router: any) => void;
     icon: React.ReactNode;
 }
+
+// Pages for quick navigation
+const pages: SearchResult[] = [
+    { type: 'page', title: 'Dashboard', description: 'หน้าหลัก', href: '/', icon: <Home className="w-4 h-4" /> },
+    { type: 'page', title: 'รายการสินค้า', description: 'ดูสินค้าทั้งหมด', href: '/products', icon: <Package className="w-4 h-4" /> },
+    { type: 'page', title: 'เพิ่มสินค้าใหม่', description: 'สร้างสินค้าใหม่', href: '/products/new', icon: <Plus className="w-4 h-4" /> },
+    { type: 'page', title: 'ใบสั่งซื้อ', description: 'จัดการ PO', href: '/purchase-orders', icon: <FileText className="w-4 h-4" /> },
+    { type: 'page', title: 'รายงานขั้นสูง', description: 'ABC Analysis', href: '/reports', icon: <FileText className="w-4 h-4" /> },
+    { type: 'page', title: 'รายงาน Movement รายเดือน', description: 'สรุปเคลื่อนไหว/ไม่เคลื่อนไหว/หมดสต็อก', href: '/reports/movement', icon: <ArrowRightLeft className="w-4 h-4" /> },
+    { type: 'page', title: 'ตรวจนับสต็อก', description: 'Inventory Audit', href: '/inventory-audit', icon: <Package className="w-4 h-4" /> },
+    { type: 'page', title: 'ตั้งค่า', description: 'ตั้งค่าระบบ', href: '/settings', icon: <Settings className="w-4 h-4" /> },
+];
+
+// Quick actions
+const actions: SearchResult[] = [
+    { type: 'action', title: 'สร้างสินค้าใหม่', icon: <Plus className="w-4 h-4" />, action: (router: any) => router.push('/products/new') },
+    { type: 'action', title: 'สร้าง PO ใหม่', icon: <Plus className="w-4 h-4" />, action: (router: any) => router.push('/purchase-orders/new') },
+    { type: 'action', title: 'ปรับสต็อก', icon: <Package className="w-4 h-4" />, action: (router: any) => router.push('/stock/adjust') },
+];
 
 export default function GlobalSearch() {
     const [isOpen, setIsOpen] = useState(false);
@@ -23,25 +42,6 @@ export default function GlobalSearch() {
     const [results, setResults] = useState<SearchResult[]>([]);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const router = useRouter();
-
-    // Pages for quick navigation
-    const pages: SearchResult[] = [
-        { type: 'page', title: 'Dashboard', description: 'หน้าหลัก', href: '/', icon: <Home className="w-4 h-4" /> },
-        { type: 'page', title: 'รายการสินค้า', description: 'ดูสินค้าทั้งหมด', href: '/products', icon: <Package className="w-4 h-4" /> },
-        { type: 'page', title: 'เพิ่มสินค้าใหม่', description: 'สร้างสินค้าใหม่', href: '/products/new', icon: <Plus className="w-4 h-4" /> },
-        { type: 'page', title: 'ใบสั่งซื้อ', description: 'จัดการ PO', href: '/purchase-orders', icon: <FileText className="w-4 h-4" /> },
-        { type: 'page', title: 'รายงานขั้นสูง', description: 'ABC Analysis', href: '/reports', icon: <FileText className="w-4 h-4" /> },
-        { type: 'page', title: 'รายงาน Movement รายเดือน', description: 'สรุปเคลื่อนไหว/ไม่เคลื่อนไหว/หมดสต็อก', href: '/reports/movement', icon: <ArrowRightLeft className="w-4 h-4" /> },
-        { type: 'page', title: 'ตรวจนับสต็อก', description: 'Inventory Audit', href: '/inventory-audit', icon: <Package className="w-4 h-4" /> },
-        { type: 'page', title: 'ตั้งค่า', description: 'ตั้งค่าระบบ', href: '/settings', icon: <Settings className="w-4 h-4" /> },
-    ];
-
-    // Quick actions
-    const actions: SearchResult[] = [
-        { type: 'action', title: 'สร้างสินค้าใหม่', icon: <Plus className="w-4 h-4" />, action: () => router.push('/products/new') },
-        { type: 'action', title: 'สร้าง PO ใหม่', icon: <Plus className="w-4 h-4" />, action: () => router.push('/purchase-orders/new') },
-        { type: 'action', title: 'ปรับสต็อก', icon: <Package className="w-4 h-4" />, action: () => router.push('/stock/adjust') },
-    ];
 
     // Search products
     const searchProducts = async (q: string): Promise<SearchResult[]> => {
@@ -88,7 +88,6 @@ export default function GlobalSearch() {
         };
 
         search();
-        setSelectedIndex(0);
     }, [query]);
 
     // Keyboard navigation
@@ -119,12 +118,13 @@ export default function GlobalSearch() {
 
     const handleSelect = (result: SearchResult) => {
         if (result.action) {
-            result.action();
+            result.action(router);
         } else if (result.href) {
             router.push(result.href);
         }
         setIsOpen(false);
         setQuery('');
+        setSelectedIndex(0);
     };
 
     useEffect(() => {
@@ -162,7 +162,10 @@ export default function GlobalSearch() {
                             label="ค้นหาหน้า, สินค้า, หรือคำสั่ง"
                             type="text"
                             value={query}
-                            onChange={(e) => setQuery(e.target.value)}
+                            onChange={(e) => {
+                                setQuery(e.target.value);
+                                setSelectedIndex(0);
+                            }}
                             onKeyDown={handleResultKeyDown}
                             containerClassName="flex-1"
                             className="border-transparent bg-transparent text-lg shadow-none focus:border-cyan-400 focus:ring-cyan-200/60"

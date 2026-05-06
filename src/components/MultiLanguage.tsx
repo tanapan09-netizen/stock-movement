@@ -73,14 +73,15 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-    const [locale, setLocaleState] = useState<Locale>('th');
-
-    useEffect(() => {
-        const saved = localStorage.getItem('locale') as Locale;
-        if (saved && ['th', 'en', 'zh'].includes(saved)) {
-            setLocaleState(saved);
+    const [locale, setLocaleState] = useState<Locale>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('locale') as Locale;
+            if (saved && ['th', 'en', 'zh'].includes(saved)) {
+                return saved;
+            }
         }
-    }, []);
+        return 'th';
+    });
 
     const setLocale = (newLocale: Locale) => {
         setLocaleState(newLocale);

@@ -105,8 +105,8 @@ export default function PettyCashPrintClient({ requestId }: PettyCashPrintClient
     let department = '';
     let payee = '';
     let description = '';
-    let items: { id: number, name: string, amount: string }[] = [];
-    let summaries: { label: string, value: string }[] = [];
+    const items: { id: number, name: string, amount: string }[] = [];
+    const summaries: { label: string, value: string }[] = [];
     let notes = '';
 
     if (data.purpose) {

@@ -4,15 +4,18 @@ import { useState, useEffect } from 'react';
 import { Bell, BellOff, Check, X, Smartphone } from 'lucide-react';
 
 export function usePushNotifications() {
-    const [permission, setPermission] = useState<NotificationPermission>('default');
-    const [isSupported, setIsSupported] = useState(false);
-
-    useEffect(() => {
-        setIsSupported('Notification' in window);
-        if ('Notification' in window) {
-            setPermission(Notification.permission);
+    const [isSupported, setIsSupported] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return 'Notification' in window;
         }
-    }, []);
+        return false;
+    });
+    const [permission, setPermission] = useState<NotificationPermission>(() => {
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+            return Notification.permission;
+        }
+        return 'default';
+    });
 
     const requestPermission = async () => {
         if (!isSupported) return false;

@@ -141,6 +141,36 @@ export async function getPartRequests(filters?: {
             orderBy: { created_at: 'desc' },
         });
 
+        const shouldGatePurchaseRowsByStoreReceive = filters?.request_type === 'maintenance_withdrawal';
+        const purchaseRequestIdsWithReceivedPO = new Set<number>();
+
+        if (shouldGatePurchaseRowsByStoreReceive && purchaseRequests.length > 0) {
+            const receivedPurchaseOrders = await prisma.tbl_purchase_orders.findMany({
+                where: {
+                    status: 'received',
+                    OR: purchaseRequests.map((request) => ({
+                        notes: {
+                            contains: `PR Request ID: ${request.request_id}`,
+                        },
+                    })),
+                },
+                select: {
+                    notes: true,
+                },
+            });
+
+            for (const purchaseOrder of receivedPurchaseOrders) {
+                const noteText = purchaseOrder.notes || '';
+                const match = noteText.match(/PR Request ID:\s*(\d+)/i);
+                if (!match) continue;
+
+                const parsedRequestId = Number(match[1]);
+                if (Number.isFinite(parsedRequestId) && parsedRequestId > 0) {
+                    purchaseRequestIdsWithReceivedPO.add(parsedRequestId);
+                }
+            }
+        }
+
         const referenceJobs = purchaseRequests
             .map((request) => (request.reference_job || '').trim())
             .filter(Boolean);
@@ -159,6 +189,13 @@ export async function getPartRequests(filters?: {
         );
 
         const purchaseRows = purchaseRequests.flatMap((request) => {
+            if (
+                shouldGatePurchaseRowsByStoreReceive
+                && !purchaseRequestIdsWithReceivedPO.has(request.request_id)
+            ) {
+                return [];
+            }
+
             const parsedItems = parsePurchaseReasonItems(request.reason);
             const items = parsedItems.length > 0
                 ? parsedItems

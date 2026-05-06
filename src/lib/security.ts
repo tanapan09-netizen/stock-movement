@@ -202,3 +202,40 @@ export function getSecurityHeaders(): Record<string, string> {
         'Referrer-Policy': securityConfig.headers.referrerPolicy,
     };
 }
+
+/**
+ * Data Masking for PII (Personally Identifiable Information)
+ */
+export const maskPII = {
+    /**
+     * Mask Phone Number: +66812345678 -> +6681***5678 or 0812345678 -> 081***5678
+     */
+    phone: (phone: string | null | undefined): string => {
+        if (!phone) return 'N/A';
+        const p = phone.trim();
+        if (p.length < 7) return p;
+        return p.slice(0, 3) + '***' + p.slice(-4);
+    },
+
+    /**
+     * Mask Name: "John Doe" -> "J*** D***"
+     */
+    name: (name: string | null | undefined): string => {
+        if (!name) return 'Unknown';
+        const parts = name.trim().split(/\s+/);
+        return parts.map(part => {
+            if (part.length <= 2) return part;
+            return part[0] + '*'.repeat(part.length - 2) + part[part.length - 1];
+        }).join(' ');
+    },
+
+    /**
+     * Mask Line ID: "line_id_123" -> "lin***123"
+     */
+    lineId: (lineId: string | null | undefined): string => {
+        if (!lineId) return 'N/A';
+        const l = lineId.trim();
+        if (l.length < 6) return l;
+        return l.slice(0, 3) + '***' + l.slice(-3);
+    }
+};
