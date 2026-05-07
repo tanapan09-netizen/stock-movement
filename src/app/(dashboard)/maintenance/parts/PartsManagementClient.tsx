@@ -33,6 +33,7 @@ import {
   returnPartToStock,
   withdrawPartsForMaintenanceBatch,
 } from '@/actions/maintenanceActions';
+import { Label } from 'recharts';
 
 type Product = {
   p_id: string;
@@ -718,7 +719,7 @@ export default function PartsManagementClient({
     { key: 'all', label: 'ภาพรวมทั้งหมด', count: filteredParts.length, icon: <LayoutGrid size={14} /> },
     { key: 'pendingQueue', label: 'คิวรอคลัง', count: filteredPendingPartRequests.length, icon: <Truck size={14} /> },
     { key: 'history', label: 'ประวัติคำขอ', count: filteredRecentPartRequests.length, icon: <History size={14} /> },
-    { key: 'withdrawn', label: 'รอยืนยันอะไหล่ในใบงาน', count: filteredParts.length, icon: <Package size={14} /> },
+    { key: 'withdrawn', label: 'รอยืนยันอะไหล่ในใบงาน', count: blockingCount, icon: <Package size={14}  /> },
   ];
 
   const showPendingQueueSection = activeSection === 'all' || activeSection === 'pendingQueue';
@@ -820,8 +821,8 @@ export default function PartsManagementClient({
                 {tab.icon}
                 {tab.label}
                 <span className={`rounded-full px-2 py-0.5 text-xs ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200'}`}>
-                  {tab.count}
-                </span>
+  {tab.count} รายการ
+</span>
               </button>
             );
           })}
@@ -1290,8 +1291,8 @@ export default function PartsManagementClient({
       ) : null}
 
       {showWithdrawForm ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
-          <div className="mx-4 w-full max-w-lg overflow-hidden rounded-[28px] border border-white/60 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] dark:border-slate-700 dark:bg-slate-800">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/55 p-4 pt-6 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-5xl overflow-hidden rounded-[28px] border border-white/60 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] dark:border-slate-700 dark:bg-slate-800">
             <div className="relative overflow-hidden bg-gradient-to-br from-orange-500 via-amber-500 to-yellow-400 px-6 py-5 text-white">
               <button
                 type="button"
@@ -1305,7 +1306,7 @@ export default function PartsManagementClient({
                 <span className="inline-flex rounded-full border border-white/30 bg-white/15 px-3 py-1 text-xs font-semibold tracking-wide">
                   Maintenance Parts
                 </span>
-                <h2 className="flex items-center gap-2 text-2xl font-bold">
+                <h2 className="flex items-start gap-2 text-2xl font-bold">
                   <Package className="text-white" />
                   {withdrawDialogTitle}
                 </h2>
@@ -1596,8 +1597,8 @@ export default function PartsManagementClient({
 
       {actionDialog ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg overflow-hidden rounded-[28px] border border-white/60 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] dark:border-slate-700 dark:bg-slate-800">
-            <div className={`relative px-6 py-5 text-white ${
+          <div className="w-full max-w-2xl overflow-hidden rounded-[32px] border border-white/60 bg-white shadow-[0_32px_120px_rgba(15,23,42,0.3)] dark:border-slate-700 dark:bg-slate-800">
+            <div className={`relative px-8 py-7 text-white ${
               actionDialog.mode === 'availability'
                 ? actionDialog.nextStatus === 'approved'
                   ? 'bg-gradient-to-br from-emerald-500 via-green-500 to-lime-400'
@@ -1605,19 +1606,19 @@ export default function PartsManagementClient({
                 : actionDialog.mode === 'complete'
                   ? 'bg-gradient-to-br from-blue-600 via-cyan-500 to-sky-400'
                   : actionDialog.mode === 'confirmDefective'
-                    ? 'bg-gradient-to-br from-rose-600 via-red-500 to-orange-400'
+                    ? 'bg-gradient-to-br from-orange-600 via-red-500 to-rose-500'
                   : 'bg-gradient-to-br from-slate-800 via-slate-700 to-slate-500'
             }`}>
               <button
                 type="button"
                 onClick={() => !dialogSubmitting && setActionDialog(null)}
-                className="absolute right-4 top-4 rounded-full bg-white/15 p-2 transition hover:bg-white/25"
+                className="absolute right-6 top-6 rounded-full bg-white/20 p-2.5 transition hover:bg-white/30"
                 title="ปิด"
               >
-                <X size={16} />
+                <X size={20} />
               </button>
-              <div className="space-y-2">
-                <span className="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide">
+              <div className="space-y-3">
+                <span className="inline-flex rounded-full border border-white/30 bg-white/15 px-4 py-1.5 text-xs font-bold tracking-widest uppercase">
                   {actionDialog.mode === 'availability'
                     ? 'Store Decision'
                     : actionDialog.mode === 'complete'
@@ -1626,15 +1627,15 @@ export default function PartsManagementClient({
                         ? 'Defective Confirmation'
                       : 'Maintenance Cleanup'}
                 </span>
-                <h2 className="flex items-center gap-2 text-2xl font-bold">
+                <h2 className="flex items-center gap-3 text-3xl font-extrabold tracking-tight">
                   {actionDialog.mode === 'availability' ? (
-                    <CheckCircle className="text-white" />
+                    <CheckCircle className="text-white" size={32} />
                   ) : actionDialog.mode === 'complete' ? (
-                    <ShieldCheck className="text-white" />
+                    <ShieldCheck className="text-white" size={32} />
                   ) : actionDialog.mode === 'confirmDefective' ? (
-                    <AlertTriangle className="text-white" />
+                    <AlertTriangle className="text-white" size={32} />
                   ) : (
-                    <Undo2 className="text-white" />
+                    <Undo2 className="text-white" size={32} />
                   )}
                   {actionDialog.mode === 'availability'
                     ? actionDialog.nextStatus === 'approved'
@@ -1649,34 +1650,34 @@ export default function PartsManagementClient({
               </div>
             </div>
 
-            <div className="space-y-4 p-6">
+            <div className="space-y-6 p-8">
               {actionDialog.mode === 'availability' ? (
                 <>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-700/50">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">คำขอ</div>
-                      <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{actionDialog.requestNumber}</div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="rounded-2xl bg-slate-50 px-5 py-4 dark:bg-slate-700/50">
+                      <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">คำขอ</div>
+                      <div className="mt-1.5 text-lg font-bold text-slate-900 dark:text-slate-100">{actionDialog.requestNumber}</div>
                     </div>
-                    <div className="rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-700/50">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">ผู้ขอ</div>
-                      <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{actionDialog.requestedBy}</div>
+                    <div className="rounded-2xl bg-slate-50 px-5 py-4 dark:bg-slate-700/50">
+                      <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">ผู้ขอ</div>
+                      <div className="mt-1.5 text-lg font-bold text-slate-900 dark:text-slate-100">{actionDialog.requestedBy}</div>
                     </div>
-                    <div className="rounded-2xl bg-slate-50 px-4 py-3 dark:bg-slate-700/50">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">จำนวนที่ขอ</div>
-                      <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{actionDialog.quantity}</div>
+                    <div className="rounded-2xl bg-slate-50 px-5 py-4 dark:bg-slate-700/50">
+                      <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">จำนวนที่ขอ</div>
+                      <div className="mt-1.5 text-lg font-bold text-slate-900 dark:text-slate-100">{actionDialog.quantity}</div>
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-600 dark:bg-slate-700/40">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">รายการอะไหล่</div>
-                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">{actionDialog.itemName}</div>
-                    <p className="mt-2 text-sm text-slate-500 dark:text-slate-300">
-                      ระบบจะส่งแจ้งเตือนกลับไปยังผู้เบิกทันทีหลังบันทึกสถานะนี้
+                  <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-6 dark:border-slate-600 dark:bg-slate-700/20">
+                    <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">รายการอะไหล่</div>
+                    <div className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{actionDialog.itemName}</div>
+                    <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+                      ระบบจะส่งแจ้งเตือนกลับไปยังผู้เบิกทันทีหลังบันทึกสถานะนี้ กรุณาตรวจสอบให้แน่ใจก่อนดำเนินการ
                     </p>
                   </div>
                   {actionDialog.nextStatus === 'approved' ? (
-                    <div>
-                      <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        ยืนยันจำนวน *
+                    <div className="space-y-2">
+                      <label className="block text-sm font-bold text-slate-700 dark:text-slate-200">
+                        ยืนยันจำนวนที่จะจ่ายจริง *
                       </label>
                       <input
                         type="number"
@@ -1689,11 +1690,12 @@ export default function PartsManagementClient({
                               : prev
                           )
                         }
-                        className="w-full rounded-2xl border border-slate-200 px-4 py-3 shadow-sm outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-200 dark:border-slate-600 dark:bg-slate-700"
+                        className="w-full rounded-2xl border border-slate-200 px-5 py-4 text-lg font-semibold shadow-sm outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 dark:border-slate-600 dark:bg-slate-700 dark:focus:ring-emerald-900/30"
                         placeholder={`กรอกจำนวน ${actionDialog.quantity}`}
                       />
-                      <div className="mt-2 text-xs text-slate-400">
-                        ระบบจะอนุมัติได้เมื่อจำนวนที่ยืนยันตรงกับจำนวนที่ขอไว้เท่านั้น
+                      <div className="flex items-center gap-2 text-xs font-medium text-slate-400">
+                        <AlertTriangle size={12} className="text-amber-500" />
+                        ระบบจะอนุญาตให้บันทึกเมื่อจำนวนตรงกับคำขอเดิมเท่านั้น
                       </div>
                     </div>
                   ) : null}
@@ -1701,48 +1703,75 @@ export default function PartsManagementClient({
               ) : null}
 
               {actionDialog.mode === 'complete' ? (
-                <div className="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-600 dark:bg-slate-700/40">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">ใบงาน</div>
-                  <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">{actionDialog.requestNumber}</div>
-                  <div className="text-sm text-slate-500 dark:text-slate-300">{actionDialog.title}</div>
-                  <p className="text-sm text-slate-500 dark:text-slate-300">
-                    ใช้เมื่ออะไหล่ของใบงานนี้ถูกใช้จริงและตรวจครบแล้ว แต่ยังไม่ปิดงานซ่อม
-                  </p>
+                <div className="space-y-4 rounded-3xl border border-dashed border-blue-200 bg-blue-50/30 px-8 py-8 dark:border-blue-800 dark:bg-blue-900/10">
+                  <div className="text-xs font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400">ใบงานแจ้งซ่อม</div>
+                  <div className="text-3xl font-black text-slate-900 dark:text-slate-100">{actionDialog.requestNumber}</div>
+                  <div className="text-xl font-bold text-slate-700 dark:text-slate-300">{actionDialog.title}</div>
+                  <div className="mt-4 flex items-start gap-3 rounded-2xl bg-white p-4 shadow-sm dark:bg-slate-800">
+                    <ShieldCheck className="mt-0.5 text-blue-500" size={24} />
+                    <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+                      ใช้ฟังก์ชันนี้เมื่ออะไหล่ในใบงานนี้<strong>ถูกใช้จริงและตรวจสอบความถูกต้องครบถ้วนแล้ว</strong> เพื่อทำการตัดยอดสต็อกออกจากคลังงานซ่อม (WH-02) เข้าสู่สต็อกใช้งาน (WH-03) โดยใบงานจะยังไม่ถูกปิดจนกว่าช่างจะดำเนินการปิดงานเอง
+                    </p>
+                  </div>
                 </div>
               ) : null}
 
               {actionDialog.mode === 'confirmDefective' ? (
-                <div className="space-y-3 rounded-2xl border border-dashed border-rose-200 bg-rose-50 px-4 py-4 dark:border-rose-500/40 dark:bg-rose-900/20">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl bg-white/90 px-4 py-3 dark:bg-slate-700/60">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">ใบงาน</div>
-                      <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{actionDialog.requestNumber}</div>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 dark:border-slate-700 dark:bg-slate-900/40">
+                      <div className="text-xs font-bold uppercase tracking-wider text-slate-500">เลขที่ใบงาน</div>
+                      <div className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">{actionDialog.requestNumber}</div>
                     </div>
-                    <div className="rounded-2xl bg-white/90 px-4 py-3 dark:bg-slate-700/60">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">ผู้เบิก</div>
-                      <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{actionDialog.withdrawnBy}</div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">สินค้า/อะไหล่</div>
-                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">{actionDialog.itemName}</div>
-                    <div className="mt-1 text-sm text-slate-500 dark:text-slate-300">
-                      จำนวนที่ยืนยันเป็นของเสีย: {actionDialog.quantity} {actionDialog.unit}
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 dark:border-slate-700 dark:bg-slate-900/40">
+                      <div className="text-xs font-bold uppercase tracking-wider text-slate-500">ผู้เบิกอะไหล่</div>
+                      <div className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">{actionDialog.withdrawnBy}</div>
                     </div>
                   </div>
-                  <p className="text-sm text-slate-600 dark:text-slate-300">
-                    หลังยืนยันแล้ว รายการนี้จะเปลี่ยนเป็นสถานะของเสีย และจะไม่ถูกตัดไปสต็อกใช้งานปกติ
-                  </p>
+
+                  <div className="relative overflow-hidden rounded-3xl bg-white shadow-xl ring-1 ring-orange-100 dark:bg-slate-800 dark:ring-orange-900/30">
+                    <div className="absolute left-0 top-0 h-full w-2 bg-orange-500"></div>
+                    <div className="p-8">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                          <h3 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+                            {actionDialog.itemName}
+                          </h3>
+                          <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">รายละเอียดรายการของเสีย</p>
+                        </div>
+                        <div className="rounded-2xl bg-orange-50 p-4 text-center dark:bg-orange-900/20">
+                          <div className="text-4xl font-black text-orange-600 dark:text-orange-400">
+                            {actionDialog.quantity}
+                          </div>
+                          <div className="text-xs font-bold text-orange-500 uppercase">{actionDialog.unit}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-8 rounded-2xl bg-orange-50/50 p-5 dark:bg-orange-900/10">
+                        <div className="flex items-center gap-2 font-bold text-orange-800 dark:text-orange-300">
+                          <AlertTriangle size={20} />
+                          คำเตือนการบันทึกของเสีย
+                        </div>
+                        <p className="mt-2 text-sm leading-relaxed text-orange-700/90 dark:text-orange-300/80">
+                          หลังจากการยืนยัน รายการนี้จะถูกปรับสถานะเป็น <strong>&quot;ของเสีย (Defective)&quot;</strong> ในระบบทันที 
+                          ยอดจะถูกตัดเข้าคลังของเสีย (WH-08) และจะไม่สามารถนำกลับมาตัดสต็อกใช้งานปกติได้อีก
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ) : null}
 
               {actionDialog.mode === 'clearReserved' ? (
-                <div className="space-y-3">
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-                    การดำเนินการนี้จะคืนรายการอะไหล่ที่ค้างอยู่กลับเข้าสู่สต็อก และบันทึกเหตุผลลงประวัติระบบ
+                <div className="space-y-5">
+                  <div className="flex items-start gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-6 py-6 text-amber-900 dark:border-amber-900/50 dark:bg-amber-900/10 dark:text-amber-300">
+                    <AlertTriangle className="mt-1 flex-shrink-0" size={24} />
+                    <div className="text-sm font-medium leading-relaxed">
+                      การดำเนินการนี้จะทำการ<strong>คืนรายการอะไหล่ทั้งหมดที่ค้างอยู่ในระบบ (Reserved)</strong> กลับเข้าสู่สต็อกส่วนกลาง และบันทึกเหตุผลลงในประวัติความปลอดภัยของระบบ
+                    </div>
                   </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">เหตุผลในการเคลียร์ *</label>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-200">เหตุผลในการล้างรายการค้าง *</label>
                     <textarea
                       value={actionDialog.reason}
                       onChange={(e) =>
@@ -1752,23 +1781,24 @@ export default function PartsManagementClient({
                             : prev
                         )
                       }
-                      rows={4}
-                      className="w-full rounded-2xl border border-slate-200 px-4 py-3 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-600 dark:bg-slate-700"
-                      placeholder="ระบุสาเหตุ เช่น เคสปิดไปแล้วแต่มีรายการค้างในระบบ..."
+                      rows={5}
+                      className="w-full rounded-2xl border border-slate-200 px-5 py-4 text-base shadow-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:focus:ring-slate-900/30"
+                      placeholder="ระบุสาเหตุอย่างละเอียด เช่น เคสปิดไปแล้วแต่มีรายการค้างในระบบเนื่องจากข้อมูลผิดพลาด..."
                     />
-                    <div className="mt-2 text-xs text-slate-400">
-                      อย่างน้อย 8 ตัวอักษร
+                    <div className="flex justify-between text-xs font-bold text-slate-400">
+                      <span>กรุณาระบุอย่างน้อย 8 ตัวอักษร</span>
+                      <span>ความยาว: {actionDialog.reason.length}</span>
                     </div>
                   </div>
                 </div>
               ) : null}
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-4 pt-4">
                 <button
                   type="button"
                   onClick={() => setActionDialog(null)}
                   disabled={dialogSubmitting}
-                  className="flex-1 rounded-2xl border border-slate-200 px-4 py-3 font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                  className="flex-1 rounded-2xl border-2 border-slate-200 px-6 py-4 text-lg font-bold text-slate-600 transition hover:bg-slate-50 hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
                 >
                   ยกเลิก
                 </button>
@@ -1783,20 +1813,20 @@ export default function PartsManagementClient({
                       && Number(actionDialog.confirmedQuantity) !== actionDialog.quantity
                     )
                   }
-                  className={`flex-1 rounded-2xl px-4 py-3 font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  className={`flex-[1.5] rounded-2xl px-6 py-4 text-lg font-black text-white shadow-xl transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${
                     actionDialog.mode === 'availability'
                       ? actionDialog.nextStatus === 'approved'
-                        ? 'bg-gradient-to-r from-emerald-500 to-green-500'
-                        : 'bg-gradient-to-r from-rose-500 to-red-500'
+                        ? 'bg-gradient-to-r from-emerald-500 to-green-600 shadow-emerald-200 dark:shadow-none'
+                        : 'bg-gradient-to-r from-rose-500 to-red-600 shadow-rose-200 dark:shadow-none'
                       : actionDialog.mode === 'complete'
-                        ? 'bg-gradient-to-r from-blue-600 to-cyan-500'
+                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 shadow-blue-200 dark:shadow-none'
                         : actionDialog.mode === 'confirmDefective'
-                          ? 'bg-gradient-to-r from-rose-600 to-red-500'
-                        : 'bg-gradient-to-r from-slate-800 to-slate-600'
+                          ? 'bg-gradient-to-r from-orange-600 to-rose-600 shadow-orange-200 dark:shadow-none'
+                        : 'bg-gradient-to-r from-slate-800 to-slate-900 shadow-slate-200 dark:shadow-none'
                   }`}
                 >
                   {dialogSubmitting
-                    ? 'กำลังบันทึก...'
+                    ? 'กำลังบันทึกข้อมูล...'
                     : actionDialog.mode === 'availability'
                       ? actionDialog.nextStatus === 'approved'
                         ? 'ยืนยันพร้อมจ่าย'
@@ -1804,7 +1834,7 @@ export default function PartsManagementClient({
                       : actionDialog.mode === 'complete'
                         ? 'ยืนยันตัดสต็อก'
                         : actionDialog.mode === 'confirmDefective'
-                          ? 'ยืนยันของเสีย'
+                          ? 'ยืนยันรายการของเสีย'
                         : 'ยืนยันเคลียร์รายการ'}
                 </button>
               </div>
