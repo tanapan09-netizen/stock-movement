@@ -1085,10 +1085,6 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
                 };
             }
 
-            if (current.left === left && current.top === top && current.isVisible) {
-                return current;
-            }
-
             return {
                 ...current,
                 left,
