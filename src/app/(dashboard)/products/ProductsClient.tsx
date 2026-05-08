@@ -6,8 +6,9 @@
  */
 
 import { useState, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react';
+import { createPortal } from 'react-dom'; // <--- เพิ่ม import นี้
 import { FloatingSearchInput } from '@/components/FloatingField';
-import { FileSpreadsheet, FileText, QrCode, Loader2, LayoutGrid, List, Edit, Trash2, ArrowUpDown, Upload, Gem, AlertTriangle, Columns3, ArrowUp, ArrowDown, RotateCcw, GripVertical, Package, X, Image as ImageIcon, Eye, EyeOff, Check, Plus } from 'lucide-react';
+import { FileSpreadsheet, FileText, QrCode, Loader2, LayoutGrid, List, Edit, Trash2, ArrowUpDown, Upload, Gem, AlertTriangle, Columns3, ArrowUp, ArrowDown, RotateCcw, GripVertical, Package, X, Image as ImageIcon, Eye, EyeOff, Check, Plus, AlignCenter } from 'lucide-react';
 import { exportToExcel, exportToPDF, EXPORT_COLUMNS, type ExportColumn } from '@/lib/exportUtils';
 import { resolveProductImageSrc } from '@/lib/product-image';
 import BarcodeScanner from '@/components/BarcodeScanner';
@@ -434,29 +435,27 @@ function buildAssetRegistrationHref(product: Product) {
     return `/assets/new?${params.toString()}`;
 }
 
-const IMAGE_PREVIEW_WIDTH = 288;
-const IMAGE_PREVIEW_HEIGHT = 320;
-const IMAGE_PREVIEW_MARGIN = 14;
+const IMAGE_PREVIEW_WIDTH = 320;
+const IMAGE_PREVIEW_HEIGHT = 380;
+const IMAGE_PREVIEW_MARGIN = 16;
 const IMAGE_PREVIEW_EXIT_DELAY_MS = 180;
 
 function getImagePreviewPositionFromPointer(clientX: number, clientY: number) {
     const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+
     const prefersRight = clientX + IMAGE_PREVIEW_MARGIN + IMAGE_PREVIEW_WIDTH <= viewportWidth - 8;
     const left = prefersRight
         ? clientX + IMAGE_PREVIEW_MARGIN
         : Math.max(8, clientX - IMAGE_PREVIEW_WIDTH - IMAGE_PREVIEW_MARGIN);
-    const centeredTop = clientY - IMAGE_PREVIEW_HEIGHT / 2;
-    const top = Math.min(
-        Math.max(8, centeredTop),
-        Math.max(8, viewportHeight - IMAGE_PREVIEW_HEIGHT - 8),
-    );
+
+    const top = clientY - 15;
+
     return { left, top };
 }
 
 interface ProductsToolbarProps {
     products: Product[];
-    canImport: boolean;
+    canImport: boolean; 
     canEditPage: boolean;
     viewerRole?: string | null;
     viewerId?: string | null;
@@ -649,7 +648,7 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
     const [dragOverColumn, setDragOverColumn] = useState<ProductColumnId | null>(null);
     const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
     const imagePreviewHideTimeoutRef = useRef<number | null>(null);
-    const imagePreviewRevealFrameRef = useRef<number | null>(null);
+    const imagePreviewRevealFrameRef = useRef<number | null>(null); 
     const manageableColumns = useMemo(
         () => columnOrder.filter((columnId) => isAdmin || columnId !== 'actions'),
         [columnOrder, isAdmin],
@@ -681,7 +680,6 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
         }));
     };
 
-    // Read default view from localStorage on mount
     useEffect(() => {
         let nextViewMode: 'list' | 'grid' | null = null;
         let nextPreferences = defaultPreferences;
@@ -727,6 +725,7 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
             }
             setImagePreview(null);
         };
+  
         window.addEventListener('scroll', closePreview, true);
         window.addEventListener('resize', closePreview);
         return () => {
@@ -746,7 +745,6 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
         };
     }, []);
 
-    
     const filteredProducts = products.filter(p => {
         const normalizedSearch = searchTerm.toLowerCase();
         const matchesSearch = p.p_name.toLowerCase().includes(normalizedSearch) ||
@@ -763,7 +761,6 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
         return matchesSearch && matchesLowStock && matchesOutOfStock && matchesAssetOnly && matchesHasImageOnly;
     });
 
-    
     const [sortColumn, setSortColumn] = useState<string | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -782,7 +779,6 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
         let aValue: string | number = '';
         let bValue: string | number = '';
 
-        // Default value extraction
         const aVal = a[sortColumn as keyof Product];
         const bVal = b[sortColumn as keyof Product];
 
@@ -796,7 +792,6 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
             aValue = a.main_category || a.tbl_categories?.cat_name || '';
             bValue = b.main_category || b.tbl_categories?.cat_name || '';
         } else if (sortColumn === 'status') {
-            // Sort by stock status: ready = 2, equal safety stock = 1, out of stock = 0
             aValue = isOutOfStock(a) ? 0 : isAtSafetyStock(a) ? 1 : 2;
             bValue = isOutOfStock(b) ? 0 : isAtSafetyStock(b) ? 1 : 2;
         } else if (sortColumn === 'price_unit') {
@@ -809,7 +804,6 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
 
         if (aValue === bValue) return 0;
 
-        // Handle sorting
         if (sortDirection === 'asc') {
             return aValue < bValue ? -1 : 1;
         } else {
@@ -1714,25 +1708,39 @@ export function ProductsView({ products, isAdmin, viewerRole, viewerId }: Produc
                 </div>
             )}
 
-            {imagePreview && (
-                <div
-                    className={`pointer-events-none fixed z-[9999] w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl transition-[opacity,transform] duration-200 ease-out ${
-                        imagePreview.isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-                    }`}
-                    style={{ left: imagePreview.left, top: imagePreview.top }}
-                    role="status"
-                    aria-live="polite"
-                >
-                    <div className="h-64 w-full overflow-hidden rounded-lg bg-slate-100">
-                        <ProductImage
-                            src={imagePreview.src}
-                            alt={imagePreview.alt}
-                            className="h-full w-full object-contain"
-                        />
-                    </div>
-                    <p className="mt-1 truncate text-xs text-slate-500">{imagePreview.alt}</p>
-                </div>
-            )}
+            {imagePreview && typeof document !== 'undefined'
+                ? createPortal(
+                      <div
+                          className={`pointer-events-none fixed z-[9999] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl transition-[opacity,transform] duration-150 ease-out ${
+                              imagePreview.isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+                          }`}
+                          style={{
+                              left: imagePreview.left,
+                              top: imagePreview.top,
+                              width: IMAGE_PREVIEW_WIDTH,
+                          }}
+                          role="status"
+                          aria-live="polite"
+                      >
+                          <div
+                              className="w-full bg-slate-100"
+                              style={{ height: IMAGE_PREVIEW_HEIGHT - 40 }}
+                          >
+                              <img
+                                  src={imagePreview.src}
+                                  alt={imagePreview.alt}
+                                  className="h-full w-full object-contain"
+                              />
+                          </div>
+                          <div className="px-3 py-2">
+                              <p className="truncate text-sm font-medium text-slate-700">
+                                  {imagePreview.alt}
+                              </p>
+                          </div>
+                      </div>,
+                      document.body
+                  )
+                : null}
 
             {/* Pagination Placeholder */}
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600" role="status" aria-live="polite">
